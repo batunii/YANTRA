@@ -1,0 +1,497 @@
+package ie.napkin.supertasks.ui.pomodoro
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import ie.napkin.supertasks.AppContainer
+import ie.napkin.supertasks.data.db.NodeEntity
+import ie.napkin.supertasks.data.db.PomodoroSessionEntity
+import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.durationLabel
+import ie.napkin.supertasks.ui.container
+import ie.napkin.supertasks.ui.theme.MonoLarge
+import ie.napkin.supertasks.ui.theme.Yantra
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+class FocusViewModel(
+    container: AppContainer,
+    val requestedNodeId: String?,
+) : ViewModel() {
+    val timer = container.timer
+    private val nodes = container.nodes
+
+    val requestedNode: StateFlow<NodeEntity?> =
+        (requestedNodeId?.let { nodes.observe(it) } ?: flowOf(null))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun sessionsFor(nodeId: String) = timerSessions(nodeId)
+    private val pomodoro = container.pomodoro
+    private fun timerSessions(nodeId: String) = pomodoro.forNode(nodeId)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
+    val vm: FocusViewModel = viewModel(key = "focus-${nodeIdArg ?: "current"}") {
+        FocusViewModel(container(), nodeIdArg)
+    }
+    val timerState by vm.timer.state.collectAsStateWithLifecycle()
+    val requestedNode by vm.requestedNode.collectAsStateWithLifecycle()
+    val y = Yantra.colors
+
+    val historyNodeId = timerState?.nodeId ?: nodeIdArg
+    val sessions by remember(historyNodeId) {
+        historyNodeId?.let { vm.sessionsFor(it) } ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+
+    val active = timerState
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(y.page),
+    ) {
+        // A single faint sparkle (the same glyph completion pops) sits behind the instrument —
+        // this app's own mark, not a literal hexagram borrowed for the occasion.
+        ie.napkin.supertasks.ui.components.SparkleMark(
+            Modifier.align(Alignment.Center).size(300.dp), tint = y.accent, alpha = 0.1f,
+        )
+        // Ambient accent glow behind the ring while a session is live.
+        if (active != null) {
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 90.dp)
+                    .size(360.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(y.accent.copy(alpha = 0.20f), Color.Transparent),
+                            radius = 360f,
+                        ),
+                        CircleShape,
+                    ),
+            )
+        }
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+        ) {
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .padding(start = 0.dp)
+                    .clickable { nav.popBackStack() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(22.dp))
+            }
+
+            when {
+                active != null && active.isFinished -> DoneContent(
+                    state = active,
+                    onStartAnother = vm.timer::dismissFinished,
+                    onDone = { vm.timer.dismissFinished(); nav.popBackStack() },
+                )
+                active != null -> ActiveTimer(
+                    state = active,
+                    onPause = vm.timer::pause,
+                    onResume = vm.timer::resume,
+                    onComplete = vm.timer::completeEarly,
+                    onAbandon = vm.timer::abandon,
+                )
+                requestedNode != null -> IdleScroll(sessions) {
+                    TimerSetup(
+                        node = requestedNode!!,
+                        onStart = { secs -> vm.timer.start(requestedNode!!.id, requestedNode!!.title.orEmpty(), secs) },
+                    )
+                }
+                else -> IdleScroll(sessions) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 44.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        ie.napkin.supertasks.ui.components.YantraMark(
+                            Modifier.size(56.dp), tint = y.accent.copy(alpha = 0.7f), checkTint = y.textSecondary,
+                        )
+                        Text(
+                            "Nothing in focus.\nStart a session from any task.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = y.textMuted,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleScroll(sessions: List<PomodoroSessionEntity>, top: @Composable () -> Unit) {
+    val y = Yantra.colors
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        top()
+        if (sessions.isNotEmpty()) {
+            SectionLabel("History", modifier = Modifier.padding(start = 30.dp, top = 28.dp, bottom = 6.dp))
+            Column(Modifier.padding(horizontal = 26.dp)) {
+                sessions.forEach { s -> SessionRow(s) }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
+    val y = Yantra.colors
+    var minutes by remember { mutableIntStateOf(25) }
+    Column(Modifier.padding(horizontal = 30.dp)) {
+        Spacer(Modifier.height(16.dp))
+        SectionLabel("Focus on")
+        Text(
+            node.title.orEmpty().ifBlank { "Untitled task" },
+            fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay,
+            fontSize = 32.sp,
+            lineHeight = 39.sp,
+            fontWeight = FontWeight.W700,
+            letterSpacing = (-0.4).sp,
+            color = y.textPrimary,
+            modifier = Modifier.padding(top = 10.dp),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(28.dp))
+        SectionLabel("Duration")
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf(15, 25, 50).forEach { m ->
+                val selected = minutes == m
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (selected) y.accent.copy(alpha = 0.16f) else y.cardBg)
+                        .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
+                        .clickable { minutes = m }
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "$m",
+                        fontSize = 17.sp,
+                        fontWeight = if (selected) FontWeight.W800 else FontWeight.W700,
+                        color = if (selected) y.accentText else y.textSecondary,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(y.accentFill, RoundedCornerShape(16.dp))
+                .border(1.dp, y.accentBorder, RoundedCornerShape(16.dp))
+                .clickable { onStart(minutes * 60) }
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Start focus", fontSize = 16.sp, fontWeight = FontWeight.W800, color = y.accentText)
+        }
+    }
+}
+
+@Composable
+private fun ActiveTimer(
+    state: ie.napkin.supertasks.domain.PomodoroTimer.State,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onComplete: () -> Unit,
+    onAbandon: () -> Unit,
+) {
+    val y = Yantra.colors
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.weight(1f))
+        SectionLabel("Focusing", color = y.accentEyebrow)
+        Text(
+            state.nodeTitle.ifBlank { "Untitled task" },
+            fontSize = 16.sp,
+            fontWeight = FontWeight.W700,
+            color = y.textPrimary,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 30.dp, end = 30.dp, top = 8.dp),
+        )
+        Box(
+            Modifier
+                .padding(top = 22.dp)
+                .size(272.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            val elapsed = if (state.plannedSecs == 0) 0f
+            else (state.plannedSecs - state.remainingSecs).toFloat() / state.plannedSecs
+            val sweep by animateFloatAsState(elapsed.coerceIn(0f, 1f) * 360f, tween(400), label = "ringSweep")
+            Canvas(Modifier.fillMaxSize()) {
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                fun pt(r: Float, aDeg: Double): Offset {
+                    val a = Math.toRadians(aDeg)
+                    return Offset(cx + (r * kotlin.math.cos(a)).toFloat(), cy + (r * kotlin.math.sin(a)).toFloat())
+                }
+                val rOut = size.minDimension / 2f - 3.dp.toPx()
+
+                // gauge bezel: a fine 24-mark graduation, only the 4 cardinal ticks emphasized —
+                // reads as a watch bezel / instrument dial, not a 12- or 60-mark clock face.
+                for (i in 0 until 24) {
+                    val cardinal = i % 6 == 0
+                    val len = (if (cardinal) 17.dp else 6.dp).toPx()
+                    val w = (if (cardinal) 2.6.dp else 1.dp).toPx()
+                    val col = if (cardinal) y.accent else y.textDim.copy(alpha = 0.45f)
+                    val deg = i * 15.0 - 90.0
+                    drawLine(col, pt(rOut - len, deg), pt(rOut, deg), strokeWidth = w, cap = StrokeCap.Round)
+                }
+
+                // the transit ring — track + brass progress
+                val sw = 11.dp.toPx()
+                val rProg = rOut - 27.dp.toPx()
+                val box = Size(rProg * 2, rProg * 2)
+                val tl = Offset(cx - rProg, cy - rProg)
+                drawArc(y.bandTimer, 0f, 360f, false, topLeft = tl, size = box, style = Stroke(sw))
+                drawArc(y.accent, -90f, sweep, false, topLeft = tl, size = box, style = Stroke(sw, cap = StrokeCap.Round))
+                if (sweep > 1f) {
+                    drawCircle(y.accentGlow, radius = sw * 0.5f, center = pt(rProg, -90.0 + sweep))
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("%d:%02d".format(state.remainingSecs / 60, state.remainingSecs % 60), style = MonoLarge, color = y.textPrimary)
+                Text(
+                    if (state.isRunning) "of %d:%02d".format(state.plannedSecs / 60, state.plannedSecs % 60) else "paused",
+                    fontFamily = ie.napkin.supertasks.ui.theme.YantraMono,
+                    fontSize = 11.sp, letterSpacing = 1.sp, color = y.textDim,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        // Pause / resume — outlined-tint circle.
+        Box(
+            Modifier
+                .size(76.dp)
+                .background(y.accentFill, CircleShape)
+                .border(1.dp, y.accentBorder, CircleShape)
+                .clickable { if (state.isRunning) onPause() else onResume() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (state.isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (state.isRunning) "Pause" else "Resume",
+                tint = y.accent,
+                modifier = Modifier.size(30.dp),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SecondaryButton("Finish", onComplete, textColor = y.accentText, icon = Icons.Default.Timer)
+            SecondaryButton("Drop", onAbandon, textColor = y.textMuted)
+        }
+        Spacer(Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun DoneContent(
+    state: ie.napkin.supertasks.domain.PomodoroTimer.State,
+    onStartAnother: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val y = Yantra.colors
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 30.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.weight(1f))
+        Box(
+            Modifier
+                .size(74.dp)
+                .background(y.accent.copy(alpha = 0.16f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(46.dp)
+                    .background(y.accent, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = y.onAccent, modifier = Modifier.size(26.dp))
+            }
+        }
+        Text(
+            "Session complete",
+            fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.W700,
+            letterSpacing = (-0.4).sp,
+            color = y.textPrimary,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        Text(
+            "${state.plannedSecs / 60} min on ${state.nodeTitle.ifBlank { "your task" }} · +1 focus",
+            fontSize = 13.5.sp,
+            color = y.textMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Spacer(Modifier.height(22.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .background(y.secondaryButton, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onStartAnother)
+                    .padding(vertical = 13.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("Start another", fontSize = 14.sp, fontWeight = FontWeight.W600, color = y.textSecondary) }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .background(y.accentFill, RoundedCornerShape(12.dp))
+                    .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onDone)
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("Done", fontSize = 14.sp, fontWeight = FontWeight.W800, color = y.accentText) }
+        }
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    textColor: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Box(
+        Modifier
+            .background(Yantra.colors.secondaryButton, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 11.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(text, fontSize = 14.sp, fontWeight = FontWeight.W700, color = textColor)
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = textColor, modifier = Modifier.size(15.dp))
+            }
+        }
+    }
+}
+
+private val sessionTimeFmt = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+
+@Composable
+private fun SessionRow(s: PomodoroSessionEntity) {
+    val y = Yantra.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (s.completed) {
+            Icon(Icons.Default.Timer, contentDescription = "Completed", tint = y.accent, modifier = Modifier.size(16.dp))
+        } else {
+            Text("◌", fontSize = 16.sp, color = y.textDim)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                Instant.ofEpochMilli(s.startedAt).atZone(ZoneId.systemDefault()).format(sessionTimeFmt),
+                style = MaterialTheme.typography.bodyMedium,
+                color = y.textPrimary,
+            )
+            Text(
+                if (s.endedAt == null) "In progress"
+                else if (s.completed) "Completed · ${durationLabel(s.actualSecs ?: 0)}"
+                else "Abandoned · ${durationLabel(s.actualSecs ?: 0)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = y.textMuted,
+            )
+        }
+        Text("${s.plannedSecs / 60}m planned", fontSize = 11.sp, fontWeight = FontWeight.W600, color = y.textDim)
+    }
+}

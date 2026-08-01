@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+  body{margin:0;background:#1A1613}
+  a{color:#E06A43}a:hover{color:#F0A07C}
+</style>
+</helmet>
+<div style="min-height:100vh;padding:60px;display:flex;flex-direction:column;gap:64px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+
+  <div style="max-width:920px">
+    <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#E06A43;text-transform:uppercase">Yantra</div>
+    <div style="font-size:30px;font-weight:800;letter-spacing:-0.5px;color:#F6F1EB;margin-top:6px">Design system &amp; screens</div>
+    <div style="font-size:14px;line-height:1.6;color:#B0A294;margin-top:8px;max-width:600px"><span style="color:#D5CBC1">Yantra</span> — “tool” in Hindi, and <span style="color:#D5CBC1">Y</span>et <span style="color:#D5CBC1">A</span>nother <span style="color:#D5CBC1">N</span>otes, <span style="color:#D5CBC1">T</span>odos &amp; <span style="color:#D5CBC1">R</span>eminder <span style="color:#D5CBC1">A</span>pp. OLED-dark, terracotta accent, document-first pages. Checkboxes are live — tap any to complete it.</div>
+  </div>
+
+  <!-- ============ ROW 1 ============ -->
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+
+    <!-- ===== HOME ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Home</span><span style="font-size:12px;color:#6E6155">Workspace</span></div>
+      <div data-screen-label="Home" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);position:relative;overflow:hidden">
+        <div style="display:flex;flex-direction:column;min-height:820px;padding:0 0 26px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 26px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;padding:14px 24px 0">
+            <div style="display:flex;flex-direction:column"><span style="font-size:10.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#C08862">Yantra</span><span style="font-size:26px;font-weight:800;letter-spacing:-0.6px;color:#F6F1EB;line-height:1.05">Workspace</span></div>
+            <div style="width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#1B1613"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="9" width="3.4" height="7" rx="1" fill="#C7BAAE"></rect><rect x="7.3" y="5" width="3.4" height="11" rx="1" fill="#C7BAAE"></rect><rect x="12.6" y="2" width="3.4" height="14" rx="1" fill="#E06A43"></rect></svg></div>
+          </div>
+          <!-- active timer banner -->
+          <div style="margin:18px 20px 0;background:#241812;border:1px solid rgba(224,106,67,.28);border-radius:16px;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:40px;height:40px;border-radius:12px;background:rgba(224,106,67,.16);display:flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="11" r="6.6" fill="none" stroke="#E06A43" stroke-width="1.8"></circle><line x1="10" y1="11" x2="10" y2="7.2" stroke="#E06A43" stroke-width="1.8" stroke-linecap="round"></line><line x1="10" y1="2.2" x2="10" y2="4" stroke="#E06A43" stroke-width="1.8" stroke-linecap="round"></line></svg></div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+                <span style="font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#C08862">Focusing</span>
+                <span style="font-size:15px;font-weight:700;color:#F6F1EB;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Finalize budget</span>
+              </div>
+              <span style="font:700 20px ui-monospace,Menlo,monospace;color:#F0A07C;letter-spacing:-0.5px">15:32</span>
+            </div>
+            <div style="margin-top:12px;height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:62%;height:100%;border-radius:3px;background:#E06A43"></div></div>
+          </div>
+          <!-- smart lists -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:26px 26px 10px"><span style="font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8E8175">Smart lists</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:0 16px">
+            <div style="display:flex;align-items:center;gap:14px;padding:13px 14px;background:#141210;border-radius:16px">
+              <div style="width:44px;height:44px;border-radius:13px;background:rgba(224,106,67,.15);display:flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 18 18"><path d="M9 1.5 L10.5 6.4 L15.4 8 L10.5 9.6 L9 14.5 L7.5 9.6 L2.6 8 L7.5 6.4 Z" fill="#E06A43"></path></svg></div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:15.5px;font-weight:700;color:#F6F1EB">High priority</span><span style="font-size:12.5px;color:#9E9086">6 open · updates live</span></div>
+              <span style="color:#6E6155;font-size:18px;font-weight:700">⋮</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:13px 14px;background:#141210;border-radius:16px">
+              <div style="width:44px;height:44px;border-radius:13px;background:rgba(215,155,69,.15);display:flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 18 18"><path d="M9 1.5 L10.5 6.4 L15.4 8 L10.5 9.6 L9 14.5 L7.5 9.6 L2.6 8 L7.5 6.4 Z" fill="#D79B45"></path></svg></div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:15.5px;font-weight:700;color:#F6F1EB">Due today</span><span style="font-size:12.5px;color:#9E9086">3 tasks · lands in Inbox</span></div>
+              <span style="color:#6E6155;font-size:18px;font-weight:700">⋮</span>
+            </div>
+          </div>
+          <!-- lists -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 26px 10px"><span style="font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8E8175">Lists</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:0 16px">
+            <div style="display:flex;align-items:center;gap:14px;padding:13px 14px;background:#141210;border-radius:16px">
+              <div style="width:44px;height:44px;border-radius:13px;background:rgba(224,106,67,.15);display:flex;align-items:center;justify-content:center;flex:none;font-size:19px">🚀</div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:15.5px;font-weight:700;color:#F6F1EB">Launch checklist</span><span style="font-size:12.5px;color:#9E9086">12 of 18 done</span></div>
+              <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="#2A211B" stroke-width="4"></circle><circle cx="17" cy="17" r="13" fill="none" stroke="#E06A43" stroke-width="4" stroke-linecap="round" stroke-dasharray="54.5 81.7" transform="rotate(-90 17 17)"></circle></svg>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:13px 14px;background:#141210;border-radius:16px">
+              <div style="width:44px;height:44px;border-radius:13px;background:rgba(94,130,168,.16);display:flex;align-items:center;justify-content:center;flex:none;font-size:19px">🐞</div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:15.5px;font-weight:700;color:#F6F1EB">Bugs</span><span style="font-size:12.5px;color:#9E9086">4 of 9 done</span></div>
+              <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="#2A211B" stroke-width="4"></circle><circle cx="17" cy="17" r="13" fill="none" stroke="#5E82A8" stroke-width="4" stroke-linecap="round" stroke-dasharray="36.3 81.7" transform="rotate(-90 17 17)"></circle></svg>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:13px 14px;background:#141210;border-radius:16px">
+              <div style="width:44px;height:44px;border-radius:13px;background:rgba(78,148,120,.16);display:flex;align-items:center;justify-content:center;flex:none;font-size:19px">📚</div>
+              <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:15.5px;font-weight:700;color:#F6F1EB">Reading</span><span style="font-size:12.5px;color:#9E9086">7 of 7 done</span></div>
+              <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="#4E9478" stroke-width="4"></circle></svg>
+            </div>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;justify-content:center;padding:14px 0 2px"><span style="width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.16)"></span></div>
+        </div>
+        <div style="position:absolute;right:22px;bottom:70px;width:60px;height:60px;border-radius:20px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5);display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" stroke="#E06A43" stroke-width="2.6" stroke-linecap="round"></line><line x1="5" y1="12" x2="19" y2="12" stroke="#E06A43" stroke-width="2.6" stroke-linecap="round"></line></svg></div>
+      </div>
+    </div>
+
+    <!-- ===== NODE PAGE — LIST ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Node page</span><span style="font-size:12px;color:#6E6155">List — document blocks</span></div>
+      <div data-screen-label="Node page (list)" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden">
+        <div style="display:flex;flex-direction:column;min-height:820px;padding:0 0 12px">
+          <div style="background:#221A16;border-radius:44px 44px 20px 20px;padding:0 0 22px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 28px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 20px 0">
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);flex:none"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div>
+              <span style="flex:1;text-align:center;font:600 10.5px ui-monospace,Menlo,monospace;letter-spacing:1.5px;color:#9E9086">WORKSPACE / LISTS</span>
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:#C7BAAE;font-size:16px;font-weight:700;flex:none">⋮</div>
+            </div>
+            <div style="padding:22px 26px 0"><span style="font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1.06;color:#F1ECE6">Launch checklist</span></div>
+            <div style="padding:12px 26px 0;font-size:12.5px;color:#9E9086">12 of 18 done · updated 2h ago</div>
+          </div>
+          <div style="padding:24px 26px 6px;font-size:16px;font-weight:800;letter-spacing:-0.2px;color:#F1ECE6">This week</div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ listTasks }}" as="item" hint-placeholder-count="4">
+              <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 26px">
+                <span onClick="{{ item.toggle }}" style="{{ item.boxStyle }}"><span style="{{ item.checkStyle }}">✓</span></span>
+                <span style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1">
+                  <span style="{{ item.titleStyle }}">{{ item.title }}</span>
+                  <sc-if value="{{ item.hasChip }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:flex;gap:6px;align-items:center">
+                      <span style="{{ item.chipStyle }}"><span style="{{ item.dotStyle }}"></span>{{ item.chipLabel }}</span>
+                      <sc-if value="{{ item.hasPom }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#B7A99C;font-weight:600"><svg width="12" height="12" viewBox="0 0 14 14"><circle cx="7" cy="8" r="5" fill="none" stroke="#E06A43" stroke-width="1.6"></circle><line x1="7" y1="8" x2="7" y2="5" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line><line x1="7" y1="1.5" x2="7" y2="3" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line></svg>{{ item.pomCount }}</span></sc-if>
+                    </span>
+                  </sc-if>
+                </span>
+                <sc-if value="{{ item.hasCount }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:6px;color:#9E9086;font-size:12px;font-weight:600;padding-top:2px">{{ item.count }}<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="4 2 8 6 4 10" fill="none" stroke="#9E9086" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:16px 26px 4px;font-size:14.5px;line-height:1.6;color:#B0A294">Run-of-show gets locked Thursday — confirm A/V with the venue before then.</div>
+          <div style="position:relative;margin:6px 0">
+            <svg width="100%" height="120" viewBox="0 0 390 120"><path d="M40 74 C 100 22, 170 100, 240 50" fill="none" stroke="#F1ECE6" stroke-width="3" stroke-linecap="round"></path><path d="M250 80 C 290 44, 330 82, 362 46" fill="none" stroke="#E06A43" stroke-width="3" stroke-linecap="round"></path><circle cx="70" cy="84" r="4" fill="#F1ECE6"></circle></svg>
+            <span style="position:absolute;right:26px;bottom:8px;font:600 10px ui-monospace,Menlo,monospace;letter-spacing:1px;color:#6A5C50">INK · P.1</span>
+          </div>
+          <div style="padding:14px 20px 0"><div style="height:132px;border-radius:16px;background:linear-gradient(135deg,#3A2C22,#241812 60%,#2E2A34);position:relative;overflow:hidden"><span style="position:absolute;left:14px;bottom:12px;font-size:11px;font-weight:600;color:rgba(246,241,235,.7);background:rgba(0,0,0,.35);padding:3px 8px;border-radius:6px">venue-floorplan.jpg</span></div></div>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:8px;padding:16px 20px 6px;overflow:hidden">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.45);color:#F0A07C;font-size:13.5px;font-weight:700"><svg width="14" height="14" viewBox="0 0 14 14"><line x1="7" y1="2.5" x2="7" y2="11.5" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line><line x1="2.5" y1="7" x2="11.5" y2="7" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line></svg>Task</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Text</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Heading</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Ink</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Image</span>
+          </div>
+          <div style="display:flex;justify-content:center;padding:10px 0 2px"><span style="width:120px;height:4px;border-radius:2px;background:rgba(241,236,230,.2)"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== NODE PAGE — TASK AS PAGE ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Node page</span><span style="font-size:12px;color:#6E6155">Task opened as a page</span></div>
+      <div data-screen-label="Node page (task)" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden">
+        <div style="display:flex;flex-direction:column;min-height:820px;padding:0 0 12px">
+          <div style="background:#221A16;border-radius:44px 44px 20px 20px;padding:0 0 22px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 28px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 20px 0">
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);flex:none"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div>
+              <span style="flex:1;text-align:center;font:600 10.5px ui-monospace,Menlo,monospace;letter-spacing:1.5px;color:#9E9086;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">LAUNCH CHECKLIST</span>
+              <div style="display:flex;gap:8px;flex:none">
+                <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(224,106,67,.18)"><svg width="17" height="17" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5" fill="none" stroke="#E88A62" stroke-width="1.8"></circle><line x1="9" y1="9" x2="9" y2="5.5" stroke="#E88A62" stroke-width="1.8" stroke-linecap="round"></line></svg></div>
+                <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:#C7BAAE;font-size:16px;font-weight:700">⋮</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:14px;padding:22px 26px 0">
+              <span onClick="{{ togglePageTask }}" style="{{ pageBoxStyle }}"><span style="{{ pageCheckStyle }}">✓</span></span>
+              <span style="font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1.06;color:#F1ECE6">Finalize budget</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;padding:16px 26px 0">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:5px;background:rgba(224,106,67,.22);color:#F0A07C;font-size:11.5px;font-weight:600"><span style="width:6px;height:6px;border-radius:1px;background:#E06A43"></span>Priority · High</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:5px;background:rgba(239,166,132,.16);color:#EFC1A2;font-size:11.5px;font-weight:600"><span style="width:6px;height:6px;border-radius:1px;background:#EFA684"></span>Due · Wed 8</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:5px;background:rgba(241,236,230,.08);color:#D5CBC1;font-size:11.5px;font-weight:600"><span style="width:6px;height:6px;border-radius:1px;background:#8E8175"></span>Owner · Sam</span>
+              <span style="display:inline-flex;padding:5px 10px;border-radius:5px;border:1px solid rgba(241,236,230,.22);color:#B7A99C;font-size:11.5px;font-weight:600">+ Property</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:20px 26px 6px"><span style="font-size:16px;font-weight:800;letter-spacing:-0.2px;color:#F1ECE6">Subtasks</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#B7A99C;font-weight:600;padding:2px 8px;border-radius:20px;background:#1B1613"><svg width="12" height="12" viewBox="0 0 14 14"><circle cx="7" cy="8" r="5" fill="none" stroke="#E06A43" stroke-width="1.6"></circle><line x1="7" y1="8" x2="7" y2="5" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line><line x1="7" y1="1.5" x2="7" y2="3" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line></svg>2 · 50m focused</span></div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ subTasks }}" as="item" hint-placeholder-count="4">
+              <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 26px">
+                <span onClick="{{ item.toggle }}" style="{{ item.boxStyle }}"><span style="{{ item.checkStyle }}">✓</span></span>
+                <span style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1">
+                  <span style="{{ item.titleStyle }}">{{ item.title }}</span>
+                  <sc-if value="{{ item.hasChip }}" hint-placeholder-val="{{ false }}"><span style="display:flex;gap:6px;align-items:center"><span style="{{ item.chipStyle }}"><span style="{{ item.dotStyle }}"></span>{{ item.chipLabel }}</span></span></sc-if>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:16px 26px 4px;font-size:14.5px;line-height:1.6;color:#B0A294">Keep the total under €40k. Catering is the swing line — get two more quotes.</div>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:8px;padding:16px 20px 6px">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.45);color:#F0A07C;font-size:13.5px;font-weight:700"><svg width="14" height="14" viewBox="0 0 14 14"><line x1="7" y1="2.5" x2="7" y2="11.5" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line><line x1="2.5" y1="7" x2="11.5" y2="7" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line></svg>Task</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Text</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Heading</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Ink</span>
+          </div>
+          <div style="display:flex;justify-content:center;padding:10px 0 2px"><span style="width:120px;height:4px;border-radius:2px;background:rgba(241,236,230,.2)"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SMART LIST ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Smart list</span><span style="font-size:12px;color:#6E6155">Computed view</span></div>
+      <div data-screen-label="Smart list" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden">
+        <div style="display:flex;flex-direction:column;min-height:820px;padding:0 0 12px">
+          <div style="background:#221A16;border-radius:44px 44px 20px 20px;padding:0 0 22px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 28px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 20px 0">
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);flex:none"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div>
+              <span style="flex:1"></span>
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:#C7BAAE;font-size:16px;font-weight:700;flex:none">⋮</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:20px 26px 0">
+              <svg width="26" height="26" viewBox="0 0 18 18"><path d="M9 1.5 L10.5 6.4 L15.4 8 L10.5 9.6 L9 14.5 L7.5 9.6 L2.6 8 L7.5 6.4 Z" fill="#E06A43"></path></svg>
+              <span style="font-size:32px;font-weight:800;letter-spacing:-1px;line-height:1.06;color:#F1ECE6">High priority</span>
+            </div>
+            <div style="padding:14px 26px 0;font-size:12.5px;line-height:1.5;color:#9E9086">Open tasks · Priority = High · new tasks land in <span style="color:#EFC1A2;font-weight:600">Inbox</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;padding-top:8px">
+            <sc-for list="{{ smartTasks }}" as="item" hint-placeholder-count="4">
+              <div style="display:flex;align-items:flex-start;gap:13px;padding:13px 26px;border-bottom:1px solid #1A1512">
+                <span onClick="{{ item.toggle }}" style="{{ item.boxStyle }}"><span style="{{ item.checkStyle }}">✓</span></span>
+                <span style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1">
+                  <span style="{{ item.titleStyle }}">{{ item.title }}</span>
+                  <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <span style="{{ item.chipStyle }}"><span style="{{ item.dotStyle }}"></span>{{ item.chipLabel }}</span>
+                    <sc-if value="{{ item.hasOrigin }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#7E7266;font-weight:500">in {{ item.origin }}</span></sc-if>
+                    <sc-if value="{{ item.hasPom }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#B7A99C;font-weight:600"><svg width="12" height="12" viewBox="0 0 14 14"><circle cx="7" cy="8" r="5" fill="none" stroke="#E06A43" stroke-width="1.6"></circle><line x1="7" y1="8" x2="7" y2="5" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line><line x1="7" y1="1.5" x2="7" y2="3" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line></svg>{{ item.pomCount }}</span></sc-if>
+                  </span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="flex:1"></div>
+          <div style="margin:0 16px 4px;background:#141210;border:1px solid #262019;border-radius:16px;padding:6px 6px 6px 16px;display:flex;align-items:center;gap:10px">
+            <span style="flex:1;font-size:14px;color:#7E7266">Add a task — auto-tagged High</span>
+            <span style="width:40px;height:40px;border-radius:12px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5);display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M3 10 L16 10 M11 5 L16 10 L11 15" fill="none" stroke="#E06A43" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          </div>
+          <div style="padding:2px 26px 0;font-size:11px;color:#6E6155;line-height:1.5">New tasks are created in <span style="color:#B7A99C">Inbox</span> and set to Priority = High automatically.</div>
+          <div style="display:flex;justify-content:center;padding:12px 0 2px"><span style="width:120px;height:4px;border-radius:2px;background:rgba(241,236,230,.2)"></span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ ROW 2 ============ -->
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+
+    <!-- ===== FOCUS — RUNNING ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Focus</span><span style="font-size:12px;color:#6E6155">Running</span></div>
+      <div data-screen-label="Focus (running)" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden;position:relative">
+        <div style="position:absolute;top:120px;left:50%;transform:translateX(-50%);width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,rgba(224,106,67,.20),transparent 66%);pointer-events:none"></div>
+        <div style="display:flex;flex-direction:column;min-height:820px;padding:0 0 26px;position:relative">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 26px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+          <div style="display:flex;align-items:center;padding:10px 20px 0"><div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div></div>
+          <div style="flex:1"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <span style="display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C08862"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="8" r="5" fill="none" stroke="#E06A43" stroke-width="1.6"></circle><line x1="7" y1="8" x2="7" y2="5" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line><line x1="7" y1="1.5" x2="7" y2="3" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line></svg>Focusing</span>
+            <span style="font-size:16px;font-weight:700;color:#F6F1EB">Finalize budget</span>
+          </div>
+          <div style="position:relative;width:250px;height:250px;margin:26px auto 0">
+            <svg width="250" height="250" viewBox="0 0 250 250"><circle cx="125" cy="125" r="108" fill="none" stroke="#241812" stroke-width="13"></circle><circle cx="125" cy="125" r="108" fill="none" stroke="#E06A43" stroke-width="13" stroke-linecap="round" stroke-dasharray="257 679" transform="rotate(-90 125 125)"></circle></svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="font:700 50px ui-monospace,Menlo,monospace;letter-spacing:-2px;color:#F6F1EB">15:32</span><span style="font-size:12px;color:#8E8175">of 25:00</span></div>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding-bottom:8px">
+            <div style="width:76px;height:76px;border-radius:50%;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5);display:flex;align-items:center;justify-content:center"><svg width="26" height="26" viewBox="0 0 26 26"><rect x="7" y="6" width="4.5" height="14" rx="1.4" fill="#E06A43"></rect><rect x="14.5" y="6" width="4.5" height="14" rx="1.4" fill="#E06A43"></rect></svg></div>
+            <div style="display:flex;gap:10px">
+              <span style="padding:11px 22px;border-radius:12px;background:#1B1613;color:#F0A07C;font-size:14px;font-weight:700">Finish · 🍅</span>
+              <span style="padding:11px 22px;border-radius:12px;background:#1B1613;color:#9E9086;font-size:14px;font-weight:600">Drop</span>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:center;padding:14px 0 2px"><span style="width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.16)"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== FOCUS — SETUP + DONE ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Focus</span><span style="font-size:12px;color:#6E6155">Setup &amp; done</span></div>
+      <div data-screen-label="Focus (setup)" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden;position:relative">
+        <div style="display:flex;flex-direction:column;min-height:400px;padding:0 0 26px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 26px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+          <div style="display:flex;align-items:center;padding:10px 20px 0"><div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div></div>
+          <div style="padding:26px 30px 0"><span style="font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8E8175">Focus on</span><div style="font-size:28px;font-weight:800;letter-spacing:-0.6px;color:#F6F1EB;margin-top:8px">Finalize budget</div></div>
+          <div style="padding:28px 30px 0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175">Duration</div>
+          <div style="display:flex;gap:10px;padding:12px 30px 0">
+            <span style="flex:1;text-align:center;padding:16px 0;border-radius:14px;background:#141210;color:#B0A294;font-size:17px;font-weight:700">15</span>
+            <span style="flex:1;text-align:center;padding:16px 0;border-radius:14px;background:rgba(224,106,67,.16);border:1.5px solid #E06A43;color:#F0A07C;font-size:17px;font-weight:800">25</span>
+            <span style="flex:1;text-align:center;padding:16px 0;border-radius:14px;background:#141210;color:#B0A294;font-size:17px;font-weight:700">50</span>
+          </div>
+          <div style="padding:24px 30px 0"><div style="text-align:center;padding:16px 0;border-radius:16px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5);color:#F0A07C;font-size:16px;font-weight:800">Start focus</div></div>
+        </div>
+        <div style="height:1px;background:#1A1512;margin:8px 24px"></div>
+        <div style="display:flex;align-items:baseline;gap:10px;padding:14px 30px 0"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Focus</span><span style="font-size:12px;color:#6E6155">Done</span></div>
+        <div data-screen-label="Focus (done)" style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:30px 30px 30px">
+          <div style="width:74px;height:74px;border-radius:50%;background:rgba(224,106,67,.16);display:flex;align-items:center;justify-content:center"><svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="19" r="12" fill="#E06A43"></circle><path d="M11 19 l4 4 l8 -9" fill="none" stroke="#1C0F09" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M13.5 5.5 C 15 3, 19 3, 20.5 5.5" fill="none" stroke="#4E9478" stroke-width="2.2" stroke-linecap="round"></path></svg></div>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-0.4px;color:#F6F1EB;margin-top:16px">Session complete</div>
+          <div style="font-size:13.5px;color:#9E9086;margin-top:6px">25 min on Finalize budget · +1 focus</div>
+          <div style="display:flex;gap:10px;margin-top:22px;align-self:stretch"><span style="flex:1;text-align:center;padding:13px 0;border-radius:12px;background:#1B1613;color:#B0A294;font-size:14px;font-weight:600">Start another</span><span style="flex:1;text-align:center;padding:12px 0;border-radius:12px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5);color:#F0A07C;font-size:14px;font-weight:800">Done</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== STATS ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Stats</span><span style="font-size:12px;color:#6E6155">Focus history</span></div>
+      <div data-screen-label="Stats" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden">
+        <div style="display:flex;flex-direction:column;min-height:820px;padding:0 0 26px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 26px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 20px 0"><div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);flex:none"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div><span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#F6F1EB;padding-left:4px">Focus stats</span></div>
+          <div style="display:flex;gap:10px;padding:20px 20px 0">
+            <div style="flex:1;background:#141210;border-radius:18px;padding:16px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175">Today</div><div style="display:flex;align-items:baseline;gap:6px;margin-top:10px"><span style="font-size:34px;font-weight:800;letter-spacing:-1px;color:#F0A07C">4</span><span style="font-size:13px;color:#9E9086">🍅</span></div><div style="font-size:12.5px;color:#9E9086;margin-top:2px">1h 40m focused</div></div>
+            <div style="flex:1;background:#141210;border-radius:18px;padding:16px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175">This week</div><div style="display:flex;align-items:baseline;gap:6px;margin-top:10px"><span style="font-size:34px;font-weight:800;letter-spacing:-1px;color:#F6F1EB">23</span><span style="font-size:13px;color:#9E9086">🍅</span></div><div style="font-size:12.5px;color:#9E9086;margin-top:2px">9h 35m · +18%</div></div>
+          </div>
+          <div style="padding:24px 26px 10px;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175">Last 7 days</div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:9px;padding:0 26px;height:140px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:46%;background:#3A2A20;border-radius:6px"></div><span style="font-size:10.5px;color:#7E7266">M</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:64%;background:#3A2A20;border-radius:6px"></div><span style="font-size:10.5px;color:#7E7266">T</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:38%;background:#3A2A20;border-radius:6px"></div><span style="font-size:10.5px;color:#7E7266">W</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:80%;background:#3A2A20;border-radius:6px"></div><span style="font-size:10.5px;color:#7E7266">T</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:58%;background:#3A2A20;border-radius:6px"></div><span style="font-size:10.5px;color:#7E7266">F</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:22%;background:#3A2A20;border-radius:6px"></div><span style="font-size:10.5px;color:#7E7266">S</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end"><div style="width:100%;height:70%;background:#E06A43;border-radius:6px"></div><span style="font-size:10.5px;color:#C08862;font-weight:700">S</span></div>
+          </div>
+          <div style="padding:26px 26px 10px;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175">Most focused</div>
+          <div style="display:flex;flex-direction:column;gap:2px;padding:0 26px">
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 0"><span style="font:700 13px ui-monospace,Menlo,monospace;color:#C08862;width:16px">1</span><span style="flex:1;font-size:14.5px;font-weight:600;color:#F6F1EB">Finalize budget</span><span style="font-size:12.5px;color:#9E9086">8 🍅</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 0"><span style="font:700 13px ui-monospace,Menlo,monospace;color:#7E7266;width:16px">2</span><span style="flex:1;font-size:14.5px;font-weight:600;color:#F6F1EB">Fix onboarding crash</span><span style="font-size:12.5px;color:#9E9086">5 🍅</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 0"><span style="font:700 13px ui-monospace,Menlo,monospace;color:#7E7266;width:16px">3</span><span style="flex:1;font-size:14.5px;font-weight:600;color:#F6F1EB">Prep board deck</span><span style="font-size:12.5px;color:#9E9086">4 🍅</span></div>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;justify-content:center;padding:14px 0 2px"><span style="width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.16)"></span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ ROW 3 ============ -->
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+
+    <!-- ===== INK EDITOR ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Ink editor</span><span style="font-size:12px;color:#6E6155">Paginated canvas</span></div>
+      <div data-screen-label="Ink editor" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden">
+        <div style="display:flex;flex-direction:column;min-height:820px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 26px 6px;color:#9E9086;font-size:12.5px;font-weight:600"><span>9:41</span><span style="display:flex;gap:5px"><span style="width:14px;height:9px;border-radius:2px;background:#9E9086"></span><span style="width:9px;height:9px;border-radius:50%;background:#9E9086"></span></span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 20px 4px">
+            <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);flex:none"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10 3 5 8 10 13" fill="none" stroke="#F1ECE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></div>
+            <span style="flex:1;font-size:16px;font-weight:700;color:#F6F1EB">Sketch</span>
+            <span style="font-size:11px;color:#7E7266">Stylus draws · two fingers scroll</span>
+          </div>
+          <!-- canvas -->
+          <div style="flex:1;background:#0A0908;padding:16px 16px 0;display:flex;flex-direction:column;gap:14px">
+            <div style="position:relative;background:#101010;border-radius:6px;border:1px solid #1C1B1A;height:400px;overflow:hidden">
+              <svg width="100%" height="100%" viewBox="0 0 340 400" preserveAspectRatio="none"><path d="M30 70 C 90 20, 150 110, 220 54 S 300 30, 320 66" fill="none" stroke="#F2EDE4" stroke-width="3" stroke-linecap="round"></path><path d="M34 150 C 80 120, 120 176, 170 140" fill="none" stroke="#E06A43" stroke-width="4" stroke-linecap="round"></path><path d="M40 250 l60 0 M40 250 l0 70 M100 250 l0 70 M40 320 l60 0" fill="none" stroke="#6FA8E4" stroke-width="3" stroke-linecap="round"></path><circle cx="240" cy="290" r="34" fill="none" stroke="#F2EDE4" stroke-width="3"></circle><path d="M225 290 l10 10 l20 -22" fill="none" stroke="#4E9478" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <span style="position:absolute;right:12px;bottom:8px;font:600 10px ui-monospace,Menlo,monospace;letter-spacing:1px;color:#4E4841">1</span>
+            </div>
+            <div style="position:relative;background:#101010;border-radius:6px;border:1px solid #1C1B1A;height:80px;overflow:hidden"><span style="position:absolute;right:12px;bottom:8px;font:600 10px ui-monospace,Menlo,monospace;letter-spacing:1px;color:#4E4841">2</span></div>
+          </div>
+          <!-- pen tray -->
+          <div style="background:#161311;border-top:1px solid #241C18;padding:14px 18px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;gap:10px;align-items:center">
+                <span style="width:26px;height:26px;border-radius:50%;background:#F2EDE4;box-shadow:0 0 0 2px #161311,0 0 0 4px #F2EDE4"></span>
+                <span style="width:26px;height:26px;border-radius:50%;background:#E06A43"></span>
+                <span style="width:26px;height:26px;border-radius:50%;background:#6FA8E4"></span>
+                <span style="width:26px;height:26px;border-radius:50%;background:#4E9478"></span>
+                <span style="width:26px;height:26px;border-radius:50%;background:#E0A83E"></span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <span style="width:30px;height:30px;border-radius:9px;background:#211B16;color:#9E9086;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">S</span>
+                <span style="width:30px;height:30px;border-radius:9px;background:rgba(224,106,67,.18);color:#F0A07C;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center">M</span>
+                <span style="width:30px;height:30px;border-radius:9px;background:#211B16;color:#9E9086;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center">L</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+              <div style="display:flex;gap:6px">
+                <span style="padding:7px 12px;border-radius:9px;background:rgba(224,106,67,.16);border:1px solid #E06A43;color:#F0A07C;font-size:12px;font-weight:700">Pen</span>
+                <span style="padding:7px 12px;border-radius:9px;background:#211B16;color:#B0A294;font-size:12px;font-weight:600">Marker</span>
+                <span style="padding:7px 12px;border-radius:9px;background:#211B16;color:#B0A294;font-size:12px;font-weight:600">Highlighter</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span style="width:32px;height:32px;border-radius:10px;background:#211B16;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 4 L3 7 L6 10 M3 7 H10 a3 3 0 0 1 3 3" fill="none" stroke="#C7BAAE" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                <span style="width:32px;height:32px;border-radius:10px;background:#211B16;display:flex;align-items:center;justify-content:center;color:#9E9086;font-size:11px;font-weight:700">1/2</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TABLET TWO-PANE ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Tablet</span><span style="font-size:12px;color:#6E6155">Two-pane — workspace rail + page</span></div>
+      <div data-screen-label="Tablet two-pane" style="width:1120px;height:800px;background:#000;border-radius:34px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden;display:flex">
+        <!-- rail -->
+        <div style="width:360px;flex:none;background:#0C0A09;border-right:1px solid #1A1512;display:flex;flex-direction:column;padding:26px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px"><div style="display:flex;flex-direction:column"><span style="font-size:10.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#C08862">Yantra</span><span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#F6F1EB;line-height:1.05">Workspace</span></div><div style="width:38px;height:38px;border-radius:12px;background:#1B1613;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 18 18"><rect x="2" y="9" width="3.4" height="7" rx="1" fill="#C7BAAE"></rect><rect x="7.3" y="5" width="3.4" height="11" rx="1" fill="#C7BAAE"></rect><rect x="12.6" y="2" width="3.4" height="14" rx="1" fill="#E06A43"></rect></svg></div></div>
+          <div style="padding:24px 6px 8px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8E8175">Smart lists</div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:13px"><div style="width:36px;height:36px;border-radius:11px;background:rgba(224,106,67,.15);display:flex;align-items:center;justify-content:center;flex:none"><svg width="17" height="17" viewBox="0 0 18 18"><path d="M9 1.5 L10.5 6.4 L15.4 8 L10.5 9.6 L9 14.5 L7.5 9.6 L2.6 8 L7.5 6.4 Z" fill="#E06A43"></path></svg></div><span style="flex:1;font-size:14.5px;font-weight:600;color:#E9DED2">High priority</span><span style="font-size:12px;color:#7E7266">6</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:13px"><div style="width:36px;height:36px;border-radius:11px;background:rgba(215,155,69,.15);display:flex;align-items:center;justify-content:center;flex:none"><svg width="17" height="17" viewBox="0 0 18 18"><path d="M9 1.5 L10.5 6.4 L15.4 8 L10.5 9.6 L9 14.5 L7.5 9.6 L2.6 8 L7.5 6.4 Z" fill="#D79B45"></path></svg></div><span style="flex:1;font-size:14.5px;font-weight:600;color:#E9DED2">Due today</span><span style="font-size:12px;color:#7E7266">3</span></div>
+          <div style="padding:22px 6px 8px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8E8175">Lists</div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:13px;background:rgba(224,106,67,.13)"><div style="width:36px;height:36px;border-radius:11px;background:rgba(224,106,67,.15);display:flex;align-items:center;justify-content:center;flex:none;font-size:16px">🚀</div><span style="flex:1;font-size:14.5px;font-weight:700;color:#F6F1EB">Launch checklist</span><span style="font-size:12px;color:#C08862">12/18</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:13px"><div style="width:36px;height:36px;border-radius:11px;background:rgba(94,130,168,.16);display:flex;align-items:center;justify-content:center;flex:none;font-size:16px">🐞</div><span style="flex:1;font-size:14.5px;font-weight:600;color:#E9DED2">Bugs</span><span style="font-size:12px;color:#7E7266">4/9</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:13px"><div style="width:36px;height:36px;border-radius:11px;background:rgba(78,148,120,.16);display:flex;align-items:center;justify-content:center;flex:none;font-size:16px">📚</div><span style="flex:1;font-size:14.5px;font-weight:600;color:#E9DED2">Reading</span><span style="font-size:12px;color:#7E7266">7/7</span></div>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5)"><svg width="18" height="18" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" stroke="#E06A43" stroke-width="2.6" stroke-linecap="round"></line><line x1="5" y1="12" x2="19" y2="12" stroke="#E06A43" stroke-width="2.6" stroke-linecap="round"></line></svg><span style="font-size:14px;font-weight:800;color:#F0A07C">New list</span></div>
+        </div>
+        <!-- page pane -->
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+          <div style="background:#221A16;padding:0 0 24px">
+            <div style="display:flex;align-items:center;gap:10px;padding:24px 34px 0">
+              <span style="flex:1;font:600 10.5px ui-monospace,Menlo,monospace;letter-spacing:1.5px;color:#9E9086">WORKSPACE / LISTS</span>
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(224,106,67,.18)"><svg width="17" height="17" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5" fill="none" stroke="#E88A62" stroke-width="1.8"></circle><line x1="9" y1="9" x2="9" y2="5.5" stroke="#E88A62" stroke-width="1.8" stroke-linecap="round"></line></svg></div>
+              <div style="width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:#C7BAAE;font-size:16px;font-weight:700">⋮</div>
+            </div>
+            <div style="padding:20px 34px 0"><span style="font-size:40px;font-weight:800;letter-spacing:-1.2px;color:#F1ECE6">Launch checklist</span></div>
+            <div style="padding:12px 34px 0;font-size:13px;color:#9E9086">12 of 18 done · updated 2h ago</div>
+          </div>
+          <div style="flex:1;overflow:hidden;padding:8px 8px 0">
+            <div style="padding:20px 26px 6px;font-size:16px;font-weight:800;letter-spacing:-0.2px;color:#F1ECE6">This week</div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ listTasks }}" as="item" hint-placeholder-count="4">
+                <div style="display:flex;align-items:flex-start;gap:14px;padding:14px 26px">
+                  <span onClick="{{ item.toggle }}" style="{{ item.boxStyle }}"><span style="{{ item.checkStyle }}">✓</span></span>
+                  <span style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1">
+                    <span style="{{ item.titleStyle }}">{{ item.title }}</span>
+                    <sc-if value="{{ item.hasChip }}" hint-placeholder-val="{{ false }}"><span style="display:flex;gap:6px;align-items:center"><span style="{{ item.chipStyle }}"><span style="{{ item.dotStyle }}"></span>{{ item.chipLabel }}</span></span></sc-if>
+                  </span>
+                  <sc-if value="{{ item.hasCount }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:6px;color:#9E9086;font-size:12px;font-weight:600;padding-top:2px">{{ item.count }}<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="4 2 8 6 4 10" fill="none" stroke="#9E9086" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:16px 26px 4px;font-size:14.5px;line-height:1.6;color:#B0A294;max-width:560px">Run-of-show gets locked Thursday — confirm A/V with the venue before then.</div>
+          </div>
+          <div style="display:flex;gap:8px;padding:16px 26px">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.45);color:#F0A07C;font-size:13.5px;font-weight:700"><svg width="14" height="14" viewBox="0 0 14 14"><line x1="7" y1="2.5" x2="7" y2="11.5" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line><line x1="2.5" y1="7" x2="11.5" y2="7" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line></svg>Task</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Text</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Heading</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Ink</span>
+            <span style="padding:9px 15px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13.5px;font-weight:600">Image</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ ROW 3.5 — BRAND ============ -->
+  <div style="display:flex;flex-wrap:wrap;gap:48px;align-items:flex-start">
+
+    <!-- ===== SPLASH ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Splash</span><span style="font-size:12px;color:#6E6155">First run</span></div>
+      <div data-screen-label="Splash" style="width:390px;background:#000;border-radius:44px;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden;position:relative">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(224,106,67,.16),transparent 66%);pointer-events:none"></div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:760px;position:relative;gap:22px">
+          <div style="width:88px;height:88px;border-radius:26px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.5);display:flex;align-items:center;justify-content:center">
+            <svg width="48" height="48" viewBox="0 0 42 42"><rect x="8" y="8" width="26" height="26" rx="4" transform="rotate(45 21 21)" fill="none" stroke="#E06A43" stroke-width="1.5" opacity="0.4"></rect><path d="M12.5 20 L19 26.5 L30.5 13.5" fill="none" stroke="#E06A43" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 26.5 L19 33.5" fill="none" stroke="#E06A43" stroke-width="3.4" stroke-linecap="round"></path></svg>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            <span style="font-size:38px;font-weight:800;letter-spacing:-1px;color:#F6F1EB">Yantra</span>
+            <span style="font-size:12.5px;font-weight:600;letter-spacing:0.3px;color:#9E9086;text-align:center;max-width:250px;line-height:1.5">Yet Another Notes, Todos &amp; Reminder App</span>
+          </div>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:26px;display:flex;justify-content:center"><span style="width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.16)"></span></div>
+      </div>
+    </div>
+
+    <!-- ===== APP ICON ===== -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">App icon</span><span style="font-size:12px;color:#6E6155">Adaptive</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="width:120px;height:120px;border-radius:30px;background:linear-gradient(150deg,#2A1D16,#1A120E);border:1px solid rgba(224,106,67,.35);display:flex;align-items:center;justify-content:center"><svg width="62" height="62" viewBox="0 0 42 42"><rect x="8" y="8" width="26" height="26" rx="4" transform="rotate(45 21 21)" fill="none" stroke="#E06A43" stroke-width="1.5" opacity="0.4"></rect><path d="M12.5 20 L19 26.5 L30.5 13.5" fill="none" stroke="#E06A43" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 26.5 L19 33.5" fill="none" stroke="#E06A43" stroke-width="3.6" stroke-linecap="round"></path></svg></div>
+          <span style="font-size:11px;color:#7E7266">Dark</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="width:120px;height:120px;border-radius:30px;background:#E06A43;display:flex;align-items:center;justify-content:center"><svg width="62" height="62" viewBox="0 0 42 42"><rect x="8" y="8" width="26" height="26" rx="4" transform="rotate(45 21 21)" fill="none" stroke="#2A130B" stroke-width="1.5" opacity="0.45"></rect><path d="M12.5 20 L19 26.5 L30.5 13.5" fill="none" stroke="#2A130B" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 26.5 L19 33.5" fill="none" stroke="#2A130B" stroke-width="3.6" stroke-linecap="round"></path></svg></div>
+          <span style="font-size:11px;color:#7E7266">Coral</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="width:64px;height:64px;border-radius:17px;background:#E06A43;display:flex;align-items:center;justify-content:center"><svg width="34" height="34" viewBox="0 0 42 42"><path d="M12.5 20 L19 26.5 L30.5 13.5" fill="none" stroke="#2A130B" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 26.5 L19 33.5" fill="none" stroke="#2A130B" stroke-width="3.8" stroke-linecap="round"></path></svg></div>
+          <span style="font-size:11px;color:#7E7266">Small</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ ROW 4 — COMPONENTS ============ -->
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#C9BEB2;text-transform:uppercase">Components</span><span style="font-size:12px;color:#6E6155">States &amp; primitives</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px">
+      <!-- checkbox -->
+      <div style="width:220px;background:#000;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:20px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175;margin-bottom:16px">Checkbox</div><div style="display:flex;gap:22px;align-items:center"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><span style="width:24px;height:24px;border-radius:7px;border:2px solid #6E5C4E"></span><span style="font-size:11px;color:#7E7266">Idle</span></div><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><span style="width:24px;height:24px;border-radius:7px;background:#E06A43;display:flex;align-items:center;justify-content:center;transform:scale(1.08)"><span style="color:#1C0F09;font-size:13px;font-weight:800">✓</span></span><span style="font-size:11px;color:#7E7266">Done</span></div></div></div>
+      <!-- property pills -->
+      <div style="width:300px;background:#000;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:20px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175;margin-bottom:16px">Property pill</div><div style="display:flex;flex-wrap:wrap;gap:8px"><span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:5px;background:rgba(224,106,67,.22);color:#F0A07C;font-size:11.5px;font-weight:600"><span style="width:6px;height:6px;border-radius:1px;background:#E06A43"></span>Priority · High</span><span style="display:inline-flex;padding:5px 10px;border-radius:5px;border:1px dashed rgba(241,236,230,.28);color:#B7A99C;font-size:11.5px;font-weight:600">+ Due</span><span style="display:inline-flex;padding:5px 10px;border-radius:5px;border:1px solid rgba(241,236,230,.22);color:#B7A99C;font-size:11.5px;font-weight:600">+ Property</span></div></div>
+      <!-- add-bar chips -->
+      <div style="width:300px;background:#000;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:20px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175;margin-bottom:16px">Add-bar chips</div><div style="display:flex;gap:8px;flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:6px;padding:9px 15px;border-radius:10px;background:rgba(224,106,67,.13);border:1px solid rgba(224,106,67,.45);color:#F0A07C;font-size:13px;font-weight:700"><svg width="13" height="13" viewBox="0 0 14 14"><line x1="7" y1="2.5" x2="7" y2="11.5" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line><line x1="2.5" y1="7" x2="11.5" y2="7" stroke="#E06A43" stroke-width="2.4" stroke-linecap="round"></line></svg>Task</span><span style="padding:9px 14px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13px;font-weight:600">Text</span><span style="padding:9px 14px;border-radius:10px;background:#1E1815;border:1px solid #2E2620;color:#DCD1C5;font-size:13px;font-weight:600">Ink</span></div></div>
+      <!-- accent palette -->
+      <div style="width:300px;background:#000;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:20px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175;margin-bottom:16px">List identity colors</div><div style="display:flex;gap:12px"><span style="width:30px;height:30px;border-radius:9px;background:#E06A43"></span><span style="width:30px;height:30px;border-radius:9px;background:#D79B45"></span><span style="width:30px;height:30px;border-radius:9px;background:#4E9478"></span><span style="width:30px;height:30px;border-radius:9px;background:#5E82A8"></span><span style="width:30px;height:30px;border-radius:9px;background:#8B6BA8"></span><span style="width:30px;height:30px;border-radius:9px;background:#C56A94"></span></div></div>
+      <!-- chips -->
+      <div style="width:300px;background:#000;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:20px"><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8E8175;margin-bottom:16px">Row chips</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:5px;background:rgba(224,106,67,.22);color:#F0A07C;font-size:11px;font-weight:600"><span style="width:6px;height:6px;border-radius:1px;background:#E06A43"></span>High</span><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:5px;background:rgba(239,166,132,.16);color:#EFC1A2;font-size:11px;font-weight:600"><span style="width:6px;height:6px;border-radius:1px;background:#EFA684"></span>Due Fri</span><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#B7A99C;font-weight:600"><svg width="12" height="12" viewBox="0 0 14 14"><circle cx="7" cy="8" r="5" fill="none" stroke="#E06A43" stroke-width="1.6"></circle><line x1="7" y1="8" x2="7" y2="5" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line><line x1="7" y1="1.5" x2="7" y2="3" stroke="#E06A43" stroke-width="1.6" stroke-linecap="round"></line></svg>2</span></div></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { done: { l0:true, g0:true, pageTask:false } };
+  toggle(k){ this.setState(s=>({ done: { ...s.done, [k]: !s.done[k] } })); }
+
+  build(prefix, items){
+    return items.map((it,i)=>{
+      const k = prefix + i;
+      const done = !!this.state.done[k];
+      const accent = '#E06A43';
+      return {
+        title: it.title,
+        toggle: ()=>this.toggle(k),
+        boxStyle: { width:22, height:22, borderRadius:7, boxSizing:'border-box', border:'2px solid '+(done?accent:'#6E5C4E'), background: done?accent:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flex:'none', cursor:'pointer', marginTop:1, transition:'background .22s, border-color .22s, transform .28s cubic-bezier(.34,1.56,.64,1)', transform: done?'scale(1.08)':'scale(1)' },
+        checkStyle: { color:'#1C0F09', fontSize:12, fontWeight:800, lineHeight:1, opacity: done?1:0, transform: done?'scale(1) rotate(0deg)':'scale(.3) rotate(-30deg)', transition:'opacity .15s, transform .3s cubic-bezier(.34,1.56,.64,1)' },
+        titleStyle: { fontSize:15, fontWeight:500, lineHeight:1.3, color: done?'#8E8175':'#F6F1EB', textDecoration: done?'line-through':'none', textDecorationColor:'#8E8175', textDecorationThickness:'1.5px', transition:'color .3s' },
+        hasChip: !!it.chip, chipLabel: it.chip?it.chip.label:'',
+        chipStyle: it.chip ? { display:'inline-flex', alignItems:'center', gap:5, padding:'2px 8px', borderRadius:5, fontSize:11, fontWeight:600, background: it.chip.bg, color: it.chip.light } : null,
+        dotStyle: it.chip ? { width:6, height:6, borderRadius:1, background: it.chip.color } : null,
+        hasPom: !!it.pom, pomCount: it.pom || '',
+        hasOrigin: !!it.origin, origin: it.origin || '',
+        hasCount: !!it.count, count: it.count || ''
+      };
+    });
+  }
+
+  renderVals(){
+    const HIGH = { label:'High', color:'#E06A43', light:'#F0A07C', bg:'rgba(224,106,67,.22)' };
+    const dueFri = { label:'Due Fri', color:'#EFA684', light:'#EFC1A2', bg:'rgba(239,166,132,.16)' };
+    const dueWed = { label:'Due Wed', color:'#EFA684', light:'#EFC1A2', bg:'rgba(239,166,132,.16)' };
+    const pageDone = !!this.state.done.pageTask;
+    return {
+      listTasks: this.build('l', [
+        { title:'Book venue' },
+        { title:'Send invites', chip:dueFri },
+        { title:'Finalize budget', chip:HIGH, pom:'2', count:'4' },
+        { title:'Order signage', count:'3' }
+      ]),
+      subTasks: this.build('g', [
+        { title:'Get venue quote' },
+        { title:'Compare caterers', chip:dueWed },
+        { title:'Add A/V line item' },
+        { title:'Buffer 10% contingency' }
+      ]),
+      smartTasks: this.build('m', [
+        { title:'Finalize budget', chip:HIGH, origin:'Launch checklist', pom:'2' },
+        { title:'Fix onboarding crash', chip:HIGH, origin:'Bugs' },
+        { title:'Prep board deck', chip:HIGH, origin:'Q3 Planning' },
+        { title:'Renew SSL certs', chip:HIGH, origin:'Ops' }
+      ]),
+      togglePageTask: ()=>this.toggle('pageTask'),
+      pageBoxStyle: { width:24, height:24, borderRadius:7, boxSizing:'border-box', border:'2px solid '+(pageDone?'#E06A43':'#E06A43'), background: pageDone?'#E06A43':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flex:'none', marginTop:8, cursor:'pointer', transition:'background .22s, transform .28s cubic-bezier(.34,1.56,.64,1)', transform: pageDone?'scale(1.08)':'scale(1)' },
+      pageCheckStyle: { color:'#1C0F09', fontSize:13, fontWeight:800, lineHeight:1, opacity: pageDone?1:0, transform: pageDone?'scale(1)':'scale(.3)', transition:'opacity .15s, transform .3s cubic-bezier(.34,1.56,.64,1)' }
+    };
+  }
+}
+</script>
+</body>
+</html>

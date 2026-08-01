@@ -1,0 +1,133 @@
+package ie.napkin.supertasks.ui.smart
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import ie.napkin.supertasks.AppContainer
+import ie.napkin.supertasks.data.db.LabelEntity
+import ie.napkin.supertasks.data.db.NodeEntity
+import ie.napkin.supertasks.data.db.PropertyDefEntity
+import ie.napkin.supertasks.data.db.SmartListDefEntity
+import ie.napkin.supertasks.data.filter.Filter
+import ie.napkin.supertasks.data.filter.FilterJson
+import ie.napkin.supertasks.data.filter.Op
+import ie.napkin.supertasks.ui.components.ChipData
+import ie.napkin.supertasks.ui.components.buildChips
+import ie.napkin.supertasks.ui.components.buildLabelChips
+import ie.napkin.supertasks.ui.components.dateLabel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class SmartListViewModel(
+    private val container: AppContainer,
+    val nodeId: String,
+) : ViewModel() {
+    private val smartLists = container.smartLists
+    private val nodes = container.nodes
+    private val properties = container.properties
+
+    val node: StateFlow<NodeEntity?> =
+        nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val def: StateFlow<SmartListDefEntity?> =
+        smartLists.observeDef(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Read side: children are computed, not stored. */
+    val tasks: StateFlow<List<NodeEntity>> =
+        def.flatMapLatest { d -> if (d == null) flowOf(emptyList()) else smartLists.query(d) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Matching tasks can live anywhere, so chips come from the full value/label set. */
+    val chips: StateFlow<Map<String, List<ChipData>>> =
+        combine(
+            properties.defs(),
+            container.db.propertyDao().allValues(),
+            container.labels.all(),
+            container.labels.allNodeLabels(),
+        ) { d, v, labels, nodeLabels ->
+            val merged = buildChips(d, v).toMutableMap()
+            buildLabelChips(labels, nodeLabels).forEach { (nodeId, chips) ->
+                merged[nodeId] = merged[nodeId].orEmpty() + chips
+            }
+            merged
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val pomoCounts: StateFlow<Map<String, Int>> =
+        container.pomodoro.completedCounts()
+            .map { list -> list.associate { it.nodeId to it.count } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** e.g. "Open tasks · Priority = High · label: groceries · new tasks land in Inbox" */
+    val description: StateFlow<String> =
+        combine(def, properties.defs(), container.labels.all()) { d, defs, labels -> describe(d, defs, labels) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    fun addTask(title: String) {
+        viewModelScope.launch {
+            val d = def.value ?: smartLists.defById(nodeId) ?: return@launch
+            smartLists.addTask(d, title)
+        }
+    }
+
+    fun setDone(id: String, done: Boolean) {
+        viewModelScope.launch { nodes.setDone(id, done) }
+    }
+
+    private suspend fun describe(d: SmartListDefEntity?, defs: List<PropertyDefEntity>, labels: List<LabelEntity>): String {
+        if (d == null) return ""
+        val defById = defs.associateBy { it.id }
+        val labelById = labels.associateBy { it.id }
+        val parts = mutableListOf<String>()
+        val filter = runCatching { FilterJson.decodeFromString(Filter.serializer(), d.filterJson) }.getOrNull()
+        collectParts(filter, defById, labelById, parts)
+        val home = d.homeParentId?.let { nodes.byId(it)?.title }
+        if (home != null) parts += "new tasks land in $home"
+        return parts.joinToString(" · ")
+    }
+
+    private fun collectParts(
+        f: Filter?,
+        defs: Map<String, PropertyDefEntity>,
+        labels: Map<String, LabelEntity>,
+        out: MutableList<String>,
+    ) {
+        when (f) {
+            null -> Unit
+            is Filter.All -> f.filters.forEach { collectParts(it, defs, labels, out) }
+            is Filter.AnyOf -> out += "any of ${f.filters.size} rules"
+            is Filter.Not -> out += "excluding a rule"
+            is Filter.Done -> if (!f.value) out += "open tasks" else out += "completed tasks"
+            is Filter.Type -> Unit
+            is Filter.HasLabel -> out += "label: ${labels[f.labelId]?.name ?: "?"}"
+            is Filter.Prop -> {
+                val name = defs[f.defId]?.name ?: "property"
+                val op = when (f.op) {
+                    Op.EQ -> "="
+                    Op.NEQ -> "≠"
+                    Op.LT -> "<"
+                    Op.LTE -> "≤"
+                    Op.GT -> ">"
+                    Op.GTE -> "≥"
+                    Op.IS_SET -> "is set"
+                    Op.NOT_SET -> "is not set"
+                }
+                val value = when {
+                    f.dateRel != null -> "today"
+                    f.text != null -> f.text
+                    f.number != null -> f.number.toString()
+                    f.date != null -> dateLabel(f.date)
+                    f.bool != null -> f.bool.toString()
+                    else -> ""
+                }
+                out += listOf(name, op, value).filter { it.isNotBlank() }.joinToString(" ")
+            }
+        }
+    }
+}

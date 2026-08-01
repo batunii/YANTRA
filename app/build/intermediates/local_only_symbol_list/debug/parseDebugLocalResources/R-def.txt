@@ -1,0 +1,35 @@
+R_DEF: Internal format may change without notice
+local
+color widget_accent
+color widget_accent_text
+color widget_band
+color widget_bg
+color widget_dim
+color widget_muted
+color widget_on_accent
+color widget_outline
+color widget_page
+color widget_text
+drawable ic_launcher
+drawable ic_widget_check_done
+drawable ic_widget_check_idle
+drawable widget_bg
+font bricolage_grotesque
+font playfair_display
+font space_grotesk
+font space_mono_bold
+font space_mono_regular
+id widget_count
+id widget_empty
+id widget_header
+id widget_list
+id widget_row_check
+id widget_row_root
+id widget_row_title
+id widget_title
+layout widget_list
+layout widget_row
+string app_name
+string widget_description
+style Theme.SuperTasks
+xml list_widget_info

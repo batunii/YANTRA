@@ -1,0 +1,336 @@
+package ie.napkin.supertasks.ui.components
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import ie.napkin.supertasks.ui.theme.AccentPalette
+import ie.napkin.supertasks.ui.theme.Yantra
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Dp
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
+
+/** Stable accent color per node — gives lists their Yantra color identity. */
+fun accentFor(id: String): Color = AccentPalette[abs(id.hashCode()) % AccentPalette.size]
+
+data class ChipData(
+    val defId: String,
+    val label: String,
+    val color: Color?,
+    val icon: ImageVector? = null,
+)
+
+/** Resolved chip surface/dot/text for a (possibly null) identity color. */
+data class ChipStyle(val bg: Color, val dot: Color, val text: Color)
+
+@Composable
+fun chipStyleFor(base: Color?): ChipStyle {
+    val y = Yantra.colors
+    return if (base == null) {
+        ChipStyle(bg = y.neutralChipBg, dot = y.textDim, text = y.textSecondary)
+    } else {
+        // Lighten toward paper on dark, darken on light, so the label reads at chip size.
+        val text = if (y.isDark) lerp(base, Color.White, 0.45f) else lerp(base, Color.Black, 0.35f)
+        ChipStyle(bg = base.copy(alpha = if (y.isDark) 0.20f else 0.14f), dot = base, text = text)
+    }
+}
+
+/**
+ * Compact read-only chip shown beneath row titles (priority / due / label / …). Icon-forward
+ * (so the chip's kind reads at a glance, not just its color) with a color-dot fallback for any
+ * legacy chip with no icon assigned.
+ */
+@Composable
+fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
+    val s = chipStyleFor(chip.color)
+    Row(
+        modifier = modifier
+            .background(s.bg, RoundedCornerShape(5.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        if (chip.icon != null) {
+            Icon(chip.icon, contentDescription = null, tint = s.dot, modifier = Modifier.size(11.dp))
+        } else {
+            Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
+        }
+        Text(
+            chip.label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.W600,
+            color = s.text,
+        )
+    }
+}
+
+/** Timer glyph + count, shown on task rows that have logged pomodoros. */
+@Composable
+fun PomodoroCount(count: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            Icons.Default.Timer,
+            contentDescription = null,
+            tint = Yantra.colors.accent,
+            modifier = Modifier.size(12.dp),
+        )
+        Text(
+            "$count",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.W600,
+            color = Yantra.colors.textSecondary,
+        )
+    }
+}
+
+/** Small uppercase section label with wide tracking — read like an instrument bearing. */
+@Composable
+fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yantra.colors.textMuted) {
+    Text(
+        text.uppercase(),
+        modifier = modifier,
+        fontFamily = ie.napkin.supertasks.ui.theme.YantraText,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.W700,
+        letterSpacing = 1.4.sp,
+        color = color,
+    )
+}
+
+/**
+ * Round Superlist-style task checkbox — square-rounded, terracotta fill on completion, with a
+ * spring pop (scale 1.08) and a fading/scaling tick. Reversible.
+ */
+@Composable
+fun TaskCheck(
+    done: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 22.dp,
+) {
+    val y = Yantra.colors
+    val scale by animateFloatAsState(
+        targetValue = if (done) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow),
+        label = "checkScale",
+    )
+    val tickAlpha by animateFloatAsState(
+        targetValue = if (done) 1f else 0f,
+        animationSpec = tween(150),
+        label = "tickAlpha",
+    )
+    val tickScale by animateFloatAsState(
+        targetValue = if (done) 1f else 0.3f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow),
+        label = "tickScale",
+    )
+    val border by animateColorAsState(if (done) y.accent else y.checkOutline, tween(220), label = "checkBorder")
+    val fill by animateColorAsState(if (done) y.accent else Color.Transparent, tween(220), label = "checkFill")
+    Box(
+        modifier = modifier
+            .size(size)
+            .scale(scale)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onToggle,
+            )
+            .border(2.dp, border, RoundedCornerShape(7.dp))
+            .background(fill, RoundedCornerShape(7.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        // The signature: completion pops a four-point compass-star (from the logo), not a tick.
+        val star = y.onAccent
+        Canvas(
+            modifier = Modifier
+                .size(size * 0.68f)
+                .graphicsLayer { alpha = tickAlpha; scaleX = tickScale; scaleY = tickScale },
+        ) {
+            val c = this.size.minDimension / 2f
+            val outer = c
+            val inner = c * 0.4f
+            val path = Path()
+            for (i in 0 until 8) {
+                val rr = if (i % 2 == 0) outer else inner
+                val ang = (-90.0 + i * 45.0) * PI / 180.0
+                val px = c + (rr * cos(ang)).toFloat()
+                val py = c + (rr * sin(ang)).toFloat()
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            path.close()
+            drawPath(path, color = star)
+        }
+    }
+}
+
+/**
+ * The compass — Yantra's progress indicator. The brass arc reads the fraction done over four
+ * faint cardinal ticks (a compass dial at rest). No needle. At 100% the ring closes.
+ */
+@Composable
+fun Compass(fraction: Float, modifier: Modifier = Modifier, size: Dp = 30.dp) {
+    val y = Yantra.colors
+    val ring = y.textPrimary.copy(alpha = 0.13f)
+    val tickC = y.textPrimary.copy(alpha = 0.34f)
+    val acc = y.accent
+    Canvas(modifier.size(size)) {
+        val sw = this.size.minDimension * 0.09f
+        val r = this.size.minDimension / 2f - sw / 2f - 0.5f
+        val c = Offset(this.size.width / 2f, this.size.height / 2f)
+        drawCircle(color = ring, radius = r, center = c, style = Stroke(width = sw))
+        val f = fraction.coerceIn(0f, 1f)
+        if (f >= 1f) {
+            drawCircle(color = acc, radius = r, center = c, style = Stroke(width = sw))
+        } else if (f > 0f) {
+            drawArc(
+                color = acc, startAngle = -90f, sweepAngle = 360f * f, useCenter = false,
+                topLeft = Offset(c.x - r, c.y - r),
+                size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+                style = Stroke(width = sw, cap = StrokeCap.Round),
+            )
+        }
+        for (i in 0 until 4) {
+            val ang = (i * 90.0) * PI / 180.0
+            val ca = cos(ang).toFloat()
+            val sa = sin(ang).toFloat()
+            drawLine(
+                color = tickC,
+                start = Offset(c.x + ca * (r + sw * 0.55f), c.y + sa * (r + sw * 0.55f)),
+                end = Offset(c.x + ca * (r - sw * 0.55f), c.y + sa * (r - sw * 0.55f)),
+                strokeWidth = sw * 0.42f + 0.6f, cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+fun TextFieldDialog(
+    title: String,
+    confirmLabel: String,
+    initial: String = "",
+    placeholder: String = "",
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text(placeholder) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (text.isNotBlank()) onConfirm(text.trim()) },
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+fun ConfirmDialog(
+    title: String,
+    body: String,
+    confirmLabel: String = "Delete",
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirmLabel, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+private val dateFmt = DateTimeFormatter.ofPattern("MMM d")
+private val dateFmtYear = DateTimeFormatter.ofPattern("MMM d, yyyy")
+
+fun dateLabel(epochMillis: Long): String {
+    val date = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    val today = LocalDate.now()
+    return when {
+        date == today -> "Today"
+        date == today.plusDays(1) -> "Tomorrow"
+        date == today.minusDays(1) -> "Yesterday"
+        date.year == today.year -> date.format(dateFmt)
+        else -> date.format(dateFmtYear)
+    }
+}
+
+fun durationLabel(totalSecs: Int): String {
+    val h = totalSecs / 3600
+    val m = (totalSecs % 3600) / 60
+    return when {
+        h > 0 -> "${h}h ${m}m"
+        m > 0 -> "${m}m"
+        else -> "${totalSecs}s"
+    }
+}
