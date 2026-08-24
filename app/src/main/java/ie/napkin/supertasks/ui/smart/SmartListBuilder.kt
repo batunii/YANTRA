@@ -52,6 +52,8 @@ import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.filter.DateRel
 import ie.napkin.supertasks.data.filter.Filter
+import ie.napkin.supertasks.data.db.SmartListDefEntity
+import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.Op
 import ie.napkin.supertasks.data.filter.SortBy
 import ie.napkin.supertasks.data.filter.SortSpec
@@ -145,12 +147,24 @@ fun SmartListBuilderSheet(
     onDismiss: () -> Unit,
     onCreate: (String, Filter, List<SortSpec>, String?) -> Unit,
     initialName: String = "",
+    /**
+     * The rule to open on, for editing an existing smart list. Null creates a new one. Everything
+     * else about the sheet is identical — the same controls decide the same things, so editing is
+     * not a second screen that can drift from the one that made the list.
+     */
+    editing: SmartListDefEntity? = null,
 ) {
     val y = Yantra.colors
+    val decoded = remember(editing?.nodeId) {
+        editing?.let {
+            decodeFilter(FilterJson.decodeFromString(Filter.serializer(), it.filterJson))
+        }
+    }
     var name by remember { mutableStateOf(initialName) }
-    var show by remember { mutableStateOf(ShowMode.OPEN) }
-    val conds = remember { mutableStateListOf<Cond>() }
-    var homeId by remember { mutableStateOf(lists.firstOrNull()?.id) }
+    var show by remember { mutableStateOf(decoded?.show ?: ShowMode.OPEN) }
+    val conds = remember { mutableStateListOf<Cond>().also { it.addAll(decoded?.conds.orEmpty()) } }
+    val extras = remember(editing?.nodeId) { decoded?.extras.orEmpty() }
+    var homeId by remember { mutableStateOf(editing?.homeParentId ?: lists.firstOrNull()?.id) }
     var addMenu by remember { mutableStateOf(false) }
     var pickingLabelsForIndex by remember { mutableStateOf<Int?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -169,7 +183,11 @@ fun SmartListBuilderSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = y.accent, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("New smart list", style = MaterialThemeTitle(), color = y.textPrimary)
+                Text(
+                    if (editing != null) "Edit smart list" else "New smart list",
+                    style = MaterialThemeTitle(),
+                    color = y.textPrimary,
+                )
             }
 
             Field(
@@ -281,12 +299,17 @@ fun SmartListBuilderSheet(
                     .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(14.dp))
                     .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(14.dp)) else Modifier)
                     .clickable(enabled = valid) {
-                        onCreate(name.trim(), buildFilter(show, conds), buildSort(conds), homeId)
+                        onCreate(name.trim(), buildFilter(show, conds, extras), buildSort(conds), homeId)
                     }
                     .padding(vertical = 15.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Create smart list", fontWeight = FontWeight.W800, fontSize = 15.sp, color = if (valid) y.accentText else y.textDim)
+                Text(
+                    if (editing != null) "Save changes" else "Create smart list",
+                    fontWeight = FontWeight.W800,
+                    fontSize = 15.sp,
+                    color = if (valid) y.accentText else y.textDim,
+                )
             }
         }
     }
@@ -312,7 +335,53 @@ fun SmartListBuilderSheet(
     }
 }
 
-private fun buildFilter(show: ShowMode, conds: List<Cond>): Filter {
+/**
+ * What this editor could recover from a stored rule.
+ *
+ * [extras] holds branches the builder has no control for — Today ships as "due OR deadline", a
+ * nested AnyOf of two property conditions, and there is no UI for an OR of properties. They are
+ * carried through untouched and re-emitted by [buildFilter], so opening the sheet on a rule it
+ * cannot fully express edits what it can and leaves the rest exactly as it was. The alternative —
+ * dropping what it does not understand — would quietly rewrite a working smart list the first time
+ * anyone looked at it.
+ */
+private data class Decoded(
+    val show: ShowMode,
+    val conds: List<Cond>,
+    val extras: List<Filter>,
+)
+
+private fun decodeFilter(filter: Filter): Decoded {
+    val parts = (filter as? Filter.All)?.filters ?: listOf(filter)
+    var show = ShowMode.ALL
+    val conds = mutableListOf<Cond>()
+    val extras = mutableListOf<Filter>()
+    parts.forEach { f ->
+        when {
+            // Every smart list is tasks-only; the builder never offers to change that.
+            f is Filter.Type -> Unit
+            f is Filter.Done -> show = if (f.value) ShowMode.DONE else ShowMode.OPEN
+            f is Filter.Prop -> conds += Cond(
+                defId = f.defId, op = f.op, text = f.text,
+                number = f.number, dateRel = f.dateRel, bool = f.bool,
+            )
+            f is Filter.AnyOf && f.filters.isNotEmpty() && f.filters.all { it is Filter.HasLabel } ->
+                conds += Cond(
+                    labelIds = f.filters.map { (it as Filter.HasLabel).labelId },
+                    labelMatch = LabelMatchMode.ANY,
+                )
+            f is Filter.All && f.filters.isNotEmpty() && f.filters.all { it is Filter.HasLabel } ->
+                conds += Cond(
+                    labelIds = f.filters.map { (it as Filter.HasLabel).labelId },
+                    labelMatch = LabelMatchMode.ALL,
+                )
+            else -> extras += f
+        }
+    }
+    return Decoded(show, conds, extras)
+}
+
+private fun buildFilter(show: ShowMode, conds: List<Cond>, extras: List<Filter> = emptyList()): Filter {
     val base = ArrayList<Filter>()
     base.add(Filter.Type(NodeType.TASK))
     when (show) {
@@ -330,6 +399,7 @@ private fun buildFilter(show: ShowMode, conds: List<Cond>): Filter {
             base.add(Filter.Prop(defId = c.defId, op = c.op, text = c.text, number = c.number, date = null, bool = c.bool, dateRel = c.dateRel))
         }
     }
+    base.addAll(extras)
     return Filter.All(base)
 }
 
