@@ -1,5 +1,6 @@
 package ie.napkin.supertasks.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.Compass
+import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.PropertyChip
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.SectionLabel
@@ -43,6 +46,7 @@ import ie.napkin.supertasks.ui.components.TaskCheck
 import ie.napkin.supertasks.ui.theme.LocalThemeController
 import ie.napkin.supertasks.ui.theme.ThemeMode
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.dynamicColorAvailable
 import ie.napkin.supertasks.ui.theme.oklch
 import kotlin.math.roundToInt
 
@@ -62,14 +66,12 @@ fun SettingsScreen(nav: NavHostController) {
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(38.dp)
-                    .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                    .clickable { nav.popBackStack() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Back", tint = y.textPrimary, modifier = Modifier.size(20.dp))
-            }
+            NavCircle(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Back",
+                onClick = { nav.popBackStack() },
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             Text("Settings", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
         }
@@ -84,41 +86,74 @@ fun SettingsScreen(nav: NavHostController) {
             SectionLabel("Theme")
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                ThemeChip("System", theme.mode == ThemeMode.SYSTEM, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.SYSTEM) }
                 ThemeChip("Dark", theme.mode == ThemeMode.DARK, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.DARK) }
                 ThemeChip("OLED", theme.mode == ThemeMode.OLED, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.OLED) }
                 ThemeChip("Light", theme.mode == ThemeMode.LIGHT, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.LIGHT) }
             }
 
-            Spacer(Modifier.height(28.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).background(y.accent, RoundedCornerShape(12.dp)))
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    SectionLabel("Accent hue")
-                    Text("${theme.hue.roundToInt()}°", color = y.textMuted, fontSize = 12.5.sp)
+            if (dynamicColorAvailable) {
+                Spacer(Modifier.height(28.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        SectionLabel("Wallpaper colors")
+                        Spacer(Modifier.height(2.dp))
+                        Text("Tint the theme from your wallpaper", color = y.textMuted, fontSize = 12.5.sp)
+                    }
+                    Switch(
+                        checked = theme.dynamic,
+                        onCheckedChange = { theme.update(ctx, dynamic = it) },
+                    )
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            // Hue reference bar — every hue at the fixed accent lightness/chroma.
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .background(
-                        Brush.horizontalGradient((0..12).map { oklch(0.70f, 0.15f, it * 30f) }),
-                        RoundedCornerShape(5.dp),
-                    ),
-            )
-            Slider(
-                value = theme.hue,
-                onValueChange = { theme.update(ctx, hue = it) },
-                valueRange = 0f..360f,
-                colors = SliderDefaults.colors(
-                    thumbColor = y.accent,
-                    activeTrackColor = y.accent,
-                    inactiveTrackColor = y.textPrimary.copy(alpha = 0.14f),
-                ),
-            )
+
+            Spacer(Modifier.height(28.dp))
+            AnimatedVisibility(visible = !theme.dynamic) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(44.dp).background(y.accent, RoundedCornerShape(12.dp)))
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            SectionLabel("Accent hue")
+                            Text("${theme.hue.roundToInt()}°", color = y.textMuted, fontSize = 12.5.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    // Hue reference bar — every hue at the fixed accent lightness/chroma.
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .background(
+                                Brush.horizontalGradient((0..12).map { oklch(0.70f, 0.15f, it * 30f) }),
+                                RoundedCornerShape(5.dp),
+                            ),
+                    )
+                    Slider(
+                        value = theme.hue,
+                        onValueChange = { theme.update(ctx, hue = it) },
+                        valueRange = 0f..360f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = y.accent,
+                            activeTrackColor = y.accent,
+                            inactiveTrackColor = y.textPrimary.copy(alpha = 0.14f),
+                        ),
+                    )
+                }
+            }
+            AnimatedVisibility(visible = theme.dynamic) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(44.dp).background(y.accent, RoundedCornerShape(12.dp)))
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        SectionLabel("Accent hue")
+                        Text("Set by wallpaper", color = y.textMuted, fontSize = 12.5.sp)
+                    }
+                }
+            }
 
             Spacer(Modifier.height(24.dp))
             SectionLabel("Preview")

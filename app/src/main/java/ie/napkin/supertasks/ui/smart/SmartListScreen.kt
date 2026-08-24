@@ -20,18 +20,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,12 +50,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.ComposedEmpty
+import ie.napkin.supertasks.ui.components.GroupDivider
+import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.PomodoroCount
 import ie.napkin.supertasks.ui.components.PropertyChip
 import ie.napkin.supertasks.ui.components.TaskCheck
 import ie.napkin.supertasks.ui.container
-import ie.napkin.supertasks.ui.theme.MonoBreadcrumb
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraText
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -82,43 +84,64 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 .background(y.band, RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
-                .padding(top = 10.dp, bottom = 22.dp),
+                .padding(top = 10.dp, bottom = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(38.dp)
-                        .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                        .clickable { nav.popBackStack() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(20.dp))
-                }
+                NavCircle(
+                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    onClick = { nav.popBackStack() },
+                    iconSize = 20.dp,
+                )
                 Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .size(38.dp)
-                        .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = y.textSecondary, modifier = Modifier.size(18.dp))
-                }
+                NavCircle(Icons.Default.MoreVert, contentDescription = "Options", iconSize = 18.dp)
             }
+            // The star moves up into an eyebrow: it says what kind of page this is, which is
+            // context, not part of the title.
             Row(
-                Modifier.padding(top = 20.dp),
+                Modifier.padding(top = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = y.accent, modifier = Modifier.size(26.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(node?.title.orEmpty(), style = MaterialTheme.typography.titleLarge, color = y.textPrimary)
-            }
-            if (description.isNotBlank()) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = y.accent, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(7.dp))
                 Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
+                    "SMART VIEW",
+                    fontFamily = YantraText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.W600,
+                    letterSpacing = 1.5.sp,
                     color = y.textMuted,
-                    modifier = Modifier.padding(top = 14.dp),
                 )
+            }
+            Text(
+                node?.title.orEmpty(),
+                style = MaterialTheme.typography.titleLarge,
+                color = y.textPrimary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            // Rule-speak demoted to a pill. How the view is assembled is mechanics; it belongs
+            // beside the title at label size, not under it in a sentence.
+            if (description.isNotBlank()) {
+                Row(
+                    Modifier
+                        .padding(top = 12.dp)
+                        .background(y.page, RoundedCornerShape(99.dp))
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(99.dp))
+                        .padding(horizontal = 11.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(6.dp).background(y.accent, CircleShape))
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        description,
+                        fontFamily = YantraText,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.W600,
+                        color = y.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
@@ -126,49 +149,62 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
         ) {
             if (tasks.isEmpty()) {
                 item(key = "empty") {
-                    Text(
-                        "Nothing matches right now.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = y.textMuted,
-                        modifier = Modifier.padding(vertical = 24.dp),
-                    )
+                    ComposedEmpty("Nothing matches right now")
                 }
             }
-            items(tasks, key = { it.id }) { task ->
-                Column(Modifier.padding(vertical = 5.dp)) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        TaskCheck(done = task.done, onToggle = { vm.setDone(task.id, !task.done) }, modifier = Modifier.padding(top = 1.dp))
-                        Spacer(Modifier.width(13.dp))
-                        Text(
-                            task.title.orEmpty().ifBlank { "Untitled" },
-                            style = MaterialTheme.typography.bodyLarge,
-                            textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
-                            color = if (task.done) y.textDim else y.textPrimary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(top = 1.dp)
-                                .clickable { nav.navigate(Routes.node(task.id)) },
-                        )
-                        IconButton(onClick = { nav.navigate(Routes.node(task.id)) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open as page", tint = y.textDim, modifier = Modifier.size(18.dp))
-                        }
-                    }
+            // One card, hairline-divided: two elevation layers instead of rows floating on the
+            // page. Corners are rounded only where the group actually ends.
+            itemsIndexed(tasks, key = { _, t -> t.id }) { index, task ->
+                val first = index == 0
+                val last = index == tasks.lastIndex
+                val shape = RoundedCornerShape(
+                    topStart = if (first) 20.dp else 0.dp,
+                    topEnd = if (first) 20.dp else 0.dp,
+                    bottomStart = if (last) 20.dp else 0.dp,
+                    bottomEnd = if (last) 20.dp else 0.dp,
+                )
+                Column(Modifier.fillMaxWidth().background(y.cardBg, shape)) {
+                    if (!first) GroupDivider()
                     val taskChips = chips[task.id].orEmpty()
                     val pomo = pomoCounts[task.id] ?: 0
-                    if (taskChips.isNotEmpty() || pomo > 0) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(start = 35.dp, top = 6.dp),
-                        ) {
-                            taskChips.forEach { PropertyChip(it) }
-                            if (pomo > 0) PomodoroCount(pomo)
+                    Row(
+                        Modifier
+                            // The whole row is the target now — a chevron per row was five
+                            // pixels of arrow repeating down the page saying nothing.
+                            .clickable { nav.navigate(Routes.node(task.id)) }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        TaskCheck(
+                            done = task.done,
+                            onToggle = { vm.setDone(task.id, !task.done) },
+                            tint = taskChips.firstOrNull { it.isPriority }?.color,
+                            modifier = Modifier.padding(top = 1.dp),
+                        )
+                        Spacer(Modifier.width(13.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                task.title.orEmpty().ifBlank { "Untitled" },
+                                style = MaterialTheme.typography.bodyLarge,
+                                textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
+                                color = if (task.done) y.textDim else y.textPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (taskChips.isNotEmpty() || pomo > 0) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(top = 8.dp),
+                                ) {
+                                    taskChips.forEach { PropertyChip(it) }
+                                    if (pomo > 0) PomodoroCount(pomo)
+                                }
+                            }
                         }
                     }
                 }
@@ -197,17 +233,20 @@ private fun QuickAddBar(modifier: Modifier = Modifier, onAdd: (String) -> Unit) 
             text = ""
         }
     }
-    Column(
+    // No explainer paragraph. Where a new task lands is already stated by the filter pill in
+    // the header; saying it twice made the input look like it needed a manual.
+    Row(
         modifier
             .fillMaxWidth()
             .background(y.page)
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 22.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(y.cardBg, RoundedCornerShape(16.dp))
-                .border(1.dp, y.tileBorder, RoundedCornerShape(16.dp))
+                .background(y.cardBg, RoundedCornerShape(18.dp))
+                .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
                 .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -239,12 +278,5 @@ private fun QuickAddBar(modifier: Modifier = Modifier, onAdd: (String) -> Unit) 
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Add task", tint = y.accent, modifier = Modifier.size(18.dp))
             }
         }
-        Text(
-            "New tasks are created in your home list and tagged to match this view automatically.",
-            fontSize = 11.sp,
-            color = y.textDim,
-            lineHeight = 15.sp,
-            modifier = Modifier.padding(start = 4.dp, top = 6.dp),
-        )
     }
 }

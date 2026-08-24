@@ -88,8 +88,10 @@ class SmartListViewModel(
         val filter = runCatching { FilterJson.decodeFromString(Filter.serializer(), d.filterJson) }.getOrNull()
         collectParts(filter, defById, labelById, parts)
         val home = d.homeParentId?.let { nodes.byId(it)?.title }
-        if (home != null) parts += "new tasks land in $home"
-        return parts.joinToString(" · ")
+        if (home != null) parts += "lands in $home"
+        // This renders as a filter pill next to the title, not a sentence under it — keep it to
+        // the few parts that actually fit on one line.
+        return parts.take(3).joinToString(" · ")
     }
 
     private fun collectParts(
@@ -101,9 +103,11 @@ class SmartListViewModel(
         when (f) {
             null -> Unit
             is Filter.All -> f.filters.forEach { collectParts(it, defs, labels, out) }
-            is Filter.AnyOf -> out += "any of ${f.filters.size} rules"
-            is Filter.Not -> out += "excluding a rule"
-            is Filter.Done -> if (!f.value) out += "open tasks" else out += "completed tasks"
+            is Filter.AnyOf -> out += "${f.filters.size} rules"
+            is Filter.Not -> out += "1 exclusion"
+            // "open tasks" is the default reading of a task list — only the unusual case is worth
+            // the pill's one line.
+            is Filter.Done -> if (f.value) out += "completed"
             is Filter.Type -> Unit
             is Filter.HasLabel -> out += "label: ${labels[f.labelId]?.name ?: "?"}"
             is Filter.Prop -> {

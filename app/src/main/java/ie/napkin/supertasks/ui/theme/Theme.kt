@@ -1,17 +1,25 @@
 package ie.napkin.supertasks.ui.theme
 
+import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -47,7 +55,7 @@ val YantraMono = FontFamily(
     Font(R.font.space_mono_bold, weight = FontWeight.W700),
 )
 
-private fun materialScheme(y: YantraColors) = if (y.isDark) {
+internal fun materialScheme(y: YantraColors) = if (y.isDark) {
     darkColorScheme(
         primary = y.accent,
         onPrimary = y.onAccent,
@@ -68,7 +76,8 @@ private fun materialScheme(y: YantraColors) = if (y.isDark) {
         surfaceContainerHighest = y.tileWarm,
         outline = y.checkOutline,
         outlineVariant = y.tileBorder,
-        error = Color(0xFFFF5A6A),
+        error = y.overdue,
+        tertiary = y.warning,
     )
 } else {
     lightColorScheme(
@@ -91,17 +100,19 @@ private fun materialScheme(y: YantraColors) = if (y.isDark) {
         surfaceContainerHighest = y.tileWarm,
         outline = y.checkOutline,
         outlineVariant = y.tileBorder,
-        error = Color(0xFFC4472E),
+        error = y.overdue,
+        tertiary = y.warning,
     )
 }
 
 // Yantra shape scale: pills 5, chips/buttons 10, icon tiles 12–13, cards/tiles 16–18, FAB 20.
+// extraLarge follows M3 Expressive's rounder sheets (bottom-sheet top corners app-wide).
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(5.dp),
     small = RoundedCornerShape(10.dp),
     medium = RoundedCornerShape(16.dp),
     large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 /**
@@ -178,17 +189,54 @@ val MonoBreadcrumb = TextStyle(
 )
 
 /**
- * Yantra theme. The whole palette is generated from [hue] + [mode] (see [yantraColors]).
- * [mode] defaults to the OS light/dark setting so previews and un-wired callers still work;
- * the app passes the user's stored mode + hue.
+ * Expressive-style motion language (M3 Expressive's MotionScheme is still internal in
+ * material3 1.4.0, so the spec values live here): spatial springs with a hint of bounce for
+ * things that move/scale, quick tweens for color/alpha. Swap for MotionScheme when it goes public.
+ */
+object YantraMotion {
+    /** Snappy spring for small, frequent gestures (checkbox pop, pressed scale). */
+    fun <T> fastSpatial(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.6f, stiffness = 800f)
+
+    /** Default spring for layout-level movement (expand/collapse, screen slides). */
+    fun <T> spatial(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.85f, stiffness = 380f)
+
+    /** Color/alpha fades — never bounce. */
+    fun <T> effects(): FiniteAnimationSpec<T> = tween(200)
+}
+
+val dynamicColorAvailable: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/**
+ * Wallpaper seed → OKLCH hue for the Yantra engine. Null when the wallpaper is near-neutral
+ * (chroma too low for a meaningful hue) — caller falls back to the stored hue. The light
+ * scheme's primary is used only as a stable hue carrier; hue is tone-invariant.
+ */
+@RequiresApi(Build.VERSION_CODES.S)
+private fun dynamicSeedHue(context: Context): Float? {
+    val (chroma, hue) = dynamicLightColorScheme(context).primary.oklchChromaHue()
+    return if (chroma < 0.02f) null else hue
+}
+
+/**
+ * Yantra theme. The whole palette is generated from [hue] + [mode] (see [yantraColors]);
+ * with [dynamic] on (API 31+) the hue comes from the Material You wallpaper seed instead,
+ * so all ~30 Yantra roles — and the M3 scheme mapped from them — rotate with the wallpaper.
  */
 @Composable
 fun SuperTasksTheme(
-    mode: ThemeMode = if (isSystemInDarkTheme()) ThemeMode.DARK else ThemeMode.LIGHT,
+    mode: ThemeMode = ThemeMode.SYSTEM,
     hue: Float = DEFAULT_HUE,
+    dynamic: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val yantra = remember(mode, hue) { yantraColors(hue, mode) }
+    val resolved = mode.resolve(isSystemInDarkTheme())
+    val context = LocalContext.current
+    // Wallpaper-color changes arrive as a configuration change → recompute the seed then.
+    val config = LocalConfiguration.current
+    val effectiveHue = if (dynamic && dynamicColorAvailable) {
+        remember(config) { dynamicSeedHue(context) } ?: hue
+    } else hue
+    val yantra = remember(resolved, effectiveHue) { yantraColors(effectiveHue, resolved) }
     CompositionLocalProvider(LocalYantra provides yantra) {
         MaterialTheme(
             colorScheme = materialScheme(yantra),

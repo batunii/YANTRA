@@ -22,6 +22,11 @@ data class NodePomoCount(
     val totalSecs: Int,
 )
 
+data class ReminderRow(
+    val nodeId: String,
+    val atMillis: Long,
+)
+
 @Dao
 interface NodeDao {
 
@@ -43,6 +48,15 @@ interface NodeDao {
 
     @Query("SELECT * FROM node WHERE id = :id")
     suspend fun byId(id: String): NodeEntity?
+
+    @Query("SELECT * FROM node WHERE system_key = :key AND deleted_at IS NULL LIMIT 1")
+    suspend fun bySystemKey(key: String): NodeEntity?
+
+    @Query("SELECT * FROM node WHERE type = :type AND title = :title AND deleted_at IS NULL ORDER BY created_at LIMIT 1")
+    suspend fun byTypeAndTitle(type: String, title: String): NodeEntity?
+
+    @Query("UPDATE node SET system_key = :key, updated_at = :now WHERE id = :id")
+    suspend fun setSystemKey(id: String, key: String, now: Long)
 
     @Query("SELECT COUNT(*) FROM node")
     suspend fun countAll(): Int
@@ -89,7 +103,9 @@ interface NodeDao {
     )
     suspend fun subtreeIds(rootId: String): List<String>
 
-    @Query("UPDATE node SET deleted_at = :now, updated_at = :now WHERE id IN (:ids)")
+    // system_key is released on delete so the unique index never blocks a replacement node
+    // from claiming the identity (tombstones otherwise hold the key forever).
+    @Query("UPDATE node SET deleted_at = :now, updated_at = :now, system_key = NULL WHERE id IN (:ids)")
     suspend fun softDelete(ids: List<String>, now: Long)
 
     /** Soft-deletes a node and its whole subtree (tombstones for sync). */
@@ -191,6 +207,46 @@ interface PropertyDao {
     @Query("SELECT * FROM property_value WHERE node_id = :nodeId")
     fun valuesForNode(nodeId: String): Flow<List<PropertyValueEntity>>
 
+    @Query("SELECT * FROM property_value WHERE node_id = :nodeId")
+    suspend fun valuesForNodeOnce(nodeId: String): List<PropertyValueEntity>
+
+    /**
+     * Armed-reminder candidates on the Due def: rows with a reminder offset. Fire instant
+     * computed in SQL — v_date minus offset minutes (negative offset = after the due
+     * instant; see [BuiltIns]). The node join drops done/soft-deleted tasks automatically.
+     */
+    @Query(
+        """
+        SELECT pv.node_id AS nodeId,
+               pv.v_date - CAST(pv.v_number AS INTEGER) * 60000 AS atMillis
+          FROM property_value pv JOIN node n ON n.id = pv.node_id
+         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL AND pv.v_number IS NOT NULL
+           AND n.deleted_at IS NULL AND n.done = 0
+        """
+    )
+    fun observeActiveReminders(defId: String): Flow<List<ReminderRow>>
+
+    @Query(
+        """
+        SELECT pv.node_id AS nodeId,
+               pv.v_date - CAST(pv.v_number AS INTEGER) * 60000 AS atMillis
+          FROM property_value pv JOIN node n ON n.id = pv.node_id
+         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL AND pv.v_number IS NOT NULL
+           AND n.deleted_at IS NULL AND n.done = 0
+        """
+    )
+    suspend fun activeRemindersOnce(defId: String): List<ReminderRow>
+
+    @Query("SELECT id FROM property_def WHERE name = :name AND is_built_in = 1 AND deleted_at IS NULL LIMIT 1")
+    suspend fun builtInDefIdByName(name: String): String?
+
+    @Query("SELECT id FROM property_def WHERE name = :name AND is_built_in = 1 AND deleted_at IS NULL LIMIT 1")
+    fun observeBuiltInDefIdByName(name: String): Flow<String?>
+
+    /** Widget feed: only the built-in defs the widget renders, only the visible nodes. */
+    @Query("SELECT * FROM property_value WHERE node_id IN (:ids) AND def_id IN (:defIds)")
+    fun valuesForNodes(ids: List<String>, defIds: List<String>): Flow<List<PropertyValueEntity>>
+
     /** Values for every direct child of :parentId — one query feeds all chips on a page. */
     @Query(
         """
@@ -227,6 +283,13 @@ interface PomodoroDao {
 
     @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC")
     fun all(): Flow<List<PomodoroSessionEntity>>
+
+    /** The one in-flight session, if any — ground truth for timer restore after process death. */
+    @Query("SELECT * FROM pomodoro_session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
+    suspend fun openSession(): PomodoroSessionEntity?
+
+    @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC LIMIT 1")
+    suspend fun lastSession(): PomodoroSessionEntity?
 
     /** Completed-session counts per node — the little tomato badges on task rows. */
     @Query(

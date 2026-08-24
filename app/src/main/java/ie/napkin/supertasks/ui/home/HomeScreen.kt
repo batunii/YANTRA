@@ -60,6 +60,7 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.ConfirmDialog
+import ie.napkin.supertasks.ui.components.NavCircleSurface
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.container
@@ -290,12 +291,7 @@ private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
-        Box(
-            Modifier.size(40.dp)
-                .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                .clickable(onClick = onSettings),
-            contentAlignment = Alignment.Center,
-        ) { SettingsGlyph() }
+        NavCircleSurface(onClick = onSettings, size = 40.dp) { SettingsGlyph() }
     }
 }
 

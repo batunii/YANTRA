@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.SuperTasks" parent="android:Theme.Material.Light.NoActionBar">
-        <!-- must match the Yantra light page color or navigation transitions flash -->
+        <!-- Pre-onCreate best guess (follows system night mode); MainActivity overrides the
+             window background with the stored mode's page color before the first frame. -->
         <item name="android:windowBackground">#F2F3F7</item>
+    </style>
+
+    <!-- Quick-add capture dialog: translucent, floats over the launcher. -->
+    <style name="Theme.SuperTasks.QuickAdd">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 </resources>

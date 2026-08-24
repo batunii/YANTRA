@@ -90,7 +90,7 @@ private fun opsFor(kind: String): List<OpOption> = when (kind) {
         OpOption("is", Op.EQ), OpOption("is not", Op.NEQ),
         OpOption("is set", Op.IS_SET), OpOption("is empty", Op.NOT_SET),
     )
-    PropertyKind.DATE -> listOf(
+    PropertyKind.DATE, PropertyKind.DATETIME -> listOf(
         OpOption("today or earlier", Op.LTE, DateRel.TODAY_END),
         OpOption("today or later", Op.GTE, DateRel.TODAY_START),
         OpOption("has a date", Op.IS_SET), OpOption("no date", Op.NOT_SET),

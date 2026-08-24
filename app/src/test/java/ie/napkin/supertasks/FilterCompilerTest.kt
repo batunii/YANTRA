@@ -1,5 +1,6 @@
 package ie.napkin.supertasks
 
+import ie.napkin.supertasks.data.filter.ApplyOnCreate
 import ie.napkin.supertasks.data.filter.DateRel
 import ie.napkin.supertasks.data.filter.Filter
 import ie.napkin.supertasks.data.filter.FilterCompiler
@@ -8,6 +9,7 @@ import ie.napkin.supertasks.data.filter.Op
 import ie.napkin.supertasks.data.filter.SortBy
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
+import kotlinx.serialization.builtins.ListSerializer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -93,7 +95,7 @@ class FilterCompilerTest {
     }
 
     @Test
-    fun `apply_on_create derives from EQ clauses only`() {
+    fun `apply_on_create derives EQ clauses and today-relative date clauses`() {
         val f = Filter.All(
             listOf(
                 Filter.Done(false),
@@ -102,9 +104,66 @@ class FilterCompilerTest {
             )
         )
         val apply = deriveApplyOnCreate(f)
-        assertEquals(1, apply.size)
+        assertEquals(2, apply.size)
         assertEquals("pri", apply[0].defId)
         assertEquals("High", apply[0].text)
+        // "due today or earlier" is satisfied by Due = today — deferred via dateRel
+        assertEquals("due", apply[1].defId)
+        assertEquals(DateRel.TODAY_START, apply[1].dateRel)
+        assertEquals(false, apply[1].bool)
+        assertEquals(null, apply[1].date)
+    }
+
+    @Test
+    fun `apply_on_create takes the first derivable AnyOf branch`() {
+        val f = Filter.AnyOf(
+            listOf(
+                Filter.Prop(defId = "due", op = Op.LTE, dateRel = DateRel.TODAY_END),
+                Filter.Prop(defId = "deadline", op = Op.LTE, dateRel = DateRel.TODAY_END),
+            )
+        )
+        val apply = deriveApplyOnCreate(f)
+        assertEquals(1, apply.size)
+        assertEquals("due", apply[0].defId)
+    }
+
+    @Test
+    fun `apply_on_create ignores non-derivable comparisons`() {
+        val f = Filter.All(
+            listOf(
+                Filter.Prop(defId = "due", op = Op.LT, dateRel = DateRel.TODAY_START),
+                Filter.Prop(defId = "pri", op = Op.NEQ, text = "Low"),
+            )
+        )
+        assertEquals(0, deriveApplyOnCreate(f).size)
+    }
+
+    @Test
+    fun `apply_on_create with dateRel roundtrips through json`() {
+        val apply = listOf(ApplyOnCreate(defId = "due", bool = false, dateRel = DateRel.TODAY_START))
+        val json = FilterJson.encodeToString(ListSerializer(ApplyOnCreate.serializer()), apply)
+        val back = FilterJson.decodeFromString(ListSerializer(ApplyOnCreate.serializer()), json)
+        assertEquals(apply, back)
+    }
+
+    @Test
+    fun `today filter with deadline disjunct compiles to OR of two EXISTS`() {
+        val f = Filter.All(
+            listOf(
+                Filter.Type("task"),
+                Filter.Done(false),
+                Filter.AnyOf(
+                    listOf(
+                        Filter.Prop(defId = "due", op = Op.LTE, dateRel = DateRel.TODAY_END),
+                        Filter.Prop(defId = "deadline", op = Op.LTE, dateRel = DateRel.TODAY_END),
+                    )
+                ),
+            )
+        )
+        val q = FilterCompiler.compile(null, f)
+        assertTrue(q.sql.contains(" OR "))
+        assertEquals(2, Regex("EXISTS \\(SELECT 1 FROM property_value pv").findAll(q.sql).count())
+        assertTrue(q.args.indexOf("due") < q.args.indexOf("deadline"))
     }
 
     @Test

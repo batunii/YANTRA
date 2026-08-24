@@ -10,6 +10,9 @@ class PomodoroRepository(private val db: AppDatabase) {
     fun forNode(nodeId: String) = dao.forNode(nodeId)
     fun all() = dao.all()
     fun completedCounts() = dao.completedCounts()
+    suspend fun openSession() = dao.openSession()
+    suspend fun lastSession() = dao.lastSession()
+    suspend fun nodeTitle(nodeId: String): String? = db.nodeDao().byId(nodeId)?.title
 
     suspend fun startSession(nodeId: String, plannedSecs: Int): String {
         val ts = System.currentTimeMillis()

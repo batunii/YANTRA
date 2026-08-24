@@ -64,6 +64,7 @@ import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoLarge
+import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -139,15 +140,12 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                 .statusBarsPadding()
                 .navigationBarsPadding(),
         ) {
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .padding(start = 0.dp)
-                    .clickable { nav.popBackStack() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(22.dp))
-            }
+            NavCircle(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Back",
+                onClick = { nav.popBackStack() },
+                iconSize = 22.dp,
+            )
 
             when {
                 active != null && active.isFinished -> DoneContent(

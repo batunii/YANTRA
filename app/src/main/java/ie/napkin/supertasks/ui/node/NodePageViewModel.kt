@@ -151,14 +151,69 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.outdent(node, nodeId) }
     }
 
+    /** Commit of a drag-to-reorder: put [node] at [toIndex] among its siblings. */
+    fun moveToIndex(node: NodeEntity, toIndex: Int) {
+        viewModelScope.launch { nodes.moveToIndex(node, toIndex) }
+    }
+
     fun convert(node: NodeEntity, type: String) {
         viewModelScope.launch { nodes.setType(node.id, type) }
+    }
+
+    /**
+     * Splits a block at the caret: [before] stays, [after] becomes a new block of the same kind
+     * directly below, which the caller then focuses. This is what Enter does — a block editor
+     * makes blocks with Enter, not with a toolbar.
+     *
+     * A heading splits into a paragraph, since the thing you type after a heading is body text.
+     */
+    fun splitBlock(node: NodeEntity, before: String, after: String, onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            nodes.rename(node.id, before)
+            // A heading is a one-off, so what follows it is body text. A list item continues the
+            // list — that is the whole point of pressing Enter in one.
+            val type = if (node.type == NodeType.HEADING) NodeType.PARAGRAPH else node.type
+            onCreated(nodes.create(nodeId, type, after, afterId = node.id))
+        }
+    }
+
+    /**
+     * Drops the run of blank blocks at the *end* of the page. Called when leaving, never while
+     * editing: an empty block is only litter once you have walked away from it, and deleting on
+     * blur would take the block you just tapped away from to reach the toolbar.
+     *
+     * Trailing-only and blank-only by design. A blank block in the middle of a page is a spacer
+     * someone made on purpose, and a task with children or a completion is not blank whatever
+     * its title says.
+     */
+    fun pruneTrailingBlanks(childCounts: Map<String, Int>) {
+        // appScope, not viewModelScope: this is called from onDispose as the screen goes away, and
+        // the ViewModel's scope is cancelled at the same moment — which cancelled the loop after
+        // the first delete and left the rest of the blanks on the page.
+        container.appScope.launch {
+            val blocks = children.value
+            val disposable = blocks.reversed().takeWhile { b ->
+                b.title.isNullOrBlank() &&
+                    b.type in NodeType.TEXTUAL &&
+                    !b.done &&
+                    (childCounts[b.id] ?: 0) == 0
+            }
+            disposable.forEach { nodes.delete(it.id) }
+        }
     }
 
     // ---- properties ----
 
     fun setProperty(childId: String, def: PropertyDefEntity, text: String? = null, number: Double? = null, date: Long? = null, bool: Boolean? = null) {
         viewModelScope.launch { properties.setValue(childId, def.id, text, number, date, bool) }
+    }
+
+    fun setDue(childId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) {
+        viewModelScope.launch { properties.setDue(childId, dateMillis, hasTime, reminderOffsetMin) }
+    }
+
+    fun setDeadline(childId: String, dateMillis: Long) {
+        viewModelScope.launch { properties.setDeadline(childId, dateMillis) }
     }
 
     fun clearProperty(childId: String, defId: String) {

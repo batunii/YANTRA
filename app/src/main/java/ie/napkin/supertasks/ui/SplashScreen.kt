@@ -24,16 +24,20 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.components.YantraMark
 import ie.napkin.supertasks.ui.theme.Yantra
-import kotlinx.coroutines.delay
 
 @Composable
 fun SplashScreen(nav: NavHostController) {
     val y = Yantra.colors
+    val container = appContainer()
     LaunchedEffect(Unit) {
-        delay(1100)
+        // As-long-as-needed splash: wait for first-run seeding, then land on Today with Home
+        // beneath it on the back stack. If the user deleted the Today smart list, open Home.
+        container.seeding.join()
+        val today = container.nodes.todaySmartList()
         nav.navigate(Routes.HOME) {
             popUpTo(Routes.SPLASH) { inclusive = true }
         }
+        if (today != null) nav.navigate(Routes.smart(today.id))
     }
     Box(
         Modifier

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The compass-star from the logo, as a single alpha mask — the quiet mark that makes an empty
+  widget read as "done" rather than "broken". Tinted at render, like the other widget glyphs.
+  Four long cardinal points, four short diagonals, concave between them.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,1 L14.1,8.1 L19.8,4.2 L15.9,9.9 L23,12 L15.9,14.1 L19.8,19.8 L14.1,15.9 L12,23 L9.9,15.9 L4.2,19.8 L8.1,14.1 L1,12 L8.1,9.9 L4.2,4.2 L9.9,8.1 Z" />
+</vector>

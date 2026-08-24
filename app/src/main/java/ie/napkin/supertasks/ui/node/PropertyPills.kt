@@ -2,6 +2,8 @@ package ie.napkin.supertasks.ui.node
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -46,46 +49,88 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.db.PropertyValueEntity
+import ie.napkin.supertasks.ui.components.DueSheet
 import ie.napkin.supertasks.ui.components.chipFor
 import ie.napkin.supertasks.ui.components.chipStyleFor
+import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.selectConfig
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import ie.napkin.supertasks.ui.components.selectOptionColor
 import ie.napkin.supertasks.ui.theme.Yantra
 
 /**
  * Superlist-style always-visible properties: one pill per built-in property definition
- * (Priority, Due — the fixed set), directly on the task page. Set values render filled with
- * the value; unset render as ghost "+ Name" pills. Tapping edits in place. There is no
- * "+ Property" affordance here anymore — arbitrary custom fields are what [LabelChipsRow]
- * replaces, since a schema-creation dialog behind a lightweight-looking ghost pill was the
- * source of the old add/remove asymmetry.
+ * (Priority, Due — the fixed set) plus the task's labels, directly on the task page. Set values
+ * render filled with the value; unset render as dimmed ghost "+ Name" pills. Tapping edits in
+ * place. There is no "+ Property" affordance here anymore — arbitrary custom fields are what
+ * [LabelChipsRow] replaces, since a schema-creation dialog behind a lightweight-looking ghost
+ * pill was the source of the old add/remove asymmetry.
+ *
+ * One scrolling line, not a wrapping grid, and set values come first: what the task *has* is
+ * information and reads at full strength; what it *could* have is an offer and sits at
+ * [GHOST_ALPHA], scrolling off under a fade. Two rows of equally-loud "+ Something" pills
+ * turned the top of every task page into a form.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PropertyPillsRow(
+fun PropertyRow(
     defs: List<PropertyDefEntity>,
     values: Map<String, PropertyValueEntity>,
+    allLabels: List<LabelEntity>,
+    attachedLabels: List<LabelEntity>,
     onSet: (def: PropertyDefEntity, text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
+    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: (defId: String) -> Unit,
+    onAttachLabel: (LabelEntity) -> Unit,
+    onDetachLabel: (LabelEntity) -> Unit,
+    onCreateAndAttachLabel: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FlowRow(
-        modifier = modifier,
+    var picking by remember { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    // Only dissolve the edge when there is genuinely something past it, or the last pill of a
+    // row that fits would fade for no reason.
+    val overflows = scroll.maxValue > 0
+    val (set, unset) = defs.partition { values[it.id] != null }
+    Row(
+        modifier = modifier
+            .let { if (overflows) it.horizontalFadingEdge() else it }
+            .horizontalScroll(scroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        defs.forEach { def ->
+        (set + unset).forEach { def ->
             PropertyPill(
                 def = def,
                 value = values[def.id],
                 onSet = { t, n, d, b -> onSet(def, t, n, d, b) },
+                onSetDue = onSetDue,
+                onSetDeadline = onSetDeadline,
                 onClear = { onClear(def.id) },
             )
         }
+        attachedLabels.forEach { label ->
+            LabelChip(label = label, onClick = { onDetachLabel(label) })
+        }
+        GhostPill(label = "+ Label", dashed = true, onClick = { picking = true })
+        Spacer(Modifier.width(12.dp))
+    }
+
+    if (picking) {
+        LabelPickerDialog(
+            allLabels = allLabels,
+            attachedIds = attachedLabels.map { it.id }.toSet(),
+            onDismiss = { picking = false },
+            onPick = { label -> onAttachLabel(label); picking = false },
+            onCreate = { name -> onCreateAndAttachLabel(name); picking = false },
+        )
     }
 }
 
@@ -205,26 +250,35 @@ private fun PropertyPill(
     def: PropertyDefEntity,
     value: PropertyValueEntity?,
     onSet: (text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
+    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showDueSheet by remember { mutableStateOf(false) }
     var showTextDialog by remember { mutableStateOf(false) }
+    val isDue = def.kind == PropertyKind.DATE && def.name == BuiltIns.DUE_NAME
+    val isDeadline = def.kind == PropertyKind.DATE && def.name == BuiltIns.DEADLINE_NAME
 
     val chip = value?.let { chipFor(def, it) }
 
     Box {
         val onClick: () -> Unit = {
-            when (def.kind) {
-                PropertyKind.SELECT -> menu = true
-                PropertyKind.DATE -> if (value?.vDate != null) menu = true else showDatePicker = true
-                PropertyKind.CHECKBOX -> if (value?.vBool == true) onClear() else onSet(null, null, null, true)
+            when {
+                def.kind == PropertyKind.SELECT -> menu = true
+                isDue -> if (value?.vDate != null) menu = true else showDueSheet = true
+                def.kind == PropertyKind.DATE -> if (value?.vDate != null) menu = true else showDatePicker = true
+                def.kind == PropertyKind.CHECKBOX ->
+                    if (value?.vBool == true) onClear() else onSet(null, null, null, true)
                 else -> showTextDialog = true
             }
         }
 
         if (chip != null) {
-            val s = chipStyleFor(chip.color)
+            // chipStyleFor(chip), not chip.color: a set Due that has gone past reads red here
+            // too, so the page header and the row chips can never disagree about urgency.
+            val s = chipStyleFor(chip)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -232,7 +286,11 @@ private fun PropertyPill(
                     .clickable(onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 5.dp),
             ) {
-                Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
+                if (chip.icon != null) {
+                    Icon(chip.icon, contentDescription = null, tint = s.dot, modifier = Modifier.size(12.dp))
+                } else {
+                    Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
+                }
                 Spacer(Modifier.width(6.dp))
                 Text(
                     "${def.name} · ${chip.label}",
@@ -247,7 +305,18 @@ private fun PropertyPill(
 
         // ---- inline editors ----
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            when (def.kind) {
+            when {
+                isDue -> {
+                    DropdownMenuItem(
+                        text = { Text("Change…") },
+                        onClick = { menu = false; showDueSheet = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Clear", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menu = false; onClear() },
+                    )
+                }
+                else -> when (def.kind) {
                 PropertyKind.SELECT -> {
                     selectConfig(def).options.forEach { option ->
                         DropdownMenuItem(
@@ -282,18 +351,41 @@ private fun PropertyPill(
                     )
                 }
                 else -> Unit
+                }
             }
         }
     }
 
+    if (showDueSheet) {
+        DueSheet(
+            initialDateMillis = value?.vDate,
+            initialHasTime = value?.vBool == true,
+            initialReminderMin = value?.vNumber?.toInt(),
+            onDismiss = { showDueSheet = false },
+            onSet = onSetDue,
+            onClear = value?.let { { onClear() } },
+        )
+    }
+
     if (showDatePicker) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = value?.vDate)
+        // Initial value: local date re-encoded as the picker's UTC-midnight convention.
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = value?.vDate?.let {
+                Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            }
+        )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        state.selectedDateMillis?.let { onSet(null, null, it, null) }
+                        state.selectedDateMillis?.let { picked ->
+                            // Picker yields UTC-midnight; convert to the local-day instant.
+                            val local = Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate()
+                                .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            if (isDeadline) onSetDeadline(local) else onSet(null, null, local, null)
+                        }
                         showDatePicker = false
                     },
                 ) { Text("Set") }
@@ -350,12 +442,16 @@ private fun PropertyPill(
     }
 }
 
+/** Ghost pills are offers, not facts — [GHOST_ALPHA] keeps them findable without competing. */
+private const val GHOST_ALPHA = 0.55f
+
 @Composable
 private fun GhostPill(label: String, dashed: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
     val shape = RoundedCornerShape(5.dp)
     val borderColor = y.textPrimary.copy(alpha = if (dashed) 0.28f else 0.22f)
     val base = Modifier
+        .alpha(GHOST_ALPHA)
         .clip(shape)
         .clickable(onClick = onClick)
     val bordered = if (dashed) {

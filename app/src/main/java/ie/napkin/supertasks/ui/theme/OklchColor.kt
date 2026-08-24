@@ -2,9 +2,12 @@ package ie.napkin.supertasks.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cbrt
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Yantra's whole palette is generated from a single hue. Fixing lightness and chroma in
@@ -43,4 +46,30 @@ fun oklch(l: Float, c: Float, hueDeg: Float): Color {
 private fun linearToSrgb(x: Float): Float {
     val c = x.coerceIn(0f, 1f)
     return if (c <= 0.0031308f) 12.92f * c else 1.055f * c.pow(1f / 2.4f) - 0.055f
+}
+
+/** Inverse sRGB transfer function: 0f..1f encoded → linear. */
+private fun srgbToLinear(c: Float): Float =
+    if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
+
+/**
+ * OKLCH chroma + hue of an sRGB color — the inverse of [oklch] (same Ottosson matrices).
+ * Hue is in degrees 0..360; chroma is ~0 for neutrals, so callers should treat the hue as
+ * meaningless below a small chroma threshold.
+ */
+fun Color.oklchChromaHue(): Pair<Float, Float> {
+    val r = srgbToLinear(red)
+    val g = srgbToLinear(green)
+    val bl = srgbToLinear(blue)
+
+    val lp = cbrt(0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * bl)
+    val mp = cbrt(0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * bl)
+    val sp = cbrt(0.0883024619f * r + 0.2817188376f * g + 0.6299787005f * bl)
+
+    val a = 1.9779984951f * lp - 2.4285922050f * mp + 0.4505937099f * sp
+    val b = 0.0259040371f * lp + 0.7827717662f * mp - 0.8086757660f * sp
+
+    val chroma = sqrt(a * a + b * b)
+    val hue = (atan2(b, a) * 180f / PI.toFloat() + 360f) % 360f
+    return chroma to hue
 }

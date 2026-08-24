@@ -44,13 +44,24 @@ data class YantraColors(
     val dueText: Color,
     val dueChipBg: Color,
     val neutralChipBg: Color,
+    // Status voices — the three meanings the accent must not carry (see [yantraColors]).
+    val overdue: Color,         // past its date
+    val overdueChipBg: Color,
+    val warning: Color,         // needs attention soon / mid priority
+    val warningChipBg: Color,
+    val success: Color,         // completed
+    val successChipBg: Color,
     val secondaryButton: Color,
     val listIdentity: List<Color>,
     val inkPaper: Color,
     val inkPageSep: Color,
 )
 
-enum class ThemeMode { DARK, OLED, LIGHT }
+enum class ThemeMode { SYSTEM, DARK, OLED, LIGHT }
+
+/** Collapse SYSTEM to a concrete mode; screens/theme call this before [yantraColors]. */
+fun ThemeMode.resolve(systemDark: Boolean): ThemeMode =
+    if (this == ThemeMode.SYSTEM) (if (systemDark) ThemeMode.DARK else ThemeMode.LIGHT) else this
 
 /** The hue every new install starts on (indigo). Users can change it. */
 const val DEFAULT_HUE = 265f
@@ -60,6 +71,8 @@ const val DEFAULT_HUE = 265f
  * with fixed lightness/chroma per role — change the hue and the whole theme rotates in balance.
  */
 fun yantraColors(hue: Float, mode: ThemeMode): YantraColors {
+    // Callers should pass a resolved mode ([ThemeMode.resolve]); collapse defensively anyway.
+    @Suppress("NAME_SHADOWING") val mode = if (mode == ThemeMode.SYSTEM) ThemeMode.DARK else mode
     val light = mode == ThemeMode.LIGHT
     val oled = mode == ThemeMode.OLED
 
@@ -67,22 +80,22 @@ fun yantraColors(hue: Float, mode: ThemeMode): YantraColors {
     val page = when (mode) {
         ThemeMode.OLED -> Color.Black
         ThemeMode.LIGHT -> oklch(0.965f, 0.005f, hue)
-        ThemeMode.DARK -> oklch(0.169f, 0.006f, hue)
+        else -> oklch(0.169f, 0.006f, hue)
     }
     val surface = when (mode) {
         ThemeMode.OLED -> oklch(0.185f, 0.008f, hue)
         ThemeMode.LIGHT -> Color.White
-        ThemeMode.DARK -> oklch(0.214f, 0.008f, hue)
+        else -> oklch(0.214f, 0.008f, hue)
     }
     val surfaceHigh = when (mode) {
         ThemeMode.OLED -> oklch(0.230f, 0.009f, hue)
         ThemeMode.LIGHT -> oklch(0.975f, 0.006f, hue)
-        ThemeMode.DARK -> oklch(0.255f, 0.010f, hue)
+        else -> oklch(0.255f, 0.010f, hue)
     }
     val rail = when (mode) {
         ThemeMode.OLED -> oklch(0.100f, 0.006f, hue)
         ThemeMode.LIGHT -> oklch(0.930f, 0.006f, hue)
-        ThemeMode.DARK -> oklch(0.135f, 0.006f, hue)
+        else -> oklch(0.135f, 0.006f, hue)
     }
 
     // Ink — near-white on dark, deep on light, both with a faint hue tint.
@@ -96,6 +109,15 @@ fun yantraColors(hue: Float, mode: ThemeMode): YantraColors {
     val accent = if (light) oklch(0.56f, 0.15f, hue) else oklch(0.70f, 0.15f, hue)
     val accentGlow = if (light) oklch(0.62f, 0.15f, hue) else oklch(0.80f, 0.13f, hue)
     val accentEyebrow = if (light) oklch(0.52f, 0.09f, hue) else oklch(0.70f, 0.07f, hue)
+
+    // Status voices sit *outside* the hue engine on purpose. Overdue/warning/done have to mean
+    // the same thing at every hue the user can pick, so their hues are pinned (red / amber /
+    // green) and only lightness moves with the mode — a rotated "red" that landed on the accent
+    // would make urgency indistinguishable from decoration.
+    val statusL = if (light) 0.55f else 0.70f
+    val overdue = oklch(statusL, 0.17f, 25f)
+    val warning = oklch(statusL + 0.05f, 0.14f, 80f)
+    val success = oklch(statusL, 0.13f, 155f)
 
     // Per-node identity: same L/C, hue-rotated — harmonious relatives of the accent, not a rainbow.
     val idL = if (light) 0.58f else 0.70f
@@ -130,6 +152,12 @@ fun yantraColors(hue: Float, mode: ThemeMode): YantraColors {
         dueText = if (light) accent else accentGlow,
         dueChipBg = accent.copy(alpha = 0.16f),
         neutralChipBg = ink.copy(alpha = if (light) 0.06f else 0.07f),
+        overdue = overdue,
+        overdueChipBg = overdue.copy(alpha = if (light) 0.14f else 0.16f),
+        warning = warning,
+        warningChipBg = warning.copy(alpha = if (light) 0.14f else 0.16f),
+        success = success,
+        successChipBg = success.copy(alpha = if (light) 0.14f else 0.16f),
         secondaryButton = surfaceHigh,
         listIdentity = identity,
         inkPaper = if (light) Color.White else if (oled) Color.Black else oklch(0.150f, 0.006f, hue),

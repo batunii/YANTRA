@@ -43,10 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.AccentPalette
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraMotion
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -61,15 +63,38 @@ import kotlin.math.sin
 /** Stable accent color per node — gives lists their Yantra color identity. */
 fun accentFor(id: String): Color = AccentPalette[abs(id.hashCode()) % AccentPalette.size]
 
+/**
+ * What a chip *means*, over and above what it says. Kept out of [ChipData.color] because the
+ * status voices are theme values ([YantraColors.overdue] etc.) and [chipFor] is non-composable —
+ * so the meaning is decided at build time and the colour resolved at draw time.
+ */
+enum class ChipStatus { None, Overdue, Due, Warn, Done }
+
 data class ChipData(
     val defId: String,
     val label: String,
     val color: Color?,
     val icon: ImageVector? = null,
+    val status: ChipStatus = ChipStatus.None,
+    /** Set on the Priority chip so rows can carry priority on the checkbox too. */
+    val isPriority: Boolean = false,
 )
 
 /** Resolved chip surface/dot/text for a (possibly null) identity color. */
 data class ChipStyle(val bg: Color, val dot: Color, val text: Color)
+
+/** Status wins over identity colour: urgency has to out-shout decoration. */
+@Composable
+fun chipStyleFor(chip: ChipData): ChipStyle {
+    val y = Yantra.colors
+    return when (chip.status) {
+        ChipStatus.Overdue -> ChipStyle(y.overdueChipBg, y.overdue, y.overdue)
+        ChipStatus.Due -> ChipStyle(y.dueChipBg, y.dueText, y.dueText)
+        ChipStatus.Warn -> ChipStyle(y.warningChipBg, y.warning, y.warning)
+        ChipStatus.Done -> ChipStyle(y.successChipBg, y.success, y.success)
+        ChipStatus.None -> chipStyleFor(chip.color)
+    }
+}
 
 @Composable
 fun chipStyleFor(base: Color?): ChipStyle {
@@ -90,7 +115,7 @@ fun chipStyleFor(base: Color?): ChipStyle {
  */
 @Composable
 fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
-    val s = chipStyleFor(chip.color)
+    val s = chipStyleFor(chip)
     Row(
         modifier = modifier
             .background(s.bg, RoundedCornerShape(5.dp))
@@ -152,6 +177,9 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yan
 /**
  * Round Superlist-style task checkbox — square-rounded, terracotta fill on completion, with a
  * spring pop (scale 1.08) and a fading/scaling tick. Reversible.
+ *
+ * [tint] carries priority onto the outline while the task is open, so a flagged task reads as
+ * urgent from the checkbox alone and the priority chip stops being the only carrier of it.
  */
 @Composable
 fun TaskCheck(
@@ -159,25 +187,30 @@ fun TaskCheck(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
     size: androidx.compose.ui.unit.Dp = 22.dp,
+    tint: Color? = null,
 ) {
     val y = Yantra.colors
     val scale by animateFloatAsState(
         targetValue = if (done) 1.08f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = YantraMotion.fastSpatial(),
         label = "checkScale",
     )
     val tickAlpha by animateFloatAsState(
         targetValue = if (done) 1f else 0f,
-        animationSpec = tween(150),
+        animationSpec = YantraMotion.effects(),
         label = "tickAlpha",
     )
     val tickScale by animateFloatAsState(
         targetValue = if (done) 1f else 0.3f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = YantraMotion.fastSpatial(),
         label = "tickScale",
     )
-    val border by animateColorAsState(if (done) y.accent else y.checkOutline, tween(220), label = "checkBorder")
-    val fill by animateColorAsState(if (done) y.accent else Color.Transparent, tween(220), label = "checkFill")
+    val border by animateColorAsState(
+        if (done) y.accent else tint ?: y.checkOutline,
+        YantraMotion.effects(),
+        label = "checkBorder",
+    )
+    val fill by animateColorAsState(if (done) y.accent else Color.Transparent, YantraMotion.effects(), label = "checkFill")
     Box(
         modifier = modifier
             .size(size)
@@ -322,6 +355,25 @@ fun dateLabel(epochMillis: Long): String {
         date == today.minusDays(1) -> "Yesterday"
         date.year == today.year -> date.format(dateFmt)
         else -> date.format(dateFmtYear)
+    }
+}
+
+private val timeFmt = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+
+/** "Today 09:00" — [dateLabel] plus the localized short time of the same instant. */
+fun dateTimeLabel(epochMillis: Long): String {
+    val time = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalTime()
+    return "${dateLabel(epochMillis)} ${time.format(timeFmt)}"
+}
+
+/** "3d left" / "Due today" / "2d over" — countdown to a local-midnight deadline. */
+fun deadlineLabel(epochMillis: Long): String {
+    val date = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), date)
+    return when {
+        days > 0L -> "${days}d left"
+        days == 0L -> "Due today"
+        else -> "${-days}d over"
     }
 }
 

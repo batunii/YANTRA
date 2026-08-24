@@ -68,6 +68,7 @@ import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.ink.ShapeKind
 import ie.napkin.supertasks.data.ink.StrokeCodec
 import ie.napkin.supertasks.ui.container
+import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -182,13 +183,12 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(38.dp).background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                    .clickable { nav.popBackStack() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(20.dp))
-            }
+            NavCircle(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Back",
+                onClick = { nav.popBackStack() },
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             BasicTextField(
                 value = title,

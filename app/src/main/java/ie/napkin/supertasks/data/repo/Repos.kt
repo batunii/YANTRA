@@ -3,6 +3,7 @@ package ie.napkin.supertasks.data.repo
 import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
 import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeLabelEntity
@@ -10,6 +11,7 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.db.SmartListDefEntity
+import ie.napkin.supertasks.data.db.SystemKey
 import ie.napkin.supertasks.data.filter.ApplyOnCreate
 import ie.napkin.supertasks.data.filter.Filter
 import ie.napkin.supertasks.data.filter.FilterCompiler
@@ -18,12 +20,18 @@ import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
 import ie.napkin.supertasks.data.rank.Rank
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
 
 private fun now(): Long = System.currentTimeMillis()
 private fun newId(): String = UUID.randomUUID().toString()
+
+/** Floor an instant to the local-midnight instant of its local calendar day. */
+internal fun localMidnight(millis: Long): Long =
+    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 class NodeRepository(private val db: AppDatabase) {
     private val dao = db.nodeDao()
@@ -37,6 +45,19 @@ class NodeRepository(private val db: AppDatabase) {
     fun topLevelTaskCounts() = dao.topLevelTaskCounts()
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
+
+    /**
+     * Stable Today lookup, self-healing for databases whose migration backfill found nothing
+     * (e.g. the list was recreated by hand). Returns null if the user deleted/renamed it —
+     * callers fall back to Home; never recreate it here.
+     */
+    suspend fun todaySmartList(): NodeEntity? =
+        dao.bySystemKey(SystemKey.TODAY)
+            ?: dao.byTypeAndTitle(NodeType.SMART_LIST, "Today")?.also {
+                // Self-heal is best-effort: a pre-fix tombstone may still hold the key
+                // (unique index) — the lookup result is valid either way.
+                runCatching { dao.setSystemKey(it.id, SystemKey.TODAY, now()) }
+            }
 
     /** Create a Home group/banner (organizational container for lists & smart lists). */
     suspend fun createGroup(title: String): String = create(null, NodeType.GROUP, title)
@@ -95,6 +116,14 @@ class NodeRepository(private val db: AppDatabase) {
         return Rank.after(last)
     }
 
+    /** Fast capture: new task into the Inbox (found by name, recreated if missing). */
+    suspend fun quickCaptureToInbox(title: String): String {
+        val inbox = dao.topLevel().first().firstOrNull {
+            it.type == NodeType.LIST && it.title.equals("Inbox", ignoreCase = true)
+        }?.id ?: create(null, NodeType.LIST, "Inbox")
+        return create(inbox, NodeType.TASK, title)
+    }
+
     suspend fun rename(id: String, title: String?) = dao.setTitle(id, title, now())
     suspend fun setDone(id: String, done: Boolean) = dao.setDone(id, done, now())
     suspend fun setCollapsed(id: String, collapsed: Boolean) = dao.setCollapsed(id, collapsed, now())
@@ -119,6 +148,23 @@ class NodeRepository(private val db: AppDatabase) {
         val next = siblings[idx + 1]
         val nextNext = siblings.getOrNull(idx + 2)
         dao.move(node.id, parentId, Rank.between(next.rank, nextNext?.rank), now())
+    }
+
+    /**
+     * Drops [node] into position [toIndex] among its siblings — the commit half of a drag.
+     *
+     * Indices are of the sibling list *without* [node], so a drag that ends where it started is a
+     * no-op rather than a rank churn. Only the moved node's rank changes; neighbours are never
+     * renumbered, which is the point of fractional ranks.
+     */
+    suspend fun moveToIndex(node: NodeEntity, toIndex: Int) {
+        val parentId = node.parentId ?: return
+        val others = dao.childrenOnce(parentId).filter { it.id != node.id }
+        val target = toIndex.coerceIn(0, others.size)
+        val before = others.getOrNull(target - 1)
+        val after = others.getOrNull(target)
+        if (before?.id == node.id || after?.id == node.id) return
+        dao.move(node.id, parentId, Rank.between(before?.rank, after?.rank), now())
     }
 
     /** Makes the node the last child of its previous sibling. */
@@ -167,6 +213,10 @@ class PropertyRepository(private val db: AppDatabase) {
         return id
     }
 
+    /**
+     * Generic whole-row write (REPLACE — omitted columns become NULL). Never use for
+     * Due/Deadline: their multi-column encodings go through [setDue]/[setDeadline].
+     */
     suspend fun setValue(
         nodeId: String,
         defId: String,
@@ -179,6 +229,38 @@ class PropertyRepository(private val db: AppDatabase) {
             PropertyValueEntity(
                 nodeId = nodeId, defId = defId,
                 vText = text, vNumber = number, vDate = date, vBool = bool,
+                updatedAt = now(),
+            )
+        )
+    }
+
+    suspend fun dueDef(): PropertyDefEntity? =
+        dao.builtInDefsOnce().firstOrNull { it.name.equals(BuiltIns.DUE_NAME, ignoreCase = true) }
+
+    /**
+     * Whole-row Due write (encoding documented on [BuiltIns]). [dateMillis]: exact instant
+     * when [hasTime], else any instant on the intended LOCAL day (floored to local midnight
+     * here — callers must already have converted the M3 picker's UTC-midnight value).
+     * [reminderOffsetMin]: minutes before the due instant; null = no reminder.
+     */
+    suspend fun setDue(nodeId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) {
+        val def = dueDef() ?: return
+        dao.upsertValue(
+            PropertyValueEntity(
+                nodeId = nodeId, defId = def.id,
+                vNumber = reminderOffsetMin?.toDouble(),
+                vDate = if (hasTime) dateMillis else localMidnight(dateMillis),
+                vBool = hasTime,
+                updatedAt = now(),
+            )
+        )
+    }
+
+    suspend fun setDeadline(nodeId: String, dateMillis: Long) {
+        dao.upsertValue(
+            PropertyValueEntity(
+                nodeId = nodeId, defId = BuiltIns.DEADLINE_DEF_ID,
+                vDate = localMidnight(dateMillis),
                 updatedAt = now(),
             )
         )
@@ -304,10 +386,13 @@ class SmartListRepository(private val db: AppDatabase) {
             def.applyOnCreateJson
                 ?.let { FilterJson.decodeFromString(ListSerializer(ApplyOnCreate.serializer()), it) }
                 ?.forEach { p ->
+                    // dateRel defers resolution to insert time: a "due today" list stamps
+                    // the actual today (local midnight), not the day the list was defined.
+                    val date = if (p.dateRel != null) localMidnight(ts) else p.date
                     propertyDao.upsertValue(
                         PropertyValueEntity(
                             nodeId = id, defId = p.defId,
-                            vText = p.text, vNumber = p.number, vDate = p.date,
+                            vText = p.text, vNumber = p.number, vDate = date,
                             vBool = p.bool?.let { it },
                             updatedAt = ts,
                         )
