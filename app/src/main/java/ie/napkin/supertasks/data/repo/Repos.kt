@@ -92,6 +92,7 @@ class NodeRepository(private val db: AppDatabase) {
         type: String,
         title: String?,
         afterId: String? = null,
+        indent: Int = 0,
     ): String {
         val ts = now()
         val id = newId()
@@ -99,7 +100,7 @@ class NodeRepository(private val db: AppDatabase) {
         dao.insert(
             NodeEntity(
                 id = id, parentId = parentId, type = type, title = title,
-                rank = rank, createdAt = ts, updatedAt = ts,
+                rank = rank, indent = indent, createdAt = ts, updatedAt = ts,
             )
         )
         return id
@@ -129,15 +130,28 @@ class NodeRepository(private val db: AppDatabase) {
     suspend fun setCollapsed(id: String, collapsed: Boolean) = dao.setCollapsed(id, collapsed, now())
 
     /**
-     * Sets a block's visual indentation. Clamped so a line can only ever be one step deeper than
-     * the line above it — indentation that jumps two levels has no meaning to read.
+     * The one rule indentation has to obey: the first line of a run sits flush left, and no line is
+     * more than one step deeper than the line above it. Anything else cannot be read as structure.
+     *
+     * [indent] is stored rather than derived, so it does not stay true on its own — reordering a
+     * block, or deleting the line above one, can leave an indent with nothing to be indented under.
+     * Every operation that changes a sibling run therefore ends here, and this is the only place
+     * that decides what a legal indent is.
      */
+    suspend fun normalizeIndents(parentId: String) {
+        var ceiling = 0
+        dao.childrenOnce(parentId).forEach { n ->
+            val fixed = n.indent.coerceIn(0, ceiling)
+            if (fixed != n.indent) dao.setIndent(n.id, fixed, now())
+            ceiling = fixed + 1
+        }
+    }
+
+    /** Sets a block's visual indentation, then re-clamps the run around it. */
     suspend fun setIndent(node: NodeEntity, indent: Int) {
         val parentId = node.parentId ?: return
-        val siblings = dao.childrenOnce(parentId)
-        val idx = siblings.indexOfFirst { it.id == node.id }
-        val ceiling = if (idx <= 0) 0 else siblings[idx - 1].indent + 1
-        dao.setIndent(node.id, indent.coerceIn(0, ceiling), now())
+        dao.setIndent(node.id, indent.coerceAtLeast(0), now())
+        normalizeIndents(parentId)
     }
     suspend fun setType(id: String, type: String) = dao.setType(id, type, now())
     suspend fun delete(id: String) = dao.softDeleteSubtree(id, now())
@@ -177,6 +191,9 @@ class NodeRepository(private val db: AppDatabase) {
         val after = others.getOrNull(target)
         if (before?.id == node.id || after?.id == node.id) return
         dao.move(node.id, parentId, Rank.between(before?.rank, after?.rank), now())
+        // A block dragged to the top of a run, or above the line it was indented under, has to be
+        // brought back to a legal depth.
+        normalizeIndents(parentId)
     }
 
 }

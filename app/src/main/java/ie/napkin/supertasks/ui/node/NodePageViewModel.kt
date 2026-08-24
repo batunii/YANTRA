@@ -129,8 +129,11 @@ class NodePageViewModel(
      */
     fun addBlock(type: String, title: String? = null, afterId: String? = null, onCreated: (String) -> Unit = {}) {
         viewModelScope.launch {
-            val parent = afterId?.let { nodes.byId(it)?.parentId } ?: nodeId
-            onCreated(nodes.create(parent, type, title, afterId))
+            // Inherits the indentation of the block it follows: inserting below an indented line
+            // should continue at that level, not jump back to the margin. Appending to the page
+            // (no afterId) starts flush left.
+            val after = afterId?.let { nodes.byId(it) }
+            onCreated(nodes.create(after?.parentId ?: nodeId, type, title, afterId, after?.indent ?: 0))
         }
     }
 
@@ -145,7 +148,12 @@ class NodePageViewModel(
     }
 
     fun delete(id: String) {
-        viewModelScope.launch { nodes.delete(id) }
+        viewModelScope.launch {
+            // Deleting the line above an indented one leaves it indented under nothing.
+            val parent = nodes.byId(id)?.parentId
+            nodes.delete(id)
+            if (parent != null) nodes.normalizeIndents(parent)
+        }
     }
 
     fun moveUp(node: NodeEntity) {
@@ -191,9 +199,8 @@ class NodePageViewModel(
             // A heading is a one-off, so what follows it is body text. A list item continues the
             // list — that is the whole point of pressing Enter in one.
             val type = if (node.type == NodeType.HEADING) NodeType.PARAGRAPH else node.type
-            // Sibling of the block being split, not a child of the page: pressing Enter inside a
-            // nested block used to start the next one at the bottom of the page.
-            onCreated(nodes.create(node.parentId ?: nodeId, type, after, afterId = node.id))
+            // Same level as the block being split — Enter on an indented line keeps you there.
+            onCreated(nodes.create(node.parentId ?: nodeId, type, after, node.id, node.indent))
         }
     }
 
@@ -219,6 +226,7 @@ class NodePageViewModel(
                     (childCounts[b.id] ?: 0) == 0
             }
             disposable.forEach { nodes.delete(it.id) }
+            if (disposable.isNotEmpty()) nodes.normalizeIndents(nodeId)
         }
     }
 
