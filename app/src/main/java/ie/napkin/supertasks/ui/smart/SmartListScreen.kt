@@ -204,7 +204,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             // half is not part of the rule's ordering — it is there because you did it today, not
             // because it still matches — and giving it its own surface says so.
             itemsIndexed(tasks, key = { _, t -> t.id }) { index, task ->
-                ListGroupRow(first = index == 0, last = index == tasks.lastIndex) {
+                ListGroupRow {
                     // The SAME row a list page draws. Not a look-alike: this screen used to carry
                     // its own read-only copy, which is how tap-to-edit ended up working on Inbox
                     // and not here. A task is a task wherever it is shown; the only thing a screen
@@ -250,7 +250,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                     )
                 }
                 itemsIndexed(completed, key = { _, t -> "done-" + t.id }) { index, task ->
-                ListGroupRow(first = index == 0, last = index == completed.lastIndex) {
+                ListGroupRow {
                     // The SAME row a list page draws. Not a look-alike: this screen used to carry
                     // its own read-only copy, which is how tap-to-edit ended up working on Inbox
                     // and not here. A task is a task wherever it is shown; the only thing a screen

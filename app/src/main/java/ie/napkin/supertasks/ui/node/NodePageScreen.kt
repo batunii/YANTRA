@@ -500,8 +500,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 // A list is a card of rows; a task's page is a document, so its blocks sit bare.
                 Wrapper(
                     grouped = !isTask,
-                    first = index == 0,
-                    last = index == blocks.lastIndex,
                     inset = BLOCK_GUTTER + NEST_STEP * child.indent,
                 ) {
                 BlockRow(
@@ -801,7 +799,7 @@ private fun PageBand(
                         val bandInProgress by rememberUpdatedState(node.inProgress)
                         Box(
                             Modifier
-                                .offset { IntOffset(bandSwipe.value.roundToInt(), 0) }
+                                // Nothing slides here either — the ring traces inside the glyph.
                                 .pointerInput(node.id) {
                                     detectHorizontalDragGestures(
                                         onDragEnd = {
@@ -841,6 +839,7 @@ private fun PageBand(
                             haptics = LocalYantraHaptics.current,
                             darkTheme = y.isDark,
                             size = 30.dp,
+                            swipeProgress = (bandSwipe.value / bandCommit).coerceIn(0f, 1f),
                             modifier = Modifier.padding(top = 4.dp),
                         )
                         }
@@ -934,13 +933,11 @@ private val BLOCK_GUTTER = 30.dp
 @Composable
 private fun Wrapper(
     grouped: Boolean,
-    first: Boolean,
-    last: Boolean,
     inset: androidx.compose.ui.unit.Dp,
     content: @Composable () -> Unit,
 ) {
     if (grouped) {
-        ListGroupRow(first = first, last = last) {
+        ListGroupRow {
             Box(Modifier.padding(start = inset, end = 4.dp)) { content() }
         }
     } else {
@@ -1207,6 +1204,10 @@ internal fun TextualBlockRow(
     // un-completing it, which is two taps that both write the wrong thing on the way past.
     // Finishing the task also clears the flag, in the same UPDATE (see NodeDao.setDone).
     //
+    // The row stays where it is. What moves is the engagement circle inside the glyph, traced by
+    // your finger (swipeProgress below) — the gesture is filling in the mark, not shoving the row
+    // aside, and the feedback belongs where the meaning is.
+    //
     // detectHorizontalDragGestures only claims the pointer after horizontal slop, so vertical
     // scrolling and the row's own tap both still work.
     val swipeScope = rememberCoroutineScope()
@@ -1223,46 +1224,8 @@ internal fun TextualBlockRow(
     // keeps its identity, the value it reads stays current.
     val nowInProgress by rememberUpdatedState(child.inProgress)
 
-    // clipToBounds so a swiped row stays inside its own slot: without it the chips slid out past
-    // the card's rounded edge and off the screen, which read as broken layout rather than as a
-    // gesture in progress.
-    Box(Modifier.clipToBounds()) {
-        // The mark the swipe is about to make, revealed in the gap the row leaves behind. Coral,
-        // because it is the user's own effort arriving; it grows to full only once the swipe has
-        // gone far enough to commit, so the row tells you before you let go.
-        if (isTask && swipeX.value > 1f) {
-            val reveal = (swipeX.value / commitAt).coerceIn(0f, 1f)
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .padding(start = 4.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Canvas(Modifier.size(26.dp)) {
-                    val r = this.size.minDimension * 7.5f / 28f
-                    drawCircle(
-                        y.accent.copy(alpha = 0.18f * reveal),
-                        radius = r,
-                        center = center,
-                    )
-                    drawPartialPath(
-                        Path().apply {
-                            addOval(
-                                androidx.compose.ui.geometry.Rect(
-                                    center - Offset(r, r), center + Offset(r, r),
-                                )
-                            )
-                        },
-                        reveal,
-                        y.accent,
-                        1.6.dp.toPx(),
-                    )
-                }
-            }
-        }
     Column(
         Modifier
-            .offset { IntOffset(swipeX.value.roundToInt(), 0) }
             .then(
                 if (!isTask) Modifier else Modifier.pointerInput(child.id) {
                     detectHorizontalDragGestures(
@@ -1314,6 +1277,7 @@ internal fun TextualBlockRow(
                     // Priority draws the enclosure and nothing else. A done task loses it: there is
                     // no urgency left to report, and the law keeps crimson off completion.
                     frameTint = if (child.done) null else chips.firstOrNull { it.isPriority }?.color,
+                    swipeProgress = (swipeX.value / commitAt).coerceIn(0f, 1f),
                     modifier = Modifier.padding(top = 1.dp),
                 )
                 Spacer(Modifier.width(11.dp))
@@ -1434,7 +1398,6 @@ internal fun TextualBlockRow(
                 if (pomoCount > 0) PomodoroCount(pomoCount)
             }
         }
-    }
     }
 }
 

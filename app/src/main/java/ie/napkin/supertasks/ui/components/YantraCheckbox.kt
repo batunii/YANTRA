@@ -234,6 +234,15 @@ fun YantraCheckbox(
      * is ambient alarm) and what a done task gets, since a finished task has no urgency left.
      */
     frameTint: Color? = null,
+    /**
+     * How far a swipe-to-start has been dragged, 0..1, where 1 is the commit point.
+     *
+     * The gesture draws its progress INSIDE the frame: the engagement circle traces around as your
+     * finger moves, so at the moment it closes the task is started. The row itself does not move.
+     * Sliding the whole row and revealing a mark behind it made the gesture about the row — a thing
+     * being pushed aside — when what it is actually doing is filling in the glyph.
+     */
+    swipeProgress: Float = 0f,
 ) {
     val context = LocalContext.current
     val reduced = remember { isReducedMotion(context) }
@@ -387,13 +396,18 @@ fun YantraCheckbox(
                 drawPartialPath(
                     bhupuraPath(s), frame.value, neutral, 1.6.dp.toPx()
                 )
-                // Layer 2: circle — in-progress fill + trace/collapse
-                if (ringDraw.value > 0f) {
+                // Layer 2: circle — in-progress fill + trace/collapse. A live swipe drives the
+                // same two values, so the gesture and the state transition are the one animation
+                // seen at different speeds: your finger traces the ring, and letting go past the
+                // commit point simply leaves it drawn.
+                val ring = maxOf(ringDraw.value, swipeProgress)
+                val ringFill = maxOf(ringFillAlpha.value, 0.18f * swipeProgress)
+                if (ring > 0f) {
                     scale(ringScale.value) {
                         val r = s * 7.5f / 28f
-                        if (ringFillAlpha.value > 0f) {
+                        if (ringFill > 0f) {
                             drawCircle(
-                                coral.copy(alpha = ringFillAlpha.value),
+                                coral.copy(alpha = ringFill),
                                 radius = r, center = center
                             )
                         }
@@ -404,7 +418,7 @@ fun YantraCheckbox(
                                 )
                             )
                         }
-                        drawPartialPath(circle, ringDraw.value, coral, 1.6.dp.toPx())
+                        drawPartialPath(circle, ring, coral, 1.6.dp.toPx())
                     }
                 }
                 // Layer 3: bindu
