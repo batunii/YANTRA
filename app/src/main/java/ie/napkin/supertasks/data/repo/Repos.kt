@@ -169,25 +169,6 @@ class NodeRepository(private val db: AppDatabase) {
         dao.move(node.id, parentId, Rank.between(before?.rank, after?.rank), now())
     }
 
-    /** Makes the node the last child of its previous sibling. */
-    suspend fun indent(node: NodeEntity) {
-        val parentId = node.parentId ?: return
-        val siblings = dao.childrenOnce(parentId)
-        val idx = siblings.indexOfFirst { it.id == node.id }
-        if (idx <= 0) return
-        val newParent = siblings[idx - 1]
-        dao.move(node.id, newParent.id, Rank.after(dao.lastRank(newParent.id)), now())
-    }
-
-    /** Moves the node to be the next sibling of its parent. */
-    suspend fun outdent(node: NodeEntity, pageRootId: String) {
-        val parentId = node.parentId ?: return
-        if (parentId == pageRootId) return // already at page level
-        val parent = dao.byId(parentId) ?: return
-        val grandparentId = parent.parentId ?: return
-        val next = dao.nextRank(grandparentId, parent.rank)
-        dao.move(node.id, grandparentId, Rank.between(parent.rank, next), now())
-    }
 }
 
 @Serializable

@@ -159,14 +159,6 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.moveDown(node) }
     }
 
-    fun indent(node: NodeEntity) {
-        viewModelScope.launch { nodes.indent(node) }
-    }
-
-    fun outdent(node: NodeEntity) {
-        viewModelScope.launch { nodes.outdent(node, nodeId) }
-    }
-
     /** Commit of a drag-to-reorder: put [node] at [toIndex] among its siblings. */
     fun moveToIndex(node: NodeEntity, toIndex: Int) {
         viewModelScope.launch { nodes.moveToIndex(node, toIndex) }

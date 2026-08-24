@@ -52,9 +52,7 @@ import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Timer
@@ -278,9 +276,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             },
         )
 
-        // Where a dragged block lands. Sideways past a threshold is indent/outdent (the same two
-        // operations the menu used to offer); otherwise it drops next to whichever block it is
-        // nearest, and only the moved block's rank changes.
+        // Where a dragged block lands: next to whichever sibling it is nearest, and only the moved
+        // block's rank changes.
         // Where the lifted block would land right now, and how tall it is. Computed once here and
         // read by every row, so the rows between origin and target can step aside and show the gap
         // the block is going to fall into. Without that the drag is just a floating rectangle and
@@ -311,9 +308,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // The row under the finger, preferring the one it is actually inside.
         fun rowUnderFinger(): androidx.compose.foundation.lazy.LazyListItemInfo? {
             val id = drag.id ?: return null
-            // Siblings only. A block reorders within its own level; changing its nesting is what
-            // Indent and Outdent are for, and letting a drag do it as well would make every
-            // slightly-diagonal move a guess about which the user meant.
+            // Siblings only. A block reorders within its own level; nothing in the editor
+            // re-nests a block, so a drag has one unambiguous meaning.
             val parent = blocks.firstOrNull { it.id == id }?.parentId
             val ids = blocks.filter { it.parentId == parent }.mapTo(mutableSetOf()) { it.id }
             val rows = dragRows.filter { it.key in ids && it.key != id }
@@ -324,10 +320,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         val liftedTo = if (liftedId == null) -1
             else blocks.indexOfFirst { it.id == rowUnderFinger()?.key as? String }
 
-        // Vertical only. Sideways-drag used to indent, and indenting moves a block *into* its
-        // neighbour — on a page that renders only direct children, that made the block disappear.
-        // A gesture whose failure mode is "your block vanished" is the wrong home for it, so
-        // indent and outdent are buttons in the bar now, where they are deliberate and named.
+        // Vertical only: a block moves up and down among its siblings and never changes level.
         fun commitDrag() {
             val id = drag.id
             val node = blocks.firstOrNull { it.id == id }
@@ -586,15 +579,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onInk = { insertBelow(NodeType.INK) { id -> nav.navigate(Routes.ink(id)) } },
             onImage = { imagePicker.launch(arrayOf("image/*")) },
             actOnTask = actOn?.type == NodeType.TASK,
-            // Tab and shift-tab, as buttons. A block can only move under the one above it, so
-            // Indent is offered only when there is something above it to go under.
-            onIndent = actOn
-                // Indentable only when it has a sibling above to go under.
-                ?.takeIf { block ->
-                    blocks.filter { it.parentId == block.parentId }.indexOfFirst { it.id == block.id } > 0
-                }
-                ?.let { block -> { vm.indent(block) } },
-            onOutdent = actOn?.let { block -> { vm.outdent(block) } },
             onProperties = actOn?.let { block -> { propertySheetFor = block.id } },
             onFocusTask = actOn?.takeIf { it.type == NodeType.TASK }
                 ?.let { block -> { nav.navigate(Routes.focus(block.id)) } },
@@ -1239,8 +1223,6 @@ private fun BlockTypeBar(
     onInk: () -> Unit,
     onImage: () -> Unit,
     actOnTask: Boolean = false,
-    onIndent: (() -> Unit)? = null,
-    onOutdent: (() -> Unit)? = null,
     onProperties: (() -> Unit)? = null,
     onFocusTask: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
@@ -1284,7 +1266,7 @@ private fun BlockTypeBar(
         NeutralChip("Image", onImage, icon = Icons.Default.Image, modifier = noFocus)
         // What the ⋮ used to hide. Out here they are simply visible, and they only appear once a
         // block is actually selected, so the bar is never showing an action with no subject.
-        // Move / indent / outdent are gone from this list on purpose: dragging a block does them.
+        // Moving a block is the drag, not a button.
         if (onDelete != null) {
             Box(
                 Modifier
@@ -1293,12 +1275,6 @@ private fun BlockTypeBar(
                     .width(1.dp)
                     .background(y.hairline),
             )
-            if (onOutdent != null) {
-                NeutralChip("Outdent", onOutdent, icon = Icons.AutoMirrored.Filled.FormatIndentDecrease, modifier = noFocus)
-            }
-            if (onIndent != null) {
-                NeutralChip("Indent", onIndent, icon = Icons.AutoMirrored.Filled.FormatIndentIncrease, modifier = noFocus)
-            }
             if (actOnTask && onProperties != null) {
                 NeutralChip("Props", onProperties, icon = Icons.Default.Flag, modifier = noFocus)
             }
