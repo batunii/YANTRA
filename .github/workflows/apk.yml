@@ -3,6 +3,10 @@ name: APK
 on:
   push:
     branches: [main, UI_Changes]
+    # Tagging is how you ask for a build you can keep: a tag run also publishes a
+    # Release with the APK attached, because run artifacts expire and are only
+    # reachable by people who can see the Actions tab.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -16,6 +20,10 @@ jobs:
     name: Debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    permissions:
+      # Only so a tag build can create its Release; nothing else here writes.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -45,15 +53,37 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Name the artifact after the commit
+      # A tag names itself; anything else is identified by the commit it came from.
+      - name: Work out what to call this build
         id: name
-        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "label=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "label=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: yantra-debug-${{ steps.name.outputs.tag }}
+          name: yantra-debug-${{ steps.name.outputs.label }}
           path: app/build/outputs/apk/debug/app-debug.apk
           # A silently empty artifact is worse than a failed job: it looks like a build you can
           # install.
           if-no-files-found: error
           retention-days: 14
+
+      # gh is preinstalled on GitHub runners, so this needs no third-party action in the release
+      # path. "-debug" stays in the filename on purpose: this APK is signed with the debug key, so
+      # it installs and runs but is not a build for distribution, and the name should say so
+      # wherever it ends up.
+      - name: Publish the tagged APK as a Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "yantra-$GITHUB_REF_NAME-debug.apk"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "yantra-$GITHUB_REF_NAME-debug.apk"
