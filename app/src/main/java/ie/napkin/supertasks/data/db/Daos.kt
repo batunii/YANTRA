@@ -33,37 +33,6 @@ interface NodeDao {
     @Query("SELECT * FROM node WHERE parent_id = :parentId AND deleted_at IS NULL ORDER BY rank")
     fun children(parentId: String): Flow<List<NodeEntity>>
 
-    /**
-     * Every block under :rootId, at any depth, in the order they should be read.
-     *
-     * Depth-first ordering comes from a materialised path of the ranks walked to reach each node,
-     * so a child always sorts immediately after its parent and before the parent's next sibling.
-     * Sorting by rank alone would interleave the levels.
-     *
-     * The depth cap is insurance, not policy: the parent links form a tree, so this cannot recurse
-     * forever — but an unbounded recursive CTE over corrupt data would hang the query thread, and a
-     * page nested two dozen levels deep is already unreadable.
-     *
-     * The path is only ever compared, never parsed, and rank strings are base-36 with no
-     * separators of their own, so joining them with a character below '0' keeps the ordering
-     * correct at every depth.
-     */
-    @Query(
-        """
-        WITH RECURSIVE sub(id, depth, path) AS (
-            SELECT id, 0, rank FROM node
-             WHERE parent_id = :rootId AND deleted_at IS NULL
-          UNION ALL
-            SELECT n.id, s.depth + 1, s.path || '.' || n.rank
-              FROM node n JOIN sub s ON n.parent_id = s.id
-             WHERE n.deleted_at IS NULL AND s.depth < 24
-        )
-        SELECT n.*, s.depth AS depth FROM sub s JOIN node n ON n.id = s.id
-        ORDER BY s.path
-        """
-    )
-    fun blocksUnder(rootId: String): Flow<List<BlockRowEntity>>
-
     @Query("SELECT * FROM node WHERE parent_id IS NULL AND deleted_at IS NULL ORDER BY rank")
     fun topLevel(): Flow<List<NodeEntity>>
 
@@ -118,6 +87,9 @@ interface NodeDao {
 
     @Query("UPDATE node SET type = :type, updated_at = :now WHERE id = :id")
     suspend fun setType(id: String, type: String, now: Long)
+
+    @Query("UPDATE node SET indent = :indent, updated_at = :now WHERE id = :id")
+    suspend fun setIndent(id: String, indent: Int, now: Long)
 
     @Query("UPDATE node SET parent_id = :parentId, rank = :rank, updated_at = :now WHERE id = :id")
     suspend fun move(id: String, parentId: String?, rank: String, now: Long)
@@ -196,22 +168,15 @@ interface NodeDao {
     fun listTaskCounts(): Flow<List<SubtreeTaskCount>>
 
     /**
-     * How many live direct children each block under :parentId has — for the chevron count.
-     * Keyed by every block on the page, nested ones included, since they all render a chevron.
-     */
+ How many live (direct) children each child of :parentId has — for chevrons/badges. */
     @Query(
         """
-        WITH RECURSIVE sub(id) AS (
-            SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL
-          UNION ALL
-            SELECT n.id FROM node n JOIN sub s ON n.parent_id = s.id WHERE n.deleted_at IS NULL
-        )
         SELECT n.parent_id AS rootId,
                COUNT(*) AS total,
                COALESCE(SUM(CASE WHEN n.type = 'task' AND n.done = 1 THEN 1 ELSE 0 END), 0) AS doneCount
           FROM node n
          WHERE n.deleted_at IS NULL
-           AND n.parent_id IN (SELECT id FROM sub)
+           AND n.parent_id IN (SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL)
          GROUP BY n.parent_id
         """
     )
@@ -286,16 +251,11 @@ interface PropertyDao {
     @Query("SELECT * FROM property_value WHERE node_id IN (:ids) AND def_id IN (:defIds)")
     fun valuesForNodes(ids: List<String>, defIds: List<String>): Flow<List<PropertyValueEntity>>
 
-    /** Values for every block under :parentId at any depth — one query feeds all chips on a page. */
+    /** Values for every direct child of :parentId — one query feeds all chips on a page. */
     @Query(
         """
-        WITH RECURSIVE sub(id) AS (
-            SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL
-          UNION ALL
-            SELECT n.id FROM node n JOIN sub s ON n.parent_id = s.id WHERE n.deleted_at IS NULL
-        )
         SELECT pv.* FROM property_value pv
-         WHERE pv.node_id IN (SELECT id FROM sub)
+         WHERE pv.node_id IN (SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL)
         """
     )
     fun valuesUnder(parentId: String): Flow<List<PropertyValueEntity>>
@@ -382,16 +342,11 @@ interface LabelDao {
     @Query("SELECT * FROM node_label WHERE node_id = :nodeId")
     fun forNode(nodeId: String): Flow<List<NodeLabelEntity>>
 
-    /** Labels for every block under :parentId at any depth — mirrors PropertyDao.valuesUnder. */
+    /** Labels for every direct child of :parentId — mirrors PropertyDao.valuesUnder. */
     @Query(
         """
-        WITH RECURSIVE sub(id) AS (
-            SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL
-          UNION ALL
-            SELECT n.id FROM node n JOIN sub s ON n.parent_id = s.id WHERE n.deleted_at IS NULL
-        )
         SELECT nl.* FROM node_label nl
-         WHERE nl.node_id IN (SELECT id FROM sub)
+         WHERE nl.node_id IN (SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL)
         """
     )
     fun forChildrenOf(parentId: String): Flow<List<NodeLabelEntity>>
@@ -413,22 +368,12 @@ interface InkDao {
     fun strokes(nodeId: String): Flow<List<InkStrokeEntity>>
 
     /**
-     * Strokes for every ink block anywhere under :parentId — page previews.
-     *
-     * The whole subtree, not just direct children: a page renders its nested blocks inline, so a
-     * sketch one level down still has to draw. Scoped to direct children it came back empty and
-     * the block rendered its "Tap to sketch" placeholder over a drawing that was really there.
-     */
+ Strokes for every ink block that is a direct child of :parentId — page previews. */
     @Query(
         """
-        WITH RECURSIVE sub(id) AS (
-            SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL
-          UNION ALL
-            SELECT n.id FROM node n JOIN sub s ON n.parent_id = s.id WHERE n.deleted_at IS NULL
-        )
         SELECT s.* FROM ink_stroke s
          WHERE s.deleted_at IS NULL
-           AND s.node_id IN (SELECT id FROM sub)
+           AND s.node_id IN (SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL)
          ORDER BY s.rank
         """
     )

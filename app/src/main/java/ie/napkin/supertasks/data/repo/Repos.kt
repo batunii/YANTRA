@@ -39,8 +39,6 @@ class NodeRepository(private val db: AppDatabase) {
     fun topLevel() = dao.topLevel()
     fun allLists() = dao.allLists()
     fun children(parentId: String) = dao.children(parentId)
-    /** Every block on a page, at any depth, depth-first — see [NodeDao.blocksUnder]. */
-    fun blocksUnder(rootId: String) = dao.blocksUnder(rootId)
     suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
     fun observe(id: String) = dao.observe(id)
     suspend fun byId(id: String) = dao.byId(id)
@@ -129,6 +127,18 @@ class NodeRepository(private val db: AppDatabase) {
     suspend fun rename(id: String, title: String?) = dao.setTitle(id, title, now())
     suspend fun setDone(id: String, done: Boolean) = dao.setDone(id, done, now())
     suspend fun setCollapsed(id: String, collapsed: Boolean) = dao.setCollapsed(id, collapsed, now())
+
+    /**
+     * Sets a block's visual indentation. Clamped so a line can only ever be one step deeper than
+     * the line above it — indentation that jumps two levels has no meaning to read.
+     */
+    suspend fun setIndent(node: NodeEntity, indent: Int) {
+        val parentId = node.parentId ?: return
+        val siblings = dao.childrenOnce(parentId)
+        val idx = siblings.indexOfFirst { it.id == node.id }
+        val ceiling = if (idx <= 0) 0 else siblings[idx - 1].indent + 1
+        dao.setIndent(node.id, indent.coerceIn(0, ceiling), now())
+    }
     suspend fun setType(id: String, type: String) = dao.setType(id, type, now())
     suspend fun delete(id: String) = dao.softDeleteSubtree(id, now())
 

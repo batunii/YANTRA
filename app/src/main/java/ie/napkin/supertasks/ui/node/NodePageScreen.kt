@@ -52,6 +52,8 @@ import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
+import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
@@ -111,7 +113,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
-import ie.napkin.supertasks.data.db.BlockRowEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
@@ -138,13 +139,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val vm: NodePageViewModel = viewModel(key = "node-$nodeId") { NodePageViewModel(container(), nodeId) }
     val node by vm.node.collectAsStateWithLifecycle()
     val crumbs by vm.breadcrumb.collectAsStateWithLifecycle()
-    // Every block on the page, nested ones included, in reading order. One list, one meaning:
-    // everything on this screen — the tally, the ordinals, the drag geometry, the write line —
-    // reasons about what is *rendered*. Keeping a second "direct children only" list beside it is
-    // how nested blocks ended up with no strokes, no chips and no counts.
-    val rows by vm.blocks.collectAsStateWithLifecycle()
-    val blocks = remember(rows) { rows.map { it.node } }
-    val depthOf = remember(rows) { rows.associate { it.node.id to it.depth } }
+    // The page's own blocks — one flat list. Everything on this screen reasons about it: the tally,
+    // the ordinals, the drag geometry, the write line. A block's indentation is its own property,
+    // so laying the page out never means walking a tree.
+    val blocks by vm.blocks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
@@ -234,8 +232,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     }
 
     // Direct-child task tallies for the list meta line.
-    // Counts what the page shows, which is now the whole subtree — the same thing the Home row for
-    // this list already reports, so the two no longer disagree.
     val taskChildren = blocks.count { it.type == NodeType.TASK }
     val doneChildren = blocks.count { it.type == NodeType.TASK && it.done }
 
@@ -276,8 +272,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             },
         )
 
-        // Where a dragged block lands: next to whichever sibling it is nearest, and only the moved
-        // block's rank changes.
         // Where the lifted block would land right now, and how tall it is. Computed once here and
         // read by every row, so the rows between origin and target can step aside and show the gap
         // the block is going to fall into. Without that the drag is just a floating rectangle and
@@ -289,29 +283,12 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         val liftedHeight = (dragRows.firstOrNull { it.key == liftedId }?.size?.toFloat() ?: 0f)
             .coerceAtMost(listState.layoutInfo.viewportSize.height * 0.35f)
         val liftedFrom = blocks.indexOfFirst { it.id == liftedId }
-        // A lifted block carries its nested blocks: reordering the parent moves the whole subtree
-        // in the data, so letting the children sit still while the parent floats away would show
-        // something that is not what happens.
-        val liftedSubtree = remember(rows, liftedId) {
-            if (liftedId == null) emptySet() else buildSet {
-                val start = rows.indexOfFirst { it.node.id == liftedId }
-                if (start >= 0) {
-                    val base = rows[start].depth
-                    add(liftedId)
-                    for (i in start + 1 until rows.size) {
-                        if (rows[i].depth <= base) break
-                        add(rows[i].node.id)
-                    }
-                }
-            }
-        }
-        // The row under the finger, preferring the one it is actually inside.
+        // The row under the finger, preferring the one it is actually inside. Resolved from the
+        // finger rather than the middle of the block being carried: a full-page sketch has its
+        // centre far off screen, and a centre-based hit test aimed at rows nobody pointed at.
         fun rowUnderFinger(): androidx.compose.foundation.lazy.LazyListItemInfo? {
             val id = drag.id ?: return null
-            // Siblings only. A block reorders within its own level; nothing in the editor
-            // re-nests a block, so a drag has one unambiguous meaning.
-            val parent = blocks.firstOrNull { it.id == id }?.parentId
-            val ids = blocks.filter { it.parentId == parent }.mapTo(mutableSetOf()) { it.id }
+            val ids = blocks.mapTo(mutableSetOf()) { it.id }
             val rows = dragRows.filter { it.key in ids && it.key != id }
             val fy = drag.pointerY
             return rows.firstOrNull { fy >= it.offset && fy < it.offset + it.size }
@@ -326,16 +303,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             val node = blocks.firstOrNull { it.id == id }
             if (id != null && node != null) {
                 val over = rowUnderFinger()
-                // Indexed among siblings, because that is what moveToIndex takes.
-                val others = blocks.filter { it.parentId == node.parentId && it.id != id }
+                val others = blocks.filter { it.id != id }
                 val overId = over?.key as? String
                 val pos = others.indexOfFirst { it.id == overId }
                 if (pos >= 0) {
                     // Direction from the indices rather than the sign of the drag, so a long slow
                     // drag that ends where it started is a no-op instead of a move by one.
-                    val siblings = blocks.filter { it.parentId == node.parentId }
-                    val from = siblings.indexOfFirst { it.id == id }
-                    val to = siblings.indexOfFirst { it.id == overId }
+                    val from = blocks.indexOfFirst { it.id == id }
+                    val to = blocks.indexOfFirst { it.id == overId }
                     vm.moveToIndex(node, if (to > from) pos + 1 else pos)
                 }
             }
@@ -347,16 +322,18 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // you see in any editor, and it means nothing has to be stored.
         val ordinals = remember(blocks) {
             buildMap {
-                // Counted per parent: a nested list is its own list, and it restarts at 1 rather
-                // than continuing whatever numbering surrounded it.
-                val running = mutableMapOf<String?, Int>()
+                // A run is consecutive numbered lines at the same indentation, so an indented list
+                // is its own list and starts again at 1.
+                var n = 0
+                var atIndent = -1
                 blocks.forEach { c ->
                     if (c.type == NodeType.NUMBERED) {
-                        val n = (running[c.parentId] ?: 0) + 1
-                        running[c.parentId] = n
+                        n = if (c.indent == atIndent) n + 1 else 1
+                        atIndent = c.indent
                         put(c.id, n)
                     } else {
-                        running[c.parentId] = 0
+                        n = 0
+                        atIndent = -1
                     }
                 }
             }
@@ -385,9 +362,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 val draggable = child.type == NodeType.TASK ||
                     child.type == NodeType.INK ||
                     child.type == NodeType.IMAGE
-                val lifted = child.id in liftedSubtree
-                // Only the block itself gets the raised surface; its children ride along beneath.
-                val liftedRoot = drag.id == child.id
+                val lifted = drag.id == child.id
                 // Rows between the block's origin and where it now hovers step aside by exactly
                 // the block's own height, so the gap that opens is the shape of what is landing.
                 val stepAside = when {
@@ -412,16 +387,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         .graphicsLayer {
                             if (lifted) {
                                 translationY = drag.dy
-                                if (liftedRoot) {
-                                    scaleX = liftScale
-                                    scaleY = liftScale
-                                }
+                                scaleX = liftScale
+                                scaleY = liftScale
                             } else {
                                 translationY = slide
                             }
                         }
                         .then(
-                            if (liftedRoot) {
+                            if (lifted) {
                                 Modifier
                                     .shadow(12.dp, RoundedCornerShape(14.dp))
                                     .background(y.tileWarm, RoundedCornerShape(14.dp))
@@ -459,7 +432,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 val gripAlpha by animateFloatAsState(
                     targetValue = when {
                         !draggable -> 0f
-                        liftedRoot -> 1f
+                        lifted -> 1f
                         child.id == activeBlockId -> 0.75f
                         drag.id != null -> 0.35f
                         else -> 0f
@@ -471,7 +444,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     Icon(
                         Icons.Default.DragIndicator,
                         contentDescription = "Drag to move",
-                        tint = if (liftedRoot) y.accent else y.textDim,
+                        tint = if (lifted) y.accent else y.textDim,
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = 4.dp)
@@ -479,7 +452,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                             .alpha(gripAlpha),
                     )
                 }
-                Box(Modifier.padding(start = BLOCK_GUTTER + NEST_STEP * (depthOf[child.id] ?: 0))) {
+                Box(Modifier.padding(start = BLOCK_GUTTER + NEST_STEP * child.indent)) {
                 BlockRow(
                     child = child,
                     active = child.id == activeBlockId,
@@ -525,9 +498,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // does not already end in a blank one. The line exists to guarantee somewhere to
             // start typing; when the last block is itself blank it already *is* that place, and
             // showing both put two identical "Write something…" rows under the caret.
-            // Judged on the visually last block, whatever its depth: the line exists so there is
-            // always somewhere to start typing, and a blank already sitting at the bottom of the
-            // page is that place — nested or not, two blank rows in a row is the thing to avoid.
+            // The line exists so there is always somewhere to start typing, and a blank already
+            // sitting at the bottom of the page is that place — two blank rows is what to avoid.
             val endsBlank = blocks.lastOrNull()?.let {
                 it.title.isNullOrBlank() && it.type in NodeType.TEXTUAL
             } ?: false
@@ -579,6 +551,13 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onInk = { insertBelow(NodeType.INK) { id -> nav.navigate(Routes.ink(id)) } },
             onImage = { imagePicker.launch(arrayOf("image/*")) },
             actOnTask = actOn?.type == NodeType.TASK,
+            // Tab and shift-tab. A line can only go one step deeper than the line above it, so
+            // Indent is offered only while there is room, and never on the first block.
+            onIndent = actOn?.takeIf { block ->
+                val i = blocks.indexOfFirst { it.id == block.id }
+                i > 0 && block.indent <= blocks[i - 1].indent
+            }?.let { block -> { vm.indent(block) } },
+            onOutdent = actOn?.takeIf { it.indent > 0 }?.let { block -> { vm.outdent(block) } },
             onProperties = actOn?.let { block -> { propertySheetFor = block.id } },
             onFocusTask = actOn?.takeIf { it.type == NodeType.TASK }
                 ?.let { block -> { nav.navigate(Routes.focus(block.id)) } },
@@ -1223,6 +1202,8 @@ private fun BlockTypeBar(
     onInk: () -> Unit,
     onImage: () -> Unit,
     actOnTask: Boolean = false,
+    onIndent: (() -> Unit)? = null,
+    onOutdent: (() -> Unit)? = null,
     onProperties: (() -> Unit)? = null,
     onFocusTask: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
@@ -1266,7 +1247,8 @@ private fun BlockTypeBar(
         NeutralChip("Image", onImage, icon = Icons.Default.Image, modifier = noFocus)
         // What the ⋮ used to hide. Out here they are simply visible, and they only appear once a
         // block is actually selected, so the bar is never showing an action with no subject.
-        // Moving a block is the drag, not a button.
+        // Moving a block is the drag; indenting is a button, because it changes how a line reads
+        // rather than where it is.
         if (onDelete != null) {
             Box(
                 Modifier
@@ -1275,6 +1257,12 @@ private fun BlockTypeBar(
                     .width(1.dp)
                     .background(y.hairline),
             )
+            if (onOutdent != null) {
+                NeutralChip("Outdent", onOutdent, icon = Icons.AutoMirrored.Filled.FormatIndentDecrease, modifier = noFocus)
+            }
+            if (onIndent != null) {
+                NeutralChip("Indent", onIndent, icon = Icons.AutoMirrored.Filled.FormatIndentIncrease, modifier = noFocus)
+            }
             if (actOnTask && onProperties != null) {
                 NeutralChip("Props", onProperties, icon = Icons.Default.Flag, modifier = noFocus)
             }

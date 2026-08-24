@@ -227,3 +227,15 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         }
     }
 }
+
+/**
+ * Adds node.indent — a block's visual indentation on its page.
+ *
+ * Separate from parent_id on purpose: indenting a line must not re-home it. Existing rows are flush
+ * left, which is what they were.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE node ADD COLUMN indent INTEGER NOT NULL DEFAULT 0")
+    }
+}

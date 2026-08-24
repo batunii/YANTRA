@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.LabelEntity
-import ie.napkin.supertasks.data.db.BlockRowEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.PropertyDefEntity
@@ -47,13 +46,11 @@ class NodePageViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * Every block on the page, nested ones included, depth-first. A page used to show only its
-     * direct children, which made indenting look like the block had vanished — it had simply
-     * become a child of its neighbour, with nowhere on screen to appear. Now being a child and
-     * being nested are the same visible thing.
+     * The page's own blocks. A page shows what was written on it — a task's contents belong to that
+     * task's page, reachable through its chevron, and are not repeated here.
      */
-    val blocks: StateFlow<List<BlockRowEntity>> =
-        nodes.blocksUnder(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val blocks: StateFlow<List<NodeEntity>> =
+        nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Only the fixed Priority/Due fields — no more arbitrary user-created schema fields. */
     val defs: StateFlow<List<PropertyDefEntity>> =
@@ -159,6 +156,19 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.moveDown(node) }
     }
 
+    /**
+     * Indentation is layout only: it shifts the line on this page and never moves the block into
+     * the one above it. Somewhere to *put* things is what a task's own page is for; how a line sits
+     * is a separate question, and conflating them is what made indenting look like deletion.
+     */
+    fun indent(node: NodeEntity) {
+        viewModelScope.launch { nodes.setIndent(node, node.indent + 1) }
+    }
+
+    fun outdent(node: NodeEntity) {
+        viewModelScope.launch { nodes.setIndent(node, node.indent - 1) }
+    }
+
     /** Commit of a drag-to-reorder: put [node] at [toIndex] among its siblings. */
     fun moveToIndex(node: NodeEntity, toIndex: Int) {
         viewModelScope.launch { nodes.moveToIndex(node, toIndex) }
@@ -201,8 +211,7 @@ class NodePageViewModel(
         // the ViewModel's scope is cancelled at the same moment — which cancelled the loop after
         // the first delete and left the rest of the blanks on the page.
         container.appScope.launch {
-            // The page as read, nested blocks included, so "trailing" means what it looks like.
-            val blocks = this@NodePageViewModel.blocks.value.map { it.node }
+            val blocks = this@NodePageViewModel.blocks.value
             val disposable = blocks.reversed().takeWhile { b ->
                 b.title.isNullOrBlank() &&
                     b.type in NodeType.TEXTUAL &&

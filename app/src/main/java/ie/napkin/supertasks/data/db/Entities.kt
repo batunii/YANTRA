@@ -1,7 +1,6 @@
 package ie.napkin.supertasks.data.db
 
 import androidx.room.ColumnInfo
-import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -61,6 +60,12 @@ data class NodeEntity(
     val rank: String,                                        // fractional index for sibling order
     val done: Boolean = false,
     val collapsed: Boolean = false,
+    /**
+     * How far this block is indented on its page, purely visually. Deliberately *not* parentage:
+     * indenting a block under a task must not move the block into that task, so how a line is laid
+     * out and where it lives are two separate facts. Nesting is what a task's own page is for.
+     */
+    val indent: Int = 0,
     // canvas-later (ignored by linear render):
     @ColumnInfo(name = "canvas_x") val canvasX: Double? = null,
     @ColumnInfo(name = "canvas_y") val canvasY: Double? = null,
@@ -202,12 +207,3 @@ data class NodeLabelEntity(
     @ColumnInfo(name = "created_at") val createdAt: Long,
 )
 
-/**
- * A block as a page renders it: the node itself plus how far it is nested below the page root.
- * [depth] is derived by the query, never stored — nesting *is* the parent link, and a second
- * stored copy of it could only ever disagree.
- */
-data class BlockRowEntity(
-    @Embedded val node: NodeEntity,
-    val depth: Int,
-)
