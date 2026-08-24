@@ -547,29 +547,22 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 }
                 }
             }
-            // A list captures through the bar at the bottom, the same way a smart list does, so the
-            // blank line belongs only to a document.
+            // The write line is an invitation to a blank page, and nothing else. It shows only when
+            // a task's page is genuinely empty; the moment there is anything on the page it goes
+            // away, because from then on the page itself tells you where to type — put the caret at
+            // the end of the last block and press Enter. A permanent "Write something…" under the
+            // last line was a prompt for something you had already started doing.
             //
-            // One write line instead of a persisted run of empty blocks — but only when the page
-            // does not already end in a blank one. The line exists to guarantee somewhere to
-            // start typing; when the last block is itself blank it already *is* that place, and
-            // showing both put two identical "Write something…" rows under the caret.
-            // The line exists so there is always somewhere to start typing, and a blank already
-            // sitting at the bottom of the page is that place — two blank rows is what to avoid.
-            val endsBlank = blocks.lastOrNull()?.let {
-                it.title.isNullOrBlank() && it.type in NodeType.TEXTUAL
-            } ?: false
-            if (!endsBlank && isTask) {
+            // A list never gets one at all: a list captures through the bar at the bottom, the same
+            // way a smart list does.
+            if (isTask && blocks.isEmpty()) {
                 item(key = "write-line") {
-                    // The blank line offers what the page is *for*. A list is a list of tasks, so
-                    // the first thing you type there is a task; a task's own page is where you
-                    // write about it, so there it is a note. Notes are never withheld — the Note
-                    // chip, "- " markdown, or one tap on the type bar all still get you one — they
-                    // just stop being what a task list hands you by default.
-                    val blankType = if (isTask) NodeType.PARAGRAPH else NodeType.TASK
+                    // A task's page is where you write *about* the task, so the blank it offers is a
+                    // note. Notes are never withheld anywhere — the Note chip, "- " markdown, or one
+                    // tap on the type bar all still get you one.
                     WriteLine(
-                        label = if (isTask) "Write something…" else "Add a task…",
-                        onClick = { vm.addBlock(blankType, "") { id -> caretTarget = id } },
+                        label = "Write something…",
+                        onClick = { vm.addBlock(NodeType.PARAGRAPH, "") { id -> caretTarget = id } },
                     )
                 }
             }
