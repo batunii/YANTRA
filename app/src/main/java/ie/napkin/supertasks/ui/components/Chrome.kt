@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.Text
@@ -111,7 +109,8 @@ fun Modifier.horizontalFadingEdge(width: Dp = 28.dp): Modifier = this
 
 /**
  * A void with nothing in it reads as a bug; a void with one quiet mark in it reads as done.
- * The mark is the compass-star from the logo, at the opacity of a watermark.
+ * The mark is the bhupura, drawn faintly — the same shape as the icon, the task glyph and the focus
+ * glyph, so an empty list is stamped with the app rather than decorated with a stock sparkle.
  */
 @Composable
 fun ComposedEmpty(
@@ -126,11 +125,10 @@ fun ComposedEmpty(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(
-            Icons.Default.AutoAwesome,
-            contentDescription = null,
-            tint = y.accent.copy(alpha = 0.35f),
-            modifier = Modifier.size(30.dp),
+        YantraMark(
+            Modifier.size(34.dp),
+            tint = y.checkOutline.copy(alpha = 0.55f),
+            checkTint = y.accent.copy(alpha = 0.45f),
         )
         Text(line, fontSize = 13.sp, fontWeight = FontWeight.W500, color = y.textMuted)
         if (action != null && onAction != null) {

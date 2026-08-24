@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  A widget's OPEN task: the bhupura, in the structure ink. Glance cannot run the Canvas the app
-  draws with, so the three task states exist here as three drawables — same geometry, same colour
-  law, no choreography. A widget is a readout, not a place the pen moves.
+  A widget's IN PROGRESS task: coral circle inside the neutral frame. Static, as it is in the app —
+  the fill never pulses; the ring drawing in was the announcement, and a widget missed it anyway.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
@@ -11,5 +10,8 @@
         <path android:fillColor="#00000000" android:strokeColor="#FFB4B2A9" android:strokeWidth="1.7"
             android:strokeLineCap="round" android:strokeLineJoin="round"
             android:pathData="M8,4 L11,4 L11,2 L17,2 L17,4 L20,4 Q24,4 24,8 L24,11 L26,11 L26,17 L24,17 L24,20 Q24,24 20,24 L17,24 L17,26 L11,26 L11,24 L8,24 Q4,24 4,20 L4,17 L2,17 L2,11 L4,11 L4,8 Q4,4 8,4 Z" />
+        <path android:fillColor="#26E8865F" android:pathData="M14,6.5 A7.5,7.5 0 1 1 14,21.5 A7.5,7.5 0 1 1 14,6.5 Z" />
+        <path android:fillColor="#00000000" android:strokeColor="#FFE8865F" android:strokeWidth="1.6"
+            android:pathData="M14,6.5 A7.5,7.5 0 1 1 14,21.5 A7.5,7.5 0 1 1 14,6.5 Z" />
     </group>
 </vector>

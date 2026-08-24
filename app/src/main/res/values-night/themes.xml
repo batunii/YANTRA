@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.SuperTasks" parent="android:Theme.Material.NoActionBar">
-        <!-- must match the Yantra dark page color (graphite) or navigation transitions flash -->
-        <item name="android:windowBackground">#0E0F12</item>
+        <!-- Must match the Yantra dark page colour or navigation transitions flash. Warm graphite:
+             oklch(0.171 0.005 80°). -->
+        <item name="android:windowBackground">#110F0D</item>
     </style>
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A widget's DONE task: the bare bindu, coral. What the glyph leaves behind once the frame has
+  un-drawn — the mark, without the enclosure it was made in.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group android:scaleX="0.857" android:scaleY="0.857">
+        <path android:fillColor="#FFE8865F" android:pathData="M14,10.4 A3.6,3.6 0 1 1 14,17.6 A3.6,3.6 0 1 1 14,10.4 Z" />
+    </group>
+</vector>

@@ -104,40 +104,24 @@ fun NeutralChip(
 }
 
 /**
- * The Yantra app mark: a compass-rose / sunburst — eight rays (four long cardinal points,
- * four short) around a ring, with a checkmark at the centre. Sun (routine) + compass & gear
- * (the instrument) + check (done). Rays and ring take [tint]; the check takes [checkTint].
+ * The Yantra app mark: the bhupura with the bindu at its centre — the same path the launcher icon,
+ * the task glyph and the focus glyph draw, so the identity is one shape everywhere it appears
+ * rather than four drawings of an idea.
+ *
+ * The frame takes [tint] (structure) and the bindu takes [checkTint] (coral, the user's own effort).
+ * It replaces a compass-rose with a tick at its centre: that mark belonged to the palette this app
+ * no longer has, and the tick is precisely the gesture the bindu was introduced to retire.
  */
 @Composable
 fun YantraMark(
     modifier: Modifier = Modifier,
-    tint: Color = Yantra.colors.accent,
-    checkTint: Color = tint,
+    tint: Color = Yantra.colors.checkOutline,
+    checkTint: Color = Yantra.colors.accent,
 ) {
     Canvas(modifier) {
-        val s = size.minDimension / 42f  // authored in a 42×42 box, centred at (21,21)
-        fun p(x: Float, y: Float) = Offset(x * s, y * s)
-        val cx = 21f; val cy = 21f
-        val hw = 1.65f; val baseY = 10.5f
-        for (i in 0 until 8) {
-            val tipY = if (i % 2 == 0) 2f else 5.2f  // long cardinal / short diagonal rays
-            rotate(i * 45f, pivot = p(cx, cy)) {
-                val ray = Path().apply {
-                    moveTo(cx * s, tipY * s)
-                    lineTo((cx - hw) * s, baseY * s)
-                    lineTo((cx + hw) * s, baseY * s)
-                    close()
-                }
-                drawPath(ray, color = tint)
-            }
-        }
-        drawCircle(color = tint, radius = 10f * s, center = p(cx, cy), style = Stroke(width = 2.4f * s))
-        val check = Path().apply {
-            moveTo(15f * s, 21.4f * s)
-            lineTo(19.6f * s, 26f * s)
-            lineTo(28f * s, 15.8f * s)
-        }
-        drawPath(check, color = checkTint, style = Stroke(width = 2.9f * s, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        val s = size.minDimension
+        drawPartialPath(bhupuraPath(s), 1f, tint, s * 1.6f / 28f)
+        drawCircle(color = checkTint, radius = s * 3.6f / 28f, center = center)
     }
 }
 
@@ -159,29 +143,3 @@ fun GearMark(modifier: Modifier = Modifier, tint: Color = Yantra.colors.accent) 
     }
 }
 
-/**
- * A single four-point compass-star — the same glyph [TaskCheck] pops on completion, scaled up
- * and very faint. Used as a quiet watermark (behind the Focus dial) in place of a literal
- * hexagram: one star reads as this app's own mark, not a mystical diagram borrowed for the
- * occasion.
- */
-@Composable
-fun SparkleMark(modifier: Modifier = Modifier, tint: Color = Yantra.colors.accent, alpha: Float = 0.1f) {
-    Canvas(modifier) {
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        val outer = size.minDimension / 2f
-        val inner = outer * 0.4f
-        val path = Path().apply {
-            for (i in 0 until 8) {
-                val rr = if (i % 2 == 0) outer else inner
-                val a = Math.toRadians(-90.0 + i * 45.0)
-                val px = cx + (rr * kotlin.math.cos(a)).toFloat()
-                val py = cy + (rr * kotlin.math.sin(a)).toFloat()
-                if (i == 0) moveTo(px, py) else lineTo(px, py)
-            }
-            close()
-        }
-        drawPath(path, color = tint.copy(alpha = alpha))
-    }
-}

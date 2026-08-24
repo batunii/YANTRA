@@ -65,6 +65,8 @@ import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoBanner
+import ie.napkin.supertasks.ui.components.BhupuraWatermark
+import androidx.compose.foundation.layout.offset
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
@@ -143,6 +145,18 @@ fun HomeScreen(nav: NavHostController) {
             )
         },
     ) { padding ->
+        // Background flare: the brand shape, hairline and still, behind everything. Drawn WHOLE and
+        // centred low — cropping it at a screen edge turned the gated square into an anonymous
+        // rounded rectangle, which reads as a stray box rather than as the mark. The inner square
+        // rotated 45° is what makes it legible as a yantra rather than an outline.
+        Box(Modifier.fillMaxSize()) {
+            BhupuraWatermark(
+                Modifier
+                    .align(Alignment.Center)
+                    .offset(y = 150.dp)
+                    .size(330.dp),
+            )
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp),

@@ -22,6 +22,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.remember
+import ie.napkin.supertasks.ui.components.bhupuraPath
+import ie.napkin.supertasks.ui.components.drawPartialPath
 import ie.napkin.supertasks.ui.components.YantraMark
 import ie.napkin.supertasks.ui.theme.Yantra
 
@@ -45,29 +54,27 @@ fun SplashScreen(nav: NavHostController) {
             .background(y.page),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier
-                .size(340.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(y.accent.copy(alpha = 0.16f), Color.Transparent),
-                        radius = 340f,
-                    ),
-                    CircleShape,
-                ),
-        )
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            Box(
-                Modifier
-                    .size(88.dp)
-                    .background(y.accentFill, RoundedCornerShape(26.dp))
-                    .border(1.dp, y.accentBorder, RoundedCornerShape(26.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                YantraMark(Modifier.size(52.dp), tint = y.accent, checkTint = y.textPrimary)
+            // The mark draws itself on, once. A one-shot transition is exactly what the motion law
+            // permits — punctuation, not texture — and the pen arriving is the right first sentence
+            // for an app whose whole vocabulary is marks made by hand. The tinted rounded tile it
+            // used to sit in is gone: the bhupura is already an enclosure, so framing it in a second
+            // one said the shape could not hold its own.
+            val draw = remember { Animatable(0f) }
+            val bindu = remember { Animatable(0f) }
+            LaunchedEffect(Unit) {
+                draw.animateTo(1f, tween(620, easing = FastOutSlowInEasing))
+                bindu.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium))
+            }
+            Canvas(Modifier.size(96.dp)) {
+                val s = size.minDimension
+                drawPartialPath(bhupuraPath(s), draw.value, y.checkOutline, s * 1.6f / 28f)
+                if (bindu.value > 0f) {
+                    drawCircle(y.accent, radius = s * 3.6f / 28f * bindu.value, center = center)
+                }
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

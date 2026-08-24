@@ -113,6 +113,8 @@ data class WidgetRow(
     val id: String,
     val title: String,
     val done: Boolean,
+    /** The task glyph's middle state, so a widget shows the same three states the app does. */
+    val inProgress: Boolean,
     val dueLabel: String?,
     val dueOverdue: Boolean,
     val hasReminder: Boolean,
@@ -203,6 +205,7 @@ internal fun buildRows(
             id = n.id,
             title = n.title?.ifBlank { "Untitled" } ?: "Untitled",
             done = n.done,
+            inProgress = n.inProgress,
             dueLabel = dueRow?.vDate
                 ?.let { if (dueRow.vBool == true) dateTimeLabel(it) else dateLabel(it) }
                 ?.takeUnless { hideTodayDue && it == dateLabel(todayStart) },
@@ -571,7 +574,7 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
 
 /**
  * An empty widget is the one state the user sees most on a good day, so it gets composed rather
- * than left as a sentence in the middle of a void: the compass-star, one line, and the way out.
+ * than left as a sentence in the middle of a void: the app's mark, one line, and the way out.
  */
 @Composable
 private fun EmptyState(setUp: Boolean, metrics: WidgetMetrics, onAdd: androidx.glance.action.Action?) {
@@ -626,34 +629,25 @@ private fun TaskRow(row: WidgetRow, status: ie.napkin.supertasks.ui.theme.Yantra
         modifier = GlanceModifier.fillMaxWidth().padding(vertical = m.rowGap),
         verticalAlignment = Alignment.Top,
     ) {
-        if (row.done) {
-            // Exactly TaskCheck's done state from the app: accent fill, and the four-point
-            // compass star rather than a tick. A widget is the same product seen from outside;
-            // inventing a second completion mark (a green tick) for it meant the same action
-            // looked like two different features depending on where you tapped it.
-            Box(
-                modifier = GlanceModifier
-                    .size(m.box)
-                    .background(GlanceTheme.colors.primary)
-                    .cornerRadius(7.dp)
-                    .clickable(toggle),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    provider = ImageProvider(R.drawable.ic_widget_check_star),
-                    contentDescription = "Mark not done",
-                    colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimary),
-                    modifier = GlanceModifier.size(m.box - 8.dp),
-                )
-            }
-        } else {
-            Image(
-                provider = ImageProvider(R.drawable.ic_widget_check_idle),
-                contentDescription = "Mark done",
-                colorFilter = ColorFilter.tint(priorityTint ?: GlanceTheme.colors.outline),
-                modifier = GlanceModifier.size(m.box).clickable(toggle),
-            )
-        }
+        // The task glyph, in the three states a widget can show. Glance has no Canvas, so these are
+        // drawables rather than the drawn path — same geometry, same colour law, no choreography.
+        // A done task is a bare bindu and keeps no priority tint: the enclosure is what carried
+        // urgency, and it has un-drawn.
+        Image(
+            provider = ImageProvider(
+                when {
+                    row.done -> R.drawable.ic_widget_check_done
+                    row.inProgress -> R.drawable.ic_widget_check_progress
+                    else -> R.drawable.ic_widget_check_idle
+                }
+            ),
+            contentDescription = if (row.done) "Mark not done" else "Mark done",
+            // The done and in-progress marks are already coral in the drawable; only the open
+            // frame takes a tint, and only from priority.
+            colorFilter = if (row.done || row.inProgress) null
+            else ColorFilter.tint(priorityTint ?: GlanceTheme.colors.outline),
+            modifier = GlanceModifier.size(m.box).clickable(toggle),
+        )
         Spacer(GlanceModifier.width(11.dp))
         Column(
             modifier = GlanceModifier
@@ -668,6 +662,8 @@ private fun TaskRow(row: WidgetRow, status: ie.napkin.supertasks.ui.theme.Yantra
                     fontSize = m.rowTitle,
                     fontWeight = if (row.done) FontWeight.Normal else FontWeight.Medium,
                     color = if (row.done) GlanceTheme.colors.onSurfaceVariant else GlanceTheme.colors.onSurface,
+                    // The app strikes a done title with a coral pen mark; Glance has no canvas to
+                    // draw one with, so out here it stays a line. The bindu carries the meaning.
                     textDecoration = if (row.done) TextDecoration.LineThrough else TextDecoration.None,
                 ),
             )

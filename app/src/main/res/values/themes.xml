@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.SuperTasks" parent="android:Theme.Material.Light.NoActionBar">
-        <!-- Pre-onCreate best guess (follows system night mode); MainActivity overrides the
-             window background with the stored mode's page color before the first frame. -->
-        <item name="android:windowBackground">#F2F3F7</item>
+        <!-- Pre-onCreate best guess (follows system night mode); MainActivity overrides the window
+             background with the stored mode's page colour before the first frame.
+
+             Warm, not cool: this is oklch(0.972 0.006 80°), the light page from yantraColors. The
+             old value was a blue-grey from the indigo palette, so the very first frame of the app
+             flashed a colour the app no longer contains. -->
+        <item name="android:windowBackground">#F8F5F1</item>
     </style>
 
     <!-- Quick-add capture dialog: translucent, floats over the launcher. -->
