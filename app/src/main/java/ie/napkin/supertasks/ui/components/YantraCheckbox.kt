@@ -18,9 +18,11 @@ package ie.napkin.supertasks.ui.components
  *  4. Theme-aware ink — coral steps lighter in dark theme to clear the
  *     3:1 non-text contrast bar at hairline stroke widths.
  *
- * Interaction mapping: tap = complete, long-press = toggle in-progress
- * (with hold windup: the circle draws during the press and reverses if
- * released early). Tap on a DONE task during the linger window undoes.
+ * Interaction mapping: tap = complete; tap a DONE task to undo. Marking a
+ * task in progress is a swipe on the row, not a gesture on this glyph — see
+ * SwipeToProgress in NodePageScreen.kt. The glyph therefore has one meaning
+ * per press, and the two states you can reach by touching it are the two the
+ * pen actually decides: finished, or not.
  */
 
 import android.content.Context
@@ -217,7 +219,6 @@ fun YantraCheckbox(
     state: TaskState,
     taskId: String,
     onComplete: () -> Unit,
-    onToggleInProgress: () -> Unit,
     onUndo: () -> Unit,
     tempo: CompletionTempo,
     modifier: Modifier = Modifier,
@@ -251,7 +252,6 @@ fun YantraCheckbox(
     }
     val bindu = remember { Animatable(if (state == TaskState.DONE) 1f else 0f) }
     val squash = remember { Animatable(1f) }
-    var holdArming by remember { mutableStateOf(false) }
 
     // React to state transitions with the right choreography.
     LaunchedEffect(state) {
@@ -333,31 +333,15 @@ fun YantraCheckbox(
         modifier
             .size(size)
             .pointerInput(state) {
+                // Tap only. The glyph used to also take a long-press (with a windup that drew the
+                // ring during the hold) to mark a task in progress; that gesture now lives as a
+                // swipe on the row, so this target has exactly one meaning again — press it and the
+                // task is finished.
                 detectTapGestures(
                     onPress = {
                         scope.launch { squash.animateTo(0.88f, tween(100)) }
-                        // Windup preview: after a beat, start drawing the ring
-                        // toward the long-press commit. Release early = reverse.
-                        val preview = scope.launch {
-                            if (state == TaskState.OPEN && !reduced) {
-                                delay(Timing.HOLD_PREVIEW_DELAY_MS)
-                                holdArming = true
-                                haptics?.tick()
-                                ringDraw.animateTo(1f, tween(Timing.HOLD_ARM_MS))
-                            }
-                        }
                         tryAwaitRelease()
-                        preview.cancel()
-                        scope.launch {
-                            squash.animateTo(1f, spring(dampingRatio = 0.6f))
-                        }
-                        if (holdArming && state == TaskState.OPEN) {
-                            holdArming = false
-                            // Long-press didn't fire: un-draw the preview.
-                            if (state == TaskState.OPEN) {
-                                scope.launch { ringDraw.animateTo(0f, tween(150)) }
-                            }
-                        }
+                        scope.launch { squash.animateTo(1f, spring(dampingRatio = 0.6f)) }
                     },
                     onTap = {
                         when (state) {
@@ -365,10 +349,12 @@ fun YantraCheckbox(
                             else -> onComplete()
                         }
                     },
-                    onLongPress = {
-                        holdArming = false
-                        if (state != TaskState.DONE) onToggleInProgress()
-                    }
+                    // Deliberately consumed and ignored. The glyph sits inside a block that takes
+                    // long-press-to-reorder over its whole area, so leaving this unhandled let a
+                    // slow press on the checkbox pick the row up and drop it somewhere else. Long
+                    // press means nothing here — and saying so explicitly is what keeps it from
+                    // meaning something else by accident.
+                    onLongPress = {},
                 )
             }
     ) {

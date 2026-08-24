@@ -33,6 +33,14 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.offset
 import kotlin.math.roundToInt
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.Path
+import ie.napkin.supertasks.ui.components.drawPartialPath
+import kotlinx.coroutines.launch
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.Canvas
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
@@ -322,6 +330,16 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         fun commitDrag() {
             val id = drag.id
             val node = blocks.firstOrNull { it.id == id }
+            // A lift that never moved is not a reorder. Without this, a long-press-and-release
+            // anywhere in a block committed a move: startY is seeded from the block's offset in the
+            // LazyColumn, and where that lookup does not resolve it falls back to 0, so the drop
+            // target computed from the finger lands on the FIRST row and the block teleports to the
+            // top of the list. The guard is right on its own terms too — you picked it up and put it
+            // straight back down.
+            if (kotlin.math.abs(drag.dy) < 1f) {
+                drag.stop()
+                return
+            }
             if (id != null && node != null) {
                 val over = rowUnderFinger()
                 val others = blocks.filter { it.id != id }
@@ -773,6 +791,48 @@ private fun PageBand(
                         // The same glyph as the row that led here, so the task looks like itself on
                         // its own page. Frame stays neutral: this is the task's page, not a list, and
                         // priority is reported by its pill below.
+                        //
+                        // This page has no row to swipe, so the swipe lives on the glyph itself
+                        // here. Without it, removing the long-press would have left a task with no
+                        // way to be marked in progress from its own page — the one screen where you
+                        // are most likely to be deciding to start it.
+                        val bandScope = rememberCoroutineScope()
+                        val bandDensity = LocalDensity.current
+                        val bandSwipe = remember(node.id) { Animatable(0f) }
+                        val bandCommit = with(bandDensity) { 56.dp.toPx() }
+                        val bandHaptics = LocalYantraHaptics.current
+                        var bandArmed by remember(node.id) { mutableStateOf(false) }
+                        // Same stale-closure trap as the row swipe — see the note there.
+                        val bandInProgress by rememberUpdatedState(node.inProgress)
+                        Box(
+                            Modifier
+                                .offset { IntOffset(bandSwipe.value.roundToInt(), 0) }
+                                .pointerInput(node.id) {
+                                    detectHorizontalDragGestures(
+                                        onDragEnd = {
+                                            val commit = bandSwipe.value >= bandCommit
+                                            bandArmed = false
+                                            bandScope.launch {
+                                                if (commit) onToggleInProgress(!bandInProgress)
+                                                bandSwipe.animateTo(0f, spring(dampingRatio = 0.7f))
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            bandArmed = false
+                                            bandScope.launch { bandSwipe.animateTo(0f, spring(dampingRatio = 0.7f)) }
+                                        },
+                                    ) { _, dragAmount ->
+                                        val next = (bandSwipe.value + dragAmount).coerceIn(0f, bandCommit * 1.25f)
+                                        if (!bandArmed && next >= bandCommit) {
+                                            bandArmed = true
+                                            bandHaptics?.tick()
+                                        } else if (bandArmed && next < bandCommit) {
+                                            bandArmed = false
+                                        }
+                                        bandScope.launch { bandSwipe.snapTo(next) }
+                                    }
+                                },
+                        ) {
                         YantraCheckbox(
                             state = when {
                                 node.done -> TaskState.DONE
@@ -781,7 +841,6 @@ private fun PageBand(
                             },
                             taskId = node.id,
                             onComplete = { onToggleDone(true) },
-                            onToggleInProgress = { onToggleInProgress(!node.inProgress) },
                             onUndo = { onToggleDone(false) },
                             tempo = LocalCompletionTempo.current,
                             haptics = LocalYantraHaptics.current,
@@ -789,6 +848,7 @@ private fun PageBand(
                             size = 30.dp,
                             modifier = Modifier.padding(top = 4.dp),
                         )
+                        }
                         Spacer(Modifier.width(12.dp))
                     }
                     BasicTextField(
@@ -1143,8 +1203,97 @@ internal fun TextualBlockRow(
         else -> 9.dp
     }
 
+    // Swipe right on a task to say "I am on this". This replaced a long-press on the glyph: the
+    // glyph is a small target and press-and-hold is a gesture you have to be told about, whereas a
+    // row that follows your finger and shows the mark it is about to leave explains itself. It is a
+    // toggle — swipe again to put the task back down — because a state you can enter and not leave
+    // is a trap.
+    //
+    // detectHorizontalDragGestures only claims the pointer after horizontal slop, so vertical
+    // scrolling and the row's own tap both still work.
+    val swipeScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val swipeX = remember(child.id) { Animatable(0f) }
+    val commitAt = with(density) { 72.dp.toPx() }
+    val swipeCeiling = commitAt * 1.25f
+    val swipeHaptics = LocalYantraHaptics.current
+    var armed by remember(child.id) { mutableStateOf(false) }
+    // pointerInput keys on child.id, so its gesture block is NOT rebuilt when in_progress changes —
+    // it closes over whichever `child` was current when the row first composed. Reading the flag
+    // straight from that closure meant every swipe computed !false and wrote "in progress" again,
+    // so the state could be entered and never left. rememberUpdatedState is the fix: the gesture
+    // keeps its identity, the value it reads stays current.
+    val nowInProgress by rememberUpdatedState(child.inProgress)
+
+    // clipToBounds so a swiped row stays inside its own slot: without it the chips slid out past
+    // the card's rounded edge and off the screen, which read as broken layout rather than as a
+    // gesture in progress.
+    Box(Modifier.clipToBounds()) {
+        // The mark the swipe is about to make, revealed in the gap the row leaves behind. Coral,
+        // because it is the user's own effort arriving; it grows to full only once the swipe has
+        // gone far enough to commit, so the row tells you before you let go.
+        if (isTask && swipeX.value > 1f) {
+            val reveal = (swipeX.value / commitAt).coerceIn(0f, 1f)
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .padding(start = 4.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Canvas(Modifier.size(26.dp)) {
+                    val r = this.size.minDimension * 7.5f / 28f
+                    drawCircle(
+                        y.accent.copy(alpha = 0.18f * reveal),
+                        radius = r,
+                        center = center,
+                    )
+                    drawPartialPath(
+                        Path().apply {
+                            addOval(
+                                androidx.compose.ui.geometry.Rect(
+                                    center - Offset(r, r), center + Offset(r, r),
+                                )
+                            )
+                        },
+                        reveal,
+                        y.accent,
+                        1.6.dp.toPx(),
+                    )
+                }
+            }
+        }
     Column(
         Modifier
+            .offset { IntOffset(swipeX.value.roundToInt(), 0) }
+            .then(
+                if (!isTask) Modifier else Modifier.pointerInput(child.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val commit = swipeX.value >= commitAt
+                            armed = false
+                            swipeScope.launch {
+                                if (commit) onToggleInProgress(!nowInProgress)
+                                swipeX.animateTo(0f, spring(dampingRatio = 0.7f))
+                            }
+                        },
+                        onDragCancel = {
+                            armed = false
+                            swipeScope.launch { swipeX.animateTo(0f, spring(dampingRatio = 0.7f)) }
+                        },
+                    ) { _, dragAmount ->
+                        // Rightward only. Left is deliberately left free rather than given a second
+                        // meaning nobody asked for.
+                        val next = (swipeX.value + dragAmount).coerceIn(0f, swipeCeiling)
+                        if (!armed && next >= commitAt) {
+                            armed = true
+                            swipeHaptics?.tick()
+                        } else if (armed && next < commitAt) {
+                            armed = false
+                        }
+                        swipeScope.launch { swipeX.snapTo(next) }
+                    }
+                }
+            )
             .activeBlock(active)
             .then(if (editable) Modifier else Modifier.clickable(onClick = onOpen))
             .padding(vertical = vPad, horizontal = 2.dp),
@@ -1159,7 +1308,6 @@ internal fun TextualBlockRow(
                     },
                     taskId = child.id,
                     onComplete = { onToggleDone(true) },
-                    onToggleInProgress = { onToggleInProgress(!child.inProgress) },
                     onUndo = { onToggleDone(false) },
                     tempo = LocalCompletionTempo.current,
                     haptics = LocalYantraHaptics.current,
@@ -1288,6 +1436,7 @@ internal fun TextualBlockRow(
                 if (pomoCount > 0) PomodoroCount(pomoCount)
             }
         }
+    }
     }
 }
 

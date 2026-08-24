@@ -123,7 +123,7 @@ fun SettingsScreen(nav: NavHostController) {
             SectionLabel("The task glyph")
             Spacer(Modifier.height(2.dp))
             Text(
-                "Tap to complete · hold to mark what you are on",
+                "Tap to complete · swipe a task right to mark what you are on",
                 color = y.textMuted,
                 fontSize = 12.5.sp,
             )
@@ -198,9 +198,6 @@ private fun GlyphSample(label: String, initial: TaskState) {
             state = state,
             taskId = "preview-$label",
             onComplete = { state = TaskState.DONE },
-            onToggleInProgress = {
-                state = if (state == TaskState.IN_PROGRESS) TaskState.OPEN else TaskState.IN_PROGRESS
-            },
             onUndo = { state = TaskState.OPEN },
             tempo = LocalCompletionTempo.current,
             haptics = LocalYantraHaptics.current,
