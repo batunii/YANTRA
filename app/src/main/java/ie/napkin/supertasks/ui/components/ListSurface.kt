@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,16 +48,23 @@ fun ListGroupRow(
     content: @Composable () -> Unit,
 ) {
     val y = Yantra.colors
-    // Corners are rounded only where the group actually ends, so a run of rows reads as one card.
-    val shape = RoundedCornerShape(
-        topStart = if (first) 20.dp else 0.dp,
-        topEnd = if (first) 20.dp else 0.dp,
-        bottomStart = if (last) 20.dp else 0.dp,
-        bottomEnd = if (last) 20.dp else 0.dp,
+    // Corners are rounded only where the group actually ends, so a run of rows reads as one card —
+    // and the row that ends it closes with the bhupura's gate, the same way a header band does. A
+    // card is a surface you touch, so it is where the mark belongs; it used to be a watermark lying
+    // behind everything, which is a picture of the app laid under the app.
+    val shape = GatedSurface(
+        topCorner = if (first) 20.dp else 0.dp,
+        bottomCorner = if (last) 20.dp else 0.dp,
+        // Narrower and shallower than a band's: a card is the width of the screen minus its
+        // margins, and at a band's proportions the tab reads as a bite taken out of the list.
+        gateWidth = if (last) 62.dp else 0.dp,
+        gateDepth = if (last) 8.dp else 0.dp,
     )
     Column(modifier.fillMaxWidth().background(y.cardBg, shape)) {
         if (!first) GroupDivider()
         content()
+        // Room for the tab, so the last row's text never sits inside it.
+        if (last) Spacer(Modifier.height(8.dp))
     }
 }
 

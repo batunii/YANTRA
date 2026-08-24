@@ -49,6 +49,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.GatedSurface
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.QuickAddBar
@@ -88,10 +89,14 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(y.band, RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+                // The band ends in the bhupura's bottom gate rather than a plain rounded edge —
+                // the mark is now carried by the surfaces themselves instead of by a watermark
+                // sitting behind them.
+                .background(y.band, GatedSurface(bottomCorner = 20.dp))
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
-                .padding(top = 10.dp, bottom = 20.dp),
+                // +gate depth, so nothing sits inside the tab.
+                .padding(top = 10.dp, bottom = 30.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 NavCircle(

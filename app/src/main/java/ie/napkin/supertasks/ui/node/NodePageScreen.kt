@@ -141,6 +141,7 @@ import ie.napkin.supertasks.ui.components.PomodoroCount
 import ie.napkin.supertasks.ui.components.PropertyChip
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.INK_STRIKE_MS
+import ie.napkin.supertasks.ui.components.GatedSurface
 import ie.napkin.supertasks.ui.components.InkStrike
 import ie.napkin.supertasks.ui.components.LocalCompletionTempo
 import ie.napkin.supertasks.ui.components.LocalYantraHaptics
@@ -689,10 +690,11 @@ private fun PageBand(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(y.band, RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp))
+            // Same gated lower edge as a smart view's band — see GatedSurface.
+            .background(y.band, GatedSurface(bottomCorner = 18.dp))
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
-            .padding(top = 10.dp, bottom = if (collapsed) 10.dp else 22.dp),
+            .padding(top = 10.dp, bottom = if (collapsed) 20.dp else 32.dp),
     ) {
         // top row: back · (breadcrumb / collapsed title) · actions
         Row(verticalAlignment = Alignment.CenterVertically) {
