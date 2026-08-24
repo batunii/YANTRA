@@ -48,6 +48,7 @@ class NodeRepository(private val db: AppDatabase) {
     fun topLevelTaskCounts() = dao.topLevelTaskCounts()
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
+    fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)
 
     /**
      * Stable Today lookup, self-healing for databases whose migration backfill found nothing

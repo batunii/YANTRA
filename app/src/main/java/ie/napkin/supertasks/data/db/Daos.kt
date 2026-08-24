@@ -185,6 +185,24 @@ interface NodeDao {
     )
     fun childCountsUnder(parentId: String): Flow<List<SubtreeTaskCount>>
 
+    /**
+     * The same counts for an arbitrary set of parents. A smart view gathers tasks from anywhere, so
+     * there is no single parent to hang them off — but a task's chevron should say the same thing
+     * wherever the task is shown.
+     */
+    @Query(
+        """
+        SELECT n.parent_id AS rootId,
+               COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN n.type = 'task' AND n.done = 1 THEN 1 ELSE 0 END), 0) AS doneCount
+          FROM node n
+         WHERE n.deleted_at IS NULL
+           AND n.parent_id IN (:parentIds)
+         GROUP BY n.parent_id
+        """
+    )
+    fun childCountsFor(parentIds: List<String>): Flow<List<SubtreeTaskCount>>
+
     @RawQuery(observedEntities = [NodeEntity::class, PropertyValueEntity::class, NodeLabelEntity::class])
     fun rawNodeQuery(query: SupportSQLiteQuery): Flow<List<NodeEntity>>
 }

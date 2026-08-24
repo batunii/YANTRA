@@ -59,6 +59,14 @@ class SmartListViewModel(
             merged
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    /** Subtask counts for whatever is currently matching, so the chevron reads the same here. */
+    val childCounts: StateFlow<Map<String, Int>> =
+        tasks.flatMapLatest { list ->
+            if (list.isEmpty()) flowOf(emptyMap())
+            else nodes.childCountsFor(list.map { it.id })
+                .map { rows -> rows.associate { it.rootId to it.total } }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val pomoCounts: StateFlow<Map<String, Int>> =
         container.pomodoro.completedCounts()
             .map { list -> list.associate { it.nodeId to it.count } }
@@ -68,6 +76,15 @@ class SmartListViewModel(
     val description: StateFlow<String> =
         combine(def, properties.defs(), container.labels.all()) { d, defs, labels -> describe(d, defs, labels) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    /**
+     * A task shown here is the same task as anywhere else, so it is editable here too. Renaming it
+     * cannot silently strand it: if the new title stops matching the rules the flow drops it from
+     * the view, which is the honest outcome.
+     */
+    fun rename(id: String, title: String) {
+        viewModelScope.launch { nodes.rename(id, title) }
+    }
 
     fun addTask(title: String) {
         viewModelScope.launch {

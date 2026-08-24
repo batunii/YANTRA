@@ -3,10 +3,8 @@ package ie.napkin.supertasks.ui.smart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,11 +21,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,9 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,10 +49,7 @@ import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.NavCircle
-import ie.napkin.supertasks.ui.components.markdownAnnotated
-import ie.napkin.supertasks.ui.components.PomodoroCount
-import ie.napkin.supertasks.ui.components.PropertyChip
-import ie.napkin.supertasks.ui.components.TaskCheck
+import ie.napkin.supertasks.ui.node.TextualBlockRow
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
@@ -72,8 +63,10 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
+    val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val description by vm.description.collectAsStateWithLifecycle()
     val y = Yantra.colors
+    var activeId by remember { mutableStateOf<String?>(null) }
 
     Column(
         Modifier
@@ -163,52 +156,39 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             // page. Corners are rounded only where the group actually ends.
             itemsIndexed(tasks, key = { _, t -> t.id }) { index, task ->
                 ListGroupRow(first = index == 0, last = index == tasks.lastIndex) {
-                    val taskChips = chips[task.id].orEmpty()
-                    val pomo = pomoCounts[task.id] ?: 0
-                    Row(
-                        Modifier
-                            .clickable { nav.navigate(Routes.node(task.id)) }
-                            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        TaskCheck(
-                            done = task.done,
-                            onToggle = { vm.setDone(task.id, !task.done) },
-                            tint = taskChips.firstOrNull { it.isPriority }?.color,
-                            modifier = Modifier.padding(top = 1.dp),
-                        )
-                        Spacer(Modifier.width(13.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                // Same emphasis as the editor, so a row does not show the raw
-                                // markers for text that reads styled on its own page.
-                                markdownAnnotated(
-                                    task.title.orEmpty().ifBlank { "Untitled" },
-                                    y.textDim,
-                                ),
-                                style = MaterialTheme.typography.bodyLarge,
-                                textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
-                                color = if (task.done) y.textDim else y.textPrimary,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (taskChips.isNotEmpty() || pomo > 0) {
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.padding(top = 8.dp),
-                                ) {
-                                    taskChips.forEach { PropertyChip(it) }
-                                    if (pomo > 0) PomodoroCount(pomo)
-                                }
-                            }
-                        }
-                        // The way in, exactly as a list page shows it.
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = "Open",
-                            tint = y.textDim,
-                            modifier = Modifier.padding(top = 2.dp).size(18.dp),
+                    // The SAME row a list page draws. Not a look-alike: this screen used to carry
+                    // its own read-only copy, which is how tap-to-edit ended up working on Inbox
+                    // and not here. A task is a task wherever it is shown; the only thing a screen
+                    // decides is which tasks to put in front of it.
+                    Box(Modifier.padding(horizontal = 14.dp)) {
+                        TextualBlockRow(
+                            child = task,
+                            active = activeId == task.id,
+                            onActivate = { activeId = task.id },
+                            onFocusChange = { if (it) activeId = task.id },
+                            // Caret hand-off belongs to a document, where blocks split and merge.
+                            claimCaret = false,
+                            onCaretClaimed = {},
+                            // Enter finishes this task's title and starts the next one, so the
+                            // list's own rules stamp the new task exactly as the add bar would.
+                            onSplit = { before, after ->
+                                vm.rename(task.id, before)
+                                if (after.isNotBlank()) vm.addTask(after)
+                            },
+                            // No backspace-merge: the previous row may belong to another list
+                            // entirely, so there is nothing here for this task to merge back into.
+                            onMergeBack = {},
+                            chips = chips[task.id].orEmpty(),
+                            childCount = childCounts[task.id] ?: 0,
+                            ordinal = 0,
+                            pomoCount = pomoCounts[task.id] ?: 0,
+                            autoFocus = false,
+                            onAutoFocusConsumed = {},
+                            onRename = { vm.rename(task.id, it) },
+                            onToggleDone = { vm.setDone(task.id, it) },
+                            // Only tasks are gathered here, so there is no type to convert to.
+                            onBecome = {},
+                            onOpen = { nav.navigate(Routes.node(task.id)) },
                         )
                     }
                 }

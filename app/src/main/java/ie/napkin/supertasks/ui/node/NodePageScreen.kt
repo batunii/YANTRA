@@ -822,8 +822,11 @@ private fun BlockRow(
         NodeType.IMAGE -> ImageBlockRow(child, active, onActivate, vm)
         else -> TextualBlockRow(
             child, active, onActivate, onFocusChange, claimCaret, onCaretClaimed, onSplit,
-            onMergeBack, chips, childCount, ordinal, pomoCount, autoFocus, onAutoFocusConsumed, vm,
-            onOpen,
+            onMergeBack, chips, childCount, ordinal, pomoCount, autoFocus, onAutoFocusConsumed,
+            onRename = { vm.rename(child.id, it) },
+            onToggleDone = { vm.setDone(child.id, it) },
+            onBecome = { vm.convert(child, it) },
+            onOpen = onOpen,
         )
     }
 }
@@ -987,9 +990,18 @@ private fun Modifier.activeBlock(active: Boolean): Modifier {
     } else this
 }
 
+/**
+ * The one task/note/heading/list row in the app. A list, a smart list and a task's own page all
+ * draw their rows through here, so a task looks and behaves the same wherever it is shown — the
+ * only thing that varies is which tasks a screen puts in front of it.
+ *
+ * Takes actions rather than a ViewModel for exactly that reason: it was welded to
+ * NodePageViewModel, which is why the smart list had to grow a second, read-only copy of this row
+ * that then drifted (tap-to-edit on one screen, tap-to-open on the other).
+ */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun TextualBlockRow(
+internal fun TextualBlockRow(
     child: NodeEntity,
     active: Boolean,
     onActivate: () -> Unit,
@@ -1004,7 +1016,9 @@ private fun TextualBlockRow(
     pomoCount: Int,
     autoFocus: Boolean,
     onAutoFocusConsumed: () -> Unit,
-    vm: NodePageViewModel,
+    onRename: (String) -> Unit,
+    onToggleDone: (Boolean) -> Unit,
+    onBecome: (String) -> Unit,
     onOpen: () -> Unit,
 ) {
     val y = Yantra.colors
@@ -1046,13 +1060,13 @@ private fun TextualBlockRow(
     val editing = BlockEditing(
         text = text,
         type = child.type,
-        onTextChange = { text = it; vm.rename(child.id, it) },
+        onTextChange = { text = it; onRename(it) },
         onSplit = onSplit,
         onMergeBack = onMergeBack,
         onBecome = { become, rest ->
             text = rest
-            vm.rename(child.id, rest)
-            vm.convert(child, become)
+            onRename(rest)
+            onBecome(become)
         },
     )
 
@@ -1083,7 +1097,7 @@ private fun TextualBlockRow(
             if (isTask) {
                 TaskCheck(
                     done = child.done,
-                    onToggle = { vm.setDone(child.id, !child.done) },
+                    onToggle = { onToggleDone(!child.done) },
                     tint = chips.firstOrNull { it.isPriority }?.color,
                     modifier = Modifier.padding(top = 1.dp),
                 )
