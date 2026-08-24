@@ -33,6 +33,9 @@ internal fun localMidnight(millis: Long): Long =
     java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 
+/** Where blocks that were sitting loose on a list get gathered, so nothing is lost. */
+private const val STRAY_NOTES_TASK = "Notes"
+
 class NodeRepository(private val db: AppDatabase) {
     private val dao = db.nodeDao()
 
@@ -115,6 +118,28 @@ class NodeRepository(private val db: AppDatabase) {
         }
         val last = if (parentId == null) dao.lastRankTopLevel() else dao.lastRank(parentId)
         return Rank.after(last)
+    }
+
+    /**
+     * Enforces the one rule a list has: a list holds tasks.
+     *
+     * Anything else that ends up directly on a list — from an older build, or an import — is moved
+     * onto a task on that same list rather than hidden or deleted. Writing belongs on a task's
+     * page, so that is where it goes, and it stays reachable by opening that task. Idempotent: in
+     * the normal case this is one query that finds nothing.
+     */
+    suspend fun tidyListsToTasksOnly() {
+        for (list in dao.allListsOnce()) {
+            val stray = dao.childrenOnce(list.id).filter { it.type != NodeType.TASK }
+            if (stray.isEmpty()) continue
+            val home = dao.childrenOnce(list.id)
+                .firstOrNull { it.type == NodeType.TASK && it.title == STRAY_NOTES_TASK }
+                ?.id
+                ?: create(list.id, NodeType.TASK, STRAY_NOTES_TASK)
+            stray.forEach { block ->
+                dao.move(block.id, home, Rank.after(dao.lastRank(home)), now())
+            }
+        }
     }
 
     /** Fast capture: new task into the Inbox (found by name, recreated if missing). */

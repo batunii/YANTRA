@@ -142,7 +142,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // The page's own blocks — one flat list. Everything on this screen reasons about it: the tally,
     // the ordinals, the drag geometry, the write line. A block's indentation is its own property,
     // so laying the page out never means walking a tree.
-    val blocks by vm.blocks.collectAsStateWithLifecycle()
+    val allBlocks by vm.blocks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
@@ -188,6 +188,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val current = node
     val isTask = current?.type == NodeType.TASK
     val y = Yantra.colors
+
+    // A list is a list of tasks. Prose, headings, sketches and images are how you describe a task,
+    // so they live on the task's own page — a list page neither shows them nor offers to make one.
+    // (Anything that predates this rule is gathered onto a "Notes" task by tidyListsToTasksOnly,
+    // so the filter can never be the reason something is unreachable.)
+    val blocks = remember(allBlocks, isTask) {
+        if (isTask) allBlocks else allBlocks.filter { it.type == NodeType.TASK }
+    }
 
     // Collapse the header once the user scrolls — the page feels immersive, like a note.
     //
@@ -551,6 +559,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             modifier = Modifier
                 .navigationBarsPadding()
                 .imePadding(),
+            // Nothing to pick between on a list: every block on it is a task.
+            showTypes = isTask,
             currentType = caretBlock?.type?.takeIf { it in textTypes },
             onTask = { setType(NodeType.TASK) },
             onText = { setType(NodeType.PARAGRAPH) },
@@ -1202,6 +1212,7 @@ private fun ImageBlockRow(
 @Composable
 private fun BlockTypeBar(
     modifier: Modifier = Modifier,
+    showTypes: Boolean,
     currentType: String?,
     onTask: () -> Unit,
     onText: () -> Unit,
@@ -1218,6 +1229,9 @@ private fun BlockTypeBar(
     onDelete: (() -> Unit)? = null,
 ) {
     val y = Yantra.colors
+    // On a list with nothing selected the bar has nothing to offer, so it does not sit there as a
+    // strip of empty chrome.
+    if (!showTypes && onDelete == null) return
     val scroll = rememberScrollState()
     Row(
         modifier
@@ -1229,31 +1243,33 @@ private fun BlockTypeBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TypeChip("Task", selected = currentType == NodeType.TASK, onClick = onTask)
-        TypeChip("Note", selected = currentType == NodeType.PARAGRAPH, onClick = onText)
-        TypeChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, icon = Icons.Default.Title)
-        TypeChip(
-            "Bullet",
-            selected = currentType == NodeType.BULLET,
-            onClick = onBullet,
-            icon = Icons.AutoMirrored.Filled.FormatListBulleted,
-        )
-        TypeChip(
-            "Numbered",
-            selected = currentType == NodeType.NUMBERED,
-            onClick = onNumbered,
-            icon = Icons.Default.FormatListNumbered,
-        )
-        Box(
-            Modifier
-                .padding(horizontal = 4.dp)
-                .height(22.dp)
-                .width(1.dp)
-                .background(y.hairline),
-        )
         val noFocus = Modifier.focusProperties { canFocus = false }
-        NeutralChip("Ink", onInk, icon = Icons.Default.Draw, modifier = noFocus)
-        NeutralChip("Image", onImage, icon = Icons.Default.Image, modifier = noFocus)
+        if (showTypes) {
+            TypeChip("Task", selected = currentType == NodeType.TASK, onClick = onTask)
+            TypeChip("Note", selected = currentType == NodeType.PARAGRAPH, onClick = onText)
+            TypeChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, icon = Icons.Default.Title)
+            TypeChip(
+                "Bullet",
+                selected = currentType == NodeType.BULLET,
+                onClick = onBullet,
+                icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+            )
+            TypeChip(
+                "Numbered",
+                selected = currentType == NodeType.NUMBERED,
+                onClick = onNumbered,
+                icon = Icons.Default.FormatListNumbered,
+            )
+            Box(
+                Modifier
+                    .padding(horizontal = 4.dp)
+                    .height(22.dp)
+                    .width(1.dp)
+                    .background(y.hairline),
+            )
+            NeutralChip("Ink", onInk, icon = Icons.Default.Draw, modifier = noFocus)
+            NeutralChip("Image", onImage, icon = Icons.Default.Image, modifier = noFocus)
+        }
         // What the ⋮ used to hide. Out here they are simply visible, and they only appear once a
         // block is actually selected, so the bar is never showing an action with no subject.
         // Moving a block is the drag; indenting is a button, because it changes how a line reads

@@ -36,6 +36,9 @@ interface NodeDao {
     @Query("SELECT * FROM node WHERE parent_id IS NULL AND deleted_at IS NULL ORDER BY rank")
     fun topLevel(): Flow<List<NodeEntity>>
 
+    @Query("SELECT * FROM node WHERE type = 'list' AND deleted_at IS NULL ORDER BY rank")
+    suspend fun allListsOnce(): List<NodeEntity>
+
     /** Every list & smart list at any nesting (top-level or inside a group), for the Home grid. */
     @Query("SELECT * FROM node WHERE type IN ('list','smart_list') AND deleted_at IS NULL ORDER BY rank")
     fun allLists(): Flow<List<NodeEntity>>

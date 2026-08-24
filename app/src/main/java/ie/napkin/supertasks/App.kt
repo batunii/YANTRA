@@ -55,7 +55,11 @@ class AppContainer(app: Application) {
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
     /** First-run seeding; the splash joins this before resolving the Today smart list. */
-    val seeding: Job = appScope.launch { Seeder.seedIfEmpty(db) }
+    val seeding: Job = appScope.launch {
+        Seeder.seedIfEmpty(db)
+        // A list holds tasks; anything else that got onto one is gathered onto a task there.
+        nodes.tidyListsToTasksOnly()
+    }
 
     init {
         // Any process wake (widget tap, worker, activity) revives a live focus session.

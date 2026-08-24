@@ -92,21 +92,9 @@ object Seeder {
             NodeEntity(id = personal, parentId = null, type = NodeType.LIST, title = "Getting started", rank = rank, createdAt = now, updatedAt = now)
         )
 
+        // A list holds tasks. The explanation of what a task's page can hold therefore lives on a
+        // task's page, which is also the shortest way to demonstrate the point.
         var childRank = Rank.FIRST
-        val heading = id()
-        nodeDao.insert(
-            NodeEntity(id = heading, parentId = personal, type = NodeType.HEADING, title = "Welcome 👋", rank = childRank, createdAt = now, updatedAt = now)
-        )
-        childRank = Rank.after(childRank)
-        nodeDao.insert(
-            NodeEntity(
-                id = id(), parentId = personal, type = NodeType.PARAGRAPH,
-                title = "Lists hold tasks, notes, headings, ink sketches and images. Open any task as its own page to give it subtasks and notes.",
-                rank = childRank, createdAt = now, updatedAt = now,
-            )
-        )
-
-        childRank = Rank.after(childRank)
         val sampleTask = id()
         nodeDao.insert(
             NodeEntity(id = sampleTask, parentId = personal, type = NodeType.TASK, title = "Try opening this task as a page", rank = childRank, createdAt = now, updatedAt = now)
@@ -120,11 +108,19 @@ object Seeder {
 
         var subRank = Rank.FIRST
         nodeDao.insert(
-            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.TASK, title = "Tasks can nest — this is a subtask", rank = subRank, createdAt = now, updatedAt = now)
+            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.HEADING, title = "Welcome \uD83D\uDC4B", rank = subRank, createdAt = now, updatedAt = now)
         )
         subRank = Rank.after(subRank)
         nodeDao.insert(
-            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.PARAGRAPH, title = "…and can carry notes like this one.", rank = subRank, createdAt = now, updatedAt = now)
+            NodeEntity(
+                id = id(), parentId = sampleTask, type = NodeType.PARAGRAPH,
+                title = "A list holds tasks. A task's own page holds anything — notes, headings, lists, ink sketches, images — and other tasks.",
+                rank = subRank, createdAt = now, updatedAt = now,
+            )
+        )
+        subRank = Rank.after(subRank)
+        nodeDao.insert(
+            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.TASK, title = "Tasks can nest — this is a subtask", rank = subRank, createdAt = now, updatedAt = now)
         )
 
         childRank = Rank.after(childRank)
