@@ -11,14 +11,17 @@ data class StrokeItem(val id: String, val stroke: Stroke)
  * Ink is theme-native: the default pen is "ink" (black on light paper, white on dark paper).
  * Strokes are STORED with whatever color they were drawn in; at render time the two ink
  * colors swap with the theme, so a note written in light mode reads naturally in dark mode
- * and vice versa. Accent colors (coral, blue, …) pass through untouched.
+ * and vice versa. Accent colors pass through untouched.
  */
 object InkTheme {
-    const val BLACK_INK = 0xFF1A2150L   // indigo ink (light paper)
-    const val WHITE_INK = 0xFFEDEBFFL   // starlight ink (night paper)
+    // Warm graphite and warm off-white, matching the app's paper. These were an indigo/starlight
+    // pair from the old palette, which meant a sketch sat on visibly bluer paper than the page it
+    // was embedded in — a hand-drawn stroke is the one place a mismatched ground shows immediately.
+    const val BLACK_INK = 0xFF23211CL   // graphite ink (light paper)
+    const val WHITE_INK = 0xFFF1EEE7L   // chalk ink (night paper)
 
-    const val PAPER_LIGHT = 0xFFFFFFFF.toInt()
-    const val PAPER_DARK = 0xFF0E1435.toInt()
+    const val PAPER_LIGHT = 0xFFFFFDFA.toInt()
+    const val PAPER_DARK = 0xFF16140F.toInt()
 
     fun paper(dark: Boolean): Int = if (dark) PAPER_DARK else PAPER_LIGHT
 

@@ -3,10 +3,8 @@ package ie.napkin.supertasks.ui.smart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,18 +18,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,9 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,12 +45,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
-import ie.napkin.supertasks.ui.components.PomodoroCount
-import ie.napkin.supertasks.ui.components.PropertyChip
-import ie.napkin.supertasks.ui.components.TaskCheck
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import ie.napkin.supertasks.ui.components.TextFieldDialog
+import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.HeaderFold
+import ie.napkin.supertasks.ui.components.ComposedEmpty
+import ie.napkin.supertasks.ui.components.ListGroupRow
+import ie.napkin.supertasks.ui.components.QuickAddBar
+import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.node.TextualBlockRow
 import ie.napkin.supertasks.ui.container
-import ie.napkin.supertasks.ui.theme.MonoBreadcrumb
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraText
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -67,8 +68,17 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
+    val childCounts by vm.childCounts.collectAsStateWithLifecycle()
+    val completed by vm.completed.collectAsStateWithLifecycle()
     val description by vm.description.collectAsStateWithLifecycle()
     val y = Yantra.colors
+    var activeId by remember { mutableStateOf<String?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    var editingRule by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    val defs by vm.defs.collectAsStateWithLifecycle()
+    val labels by vm.labels.collectAsStateWithLifecycle()
+    val lists by vm.lists.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -79,100 +89,209 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         Column(
             Modifier
                 .fillMaxWidth()
+                // A plain rounded edge. The bhupura's gate was tried here and it was too loud for
+                // a band that sits above every screen — a signature you cannot look away from stops
+                // being cosmetic. What is left is the hairline below, which reads as the fold
+                // between two sheets of paper rather than as a shape.
                 .background(y.band, RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
-                .padding(top = 10.dp, bottom = 22.dp),
+                .padding(top = 10.dp, bottom = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(38.dp)
-                        .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                        .clickable { nav.popBackStack() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(20.dp))
-                }
+                NavCircle(
+                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    onClick = { nav.popBackStack() },
+                    iconSize = 20.dp,
+                )
                 Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .size(38.dp)
-                        .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = y.textSecondary, modifier = Modifier.size(18.dp))
+                // This button existed and did nothing. A smart view is defined entirely by its
+                // rule, so the rule is what its menu has to reach — otherwise the only way to
+                // change a view is to delete it and build another one from scratch.
+                Box {
+                    NavCircle(
+                        Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        onClick = { menu = true },
+                        iconSize = 18.dp,
+                    )
+                    DropdownMenu(
+                        expanded = menu,
+                        onDismissRequest = { menu = false },
+                        containerColor = y.cardBg,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Edit rules", color = y.textPrimary) },
+                            onClick = { menu = false; editingRule = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Rename", color = y.textPrimary) },
+                            onClick = { menu = false; renaming = true },
+                        )
+                    }
                 }
             }
+            // The star moves up into an eyebrow: it says what kind of page this is, which is
+            // context, not part of the title.
             Row(
-                Modifier.padding(top = 20.dp),
+                Modifier.padding(top = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = y.accent, modifier = Modifier.size(26.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(node?.title.orEmpty(), style = MaterialTheme.typography.titleLarge, color = y.textPrimary)
-            }
-            if (description.isNotBlank()) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = y.accent, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(7.dp))
                 Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
+                    "SMART VIEW",
+                    fontFamily = YantraText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.W600,
+                    letterSpacing = 1.5.sp,
                     color = y.textMuted,
-                    modifier = Modifier.padding(top = 14.dp),
                 )
             }
+            Text(
+                node?.title.orEmpty(),
+                style = MaterialTheme.typography.titleLarge,
+                color = y.textPrimary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            // Rule-speak demoted to a pill. How the view is assembled is mechanics; it belongs
+            // beside the title at label size, not under it in a sentence.
+            if (description.isNotBlank()) {
+                Row(
+                    Modifier
+                        .padding(top = 12.dp)
+                        .background(y.page, RoundedCornerShape(99.dp))
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(99.dp))
+                        .padding(horizontal = 11.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(6.dp).background(y.accent, CircleShape))
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        description,
+                        fontFamily = YantraText,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.W600,
+                        color = y.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
+        // The whole cosmetic budget for this edge: one hairline, inset past the band's corners so
+        // it reads as the fold between two sheets rather than as an underline.
+        HeaderFold()
 
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
         ) {
-            if (tasks.isEmpty()) {
+            if (tasks.isEmpty() && completed.isEmpty()) {
                 item(key = "empty") {
-                    Text(
-                        "Nothing matches right now.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = y.textMuted,
-                        modifier = Modifier.padding(vertical = 24.dp),
+                    ComposedEmpty("Nothing matches right now")
+                }
+            } else if (tasks.isEmpty()) {
+                // Everything this view asked for is finished. Saying so beats "nothing matches",
+                // which would be true of the rule and wrong about the day.
+                item(key = "all-done") {
+                    ComposedEmpty("All done here")
+                }
+            }
+            // One card, hairline-divided: two elevation layers instead of rows floating on the
+            // page. Corners are rounded only where the group actually ends.
+            // Open first, then what you finished. Two cards rather than one run of rows: the done
+            // half is not part of the rule's ordering — it is there because you did it today, not
+            // because it still matches — and giving it its own surface says so.
+            itemsIndexed(tasks, key = { _, t -> t.id }) { index, task ->
+                ListGroupRow {
+                    // The SAME row a list page draws. Not a look-alike: this screen used to carry
+                    // its own read-only copy, which is how tap-to-edit ended up working on Inbox
+                    // and not here. A task is a task wherever it is shown; the only thing a screen
+                    // decides is which tasks to put in front of it.
+                    Box(Modifier.padding(horizontal = 14.dp)) {
+                        TextualBlockRow(
+                            child = task,
+                            active = activeId == task.id,
+                            onActivate = { activeId = task.id },
+                            onFocusChange = { if (it) activeId = task.id },
+                            // Caret hand-off belongs to a document, where blocks split and merge.
+                            claimCaret = false,
+                            onCaretClaimed = {},
+                            // Nothing types here, so there is no Enter to split on and no
+                            // Backspace to merge back with.
+                            onSplit = { _, _ -> },
+                            onMergeBack = {},
+                            chips = chips[task.id].orEmpty(),
+                            childCount = childCounts[task.id] ?: 0,
+                            ordinal = 0,
+                            pomoCount = pomoCounts[task.id] ?: 0,
+                            autoFocus = false,
+                            onAutoFocusConsumed = {},
+                            onRename = {},
+                            onToggleDone = { vm.setDone(task.id, it) },
+                            onToggleInProgress = { vm.setInProgress(task.id, it) },
+                            // Only tasks are gathered here, so there is no type to convert to.
+                            onBecome = {},
+                            onOpen = { nav.navigate(Routes.node(task.id)) },
+                            // A smart list is a list: the row opens the task, it does not become a
+                            // text field. Typing happens on the task's own page.
+                            editable = false,
+                        )
+                    }
+                }
+            }
+
+            if (completed.isNotEmpty()) {
+                item(key = "done-header") {
+                    SectionLabel(
+                        "DONE · ${completed.size}",
+                        modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
                     )
                 }
-            }
-            items(tasks, key = { it.id }) { task ->
-                Column(Modifier.padding(vertical = 5.dp)) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        TaskCheck(done = task.done, onToggle = { vm.setDone(task.id, !task.done) }, modifier = Modifier.padding(top = 1.dp))
-                        Spacer(Modifier.width(13.dp))
-                        Text(
-                            task.title.orEmpty().ifBlank { "Untitled" },
-                            style = MaterialTheme.typography.bodyLarge,
-                            textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
-                            color = if (task.done) y.textDim else y.textPrimary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(top = 1.dp)
-                                .clickable { nav.navigate(Routes.node(task.id)) },
+                itemsIndexed(completed, key = { _, t -> "done-" + t.id }) { index, task ->
+                ListGroupRow {
+                    // The SAME row a list page draws. Not a look-alike: this screen used to carry
+                    // its own read-only copy, which is how tap-to-edit ended up working on Inbox
+                    // and not here. A task is a task wherever it is shown; the only thing a screen
+                    // decides is which tasks to put in front of it.
+                    Box(Modifier.padding(horizontal = 14.dp)) {
+                        TextualBlockRow(
+                            child = task,
+                            active = activeId == task.id,
+                            onActivate = { activeId = task.id },
+                            onFocusChange = { if (it) activeId = task.id },
+                            // Caret hand-off belongs to a document, where blocks split and merge.
+                            claimCaret = false,
+                            onCaretClaimed = {},
+                            // Nothing types here, so there is no Enter to split on and no
+                            // Backspace to merge back with.
+                            onSplit = { _, _ -> },
+                            onMergeBack = {},
+                            chips = chips[task.id].orEmpty(),
+                            childCount = childCounts[task.id] ?: 0,
+                            ordinal = 0,
+                            pomoCount = pomoCounts[task.id] ?: 0,
+                            autoFocus = false,
+                            onAutoFocusConsumed = {},
+                            onRename = {},
+                            onToggleDone = { vm.setDone(task.id, it) },
+                            onToggleInProgress = { vm.setInProgress(task.id, it) },
+                            // Only tasks are gathered here, so there is no type to convert to.
+                            onBecome = {},
+                            onOpen = { nav.navigate(Routes.node(task.id)) },
+                            // A smart list is a list: the row opens the task, it does not become a
+                            // text field. Typing happens on the task's own page.
+                            editable = false,
                         )
-                        IconButton(onClick = { nav.navigate(Routes.node(task.id)) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open as page", tint = y.textDim, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                    val taskChips = chips[task.id].orEmpty()
-                    val pomo = pomoCounts[task.id] ?: 0
-                    if (taskChips.isNotEmpty() || pomo > 0) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(start = 35.dp, top = 6.dp),
-                        ) {
-                            taskChips.forEach { PropertyChip(it) }
-                            if (pomo > 0) PomodoroCount(pomo)
-                        }
                     }
                 }
+                }
             }
+
             item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
         }
 
@@ -185,66 +304,37 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             )
         }
     }
-}
 
-@Composable
-private fun QuickAddBar(modifier: Modifier = Modifier, onAdd: (String) -> Unit) {
-    val y = Yantra.colors
-    var text by remember { mutableStateOf("") }
-    val send = {
-        if (text.isNotBlank()) {
-            onAdd(text.trim())
-            text = ""
+    // The same sheet the list was created with, opened on the stored rule. Reusing it is the point:
+    // an "edit" screen of its own would be a second place for the same decisions to be made
+    // differently.
+    if (editingRule) {
+        def?.let { d ->
+            SmartListBuilderSheet(
+                initialName = node?.title.orEmpty(),
+                defs = defs,
+                labels = labels,
+                lists = lists,
+                onCreateLabel = vm::createLabel,
+                onDismiss = { editingRule = false },
+                onCreate = { newName, filter, sort, homeId ->
+                    if (newName != node?.title) vm.renameList(newName)
+                    vm.updateRule(filter, sort, homeId)
+                    editingRule = false
+                },
+                editing = d,
+            )
         }
     }
-    Column(
-        modifier
-            .fillMaxWidth()
-            .background(y.page)
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 22.dp),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(y.cardBg, RoundedCornerShape(16.dp))
-                .border(1.dp, y.tileBorder, RoundedCornerShape(16.dp))
-                .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
-                cursorBrush = SolidColor(y.accent),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (text.isEmpty()) {
-                            Text("Add a task…", color = y.textDim, fontSize = 14.sp)
-                        }
-                        inner()
-                    }
-                },
-            )
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .background(y.accentFill, RoundedCornerShape(12.dp))
-                    .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
-                    .clickable(onClick = send),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Add task", tint = y.accent, modifier = Modifier.size(18.dp))
-            }
-        }
-        Text(
-            "New tasks are created in your home list and tagged to match this view automatically.",
-            fontSize = 11.sp,
-            color = y.textDim,
-            lineHeight = 15.sp,
-            modifier = Modifier.padding(start = 4.dp, top = 6.dp),
+
+    if (renaming) {
+        TextFieldDialog(
+            title = "Rename view",
+            confirmLabel = "Save",
+            placeholder = "Name",
+            initial = node?.title.orEmpty(),
+            onDismiss = { renaming = false },
+            onConfirm = { vm.renameList(it); renaming = false },
         )
     }
 }

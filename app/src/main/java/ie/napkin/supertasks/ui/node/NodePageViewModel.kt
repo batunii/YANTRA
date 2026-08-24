@@ -45,7 +45,11 @@ class NodePageViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val children: StateFlow<List<NodeEntity>> =
+    /**
+     * The page's own blocks. A page shows what was written on it — a task's contents belong to that
+     * task's page, reachable through its chevron, and are not repeated here.
+     */
+    val blocks: StateFlow<List<NodeEntity>> =
         nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Only the fixed Priority/Due fields — no more arbitrary user-created schema fields. */
@@ -114,10 +118,22 @@ class NodePageViewModel(
 
     // ---- block ops ----
 
+    /**
+     * Creates a block. With [afterId] it lands immediately after that block *as its sibling*,
+     * whatever depth that is; without one it goes at the end of the page.
+     *
+     * The parent has to be resolved from [afterId] rather than assumed to be the page: a page
+     * renders nested blocks now, and [NodeRepository.create] only honours `afterId` when the two
+     * share a parent — so passing the page root while pointing at a nested block silently appended
+     * to the bottom of the page instead of inserting where the caret was.
+     */
     fun addBlock(type: String, title: String? = null, afterId: String? = null, onCreated: (String) -> Unit = {}) {
         viewModelScope.launch {
-            val id = nodes.create(nodeId, type, title, afterId)
-            onCreated(id)
+            // Inherits the indentation of the block it follows: inserting below an indented line
+            // should continue at that level, not jump back to the margin. Appending to the page
+            // (no afterId) starts flush left.
+            val after = afterId?.let { nodes.byId(it) }
+            onCreated(nodes.create(after?.parentId ?: nodeId, type, title, afterId, after?.indent ?: 0))
         }
     }
 
@@ -131,8 +147,17 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.setDone(id, done) }
     }
 
+    fun setInProgress(id: String, inProgress: Boolean) {
+        viewModelScope.launch { nodes.setInProgress(id, inProgress) }
+    }
+
     fun delete(id: String) {
-        viewModelScope.launch { nodes.delete(id) }
+        viewModelScope.launch {
+            // Deleting the line above an indented one leaves it indented under nothing.
+            val parent = nodes.byId(id)?.parentId
+            nodes.delete(id)
+            if (parent != null) nodes.normalizeIndents(parent)
+        }
     }
 
     fun moveUp(node: NodeEntity) {
@@ -143,22 +168,84 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.moveDown(node) }
     }
 
+    /**
+     * Indentation is layout only: it shifts the line on this page and never moves the block into
+     * the one above it. Somewhere to *put* things is what a task's own page is for; how a line sits
+     * is a separate question, and conflating them is what made indenting look like deletion.
+     */
     fun indent(node: NodeEntity) {
-        viewModelScope.launch { nodes.indent(node) }
+        viewModelScope.launch { nodes.setIndent(node, node.indent + 1) }
     }
 
     fun outdent(node: NodeEntity) {
-        viewModelScope.launch { nodes.outdent(node, nodeId) }
+        viewModelScope.launch { nodes.setIndent(node, node.indent - 1) }
+    }
+
+    /** Commit of a drag-to-reorder: put [node] at [toIndex] among its siblings. */
+    fun moveToIndex(node: NodeEntity, toIndex: Int) {
+        viewModelScope.launch { nodes.moveToIndex(node, toIndex) }
     }
 
     fun convert(node: NodeEntity, type: String) {
         viewModelScope.launch { nodes.setType(node.id, type) }
     }
 
+    /**
+     * Splits a block at the caret: [before] stays, [after] becomes a new block of the same kind
+     * directly below, which the caller then focuses. This is what Enter does — a block editor
+     * makes blocks with Enter, not with a toolbar.
+     *
+     * A heading splits into a paragraph, since the thing you type after a heading is body text.
+     */
+    fun splitBlock(node: NodeEntity, before: String, after: String, onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            nodes.rename(node.id, before)
+            // A heading is a one-off, so what follows it is body text. A list item continues the
+            // list — that is the whole point of pressing Enter in one.
+            val type = if (node.type == NodeType.HEADING) NodeType.PARAGRAPH else node.type
+            // Same level as the block being split — Enter on an indented line keeps you there.
+            onCreated(nodes.create(node.parentId ?: nodeId, type, after, node.id, node.indent))
+        }
+    }
+
+    /**
+     * Drops the run of blank blocks at the *end* of the page. Called when leaving, never while
+     * editing: an empty block is only litter once you have walked away from it, and deleting on
+     * blur would take the block you just tapped away from to reach the toolbar.
+     *
+     * Trailing-only and blank-only by design. A blank block in the middle of a page is a spacer
+     * someone made on purpose, and a task with children or a completion is not blank whatever
+     * its title says.
+     */
+    fun pruneTrailingBlanks(childCounts: Map<String, Int>) {
+        // appScope, not viewModelScope: this is called from onDispose as the screen goes away, and
+        // the ViewModel's scope is cancelled at the same moment — which cancelled the loop after
+        // the first delete and left the rest of the blanks on the page.
+        container.appScope.launch {
+            val blocks = this@NodePageViewModel.blocks.value
+            val disposable = blocks.reversed().takeWhile { b ->
+                b.title.isNullOrBlank() &&
+                    b.type in NodeType.TEXTUAL &&
+                    !b.done &&
+                    (childCounts[b.id] ?: 0) == 0
+            }
+            disposable.forEach { nodes.delete(it.id) }
+            if (disposable.isNotEmpty()) nodes.normalizeIndents(nodeId)
+        }
+    }
+
     // ---- properties ----
 
     fun setProperty(childId: String, def: PropertyDefEntity, text: String? = null, number: Double? = null, date: Long? = null, bool: Boolean? = null) {
         viewModelScope.launch { properties.setValue(childId, def.id, text, number, date, bool) }
+    }
+
+    fun setDue(childId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) {
+        viewModelScope.launch { properties.setDue(childId, dateMillis, hasTime, reminderOffsetMin) }
+    }
+
+    fun setDeadline(childId: String, dateMillis: Long) {
+        viewModelScope.launch { properties.setDeadline(childId, dateMillis) }
     }
 
     fun clearProperty(childId: String, defId: String) {

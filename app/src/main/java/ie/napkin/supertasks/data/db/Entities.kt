@@ -11,10 +11,30 @@ object NodeType {
     const val TASK = "task"
     const val PARAGRAPH = "paragraph"
     const val HEADING = "heading"
+    const val BULLET = "bullet"
+    const val NUMBERED = "numbered"
     const val INK = "ink"
     const val IMAGE = "image"
     const val SMART_LIST = "smart_list"
     const val GROUP = "group"   // a Home banner grouping lists & smart lists (organizational only)
+
+    /**
+     * The block types that are "a line of text with something in front of it" — a checkbox, a
+     * bullet, a number, or nothing. They share one row composable and convert freely between each
+     * other, so anything that asks "is this an editable line?" asks this.
+     *
+     * [type] is a plain string column, so adding members here needs no migration; older rows
+     * simply never carry the new values.
+     */
+    val TEXTUAL: Set<String> = setOf(TASK, PARAGRAPH, HEADING, BULLET, NUMBERED)
+}
+
+/**
+ * Stable identities for app-created nodes that features must find again (seeded ids are random
+ * UUIDs). Unique-indexed; NULL for everything user-created.
+ */
+object SystemKey {
+    const val TODAY = "today"
 }
 
 @Entity(
@@ -26,7 +46,11 @@ object NodeType {
             childColumns = ["parent_id"],
         )
     ],
-    indices = [Index(value = ["parent_id", "rank"], name = "idx_node_parent")]
+    indices = [
+        Index(value = ["parent_id", "rank"], name = "idx_node_parent"),
+        // SQLite unique indexes allow multiple NULLs — only system-keyed nodes are constrained.
+        Index(value = ["system_key"], unique = true, name = "idx_node_system_key"),
+    ]
 )
 data class NodeEntity(
     @PrimaryKey val id: String,                              // client-generated UUID (sync-ready)
@@ -35,12 +59,30 @@ data class NodeEntity(
     val title: String?,
     val rank: String,                                        // fractional index for sibling order
     val done: Boolean = false,
+    /**
+     * Started but not finished — the middle state of the task glyph (open → in progress → done).
+     *
+     * Stored rather than derived from a running focus session on purpose: the design has you
+     * long-press a task to say "I am on this", which is a claim about intent, not about whether a
+     * timer happens to be ticking. A task stays in progress across app restarts and between
+     * sessions, and a session on a task you never marked does not silently move it.
+     *
+     * Meaningless when [done] is true; completion supersedes it, and the repository clears it.
+     */
+    @ColumnInfo(name = "in_progress") val inProgress: Boolean = false,
     val collapsed: Boolean = false,
+    /**
+     * How far this block is indented on its page, purely visually. Deliberately *not* parentage:
+     * indenting a block under a task must not move the block into that task, so how a line is laid
+     * out and where it lives are two separate facts. Nesting is what a task's own page is for.
+     */
+    val indent: Int = 0,
     // canvas-later (ignored by linear render):
     @ColumnInfo(name = "canvas_x") val canvasX: Double? = null,
     @ColumnInfo(name = "canvas_y") val canvasY: Double? = null,
     @ColumnInfo(name = "canvas_w") val canvasW: Double? = null,
     @ColumnInfo(name = "canvas_h") val canvasH: Double? = null,
+    @ColumnInfo(name = "system_key") val systemKey: String? = null,  // see [SystemKey]
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,    // LWW clock for sync
     @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,
@@ -51,6 +93,7 @@ object PropertyKind {
     const val TEXT = "text"
     const val NUMBER = "number"
     const val DATE = "date"
+    const val DATETIME = "datetime"   // exact instant (epoch millis in v_date), e.g. Reminder
     const val CHECKBOX = "checkbox"
 }
 
@@ -174,3 +217,4 @@ data class NodeLabelEntity(
     @ColumnInfo(name = "label_id") val labelId: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
 )
+

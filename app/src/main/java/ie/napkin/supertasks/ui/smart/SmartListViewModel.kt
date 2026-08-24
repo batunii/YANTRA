@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.LabelEntity
+import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.SmartListDefEntity
@@ -44,6 +45,21 @@ class SmartListViewModel(
         def.flatMapLatest { d -> if (d == null) flowOf(emptyList()) else smartLists.query(d) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * What you finished in this view. A rule like Today's says "due today AND not done", so
+     * completing a task drops it out of its own view — the day's work disappears exactly as you do
+     * it. Today is the tasks that are for today, done or not, so the completed half is asked for
+     * separately and shown below.
+     *
+     * Empty when the rule has no done clause, because then [tasks] already contains both halves and
+     * there is nothing to append.
+     */
+    val completed: StateFlow<List<NodeEntity>> =
+        def.flatMapLatest { d ->
+            if (d == null) flowOf(emptyList())
+            else smartLists.queryCompleted(d) ?: flowOf(emptyList())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     /** Matching tasks can live anywhere, so chips come from the full value/label set. */
     val chips: StateFlow<Map<String, List<ChipData>>> =
         combine(
@@ -58,6 +74,15 @@ class SmartListViewModel(
             }
             merged
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Subtask counts for whatever is currently matching, so the chevron reads the same here. */
+    val childCounts: StateFlow<Map<String, Int>> =
+        combine(tasks, completed) { open, done -> open + done }
+            .flatMapLatest { list ->
+                if (list.isEmpty()) flowOf(emptyMap())
+                else nodes.childCountsFor(list.map { it.id })
+                    .map { rows -> rows.associate { it.rootId to it.total } }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val pomoCounts: StateFlow<Map<String, Int>> =
         container.pomodoro.completedCounts()
@@ -76,8 +101,49 @@ class SmartListViewModel(
         }
     }
 
+    // What the rule editor needs to offer choices: the properties you can filter on, the labels you
+    // can match, and the lists a new task could land in. Same three inputs the create sheet takes on
+    // the home screen, because it is the same sheet.
+    val defs: StateFlow<List<ie.napkin.supertasks.data.db.PropertyDefEntity>> =
+        properties.builtInDefs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val labels: StateFlow<List<ie.napkin.supertasks.data.db.LabelEntity>> =
+        container.labels.all().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val lists: StateFlow<List<NodeEntity>> =
+        nodes.allLists()
+            .map { all -> all.filter { it.type == ie.napkin.supertasks.data.db.NodeType.LIST } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun createLabel(name: String) = container.labels.getOrCreate(name)
+
+    /** Rename the view itself, not a task in it. */
+    fun renameList(title: String) {
+        viewModelScope.launch { nodes.rename(nodeId, title) }
+    }
+
+    /**
+     * Rewrite this view's rule. Nothing else has to happen: the task list is a query, so the screen
+     * re-populates from the new definition the moment it lands.
+     */
+    fun updateRule(filter: Filter, sort: List<SortSpec>, homeParentId: String?) {
+        viewModelScope.launch {
+            smartLists.updateSmartList(
+                nodeId = nodeId,
+                scopeRootId = def.value?.scopeRootId,
+                filter = filter,
+                sort = sort,
+                homeParentId = homeParentId,
+            )
+        }
+    }
+
     fun setDone(id: String, done: Boolean) {
         viewModelScope.launch { nodes.setDone(id, done) }
+    }
+
+    fun setInProgress(id: String, inProgress: Boolean) {
+        viewModelScope.launch { nodes.setInProgress(id, inProgress) }
     }
 
     private suspend fun describe(d: SmartListDefEntity?, defs: List<PropertyDefEntity>, labels: List<LabelEntity>): String {
@@ -88,8 +154,10 @@ class SmartListViewModel(
         val filter = runCatching { FilterJson.decodeFromString(Filter.serializer(), d.filterJson) }.getOrNull()
         collectParts(filter, defById, labelById, parts)
         val home = d.homeParentId?.let { nodes.byId(it)?.title }
-        if (home != null) parts += "new tasks land in $home"
-        return parts.joinToString(" · ")
+        if (home != null) parts += "lands in $home"
+        // This renders as a filter pill next to the title, not a sentence under it — keep it to
+        // the few parts that actually fit on one line.
+        return parts.take(3).joinToString(" · ")
     }
 
     private fun collectParts(
@@ -101,9 +169,12 @@ class SmartListViewModel(
         when (f) {
             null -> Unit
             is Filter.All -> f.filters.forEach { collectParts(it, defs, labels, out) }
-            is Filter.AnyOf -> out += "any of ${f.filters.size} rules"
-            is Filter.Not -> out += "excluding a rule"
-            is Filter.Done -> if (!f.value) out += "open tasks" else out += "completed tasks"
+            is Filter.AnyOf -> out += "${f.filters.size} rules"
+            is Filter.Not -> out += "1 exclusion"
+            // "open tasks" is the default reading of a task list — only the unusual case is worth
+            // the pill's one line.
+            is Filter.Done -> if (f.value) out += "completed"
+            is Filter.InProgress -> out += if (f.value) "started" else "not started"
             is Filter.Type -> Unit
             is Filter.HasLabel -> out += "label: ${labels[f.labelId]?.name ?: "?"}"
             is Filter.Prop -> {

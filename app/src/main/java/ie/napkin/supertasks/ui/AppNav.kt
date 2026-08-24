@@ -1,8 +1,16 @@
 package ie.napkin.supertasks.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.navigation.NavHostController
@@ -26,8 +34,8 @@ fun CreationExtras.container(): AppContainer = (this[APPLICATION_KEY] as App).co
 fun appContainer(): AppContainer =
     (LocalContext.current.applicationContext as App).container
 
-/** A node to open on launch (e.g. from a home-screen widget tap). */
-data class OpenTarget(val nodeId: String, val isSmart: Boolean)
+/** A launch deep-link: a node to open (widget/notification tap), or the focus screen. */
+data class OpenTarget(val nodeId: String?, val isSmart: Boolean, val focus: Boolean = false)
 
 object Routes {
     const val SPLASH = "splash"
@@ -50,16 +58,28 @@ fun AppNav(
     // A widget tap skips the splash and jumps straight to the tapped list/task.
     LaunchedEffect(openTarget) {
         val target = openTarget ?: return@LaunchedEffect
-        val route = if (target.isSmart) Routes.smart(target.nodeId) else Routes.node(target.nodeId)
+        val route = when {
+            target.focus -> Routes.FOCUS_CURRENT
+            target.nodeId == null -> return@LaunchedEffect
+            target.isSmart -> Routes.smart(target.nodeId)
+            else -> Routes.node(target.nodeId)
+        }
         navController.navigate(route) {
             popUpTo(Routes.HOME) { inclusive = false }
             launchSingleTop = true
         }
         onOpenConsumed()
     }
+    // Expressive spatial motion: pages slide in on a spring with a fade; pops mirror it.
+    val spatialSlide = spring<IntOffset>(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
+    val effectsFade = tween<Float>(220)
     NavHost(
         navController = navController,
         startDestination = if (openTarget != null) Routes.HOME else Routes.SPLASH,
+        enterTransition = { slideInHorizontally(spatialSlide) { it / 6 } + fadeIn(effectsFade) },
+        exitTransition = { fadeOut(effectsFade) },
+        popEnterTransition = { fadeIn(effectsFade) },
+        popExitTransition = { slideOutHorizontally(spatialSlide) { it / 6 } + fadeOut(effectsFade) },
     ) {
         composable(Routes.SPLASH) {
             SplashScreen(navController)

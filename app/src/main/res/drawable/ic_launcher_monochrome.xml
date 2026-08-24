@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon variant (Android 13+): the launcher tints this itself, so everything must be one
+  flat colour — the bindu becomes a filled disc in the same ink as the frame. The shape still
+  reads, which is the whole reason the mark is a silhouette and not a picture.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="21" android:translateY="21" android:scaleX="2.357" android:scaleY="2.357">
+        <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5"
+            android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M8,4 L11,4 L11,2 L17,2 L17,4 L20,4 Q24,4 24,8 L24,11 L26,11 L26,17 L24,17 L24,20 Q24,24 20,24 L17,24 L17,26 L11,26 L11,24 L8,24 Q4,24 4,20 L4,17 L2,17 L2,11 L4,11 L4,8 Q4,4 8,4 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M14,10.4 A3.6,3.6 0 1 1 14,17.6 A3.6,3.6 0 1 1 14,10.4 Z" />
+    </group>
+</vector>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The ground the mark sits on: warm graphite, the same near-neutral paper the dark theme uses
+  (oklch 0.171 / 0.005 / 80°). Flat on purpose — the gradient the old icon carried was the last
+  survivor of the indigo palette, and a lit ground is exactly what the motion law's sibling rules
+  out everywhere else in the app.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF15150F" android:pathData="M0,0 h108 v108 h-108 z" />
+</vector>

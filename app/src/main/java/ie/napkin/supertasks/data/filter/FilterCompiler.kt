@@ -45,7 +45,11 @@ object FilterCompiler {
             appendClause(sb, args, filter, nowMillis)
         }
 
-        sb.append("\nORDER BY ")
+        // Started first, always, before whatever the list sorts by. A task you are in the middle of
+        // outranks one you have not opened — that is what saying "I am on this" was for, and a
+        // marker that does not move the task up the page is only a decoration. It costs nothing on
+        // lists where nothing is started, and a completed-tasks list can never have one.
+        sb.append("\nORDER BY n.in_progress DESC, ")
         if (sort.isEmpty()) {
             sb.append("n.created_at DESC")
         } else {
@@ -69,6 +73,10 @@ object FilterCompiler {
             }
             is Filter.Done -> {
                 sb.append("n.done = ?")
+                args += if (f.value) 1L else 0L
+            }
+            is Filter.InProgress -> {
+                sb.append("n.in_progress = ?")
                 args += if (f.value) 1L else 0L
             }
             is Filter.Type -> {

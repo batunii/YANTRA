@@ -2,9 +2,12 @@ package ie.napkin.supertasks.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.ui.graphics.Color
+import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeLabelEntity
 import ie.napkin.supertasks.data.db.PropertyDefEntity
@@ -12,9 +15,6 @@ import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.repo.SelectConfig
-
-/** Accent used where a due/date chip needs colour; date chips are neutral by default now. */
-val DueChipColor = Color(0xFF709AFB)
 
 /** Turns raw typed values into displayable chips, grouped by node id. */
 fun buildChips(
@@ -42,20 +42,56 @@ fun buildLabelChips(
         .groupBy({ it.first }, { it.second })
 }
 
-// The only two built-in fields — identified by name since PropertyKind.SELECT/DATE alone
-// isn't specific enough (orphaned legacy custom defs could share a kind).
-private const val PRIORITY_NAME = "Priority"
-private const val DUE_NAME = "Due"
+// Built-in fields are identified by name since PropertyKind.SELECT/DATE alone isn't
+// specific enough (orphaned legacy custom defs could share a kind).
+private const val PRIORITY_NAME = BuiltIns.PRIORITY_NAME
+private const val DUE_NAME = BuiltIns.DUE_NAME
+private const val DEADLINE_NAME = BuiltIns.DEADLINE_NAME
 
 fun chipFor(def: PropertyDefEntity, v: PropertyValueEntity): ChipData? = when (def.kind) {
     PropertyKind.SELECT -> v.vText?.let { name ->
         val option = selectConfig(def).options.firstOrNull { it.name == name }
-        val icon = if (def.name == PRIORITY_NAME) Icons.Default.Flag else null
-        ChipData(def.id, name, option?.color?.let { Color(it) }, icon)
+        val isPriority = def.name == PRIORITY_NAME
+        ChipData(
+            def.id, name, option?.color?.let { Color(it) },
+            if (isPriority) Icons.Default.Flag else null,
+            isPriority = isPriority,
+        )
     }
-    PropertyKind.DATE -> v.vDate?.let {
-        val icon = if (def.name == DUE_NAME) Icons.Default.DateRange else null
-        ChipData(def.id, dateLabel(it), null, icon)
+    PropertyKind.DATE -> v.vDate?.let { millis ->
+        when (def.name) {
+            // A date is only worth colouring when it says something: past is red and says so,
+            // today is the accent, anything further out stays neutral.
+            DUE_NAME -> {
+                val day = localDateOf(millis)
+                val today = java.time.LocalDate.now()
+                val base = if (v.vBool == true) dateTimeLabel(millis) else dateLabel(millis)
+                when {
+                    day.isBefore(today) ->
+                        ChipData(def.id, "$base · overdue", null, Icons.Default.DateRange, ChipStatus.Overdue)
+                    else -> ChipData(
+                        def.id, base, null,
+                        if (v.vNumber != null) Icons.Default.Alarm else Icons.Default.DateRange,
+                        if (day == today) ChipStatus.Due else ChipStatus.None,
+                    )
+                }
+            }
+            // The deadline countdown is the neutral one — it reads as distance, not alarm —
+            // right up until the day it lands (amber) and after it passes (red).
+            DEADLINE_NAME -> {
+                val day = localDateOf(millis)
+                val today = java.time.LocalDate.now()
+                ChipData(
+                    def.id, deadlineLabel(millis), null, Icons.Default.Adjust,
+                    when {
+                        day.isBefore(today) -> ChipStatus.Overdue
+                        day == today -> ChipStatus.Warn
+                        else -> ChipStatus.None
+                    },
+                )
+            }
+            else -> ChipData(def.id, dateLabel(millis), null, null)
+        }
     }
     PropertyKind.NUMBER -> v.vNumber?.let {
         val label = if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
@@ -64,6 +100,9 @@ fun chipFor(def: PropertyDefEntity, v: PropertyValueEntity): ChipData? = when (d
     PropertyKind.CHECKBOX -> if (v.vBool == true) ChipData(def.id, def.name, null) else null
     else -> v.vText?.takeIf { it.isNotBlank() }?.let { ChipData(def.id, it, null) }
 }
+
+private fun localDateOf(millis: Long): java.time.LocalDate =
+    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
 
 fun labelChipFor(label: LabelEntity): ChipData =
     ChipData(label.id, label.name, label.color?.let { Color(it) }, Icons.AutoMirrored.Filled.Label)

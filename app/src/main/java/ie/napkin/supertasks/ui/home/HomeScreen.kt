@@ -60,10 +60,12 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.ConfirmDialog
+import ie.napkin.supertasks.ui.components.NavCircleSurface
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoBanner
+import androidx.compose.foundation.layout.offset
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
@@ -105,7 +107,12 @@ fun HomeScreen(nav: NavHostController) {
     val allRegularLists = allLists.filter { it.type == NodeType.LIST }
     val y = Yantra.colors
 
-    val openCount = counts.values.sumOf { (it.total - it.doneCount).coerceAtLeast(0) }
+    // Lists that OWN their tasks only. A smart list re-counts tasks that already live in one of
+    // these, so summing every entry would tally the same task twice now that smart lists carry
+    // counts too — the header would read 17 open where 13 tasks exist.
+    val openCount = allRegularLists
+        .mapNotNull { counts[it.id] }
+        .sumOf { (it.total - it.doneCount).coerceAtLeast(0) }
     val listCount = allRegularLists.size
 
     val renderRow: @Composable (NodeEntity) -> Unit = { node ->
@@ -113,11 +120,13 @@ fun HomeScreen(nav: NavHostController) {
         val c = counts[node.id]
         HomeRow(
             node = node,
-            subtitle = if (smart) "Updates live"
-            else if (c == null || c.total == 0) "Empty" else "${c.doneCount} of ${c.total} done",
+            // Every list says where it stands. "Updates live" described the machinery instead —
+            // true of a smart list, but it is not what you came to the row to find out, and it
+            // left the one genuinely useful number missing from half the lists on the screen.
+            subtitle = if (c == null || c.total == 0) "Empty" else "${c.doneCount} of ${c.total} done",
             smart = smart,
-            fraction = if (smart || c == null || c.total == 0) 0f else c.doneCount.toFloat() / c.total,
-            showCompass = !smart && (c?.total ?: 0) > 0,
+            fraction = if (c == null || c.total == 0) 0f else c.doneCount.toFloat() / c.total,
+            showCompass = (c?.total ?: 0) > 0,
             grouped = node.parentId != null,
             onClick = { nav.navigate(if (smart) Routes.smart(node.id) else Routes.node(node.id)) },
             onRename = { renaming = node },
@@ -290,12 +299,7 @@ private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
-        Box(
-            Modifier.size(40.dp)
-                .background(y.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                .clickable(onClick = onSettings),
-            contentAlignment = Alignment.Center,
-        ) { SettingsGlyph() }
+        NavCircleSurface(onClick = onSettings, size = 40.dp) { SettingsGlyph() }
     }
 }
 

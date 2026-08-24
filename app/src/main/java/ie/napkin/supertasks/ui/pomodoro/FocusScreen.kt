@@ -64,6 +64,10 @@ import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoLarge
+import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.LocalYantraHaptics
+import ie.napkin.supertasks.ui.components.isReducedMotion
+import androidx.compose.ui.platform.LocalContext
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -104,6 +108,13 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
         historyNodeId?.let { vm.sessionsFor(it) } ?: flowOf(emptyList())
     }.collectAsStateWithLifecycle(initialValue = emptyList())
 
+    // Completed sessions only: the log is appended at session close, so a trikona and its day's
+    // first ring always arrive together and an abandoned session leaves no trace.
+    val dayCounts = remember(sessions) {
+        groupSessionsByDay(
+            sessions.filter { it.completed }.map { java.time.Instant.ofEpochMilli(it.startedAt) }
+        )
+    }
     val active = timerState
 
     Box(
@@ -111,43 +122,23 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
             .fillMaxSize()
             .background(y.page),
     ) {
-        // A single faint sparkle (the same glyph completion pops) sits behind the instrument —
-        // this app's own mark, not a literal hexagram borrowed for the occasion.
-        ie.napkin.supertasks.ui.components.SparkleMark(
-            Modifier.align(Alignment.Center).size(300.dp), tint = y.accent, alpha = 0.1f,
-        )
-        // Ambient accent glow behind the ring while a session is live.
-        if (active != null) {
-            Box(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 90.dp)
-                    .size(360.dp)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(y.accent.copy(alpha = 0.20f), Color.Transparent),
-                            radius = 360f,
-                        ),
-                        CircleShape,
-                    ),
-            )
-        }
-
+        // No watermark here, and no glow either. The glyph in the middle of this screen already IS
+        // the bhupura, at the size the screen is built around: a second faint one behind it read as
+        // a misprint, two copies of the same square not quite lining up. The radial accent glow that
+        // used to sit here is gone for the related reason — the motion law's sibling is that nothing
+        // radiates at rest, and a lit halo is texture the strata would have to compete with.
         Column(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding(),
         ) {
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .padding(start = 0.dp)
-                    .clickable { nav.popBackStack() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(22.dp))
-            }
+            NavCircle(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Back",
+                onClick = { nav.popBackStack() },
+                iconSize = 22.dp,
+            )
 
             when {
                 active != null && active.isFinished -> DoneContent(
@@ -157,6 +148,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                 )
                 active != null -> ActiveTimer(
                     state = active,
+                    dayCounts = dayCounts,
                     onPause = vm.timer::pause,
                     onResume = vm.timer::resume,
                     onComplete = vm.timer::completeEarly,
@@ -175,7 +167,9 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
                         ie.napkin.supertasks.ui.components.YantraMark(
-                            Modifier.size(56.dp), tint = y.accent.copy(alpha = 0.7f), checkTint = y.textSecondary,
+                            Modifier.size(60.dp),
+                            tint = y.checkOutline,
+                            checkTint = y.accent.copy(alpha = 0.55f),
                         )
                         Text(
                             "Nothing in focus.\nStart a session from any task.",
@@ -271,6 +265,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
 @Composable
 private fun ActiveTimer(
     state: ie.napkin.supertasks.domain.PomodoroTimer.State,
+    dayCounts: List<Int>,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onComplete: () -> Unit,
@@ -293,56 +288,54 @@ private fun ActiveTimer(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 30.dp, end = 30.dp, top = 8.dp),
         )
-        Box(
-            Modifier
-                .padding(top = 22.dp)
-                .size(272.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            val elapsed = if (state.plannedSecs == 0) 0f
-            else (state.plannedSecs - state.remainingSecs).toFloat() / state.plannedSecs
-            val sweep by animateFloatAsState(elapsed.coerceIn(0f, 1f) * 360f, tween(400), label = "ringSweep")
-            Canvas(Modifier.fillMaxSize()) {
-                val cx = size.width / 2f
-                val cy = size.height / 2f
-                fun pt(r: Float, aDeg: Double): Offset {
-                    val a = Math.toRadians(aDeg)
-                    return Offset(cx + (r * kotlin.math.cos(a)).toFloat(), cy + (r * kotlin.math.sin(a)).toFloat())
+        // The focus glyph. Everything it draws is a pure function of the session log: a trikona
+        // opens each day, then one ring per session that day, reading outward from the centre. The
+        // live session sweeps the track — the one thing in this app allowed to move at rest, one
+        // revolution per session.
+        //
+        // The frame stays neutral here even for a high-priority task. Twenty-five minutes staring
+        // at a crimson enclosure is ambient alarm; priority survives as the label above.
+        val elapsed = if (state.plannedSecs == 0) 0f
+        else (state.plannedSecs - state.remainingSecs).toFloat() / state.plannedSecs
+        val progress by animateFloatAsState(elapsed.coerceIn(0f, 1f), tween(400), label = "sessionArc")
+        val haptics = LocalYantraHaptics.current
+        val context = LocalContext.current
+        val reduced = remember { isReducedMotion(context) }
+        YantraFocusGlyph(
+            dayCounts = dayCounts,
+            sessionProgress = progress,
+            onBreak = false,
+            darkTheme = y.isDark,
+            reducedMotion = reduced,
+            // The reward is the deposit, not a bell: the thud lands when the ring parks.
+            onDeposit = { haptics?.thud() },
+            modifier = Modifier.padding(top = 22.dp).size(272.dp),
+        )
+        // Digits go BELOW the glyph, never over the ring band — a numeral across the strata fights
+        // the marks it is supposed to be summarising.
+        Text(
+            "%d:%02d".format(state.remainingSecs / 60, state.remainingSecs % 60),
+            style = MonoLarge,
+            color = y.textPrimary,
+            modifier = Modifier.padding(top = 26.dp),
+        )
+        Text(
+            buildString {
+                append(if (state.isRunning) "focus" else "paused")
+                val done = dayCounts.sum()
+                if (done > 0) {
+                    append(" · session ")
+                    append(done + 1)
+                    append(" · day ")
+                    append(dayCounts.size)
                 }
-                val rOut = size.minDimension / 2f - 3.dp.toPx()
-
-                // gauge bezel: a fine 24-mark graduation, only the 4 cardinal ticks emphasized —
-                // reads as a watch bezel / instrument dial, not a 12- or 60-mark clock face.
-                for (i in 0 until 24) {
-                    val cardinal = i % 6 == 0
-                    val len = (if (cardinal) 17.dp else 6.dp).toPx()
-                    val w = (if (cardinal) 2.6.dp else 1.dp).toPx()
-                    val col = if (cardinal) y.accent else y.textDim.copy(alpha = 0.45f)
-                    val deg = i * 15.0 - 90.0
-                    drawLine(col, pt(rOut - len, deg), pt(rOut, deg), strokeWidth = w, cap = StrokeCap.Round)
-                }
-
-                // the transit ring — track + brass progress
-                val sw = 11.dp.toPx()
-                val rProg = rOut - 27.dp.toPx()
-                val box = Size(rProg * 2, rProg * 2)
-                val tl = Offset(cx - rProg, cy - rProg)
-                drawArc(y.bandTimer, 0f, 360f, false, topLeft = tl, size = box, style = Stroke(sw))
-                drawArc(y.accent, -90f, sweep, false, topLeft = tl, size = box, style = Stroke(sw, cap = StrokeCap.Round))
-                if (sweep > 1f) {
-                    drawCircle(y.accentGlow, radius = sw * 0.5f, center = pt(rProg, -90.0 + sweep))
-                }
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("%d:%02d".format(state.remainingSecs / 60, state.remainingSecs % 60), style = MonoLarge, color = y.textPrimary)
-                Text(
-                    if (state.isRunning) "of %d:%02d".format(state.plannedSecs / 60, state.plannedSecs % 60) else "paused",
-                    fontFamily = ie.napkin.supertasks.ui.theme.YantraMono,
-                    fontSize = 11.sp, letterSpacing = 1.sp, color = y.textDim,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-        }
+            },
+            fontFamily = ie.napkin.supertasks.ui.theme.YantraMono,
+            fontSize = 11.sp,
+            letterSpacing = 1.sp,
+            color = y.textDim,
+            modifier = Modifier.padding(top = 6.dp),
+        )
         Spacer(Modifier.weight(1f))
         // Pause / resume — outlined-tint circle.
         Box(

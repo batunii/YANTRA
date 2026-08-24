@@ -1,7 +1,6 @@
 package ie.napkin.supertasks.ui.pomodoro
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.PomodoroSessionEntity
+import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
 import ie.napkin.supertasks.ui.container
@@ -124,14 +124,12 @@ fun StatsScreen(nav: NavHostController) {
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .clickable { nav.popBackStack() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = y.textPrimary, modifier = Modifier.size(22.dp))
-            }
+            NavCircle(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Back",
+                onClick = { nav.popBackStack() },
+                iconSize = 22.dp,
+            )
             Text("Focus stats", fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay, fontSize = 24.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.4).sp, color = y.textPrimary)
         }
 

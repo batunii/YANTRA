@@ -29,12 +29,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.db.PropertyValueEntity
+import ie.napkin.supertasks.ui.components.DueSheet
 import ie.napkin.supertasks.ui.components.dateLabel
+import ie.napkin.supertasks.ui.components.dateTimeLabel
 import ie.napkin.supertasks.ui.components.selectConfig
 import kotlinx.coroutines.flow.map
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * Bottom sheet editing one node's built-in properties (Priority/Due) plus its labels.
@@ -71,6 +77,8 @@ fun PropertySheet(
                     onSet = { text, number, date, bool ->
                         vm.setProperty(targetId, def, text, number, date, bool)
                     },
+                    onSetDue = { d, hasTime, remMin -> vm.setDue(targetId, d, hasTime, remMin) },
+                    onSetDeadline = { d -> vm.setDeadline(targetId, d) },
                     onClear = { vm.clearProperty(targetId, def.id) },
                 )
             }
@@ -94,6 +102,8 @@ private fun PropertyEditor(
     def: PropertyDefEntity,
     value: PropertyValueEntity?,
     onSet: (text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
+    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -120,23 +130,48 @@ private fun PropertyEditor(
             }
             PropertyKind.DATE -> {
                 var showPicker by remember { mutableStateOf(false) }
+                val isDue = def.name == BuiltIns.DUE_NAME
+                val isDeadline = def.name == BuiltIns.DEADLINE_NAME
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = { showPicker = true }) {
-                        Text(value?.vDate?.let { dateLabel(it) } ?: "Set date")
+                        Text(
+                            value?.vDate?.let {
+                                if (isDue && value.vBool == true) dateTimeLabel(it) else dateLabel(it)
+                            } ?: "Set date"
+                        )
                     }
                     if (value?.vDate != null) {
                         Spacer(Modifier.width(8.dp))
                         TextButton(onClick = onClear) { Text("Clear") }
                     }
                 }
-                if (showPicker) {
-                    val state = rememberDatePickerState(initialSelectedDateMillis = value?.vDate)
+                if (showPicker && isDue) {
+                    DueSheet(
+                        initialDateMillis = value?.vDate,
+                        initialHasTime = value?.vBool == true,
+                        initialReminderMin = value?.vNumber?.toInt(),
+                        onDismiss = { showPicker = false },
+                        onSet = onSetDue,
+                        onClear = value?.let { { onClear() } },
+                    )
+                } else if (showPicker) {
+                    val state = rememberDatePickerState(
+                        initialSelectedDateMillis = value?.vDate?.let {
+                            Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+                        }
+                    )
                     DatePickerDialog(
                         onDismissRequest = { showPicker = false },
                         confirmButton = {
                             TextButton(
                                 onClick = {
-                                    state.selectedDateMillis?.let { onSet(null, null, it, null) }
+                                    state.selectedDateMillis?.let { picked ->
+                                        val local = Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC)
+                                            .toLocalDate().atStartOfDay(ZoneId.systemDefault())
+                                            .toInstant().toEpochMilli()
+                                        if (isDeadline) onSetDeadline(local) else onSet(null, null, local, null)
+                                    }
                                     showPicker = false
                                 },
                             ) { Text("Set") }

@@ -1,0 +1,59 @@
+name: APK
+
+on:
+  push:
+    branches: [main, UI_Changes]
+  pull_request:
+  workflow_dispatch:
+
+# One build per branch; pushing again cancels the run that is now out of date.
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    name: Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 21, which is what this project is actually built on. Not 17: the module's
+      # sourceCompatibility and jvmTarget of 17 say which bytecode to EMIT, which is a separate
+      # question from which JDK runs Gradle and AGP 9.2.1. Pinning CI to 17 on the strength of that
+      # number would have been a guess — this is the one configuration the build is known to work
+      # under.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Handles the Gradle distribution named in gradle-wrapper.properties (9.4.1) and caches
+      # ~/.gradle between runs.
+      - uses: gradle/actions/setup-gradle@v4
+
+      # app/build/ is checked into this repository (1451 files — .gitignore only excludes /build,
+      # not app/build), so a fresh checkout arrives with another machine's intermediates already in
+      # place. Gradle would mostly cope, but "mostly" is not what a build server is for: deleting
+      # them means every run starts from source and a green build actually means the source
+      # compiles.
+      - name: Discard checked-in build outputs
+        run: rm -rf app/build
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Name the artifact after the commit
+        id: name
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yantra-debug-${{ steps.name.outputs.tag }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          # A silently empty artifact is worse than a failed job: it looks like a build you can
+          # install.
+          if-no-files-found: error
+          retention-days: 14

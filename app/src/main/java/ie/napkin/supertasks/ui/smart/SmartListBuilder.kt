@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
@@ -52,6 +53,8 @@ import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.filter.DateRel
 import ie.napkin.supertasks.data.filter.Filter
+import ie.napkin.supertasks.data.db.SmartListDefEntity
+import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.Op
 import ie.napkin.supertasks.data.filter.SortBy
 import ie.napkin.supertasks.data.filter.SortSpec
@@ -59,7 +62,13 @@ import ie.napkin.supertasks.ui.components.selectConfig
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.launch
 
-private enum class ShowMode(val label: String) { OPEN("Open"), ALL("All"), DONE("Completed") }
+private enum class ShowMode(val label: String) {
+    OPEN("Open"),
+    /** node.in_progress — the tasks you have said you are in the middle of. */
+    STARTED("Started"),
+    ALL("All"),
+    DONE("Completed"),
+}
 
 private enum class LabelMatchMode { ANY, ALL }
 
@@ -90,7 +99,7 @@ private fun opsFor(kind: String): List<OpOption> = when (kind) {
         OpOption("is", Op.EQ), OpOption("is not", Op.NEQ),
         OpOption("is set", Op.IS_SET), OpOption("is empty", Op.NOT_SET),
     )
-    PropertyKind.DATE -> listOf(
+    PropertyKind.DATE, PropertyKind.DATETIME -> listOf(
         OpOption("today or earlier", Op.LTE, DateRel.TODAY_END),
         OpOption("today or later", Op.GTE, DateRel.TODAY_START),
         OpOption("has a date", Op.IS_SET), OpOption("no date", Op.NOT_SET),
@@ -145,12 +154,27 @@ fun SmartListBuilderSheet(
     onDismiss: () -> Unit,
     onCreate: (String, Filter, List<SortSpec>, String?) -> Unit,
     initialName: String = "",
+    /**
+     * The rule to open on, for editing an existing smart list. Null creates a new one. Everything
+     * else about the sheet is identical — the same controls decide the same things, so editing is
+     * not a second screen that can drift from the one that made the list.
+     */
+    editing: SmartListDefEntity? = null,
 ) {
     val y = Yantra.colors
+    val decoded = remember(editing?.nodeId) {
+        editing?.let {
+            decodeFilter(FilterJson.decodeFromString(Filter.serializer(), it.filterJson))
+        }
+    }
     var name by remember { mutableStateOf(initialName) }
-    var show by remember { mutableStateOf(ShowMode.OPEN) }
-    val conds = remember { mutableStateListOf<Cond>() }
-    var homeId by remember { mutableStateOf(lists.firstOrNull()?.id) }
+    var show by remember { mutableStateOf(decoded?.show ?: ShowMode.OPEN) }
+    val conds = remember { mutableStateListOf<Cond>().also { it.addAll(decoded?.conds.orEmpty()) } }
+    // Mutable because choosing a starting point replaces the whole rule, extras included. Merely
+    // *opening* the sheet must preserve them (see Decoded), but "Start from" is an explicit request
+    // to begin again, and silently keeping a clause the form cannot show would be worse.
+    var extras by remember(editing?.nodeId) { mutableStateOf(decoded?.extras.orEmpty()) }
+    var homeId by remember { mutableStateOf(editing?.homeParentId ?: lists.firstOrNull()?.id) }
     var addMenu by remember { mutableStateOf(false) }
     var pickingLabelsForIndex by remember { mutableStateOf<Int?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -169,7 +193,11 @@ fun SmartListBuilderSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = y.accent, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("New smart list", style = MaterialThemeTitle(), color = y.textPrimary)
+                Text(
+                    if (editing != null) "Edit smart list" else "New smart list",
+                    style = MaterialThemeTitle(),
+                    color = y.textPrimary,
+                )
             }
 
             Field(
@@ -181,11 +209,19 @@ fun SmartListBuilderSheet(
                 Label("Start from", y)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SmartTemplate.entries.forEach { t ->
-                        PresetChip(t.label) {
-                            val (presetShow, presetConds) = presetFor(t, defs)
+                        val (presetShow, presetConds) = presetFor(t, defs)
+                        PresetChip(
+                            label = t.label,
+                            // Only "current" when the form holds nothing this sheet cannot show;
+                            // otherwise a rule with hidden clauses would claim to be a bare preset.
+                            selected = extras.isEmpty() &&
+                                show == presetShow &&
+                                conds.toList() == presetConds,
+                        ) {
                             show = presetShow
                             conds.clear()
                             conds.addAll(presetConds)
+                            extras = emptyList()
                         }
                     }
                 }
@@ -194,8 +230,13 @@ fun SmartListBuilderSheet(
             // Show
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Label("Show", y)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ShowMode.entries.forEach { m -> SegChip(m.label, show == m) { show = m }; }
+                // FlowRow, because this grew to four and a fixed Row would push the last one off
+                // the edge on a narrow screen.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ShowMode.entries.forEach { m -> SegChip(m.label, show == m) { show = m } }
                 }
             }
 
@@ -244,7 +285,17 @@ fun SmartListBuilderSheet(
                         )
                     }
                 }
-                if (conds.isEmpty()) {
+                if (conds.isEmpty() && extras.isNotEmpty()) {
+                    // The rule has clauses with no control here — Today's "due OR deadline". Saying
+                    // "no conditions" would have been a plain lie about the user's own list, and
+                    // "shows every open task" doubly so. Name what is being kept instead, and say
+                    // where it goes if they choose a starting point.
+                    Text(
+                        "This view also uses a rule that can't be edited here — it is kept as it " +
+                            "is. Choosing a starting point above replaces it.",
+                        fontSize = 12.sp, color = y.textDim,
+                    )
+                } else if (conds.isEmpty()) {
                     Text(
                         "No conditions — this list will show every ${if (show == ShowMode.DONE) "completed" else "open"} task.",
                         fontSize = 12.sp, color = y.textDim,
@@ -281,12 +332,17 @@ fun SmartListBuilderSheet(
                     .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(14.dp))
                     .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(14.dp)) else Modifier)
                     .clickable(enabled = valid) {
-                        onCreate(name.trim(), buildFilter(show, conds), buildSort(conds), homeId)
+                        onCreate(name.trim(), buildFilter(show, conds, extras), buildSort(conds), homeId)
                     }
                     .padding(vertical = 15.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Create smart list", fontWeight = FontWeight.W800, fontSize = 15.sp, color = if (valid) y.accentText else y.textDim)
+                Text(
+                    if (editing != null) "Save changes" else "Create smart list",
+                    fontWeight = FontWeight.W800,
+                    fontSize = 15.sp,
+                    color = if (valid) y.accentText else y.textDim,
+                )
             }
         }
     }
@@ -312,12 +368,65 @@ fun SmartListBuilderSheet(
     }
 }
 
-private fun buildFilter(show: ShowMode, conds: List<Cond>): Filter {
+/**
+ * What this editor could recover from a stored rule.
+ *
+ * [extras] holds branches the builder has no control for — Today ships as "due OR deadline", a
+ * nested AnyOf of two property conditions, and there is no UI for an OR of properties. They are
+ * carried through untouched and re-emitted by [buildFilter], so opening the sheet on a rule it
+ * cannot fully express edits what it can and leaves the rest exactly as it was. The alternative —
+ * dropping what it does not understand — would quietly rewrite a working smart list the first time
+ * anyone looked at it.
+ */
+private data class Decoded(
+    val show: ShowMode,
+    val conds: List<Cond>,
+    val extras: List<Filter>,
+)
+
+private fun decodeFilter(filter: Filter): Decoded {
+    val parts = (filter as? Filter.All)?.filters ?: listOf(filter)
+    var show = ShowMode.ALL
+    var started = false
+    val conds = mutableListOf<Cond>()
+    val extras = mutableListOf<Filter>()
+    parts.forEach { f ->
+        when {
+            // Every smart list is tasks-only; the builder never offers to change that.
+            f is Filter.Type -> Unit
+            f is Filter.InProgress && f.value -> started = true
+            f is Filter.Done -> show = if (f.value) ShowMode.DONE else ShowMode.OPEN
+            f is Filter.Prop -> conds += Cond(
+                defId = f.defId, op = f.op, text = f.text,
+                number = f.number, dateRel = f.dateRel, bool = f.bool,
+            )
+            f is Filter.AnyOf && f.filters.isNotEmpty() && f.filters.all { it is Filter.HasLabel } ->
+                conds += Cond(
+                    labelIds = f.filters.map { (it as Filter.HasLabel).labelId },
+                    labelMatch = LabelMatchMode.ANY,
+                )
+            f is Filter.All && f.filters.isNotEmpty() && f.filters.all { it is Filter.HasLabel } ->
+                conds += Cond(
+                    labelIds = f.filters.map { (it as Filter.HasLabel).labelId },
+                    labelMatch = LabelMatchMode.ALL,
+                )
+            else -> extras += f
+        }
+    }
+    // Started is the narrower claim, so it wins over an accompanying "open".
+    return Decoded(if (started) ShowMode.STARTED else show, conds, extras)
+}
+
+private fun buildFilter(show: ShowMode, conds: List<Cond>, extras: List<Filter> = emptyList()): Filter {
     val base = ArrayList<Filter>()
     base.add(Filter.Type(NodeType.TASK))
     when (show) {
         ShowMode.OPEN -> base.add(Filter.Done(false))
         ShowMode.DONE -> base.add(Filter.Done(true))
+        // No Done(false) alongside it: completing a task clears in_progress in the same UPDATE, so
+        // "started" already means "not finished" and the extra clause would only be noise in the
+        // stored rule.
+        ShowMode.STARTED -> base.add(Filter.InProgress(true))
         ShowMode.ALL -> Unit
     }
     conds.forEach { c ->
@@ -330,6 +439,7 @@ private fun buildFilter(show: ShowMode, conds: List<Cond>): Filter {
             base.add(Filter.Prop(defId = c.defId, op = c.op, text = c.text, number = c.number, date = null, bool = c.bool, dateRel = c.dateRel))
         }
     }
+    base.addAll(extras)
     return Filter.All(base)
 }
 
@@ -594,18 +704,42 @@ private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * A starting point, which lights up while the form still holds exactly it.
+ *
+ * It used to look identical before and after being tapped, so the only evidence the tap registered
+ * was a condition appearing further down the sheet — you had to look somewhere else to find out
+ * whether you had been heard. [selected] is computed from the live form rather than from "which one
+ * did you last press", so editing anything afterwards dims the chip again: it reports what the rule
+ * currently is, never what you once clicked.
+ */
 @Composable
-private fun PresetChip(label: String, onClick: () -> Unit) {
+private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
     val shape = RoundedCornerShape(9.dp)
-    Box(
+    Row(
         Modifier
-            .background(y.tileWarm2, shape)
-            .border(1.dp, y.tileBorder, shape)
+            .background(if (selected) y.accentFill else y.tileWarm2, shape)
+            .border(1.dp, if (selected) y.accentBorder else y.tileBorder, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.W600, color = y.textSecondary)
+        if (selected) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = null,
+                tint = y.accentText,
+                modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(
+            label,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.W600,
+            color = if (selected) y.accentText else y.textSecondary,
+        )
     }
 }
 

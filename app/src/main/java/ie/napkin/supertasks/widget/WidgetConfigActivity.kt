@@ -36,12 +36,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ie.napkin.supertasks.App
+import kotlinx.coroutines.launch
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.components.SectionLabel
-import ie.napkin.supertasks.ui.components.accentFor
 import ie.napkin.supertasks.ui.theme.SuperTasksTheme
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
@@ -72,7 +74,20 @@ class WidgetConfigActivity : ComponentActivity() {
                     onPick = { node ->
                         val isSmart = node.type == NodeType.SMART_LIST
                         WidgetPrefs.setBinding(this, appWidgetId, node.id, isSmart)
-                        ListWidgetProvider.updateWidget(this, AppWidgetManager.getInstance(this), appWidgetId)
+                        // Glance state, not just prefs: the widget's render session is already
+                        // live behind the config screen, and only a state change re-composes it.
+                        // appScope: the write outlives this activity, which finishes right away.
+                        container.appScope.launch {
+                            runCatching {
+                                val app = applicationContext
+                                val gid = GlanceAppWidgetManager(app).getGlanceIdBy(appWidgetId)
+                                updateAppWidgetState(app, gid) { prefs ->
+                                    prefs[ListWidgetKeys.NODE_ID] = node.id
+                                    prefs[ListWidgetKeys.IS_SMART] = isSmart
+                                }
+                                YantraListWidget().update(app, gid)
+                            }
+                        }
                         setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId))
                         finish()
                     },
@@ -106,40 +121,10 @@ private fun ConfigScreen(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (smart.isNotEmpty()) {
                 item { SectionLabel("Smart lists", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-                items(smart, key = { it.id }) { PickRow(it, smartList = true, onPick = onPick) }
+                items(smart, key = { it.id }) { WidgetListRow(it, smartList = true, onPick = onPick) }
             }
             item { SectionLabel("Lists", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-            items(lists, key = { it.id }) { PickRow(it, smartList = false, onPick = onPick) }
+            items(lists, key = { it.id }) { WidgetListRow(it, smartList = false, onPick = onPick) }
         }
-    }
-}
-
-@Composable
-private fun PickRow(node: NodeEntity, smartList: Boolean, onPick: (NodeEntity) -> Unit) {
-    val y = Yantra.colors
-    val accent = accentFor(node.id)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(16.dp))
-            .clickable { onPick(node) }
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(44.dp).background(accent.copy(alpha = 0.15f), RoundedCornerShape(13.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                if (smartList) Icons.Default.AutoAwesome else Icons.AutoMirrored.Filled.List,
-                contentDescription = null, tint = accent, modifier = Modifier.size(20.dp),
-            )
-        }
-        Spacer(Modifier.width(14.dp))
-        Text(
-            node.title?.ifBlank { "Untitled" } ?: "Untitled",
-            fontSize = 15.5.sp, fontWeight = FontWeight.W700, color = y.textPrimary,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
     }
 }

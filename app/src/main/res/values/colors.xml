@@ -1,14 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Yantra widget palette (hue-engine: indigo accent on graphite, hue 265). -->
-    <color name="widget_page">#0E0F12</color>
-    <color name="widget_bg">#17191D</color>
-    <color name="widget_band">#202328</color>
-    <color name="widget_text">#EAEDF2</color>
-    <color name="widget_muted">#818691</color>
-    <color name="widget_dim">#5E636F</color>
-    <color name="widget_accent">#709AFB</color>
-    <color name="widget_accent_text">#709AFB</color>
-    <color name="widget_on_accent">#FFFFFF</color>
-    <color name="widget_outline">#535864</color>
+    <!-- Widget colors now come from the Glance theme bridge (GlanceWidgetTheme.kt). -->
 </resources>

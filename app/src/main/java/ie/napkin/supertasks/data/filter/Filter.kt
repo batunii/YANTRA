@@ -28,6 +28,17 @@ sealed interface Filter {
     @SerialName("done")
     data class Done(val value: Boolean) : Filter
 
+    /**
+     * Matches node.in_progress — the task glyph's middle state, the one you swipe to set.
+     *
+     * It was storable and drawable but not askable: nothing in the query layer knew it existed, so
+     * "what am I in the middle of" could be seen and never gathered. A state the app renders but
+     * cannot reason about is decoration.
+     */
+    @Serializable
+    @SerialName("in_progress")
+    data class InProgress(val value: Boolean) : Filter
+
     /** Matches node.type; smart lists normally filter for tasks. */
     @Serializable
     @SerialName("type")
@@ -91,7 +102,11 @@ enum class SortBy {
     @SerialName("created") CREATED,
 }
 
-/** One property value to auto-set on tasks created inside a smart list (write side). */
+/**
+ * One property value to auto-set on tasks created inside a smart list (write side).
+ * [dateRel] defers date resolution to insert time ("due today" lists stamp the actual
+ * today) — see SmartListRepository.addTask.
+ */
 @Serializable
 data class ApplyOnCreate(
     val defId: String,
@@ -99,6 +114,7 @@ data class ApplyOnCreate(
     val number: Double? = null,
     val date: Long? = null,
     val bool: Boolean? = null,
+    val dateRel: DateRel? = null,
 )
 
 val FilterJson: Json = Json {
@@ -109,21 +125,68 @@ val FilterJson: Json = Json {
 
 /**
  * Per the spec: equality clauses are writable and self-satisfying, so the write-side
- * apply_on_create values are derived straight from the filter's EQ clauses.
+ * apply_on_create values are derived straight from the filter's EQ clauses. Two extensions:
+ *  - today-relative comparisons ("due today or earlier/later") are satisfied by Due = today,
+ *    emitted as a deferred [ApplyOnCreate.dateRel] resolved at insert time;
+ *  - an AnyOf is satisfied by satisfying one branch — the first derivable branch wins.
  */
 fun deriveApplyOnCreate(filter: Filter): List<ApplyOnCreate> = when (filter) {
     is Filter.All -> filter.filters.flatMap { deriveApplyOnCreate(it) }
-    is Filter.Prop ->
-        if (filter.op == Op.EQ && filter.dateRel == null) {
-            listOf(
-                ApplyOnCreate(
-                    defId = filter.defId,
-                    text = filter.text,
-                    number = filter.number,
-                    date = filter.date,
-                    bool = filter.bool,
-                )
+    is Filter.AnyOf -> filter.filters.firstNotNullOfOrNull { branch ->
+        deriveApplyOnCreate(branch).takeIf { it.isNotEmpty() }
+    } ?: emptyList()
+    is Filter.Prop -> when {
+        filter.op == Op.EQ && filter.dateRel == null -> listOf(
+            ApplyOnCreate(
+                defId = filter.defId,
+                text = filter.text,
+                number = filter.number,
+                date = filter.date,
+                bool = filter.bool,
             )
-        } else emptyList()
-    else -> emptyList() // any/not/comparisons can't be auto-matched -> read-mostly
+        )
+        (filter.op == Op.LTE && filter.dateRel == DateRel.TODAY_END) ||
+            (filter.op == Op.GTE && filter.dateRel == DateRel.TODAY_START) -> listOf(
+            ApplyOnCreate(defId = filter.defId, bool = false, dateRel = DateRel.TODAY_START)
+        )
+        else -> emptyList()
+    }
+    else -> emptyList() // not/other comparisons can't be auto-matched -> read-mostly
+}
+
+/**
+ * Rewrites an "open tasks" filter into its completed counterpart by flipping every
+ * [Filter.Done] clause, so the same rules can be asked the opposite question: not "what is
+ * still due today" but "what due today did I finish". Returns null when the tree has no Done
+ * clause to flip — such a list already admits completed tasks, so there is no separate
+ * completed set to fetch.
+ */
+fun completedVariant(filter: Filter): Filter? =
+    // A list of started tasks has no completed half: finishing a task clears in_progress in the
+    // same UPDATE, so flipping the done clause would ask for a set that cannot exist and render an
+    // empty "DONE" heading under every such view.
+    if (!hasDoneClause(filter) || asksForStarted(filter)) null else flipDone(filter)
+
+private fun asksForStarted(f: Filter): Boolean = when (f) {
+    is Filter.InProgress -> f.value
+    is Filter.All -> f.filters.any { asksForStarted(it) }
+    is Filter.AnyOf -> f.filters.any { asksForStarted(it) }
+    is Filter.Not -> false
+    else -> false
+}
+
+private fun hasDoneClause(f: Filter): Boolean = when (f) {
+    is Filter.Done -> !f.value
+    is Filter.All -> f.filters.any { hasDoneClause(it) }
+    is Filter.AnyOf -> f.filters.any { hasDoneClause(it) }
+    is Filter.Not -> hasDoneClause(f.filter)
+    else -> false
+}
+
+private fun flipDone(f: Filter): Filter = when (f) {
+    is Filter.Done -> Filter.Done(!f.value)
+    is Filter.All -> Filter.All(f.filters.map { flipDone(it) })
+    is Filter.AnyOf -> Filter.AnyOf(f.filters.map { flipDone(it) })
+    is Filter.Not -> Filter.Not(flipDone(f.filter))
+    else -> f
 }

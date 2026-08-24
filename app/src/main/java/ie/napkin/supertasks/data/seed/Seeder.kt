@@ -2,12 +2,14 @@ package ie.napkin.supertasks.data.seed
 
 import androidx.room.withTransaction
 import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.db.SmartListDefEntity
+import ie.napkin.supertasks.data.db.SystemKey
 import ie.napkin.supertasks.data.filter.ApplyOnCreate
 import ie.napkin.supertasks.data.filter.DateRel
 import ie.napkin.supertasks.data.filter.Filter
@@ -15,10 +17,13 @@ import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.Op
 import ie.napkin.supertasks.data.filter.SortBy
 import ie.napkin.supertasks.data.filter.SortSpec
+import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
 import ie.napkin.supertasks.data.rank.Rank
 import ie.napkin.supertasks.data.repo.SelectConfig
 import ie.napkin.supertasks.data.repo.SelectOption
 import kotlinx.serialization.builtins.ListSerializer
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 
 /** First-run content: two property defs, an Inbox + sample list, and two smart lists. */
@@ -66,6 +71,13 @@ object Seeder {
                 createdAt = now, updatedAt = now,
             )
         )
+        propDao.upsertDef(
+            PropertyDefEntity(
+                id = BuiltIns.DEADLINE_DEF_ID, name = BuiltIns.DEADLINE_NAME, kind = PropertyKind.DATE,
+                config = null, isBuiltIn = true,
+                createdAt = now, updatedAt = now,
+            )
+        )
 
         // ---- lists ----
         var rank = Rank.FIRST
@@ -80,35 +92,35 @@ object Seeder {
             NodeEntity(id = personal, parentId = null, type = NodeType.LIST, title = "Getting started", rank = rank, createdAt = now, updatedAt = now)
         )
 
+        // A list holds tasks. The explanation of what a task's page can hold therefore lives on a
+        // task's page, which is also the shortest way to demonstrate the point.
         var childRank = Rank.FIRST
-        val heading = id()
-        nodeDao.insert(
-            NodeEntity(id = heading, parentId = personal, type = NodeType.HEADING, title = "Welcome 👋", rank = childRank, createdAt = now, updatedAt = now)
-        )
-        childRank = Rank.after(childRank)
-        nodeDao.insert(
-            NodeEntity(
-                id = id(), parentId = personal, type = NodeType.PARAGRAPH,
-                title = "Lists hold tasks, notes, headings, ink sketches and images. Open any task as its own page to give it subtasks and notes.",
-                rank = childRank, createdAt = now, updatedAt = now,
-            )
-        )
-
-        childRank = Rank.after(childRank)
         val sampleTask = id()
         nodeDao.insert(
             NodeEntity(id = sampleTask, parentId = personal, type = NodeType.TASK, title = "Try opening this task as a page", rank = childRank, createdAt = now, updatedAt = now)
         )
         propDao.upsertValue(PropertyValueEntity(nodeId = sampleTask, defId = priorityDef, vText = "High", updatedAt = now))
-        propDao.upsertValue(PropertyValueEntity(nodeId = sampleTask, defId = dueDef, vDate = now, updatedAt = now))
+        // All-day Due = today's local midnight (encoding on BuiltIns).
+        val todayMidnight = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        propDao.upsertValue(
+            PropertyValueEntity(nodeId = sampleTask, defId = dueDef, vDate = todayMidnight, vBool = false, updatedAt = now)
+        )
 
         var subRank = Rank.FIRST
         nodeDao.insert(
-            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.TASK, title = "Tasks can nest — this is a subtask", rank = subRank, createdAt = now, updatedAt = now)
+            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.HEADING, title = "Welcome \uD83D\uDC4B", rank = subRank, createdAt = now, updatedAt = now)
         )
         subRank = Rank.after(subRank)
         nodeDao.insert(
-            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.PARAGRAPH, title = "…and can carry notes like this one.", rank = subRank, createdAt = now, updatedAt = now)
+            NodeEntity(
+                id = id(), parentId = sampleTask, type = NodeType.PARAGRAPH,
+                title = "A list holds tasks. A task's own page holds anything — notes, headings, lists, ink sketches, images — and other tasks.",
+                rank = subRank, createdAt = now, updatedAt = now,
+            )
+        )
+        subRank = Rank.after(subRank)
+        nodeDao.insert(
+            NodeEntity(id = id(), parentId = sampleTask, type = NodeType.TASK, title = "Tasks can nest — this is a subtask", rank = subRank, createdAt = now, updatedAt = now)
         )
 
         childRank = Rank.after(childRank)
@@ -127,28 +139,35 @@ object Seeder {
         rank = Rank.after(rank)
         val today = id()
         nodeDao.insert(
-            NodeEntity(id = today, parentId = null, type = NodeType.SMART_LIST, title = "Today", rank = rank, createdAt = now, updatedAt = now)
+            NodeEntity(id = today, parentId = null, type = NodeType.SMART_LIST, title = "Today", rank = rank, systemKey = SystemKey.TODAY, createdAt = now, updatedAt = now)
         )
+        // Todoist rule: Due ≤ today OR Deadline ≤ today. Quick-added tasks get Due = today
+        // via the derived apply-on-create (dateRel resolved at insert), so they stay in view.
+        val todayFilter = Filter.All(
+            listOf(
+                Filter.Type(NodeType.TASK),
+                Filter.Done(false),
+                Filter.AnyOf(
+                    listOf(
+                        Filter.Prop(defId = dueDef, op = Op.LTE, dateRel = DateRel.TODAY_END),
+                        Filter.Prop(defId = BuiltIns.DEADLINE_DEF_ID, op = Op.LTE, dateRel = DateRel.TODAY_END),
+                    )
+                ),
+            )
+        )
+        val todayApply = deriveApplyOnCreate(todayFilter)
         db.smartListDao().upsert(
             SmartListDefEntity(
                 nodeId = today,
                 scopeRootId = null,
-                filterJson = FilterJson.encodeToString(
-                    Filter.serializer(),
-                    Filter.All(
-                        listOf(
-                            Filter.Type(NodeType.TASK),
-                            Filter.Done(false),
-                            Filter.Prop(defId = dueDef, op = Op.LTE, dateRel = DateRel.TODAY_END),
-                        )
-                    )
-                ),
+                filterJson = FilterJson.encodeToString(Filter.serializer(), todayFilter),
                 sortJson = FilterJson.encodeToString(
                     ListSerializer(SortSpec.serializer()),
                     listOf(SortSpec(by = SortBy.PROP_DATE, defId = dueDef)),
                 ),
                 homeParentId = inbox,
-                applyOnCreateJson = null, // comparison filter -> read-mostly
+                applyOnCreateJson = todayApply.takeIf { it.isNotEmpty() }
+                    ?.let { FilterJson.encodeToString(ListSerializer(ApplyOnCreate.serializer()), it) },
             )
         )
 

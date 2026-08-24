@@ -7,6 +7,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * App-scoped focus timer: survives navigation, one active session at a time.
@@ -32,6 +34,35 @@ class PomodoroTimer(
     val state: StateFlow<State?> = _state
 
     private var ticker: Job? = null
+    private val restoreMutex = Mutex()
+
+    /**
+     * Rebuild a live session after process death from its persisted row (started_at +
+     * planned_secs), or finalize it as completed if its end passed while we were dead.
+     * Pause state is process-bound — a paused session restores as if it never paused.
+     * Called concurrently from AppContainer init, widget renders, actions and the finalize
+     * worker — the mutex keeps that from double-finalizing or racing the ticker.
+     */
+    suspend fun restoreIfNeeded() = restoreMutex.withLock {
+        if (_state.value != null) return@withLock
+        val open = repo.openSession() ?: return@withLock
+        val endAt = open.startedAt + open.plannedSecs * 1000L
+        val now = System.currentTimeMillis()
+        if (now >= endAt) {
+            repo.endSession(open.id, open.plannedSecs, completed = true)
+            return@withLock
+        }
+        _state.value = State(
+            sessionId = open.id,
+            nodeId = open.nodeId,
+            nodeTitle = repo.nodeTitle(open.nodeId).orEmpty(),
+            plannedSecs = open.plannedSecs,
+            remainingSecs = ((endAt - now) / 1000).toInt(),
+            elapsedSecs = ((now - open.startedAt) / 1000).toInt(),
+            isRunning = true,
+        )
+        startTicker()
+    }
 
     fun start(nodeId: String, nodeTitle: String, plannedSecs: Int) {
         scope.launch {

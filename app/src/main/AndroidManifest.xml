@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The completion choreography's feel channel: a LOW_TICK when a hold arms, a THUD when the
+         bindu lands. Normal permission, no runtime prompt. It carries the whole reward when the
+         user has animations turned off. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- API 31/32: user-revocable exact-alarm permission; 33+ uses USE_EXACT_ALARM instead,
+         which is auto-granted for alarm/reminder apps and needs no prompt. -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <application
         android:name=".App"
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.SuperTasks">
@@ -28,6 +42,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Reachable from a placed widget's overflow button, not from the launcher's
+             placement flow, so it is not an APPWIDGET_CONFIGURE handler. -->
+        <activity
+            android:name=".widget.WidgetSettingsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="@string/widget_settings_title" />
+
         <receiver
             android:name=".widget.ListWidgetProvider"
             android:exported="true">
@@ -39,10 +61,62 @@
                 android:resource="@xml/list_widget_info" />
         </receiver>
 
-        <service
-            android:name=".widget.ListWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
+        <receiver
+            android:name=".widget.TodayWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.QuickAddWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_add_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.PomodoroWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/pomodoro_widget_info" />
+        </receiver>
+
+        <activity
+            android:name=".widget.QuickAddActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SuperTasks.QuickAdd"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Reminders -->
+        <receiver
+            android:name=".reminders.ReminderReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".reminders.BootReceiver"
+            android:exported="false">
+            <!-- All protected system broadcasts — delivered to non-exported receivers. -->
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
