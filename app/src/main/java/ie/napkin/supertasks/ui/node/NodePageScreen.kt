@@ -113,11 +113,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import ie.napkin.supertasks.data.db.BlockRowEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.ConfirmDialog
+import ie.napkin.supertasks.ui.components.MarkdownEmphasis
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.NeutralChip
@@ -138,7 +140,13 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val vm: NodePageViewModel = viewModel(key = "node-$nodeId") { NodePageViewModel(container(), nodeId) }
     val node by vm.node.collectAsStateWithLifecycle()
     val crumbs by vm.breadcrumb.collectAsStateWithLifecycle()
-    val children by vm.children.collectAsStateWithLifecycle()
+    // Every block on the page, nested ones included, in reading order. One list, one meaning:
+    // everything on this screen — the tally, the ordinals, the drag geometry, the write line —
+    // reasons about what is *rendered*. Keeping a second "direct children only" list beside it is
+    // how nested blocks ended up with no strokes, no chips and no counts.
+    val rows by vm.blocks.collectAsStateWithLifecycle()
+    val blocks = remember(rows) { rows.map { it.node } }
+    val depthOf = remember(rows) { rows.associate { it.node.id to it.depth } }
     val chips by vm.chips.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
@@ -228,8 +236,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     }
 
     // Direct-child task tallies for the list meta line.
-    val taskChildren = children.count { it.type == NodeType.TASK }
-    val doneChildren = children.count { it.type == NodeType.TASK && it.done }
+    // Counts what the page shows, which is now the whole subtree — the same thing the Home row for
+    // this list already reports, so the two no longer disagree.
+    val taskChildren = blocks.count { it.type == NodeType.TASK }
+    val doneChildren = blocks.count { it.type == NodeType.TASK && it.done }
 
     Column(
         Modifier
@@ -281,18 +291,38 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // would otherwise shove its neighbours clean off the screen.
         val liftedHeight = (dragRows.firstOrNull { it.key == liftedId }?.size?.toFloat() ?: 0f)
             .coerceAtMost(listState.layoutInfo.viewportSize.height * 0.35f)
-        val liftedFrom = children.indexOfFirst { it.id == liftedId }
+        val liftedFrom = blocks.indexOfFirst { it.id == liftedId }
+        // A lifted block carries its nested blocks: reordering the parent moves the whole subtree
+        // in the data, so letting the children sit still while the parent floats away would show
+        // something that is not what happens.
+        val liftedSubtree = remember(rows, liftedId) {
+            if (liftedId == null) emptySet() else buildSet {
+                val start = rows.indexOfFirst { it.node.id == liftedId }
+                if (start >= 0) {
+                    val base = rows[start].depth
+                    add(liftedId)
+                    for (i in start + 1 until rows.size) {
+                        if (rows[i].depth <= base) break
+                        add(rows[i].node.id)
+                    }
+                }
+            }
+        }
         // The row under the finger, preferring the one it is actually inside.
         fun rowUnderFinger(): androidx.compose.foundation.lazy.LazyListItemInfo? {
             val id = drag.id ?: return null
-            val ids = children.mapTo(mutableSetOf()) { it.id }
+            // Siblings only. A block reorders within its own level; changing its nesting is what
+            // Indent and Outdent are for, and letting a drag do it as well would make every
+            // slightly-diagonal move a guess about which the user meant.
+            val parent = blocks.firstOrNull { it.id == id }?.parentId
+            val ids = blocks.filter { it.parentId == parent }.mapTo(mutableSetOf()) { it.id }
             val rows = dragRows.filter { it.key in ids && it.key != id }
             val fy = drag.pointerY
             return rows.firstOrNull { fy >= it.offset && fy < it.offset + it.size }
                 ?: rows.minByOrNull { kotlin.math.abs((it.offset + it.size / 2f) - fy) }
         }
         val liftedTo = if (liftedId == null) -1
-            else children.indexOfFirst { it.id == rowUnderFinger()?.key as? String }
+            else blocks.indexOfFirst { it.id == rowUnderFinger()?.key as? String }
 
         // Vertical only. Sideways-drag used to indent, and indenting moves a block *into* its
         // neighbour — on a page that renders only direct children, that made the block disappear.
@@ -300,17 +330,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // indent and outdent are buttons in the bar now, where they are deliberate and named.
         fun commitDrag() {
             val id = drag.id
-            val node = children.firstOrNull { it.id == id }
+            val node = blocks.firstOrNull { it.id == id }
             if (id != null && node != null) {
                 val over = rowUnderFinger()
-                val others = children.filter { it.id != id }
+                // Indexed among siblings, because that is what moveToIndex takes.
+                val others = blocks.filter { it.parentId == node.parentId && it.id != id }
                 val overId = over?.key as? String
                 val pos = others.indexOfFirst { it.id == overId }
                 if (pos >= 0) {
                     // Direction from the indices rather than the sign of the drag, so a long slow
                     // drag that ends where it started is a no-op instead of a move by one.
-                    val from = children.indexOfFirst { it.id == id }
-                    val to = children.indexOfFirst { it.id == overId }
+                    val siblings = blocks.filter { it.parentId == node.parentId }
+                    val from = siblings.indexOfFirst { it.id == id }
+                    val to = siblings.indexOfFirst { it.id == overId }
                     vm.moveToIndex(node, if (to > from) pos + 1 else pos)
                 }
             }
@@ -320,11 +352,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // A numbered item's number is its position in the *run* of numbered items it belongs to, so
         // a list that is interrupted by a paragraph starts counting again after it — which is what
         // you see in any editor, and it means nothing has to be stored.
-        val ordinals = remember(children) {
+        val ordinals = remember(blocks) {
             buildMap {
-                var n = 0
-                children.forEach { c ->
-                    if (c.type == NodeType.NUMBERED) put(c.id, ++n) else n = 0
+                // Counted per parent: a nested list is its own list, and it restarts at 1 rather
+                // than continuing whatever numbering surrounded it.
+                val running = mutableMapOf<String?, Int>()
+                blocks.forEach { c ->
+                    if (c.type == NodeType.NUMBERED) {
+                        val n = (running[c.parentId] ?: 0) + 1
+                        running[c.parentId] = n
+                        put(c.id, n)
+                    } else {
+                        running[c.parentId] = 0
+                    }
                 }
             }
         }
@@ -339,7 +379,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // The start inset moves into each block's drag gutter, so nothing shifts sideways.
             contentPadding = PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
         ) {
-            itemsIndexed(children, key = { _, it -> it.id }) { index, child ->
+            itemsIndexed(blocks, key = { _, it -> it.id }) { index, child ->
                 // Tasks, sketches and images are carried; prose is not. A handle on every paragraph
                 // was mostly noise, but a sketch or a picture is a distinct object you place, and
                 // it is the block you are most likely to want somewhere else. The gutter stays on
@@ -352,7 +392,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 val draggable = child.type == NodeType.TASK ||
                     child.type == NodeType.INK ||
                     child.type == NodeType.IMAGE
-                val lifted = drag.id == child.id
+                val lifted = child.id in liftedSubtree
+                // Only the block itself gets the raised surface; its children ride along beneath.
+                val liftedRoot = drag.id == child.id
                 // Rows between the block's origin and where it now hovers step aside by exactly
                 // the block's own height, so the gap that opens is the shape of what is landing.
                 val stepAside = when {
@@ -377,14 +419,16 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         .graphicsLayer {
                             if (lifted) {
                                 translationY = drag.dy
-                                scaleX = liftScale
-                                scaleY = liftScale
+                                if (liftedRoot) {
+                                    scaleX = liftScale
+                                    scaleY = liftScale
+                                }
                             } else {
                                 translationY = slide
                             }
                         }
                         .then(
-                            if (lifted) {
+                            if (liftedRoot) {
                                 Modifier
                                     .shadow(12.dp, RoundedCornerShape(14.dp))
                                     .background(y.tileWarm, RoundedCornerShape(14.dp))
@@ -422,7 +466,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 val gripAlpha by animateFloatAsState(
                     targetValue = when {
                         !draggable -> 0f
-                        lifted -> 1f
+                        liftedRoot -> 1f
                         child.id == activeBlockId -> 0.75f
                         drag.id != null -> 0.35f
                         else -> 0f
@@ -434,7 +478,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     Icon(
                         Icons.Default.DragIndicator,
                         contentDescription = "Drag to move",
-                        tint = if (lifted) y.accent else y.textDim,
+                        tint = if (liftedRoot) y.accent else y.textDim,
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = 4.dp)
@@ -442,7 +486,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                             .alpha(gripAlpha),
                     )
                 }
-                Box(Modifier.padding(start = BLOCK_GUTTER)) {
+                Box(Modifier.padding(start = BLOCK_GUTTER + NEST_STEP * (depthOf[child.id] ?: 0))) {
                 BlockRow(
                     child = child,
                     active = child.id == activeBlockId,
@@ -454,9 +498,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         vm.splitBlock(child, before, after) { id -> caretTarget = id }
                     },
                     onMergeBack = {
-                        val i = children.indexOfFirst { it.id == child.id }
-                        val prev = children.getOrNull(i - 1)?.takeIf { it.type in NodeType.TEXTUAL }
-                        if (prev != null) {
+                        val i = blocks.indexOfFirst { it.id == child.id }
+                        val prev = blocks.getOrNull(i - 1)?.takeIf { it.type in NodeType.TEXTUAL }
+                        // Only if nothing is nested under it. delete() removes the whole subtree,
+                        // so backspacing a blank block that still had children would have taken
+                        // them with it — content you cannot even see from the empty line you are
+                        // deleting. Backspace must never be able to do that.
+                        val childless = (childCounts[child.id]?.total ?: 0) == 0
+                        if (prev != null && childless) {
                             caretTarget = prev.id
                             vm.delete(child.id)
                         }
@@ -483,7 +532,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // does not already end in a blank one. The line exists to guarantee somewhere to
             // start typing; when the last block is itself blank it already *is* that place, and
             // showing both put two identical "Write something…" rows under the caret.
-            val endsBlank = children.lastOrNull()?.let {
+            // Judged on the visually last block, whatever its depth: the line exists so there is
+            // always somewhere to start typing, and a blank already sitting at the bottom of the
+            // page is that place — nested or not, two blank rows in a row is the thing to avoid.
+            val endsBlank = blocks.lastOrNull()?.let {
                 it.title.isNullOrBlank() && it.type in NodeType.TEXTUAL
             } ?: false
             if (!endsBlank) {
@@ -503,7 +555,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // Ink and Image are the exception: they carry content a text block has no way to hold, so
         // they insert below the caret rather than converting.
         val textTypes = NodeType.TEXTUAL
-        val caretBlock = children.firstOrNull { it.id == lastCaretBlockId }
+        val caretBlock = blocks.firstOrNull { it.id == lastCaretBlockId }
         fun setType(type: String) {
             val caret = caretBlock
             when {
@@ -520,7 +572,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         }
 
         // Actions act on the block you last touched — the caret, or a long-pressed ink/image.
-        val actOn = children.firstOrNull { it.id == activeBlockId }
+        val actOn = blocks.firstOrNull { it.id == activeBlockId }
         BlockTypeBar(
             modifier = Modifier
                 .navigationBarsPadding()
@@ -537,7 +589,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // Tab and shift-tab, as buttons. A block can only move under the one above it, so
             // Indent is offered only when there is something above it to go under.
             onIndent = actOn
-                ?.takeIf { block -> children.indexOfFirst { it.id == block.id } > 0 }
+                // Indentable only when it has a sibling above to go under.
+                ?.takeIf { block ->
+                    blocks.filter { it.parentId == block.parentId }.indexOfFirst { it.id == block.id } > 0
+                }
                 ?.let { block -> { vm.indent(block) } },
             onOutdent = actOn?.let { block -> { vm.outdent(block) } },
             onProperties = actOn?.let { block -> { propertySheetFor = block.id } },
@@ -776,6 +831,9 @@ private fun BlockRow(
  * inside it — the icon is only the label; the whole strip, full row height, is the target.
  */
 private val BLOCK_GUTTER = 30.dp
+
+/** How far each level of nesting steps in. */
+private val NEST_STEP = 20.dp
 
 @androidx.compose.runtime.Stable
 private class BlockDrag {
@@ -1024,6 +1082,9 @@ private fun TextualBlockRow(
                 onValueChange = editing::onValueChange,
                 textStyle = style,
                 cursorBrush = SolidColor(y.accent),
+                // **bold**, *italic* and `code` render as you type. The markers stay put and stay
+                // visible, only dimmed — see MarkdownEmphasis for why that matters.
+                visualTransformation = remember(y.textDim) { MarkdownEmphasis(y.textDim) },
                 modifier = Modifier
                     .weight(1f)
                     .padding(top = 1.dp)

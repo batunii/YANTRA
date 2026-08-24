@@ -39,6 +39,8 @@ class NodeRepository(private val db: AppDatabase) {
     fun topLevel() = dao.topLevel()
     fun allLists() = dao.allLists()
     fun children(parentId: String) = dao.children(parentId)
+    /** Every block on a page, at any depth, depth-first — see [NodeDao.blocksUnder]. */
+    fun blocksUnder(rootId: String) = dao.blocksUnder(rootId)
     suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
     fun observe(id: String) = dao.observe(id)
     suspend fun byId(id: String) = dao.byId(id)

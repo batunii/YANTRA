@@ -1,6 +1,7 @@
 package ie.napkin.supertasks.data.db
 
 import androidx.room.ColumnInfo
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -199,4 +200,14 @@ data class NodeLabelEntity(
     @ColumnInfo(name = "node_id") val nodeId: String,
     @ColumnInfo(name = "label_id") val labelId: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
+)
+
+/**
+ * A block as a page renders it: the node itself plus how far it is nested below the page root.
+ * [depth] is derived by the query, never stored — nesting *is* the parent link, and a second
+ * stored copy of it could only ever disagree.
+ */
+data class BlockRowEntity(
+    @Embedded val node: NodeEntity,
+    val depth: Int,
 )

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.LabelEntity
+import ie.napkin.supertasks.data.db.BlockRowEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.PropertyDefEntity
@@ -45,8 +46,14 @@ class NodePageViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val children: StateFlow<List<NodeEntity>> =
-        nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /**
+     * Every block on the page, nested ones included, depth-first. A page used to show only its
+     * direct children, which made indenting look like the block had vanished — it had simply
+     * become a child of its neighbour, with nowhere on screen to appear. Now being a child and
+     * being nested are the same visible thing.
+     */
+    val blocks: StateFlow<List<BlockRowEntity>> =
+        nodes.blocksUnder(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Only the fixed Priority/Due fields — no more arbitrary user-created schema fields. */
     val defs: StateFlow<List<PropertyDefEntity>> =
@@ -114,10 +121,19 @@ class NodePageViewModel(
 
     // ---- block ops ----
 
+    /**
+     * Creates a block. With [afterId] it lands immediately after that block *as its sibling*,
+     * whatever depth that is; without one it goes at the end of the page.
+     *
+     * The parent has to be resolved from [afterId] rather than assumed to be the page: a page
+     * renders nested blocks now, and [NodeRepository.create] only honours `afterId` when the two
+     * share a parent — so passing the page root while pointing at a nested block silently appended
+     * to the bottom of the page instead of inserting where the caret was.
+     */
     fun addBlock(type: String, title: String? = null, afterId: String? = null, onCreated: (String) -> Unit = {}) {
         viewModelScope.launch {
-            val id = nodes.create(nodeId, type, title, afterId)
-            onCreated(id)
+            val parent = afterId?.let { nodes.byId(it)?.parentId } ?: nodeId
+            onCreated(nodes.create(parent, type, title, afterId))
         }
     }
 
@@ -173,7 +189,9 @@ class NodePageViewModel(
             // A heading is a one-off, so what follows it is body text. A list item continues the
             // list — that is the whole point of pressing Enter in one.
             val type = if (node.type == NodeType.HEADING) NodeType.PARAGRAPH else node.type
-            onCreated(nodes.create(nodeId, type, after, afterId = node.id))
+            // Sibling of the block being split, not a child of the page: pressing Enter inside a
+            // nested block used to start the next one at the bottom of the page.
+            onCreated(nodes.create(node.parentId ?: nodeId, type, after, afterId = node.id))
         }
     }
 
@@ -191,7 +209,8 @@ class NodePageViewModel(
         // the ViewModel's scope is cancelled at the same moment — which cancelled the loop after
         // the first delete and left the rest of the blanks on the page.
         container.appScope.launch {
-            val blocks = children.value
+            // The page as read, nested blocks included, so "trailing" means what it looks like.
+            val blocks = this@NodePageViewModel.blocks.value.map { it.node }
             val disposable = blocks.reversed().takeWhile { b ->
                 b.title.isNullOrBlank() &&
                     b.type in NodeType.TEXTUAL &&

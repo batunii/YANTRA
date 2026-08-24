@@ -53,6 +53,7 @@ import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.GroupDivider
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.markdownAnnotated
 import ie.napkin.supertasks.ui.components.PomodoroCount
 import ie.napkin.supertasks.ui.components.PropertyChip
 import ie.napkin.supertasks.ui.components.TaskCheck
@@ -188,7 +189,12 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         Spacer(Modifier.width(13.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                task.title.orEmpty().ifBlank { "Untitled" },
+                                // Same emphasis as the editor, so a row does not show the raw
+                                // markers for text that reads styled on its own page.
+                                markdownAnnotated(
+                                    task.title.orEmpty().ifBlank { "Untitled" },
+                                    y.textDim,
+                                ),
                                 style = MaterialTheme.typography.bodyLarge,
                                 textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
                                 color = if (task.done) y.textDim else y.textPrimary,
