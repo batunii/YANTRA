@@ -10,12 +10,19 @@ import ie.napkin.supertasks.data.db.SubtreeTaskCount
 import ie.napkin.supertasks.data.filter.Filter
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.domain.PomodoroTimer
+import ie.napkin.supertasks.data.db.SmartListDefEntity
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val nodes = container.nodes
     private val smartLists = container.smartLists
@@ -29,10 +36,38 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     val allLists: StateFlow<List<NodeEntity>> =
         nodes.allLists().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * Done/total per list — for every list, rules or no rules. A list that owns its tasks is
+     * counted by walking its subtree; a smart list is counted by running its rule and, separately,
+     * the done counterpart of it, because a rule that says "not done" hides exactly the half of the
+     * answer we need. Different arithmetic, same fact, one map: a list on the home screen should
+     * report where it stands regardless of how it was assembled.
+     */
     val counts: StateFlow<Map<String, SubtreeTaskCount>> =
-        nodes.listTaskCounts()
-            .map { list -> list.associateBy { it.rootId } }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+        combine(nodes.listTaskCounts(), smartCounts()) { owned, smart ->
+            owned.associateBy { it.rootId } + smart
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    private fun smartCounts(): Flow<Map<String, SubtreeTaskCount>> =
+        smartLists.allDefs().flatMapLatest { defs ->
+            if (defs.isEmpty()) flowOf(emptyMap())
+            else combine(defs.map { def -> countOf(def) }) { pairs -> pairs.toMap() }
+        }
+
+    private fun countOf(def: SmartListDefEntity): Flow<Pair<String, SubtreeTaskCount>> {
+        val matching = smartLists.query(def)
+        val completed = smartLists.queryCompleted(def)
+        return if (completed == null) {
+            // No done clause, so the rule already returns both halves.
+            matching.map { all ->
+                def.nodeId to SubtreeTaskCount(def.nodeId, all.size, all.count { it.done })
+            }
+        } else {
+            combine(matching, completed) { open, done ->
+                def.nodeId to SubtreeTaskCount(def.nodeId, open.size + done.size, done.size)
+            }
+        }
+    }
 
     val timerState: StateFlow<PomodoroTimer.State?> = container.timer.state
 

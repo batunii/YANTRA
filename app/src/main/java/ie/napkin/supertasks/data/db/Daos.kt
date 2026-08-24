@@ -335,6 +335,9 @@ interface SmartListDao {
     @Query("SELECT * FROM smart_list_def WHERE node_id = :nodeId")
     suspend fun byId(nodeId: String): SmartListDefEntity?
 
+    @Query("SELECT * FROM smart_list_def")
+    fun all(): Flow<List<SmartListDefEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(def: SmartListDefEntity)
 }

@@ -15,6 +15,7 @@ import ie.napkin.supertasks.data.db.SystemKey
 import ie.napkin.supertasks.data.filter.ApplyOnCreate
 import ie.napkin.supertasks.data.filter.Filter
 import ie.napkin.supertasks.data.filter.FilterCompiler
+import ie.napkin.supertasks.data.filter.completedVariant
 import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
@@ -352,6 +353,21 @@ class SmartListRepository(private val db: AppDatabase) {
             ?.let { FilterJson.decodeFromString(ListSerializer(SortSpec.serializer()), it) }
             ?: emptyList()
         val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort)
+        return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
+    }
+
+    fun allDefs(): Flow<List<SmartListDefEntity>> = dao.all()
+
+    /**
+     * The done counterpart of [query]. A rule like "due today AND not done" excludes completed
+     * tasks by construction, so a smart list cannot report "n of m done" from its own matches — it
+     * has to ask the opposite question too. Null when the rule has no done clause, because then
+     * [query] already returns both halves and the done ones can simply be counted.
+     */
+    fun queryCompleted(def: SmartListDefEntity): Flow<List<NodeEntity>>? {
+        val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
+        val flipped = completedVariant(filter) ?: return null
+        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList())
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 
