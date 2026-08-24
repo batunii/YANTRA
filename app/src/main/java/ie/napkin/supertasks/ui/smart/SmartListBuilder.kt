@@ -274,7 +274,17 @@ fun SmartListBuilderSheet(
                         )
                     }
                 }
-                if (conds.isEmpty()) {
+                if (conds.isEmpty() && extras.isNotEmpty()) {
+                    // The rule has clauses with no control here — Today's "due OR deadline". Saying
+                    // "no conditions" would have been a plain lie about the user's own list, and
+                    // "shows every open task" doubly so. Name what is being kept instead, and say
+                    // where it goes if they choose a starting point.
+                    Text(
+                        "This view also uses a rule that can't be edited here — it is kept as it " +
+                            "is. Choosing a starting point above replaces it.",
+                        fontSize = 12.sp, color = y.textDim,
+                    )
+                } else if (conds.isEmpty()) {
                     Text(
                         "No conditions — this list will show every ${if (show == ShowMode.DONE) "completed" else "open"} task.",
                         fontSize = 12.sp, color = y.textDim,
