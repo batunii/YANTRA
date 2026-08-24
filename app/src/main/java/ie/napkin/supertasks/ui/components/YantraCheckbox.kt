@@ -241,20 +241,42 @@ fun YantraCheckbox(
     val neutral = frameTint ?: YantraInk.neutral(darkTheme)
     val scope = rememberCoroutineScope()
 
-    // Layer progress values. 1f = fully present.
-    val frame = remember { Animatable(if (state == TaskState.DONE) 0f else 1f) }
-    val ringDraw = remember {
+    // Layer progress values. 1f = fully present. Each one is born at the resting value for the
+    // state it is entering composition in, which is what makes the guard below safe: a glyph that
+    // has never animated is already drawn correctly.
+    val frame = remember(taskId) { Animatable(if (state == TaskState.DONE) 0f else 1f) }
+    val ringDraw = remember(taskId) {
         Animatable(if (state == TaskState.IN_PROGRESS) 1f else 0f)
     }
-    val ringScale = remember { Animatable(1f) }
-    val ringFillAlpha = remember {
+    val ringScale = remember(taskId) { Animatable(1f) }
+    val ringFillAlpha = remember(taskId) {
         Animatable(if (state == TaskState.IN_PROGRESS) 0.18f else 0f)
     }
-    val bindu = remember { Animatable(if (state == TaskState.DONE) 1f else 0f) }
-    val squash = remember { Animatable(1f) }
+    val bindu = remember(taskId) { Animatable(if (state == TaskState.DONE) 1f else 0f) }
+    val squash = remember(taskId) { Animatable(1f) }
+
+    /**
+     * The state this glyph last *animated to*. Null means it has only ever been composed, never
+     * transitioned.
+     *
+     * This is the difference between "a task was just completed" and "a completed task came into
+     * view", and the choreography must only fire for the first. A LazyColumn disposes rows that
+     * scroll off, so without this every scroll back to the top of a list re-ran the full DONE
+     * sequence for any finished task there — frame un-drawing, ring collapsing, bindu popping, and
+     * a THUD haptic each time. Scrolling a list buzzed.
+     *
+     * It also kept poisoning the bulk-completion tempo: each replay called registerAndCheckBulk(),
+     * so a scroll made the next real completion think it was mid-sweep and take the short form.
+     */
+    var animatedTo by remember(taskId) { mutableStateOf<TaskState?>(null) }
 
     // React to state transitions with the right choreography.
     LaunchedEffect(state) {
+        val previous = animatedTo
+        animatedTo = state
+        // First composition: the layers are already at rest for this state. Nothing to play, and
+        // nothing to feel.
+        if (previous == null || previous == state) return@LaunchedEffect
         when (state) {
             TaskState.OPEN -> coroutineScope {
                 launch { frame.animateTo(1f, tween(if (reduced) Timing.REDUCED_MOTION_MS else 250)) }
