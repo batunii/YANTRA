@@ -77,15 +77,6 @@ class SmartListViewModel(
         combine(def, properties.defs(), container.labels.all()) { d, defs, labels -> describe(d, defs, labels) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
-    /**
-     * A task shown here is the same task as anywhere else, so it is editable here too. Renaming it
-     * cannot silently strand it: if the new title stops matching the rules the flow drops it from
-     * the view, which is the honest outcome.
-     */
-    fun rename(id: String, title: String) {
-        viewModelScope.launch { nodes.rename(id, title) }
-    }
-
     fun addTask(title: String) {
         viewModelScope.launch {
             val d = def.value ?: smartLists.defById(nodeId) ?: return@launch

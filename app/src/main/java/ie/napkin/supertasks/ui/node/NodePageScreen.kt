@@ -119,6 +119,7 @@ import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.MarkdownEmphasis
+import ie.napkin.supertasks.ui.components.markdownAnnotated
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.QuickAddBar
@@ -505,6 +506,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     autoFocus = child.type == NodeType.TASK && child.id == justCreatedId,
                     onAutoFocusConsumed = { if (justCreatedId == child.id) justCreatedId = null },
                     vm = vm,
+                    // Complement of `grouped` above: a task's page is a document you type in, a
+                    // list is a set of rows you open.
+                    editable = isTask,
                     onOpen = {
                         when (child.type) {
                             NodeType.INK -> nav.navigate(Routes.ink(child.id))
@@ -814,6 +818,7 @@ private fun BlockRow(
     onAutoFocusConsumed: () -> Unit,
     vm: NodePageViewModel,
     onOpen: () -> Unit,
+    editable: Boolean = true,
 ) {
     when (child.type) {
         // Task, note and heading all go through the SAME composable so that converting between
@@ -827,6 +832,7 @@ private fun BlockRow(
             onToggleDone = { vm.setDone(child.id, it) },
             onBecome = { vm.convert(child, it) },
             onOpen = onOpen,
+            editable = editable,
         )
     }
 }
@@ -1020,6 +1026,13 @@ internal fun TextualBlockRow(
     onToggleDone: (Boolean) -> Unit,
     onBecome: (String) -> Unit,
     onOpen: () -> Unit,
+    /**
+     * Whether the words themselves are editable. On a task's own page they are: the page IS the
+     * text, so tapping a line puts the caret in it. On a list they are not — a list is a set of
+     * destinations, so the whole row is one target and tapping it opens the task, which is where
+     * its text lives. Same row either way; only what a tap means changes.
+     */
+    editable: Boolean = true,
 ) {
     val y = Yantra.colors
     val isTask = child.type == NodeType.TASK
@@ -1036,14 +1049,14 @@ internal fun TextualBlockRow(
     // rather than one target with two meanings, which is what makes both feel direct: the words
     // are the words, the arrow is the way in.
 
-    androidx.compose.runtime.LaunchedEffect(autoFocus) {
-        if (autoFocus) {
+    androidx.compose.runtime.LaunchedEffect(autoFocus, editable) {
+        if (autoFocus && editable) {
             runCatching { focusRequester.requestFocus() }
             onAutoFocusConsumed()
         }
     }
-    androidx.compose.runtime.LaunchedEffect(claimCaret) {
-        if (!claimCaret) return@LaunchedEffect
+    androidx.compose.runtime.LaunchedEffect(claimCaret, editable) {
+        if (!claimCaret || !editable) return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
         // Always ask at least once: if a blur has not propagated yet then hasFocus is still true,
         // a guarded loop exits immediately, and focus never gets requested at all.
@@ -1092,7 +1105,12 @@ internal fun TextualBlockRow(
         else -> 9.dp
     }
 
-    Column(Modifier.activeBlock(active).padding(vertical = vPad, horizontal = 2.dp)) {
+    Column(
+        Modifier
+            .activeBlock(active)
+            .then(if (editable) Modifier else Modifier.clickable(onClick = onOpen))
+            .padding(vertical = vPad, horizontal = 2.dp),
+    ) {
         Row(verticalAlignment = Alignment.Top) {
             if (isTask) {
                 TaskCheck(
@@ -1118,7 +1136,24 @@ internal fun TextualBlockRow(
             // the caret was in — the keyboard dropped every single time and had to be won back
             // by a retry loop. Sharing the call site means the field survives the change
             // outright: only its style and placeholder differ.
-            BasicTextField(
+            if (!editable) {
+                // Read straight from the entity, not from the field's cached text: that cache is
+                // keyed on the block id alone, so a title renamed on its own page would come back
+                // here stale. Nothing types into this row, so there is no caret to protect.
+                val shown = child.title.orEmpty()
+                val textMod = Modifier.weight(1f).padding(top = 1.dp)
+                if (shown.isBlank()) {
+                    Text(placeholder, style = style, color = y.textMuted.copy(alpha = 0.5f), modifier = textMod)
+                } else {
+                    Text(
+                        markdownAnnotated(shown, y.textDim),
+                        style = style,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = textMod,
+                    )
+                }
+            } else BasicTextField(
                 value = text,
                 onValueChange = editing::onValueChange,
                 textStyle = style,

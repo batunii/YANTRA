@@ -169,14 +169,9 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                             // Caret hand-off belongs to a document, where blocks split and merge.
                             claimCaret = false,
                             onCaretClaimed = {},
-                            // Enter finishes this task's title and starts the next one, so the
-                            // list's own rules stamp the new task exactly as the add bar would.
-                            onSplit = { before, after ->
-                                vm.rename(task.id, before)
-                                if (after.isNotBlank()) vm.addTask(after)
-                            },
-                            // No backspace-merge: the previous row may belong to another list
-                            // entirely, so there is nothing here for this task to merge back into.
+                            // Nothing types here, so there is no Enter to split on and no
+                            // Backspace to merge back with.
+                            onSplit = { _, _ -> },
                             onMergeBack = {},
                             chips = chips[task.id].orEmpty(),
                             childCount = childCounts[task.id] ?: 0,
@@ -184,11 +179,14 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                             pomoCount = pomoCounts[task.id] ?: 0,
                             autoFocus = false,
                             onAutoFocusConsumed = {},
-                            onRename = { vm.rename(task.id, it) },
+                            onRename = {},
                             onToggleDone = { vm.setDone(task.id, it) },
                             // Only tasks are gathered here, so there is no type to convert to.
                             onBecome = {},
                             onOpen = { nav.navigate(Routes.node(task.id)) },
+                            // A smart list is a list: the row opens the task, it does not become a
+                            // text field. Typing happens on the task's own page.
+                            editable = false,
                         )
                     }
                 }
