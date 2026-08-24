@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.offset
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.Path
 import ie.napkin.supertasks.ui.components.drawPartialPath
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.Canvas
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -497,9 +500,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     )
                 }
                 // A list is a card of rows; a task's page is a document, so its blocks sit bare.
+                // Prose is not a block you handle, so it is not laid out like one. The gutter
+                // exists to hold a drag grip; text and headings have none — only tasks, ink and
+                // images can be picked up — so reserving the strip for them just pushed every
+                // paragraph a thumb's width off the margin and made a document look like a stack of
+                // widgets. They keep the indent, which is theirs.
                 Wrapper(
                     grouped = !isTask,
-                    inset = BLOCK_GUTTER + NEST_STEP * child.indent,
+                    inset = (if (draggable) BLOCK_GUTTER else PROSE_MARGIN) + NEST_STEP * child.indent,
                 ) {
                 BlockRow(
                     child = child,
@@ -561,6 +569,33 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     WriteLine(
                         label = "Write something…",
                         onClick = { vm.addBlock(NodeType.PARAGRAPH, "") { id -> caretTarget = id } },
+                    )
+                }
+            }
+            // The rest of the page is writable. Removing the permanent ghost line was right — it
+            // was a prompt for something you had already started — but it left the page below the
+            // last block inert, and a document where the empty part cannot be typed into is a
+            // document that only accepts text through a toolbar. Tapping here does what tapping
+            // under the last line does in any editor: puts the caret on a new line. If the page
+            // already ends in a blank block, that blank IS the new line, so it is focused instead
+            // of another one being made.
+            if (isTask) {
+                item(key = "page-tail") {
+                    val tail = blocks.lastOrNull()
+                    val endsBlank = tail != null &&
+                        tail.title.isNullOrBlank() &&
+                        tail.type in NodeType.TEXTUAL
+                    Spacer(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(if (blocks.isEmpty()) 120.dp else 220.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                if (endsBlank) caretTarget = tail.id
+                                else vm.addBlock(NodeType.PARAGRAPH, "") { id -> caretTarget = id }
+                            },
                     )
                 }
             }
@@ -926,6 +961,17 @@ private fun BlockRow(
 private val BLOCK_GUTTER = 30.dp
 
 /**
+ * Where prose starts.
+ *
+ * Not zero: the drag gutter was doubling as the page margin (the list's own start padding is 2.dp
+ * precisely because the gutter supplied the rest), so taking it away put paragraphs flush against
+ * the screen edge. This is a margin in its own right, and it sits a little inside the gutter so a
+ * task's glyph hangs into it — the way a checklist sits in a document, one left edge for the
+ * writing with the marks in the margin beside it.
+ */
+private val PROSE_MARGIN = 20.dp
+
+/**
  * Puts a block either into the shared list card or bare on the page, without either branch having
  * to know how the other is laid out.
  */
@@ -1117,7 +1163,11 @@ internal fun TextualBlockRow(
     val isBullet = child.type == NodeType.BULLET
     val isNumbered = child.type == NodeType.NUMBERED
 
-    var text by remember(child.id) { mutableStateOf(child.title.orEmpty()) }
+    // TextFieldValue, not String: a String-backed field gives no way to say where the caret should
+    // land, and merging back into the previous block dropped it at position 0 — you pressed
+    // Backspace to join two lines and ended up typing in front of the line you had joined.
+    var field by remember(child.id) { mutableStateOf(TextFieldValue(child.title.orEmpty())) }
+    val text = field.text
     var hasFocus by remember(child.id) { mutableStateOf(false) }
     // Where the title's glyphs actually landed, so the ink strike can be drawn across the words.
     var titleLayout by remember(child.id) { mutableStateOf<TextLayoutResult?>(null) }
@@ -1136,6 +1186,10 @@ internal fun TextualBlockRow(
     }
     androidx.compose.runtime.LaunchedEffect(claimCaret, editable) {
         if (!claimCaret || !editable) return@LaunchedEffect
+        // Before focusing, put the caret where the writing stopped. A block claims the caret when
+        // the block after it was merged into it, so the end of this text is exactly where the
+        // deleted line used to begin — carrying on typing should carry on from there.
+        field = field.copy(selection = TextRange(field.text.length))
         androidx.compose.runtime.withFrameNanos { }
         // Always ask at least once: if a blur has not propagated yet then hasFocus is still true,
         // a guarded loop exits immediately, and focus never gets requested at all.
@@ -1152,11 +1206,17 @@ internal fun TextualBlockRow(
     val editing = BlockEditing(
         text = text,
         type = child.type,
-        onTextChange = { text = it; onRename(it) },
+        // Ordinary typing has already updated `field` with Compose's own caret, so leave it be.
+        // Only when the editor rewrote the text itself — a split truncating this block, a markdown
+        // marker being swallowed — is the field replaced, and then the caret goes to the end.
+        onTextChange = { new ->
+            if (new != field.text) field = TextFieldValue(new, TextRange(new.length))
+            onRename(new)
+        },
         onSplit = onSplit,
         onMergeBack = onMergeBack,
         onBecome = { become, rest ->
-            text = rest
+            field = TextFieldValue(rest, TextRange(rest.length))
             onRename(rest)
             onBecome(become)
         },
@@ -1254,7 +1314,9 @@ internal fun TextualBlockRow(
                     }
                 }
             )
-            .activeBlock(active)
+            // Only on a task. The wash says "this is the block the handle belongs to", and prose
+            // has no handle — on a paragraph it just made the line you were writing look selected.
+            .activeBlock(active && isTask)
             .then(if (editable) Modifier else Modifier.clickable(onClick = onOpen))
             .padding(vertical = vPad, horizontal = 2.dp),
     ) {
@@ -1319,8 +1381,11 @@ internal fun TextualBlockRow(
                     )
                 }
             } else BasicTextField(
-                value = text,
-                onValueChange = editing::onValueChange,
+                value = field,
+                onValueChange = { v ->
+                    field = v
+                    editing.onValueChange(v.text)
+                },
                 textStyle = style,
                 cursorBrush = SolidColor(y.accent),
                 // **bold**, *italic* and `code` render as you type. The markers stay put and stay
