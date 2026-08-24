@@ -505,7 +505,16 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             } ?: false
             if (!endsBlank) {
                 item(key = "write-line") {
-                    WriteLine(onClick = { vm.addBlock(NodeType.PARAGRAPH, "") { id -> caretTarget = id } })
+                    // The blank line offers what the page is *for*. A list is a list of tasks, so
+                    // the first thing you type there is a task; a task's own page is where you
+                    // write about it, so there it is a note. Notes are never withheld — the Note
+                    // chip, "- " markdown, or one tap on the type bar all still get you one — they
+                    // just stop being what a task list hands you by default.
+                    val blankType = if (isTask) NodeType.PARAGRAPH else NodeType.TASK
+                    WriteLine(
+                        label = if (isTask) "Write something…" else "Add a task…",
+                        onClick = { vm.addBlock(blankType, "") { id -> caretTarget = id } },
+                    )
                 }
             }
             item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
@@ -1337,11 +1346,12 @@ private fun TypeChip(
 
 /**
  * The one blank slot on the page, held open by the UI rather than by a stored empty block. Tapping
- * it creates the Note you were going to type anyway. This is what replaces the column of
- * "Write something…" rows: there is always exactly one place to start, and it costs no data.
+ * it creates whatever the page is for — a task on a list, a note on a task's own page. This is
+ * what replaces the column of blank rows: there is always exactly one place to start, and it costs
+ * no data until you type in it.
  */
 @Composable
-private fun WriteLine(onClick: () -> Unit) {
+private fun WriteLine(label: String, onClick: () -> Unit) {
     val y = Yantra.colors
     Row(
         Modifier
@@ -1351,7 +1361,7 @@ private fun WriteLine(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Write something…",
+            label,
             style = MaterialTheme.typography.bodyMedium,
             color = y.textMuted.copy(alpha = 0.5f),
         )
