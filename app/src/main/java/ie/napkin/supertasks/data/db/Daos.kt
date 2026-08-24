@@ -82,8 +82,17 @@ interface NodeDao {
     @Query("UPDATE node SET title = :title, updated_at = :now WHERE id = :id")
     suspend fun setTitle(id: String, title: String?, now: Long)
 
-    @Query("UPDATE node SET done = :done, updated_at = :now WHERE id = :id")
+    /**
+     * Completing a task clears "in progress" in the same statement. The two are one fact seen from
+     * two sides — a finished task is not still being worked on — and doing it here means no caller
+     * can leave the pair inconsistent.
+     */
+    @Query("UPDATE node SET done = :done, in_progress = CASE WHEN :done THEN 0 ELSE in_progress END, updated_at = :now WHERE id = :id")
     suspend fun setDone(id: String, done: Boolean, now: Long)
+
+    /** The middle state. Never set on a done task — see [setDone]. */
+    @Query("UPDATE node SET in_progress = :inProgress, updated_at = :now WHERE id = :id AND done = 0")
+    suspend fun setInProgress(id: String, inProgress: Boolean, now: Long)
 
     @Query("UPDATE node SET collapsed = :collapsed, updated_at = :now WHERE id = :id")
     suspend fun setCollapsed(id: String, collapsed: Boolean, now: Long)

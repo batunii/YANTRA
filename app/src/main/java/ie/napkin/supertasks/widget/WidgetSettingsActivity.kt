@@ -111,7 +111,7 @@ class WidgetSettingsActivity : ComponentActivity() {
         }
 
         setContent {
-            SuperTasksTheme(mode = theme.mode, hue = theme.hue, dynamic = theme.dynamic) {
+            SuperTasksTheme(mode = theme.mode) {
                 var opacity by remember { mutableFloatStateOf(ListWidgetDefaults.OPACITY.toFloat()) }
                 var showDone by remember { mutableStateOf(ListWidgetDefaults.SHOW_DONE) }
                 var loaded by remember { mutableStateOf(false) }

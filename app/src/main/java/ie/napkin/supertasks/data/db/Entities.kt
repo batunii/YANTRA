@@ -59,6 +59,17 @@ data class NodeEntity(
     val title: String?,
     val rank: String,                                        // fractional index for sibling order
     val done: Boolean = false,
+    /**
+     * Started but not finished — the middle state of the task glyph (open → in progress → done).
+     *
+     * Stored rather than derived from a running focus session on purpose: the design has you
+     * long-press a task to say "I am on this", which is a claim about intent, not about whether a
+     * timer happens to be ticking. A task stays in progress across app restarts and between
+     * sessions, and a session on a task you never marked does not silently move it.
+     *
+     * Meaningless when [done] is true; completion supersedes it, and the repository clears it.
+     */
+    @ColumnInfo(name = "in_progress") val inProgress: Boolean = false,
     val collapsed: Boolean = false,
     /**
      * How far this block is indented on its page, purely visually. Deliberately *not* parentage:

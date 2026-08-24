@@ -29,7 +29,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
@@ -128,7 +133,12 @@ import ie.napkin.supertasks.ui.components.NeutralChip
 import ie.napkin.supertasks.ui.components.PomodoroCount
 import ie.napkin.supertasks.ui.components.PropertyChip
 import ie.napkin.supertasks.ui.components.SectionLabel
-import ie.napkin.supertasks.ui.components.TaskCheck
+import ie.napkin.supertasks.ui.components.INK_STRIKE_MS
+import ie.napkin.supertasks.ui.components.InkStrike
+import ie.napkin.supertasks.ui.components.LocalCompletionTempo
+import ie.napkin.supertasks.ui.components.LocalYantraHaptics
+import ie.napkin.supertasks.ui.components.TaskState
+import ie.napkin.supertasks.ui.components.YantraCheckbox
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.ink.InkPreview
 import ie.napkin.supertasks.ui.ink.inkContentHeight
@@ -263,6 +273,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onDelete = { deletingPage = true },
             onRename = vm::renamePage,
             onToggleDone = { done -> vm.setDone(nodeId, done) },
+            onToggleInProgress = { on -> vm.setInProgress(nodeId, on) },
             properties = {
                 if (isTask) {
                     PropertyRow(
@@ -658,6 +669,7 @@ private fun PageBand(
     onDelete: () -> Unit,
     onRename: (String) -> Unit,
     onToggleDone: (Boolean) -> Unit,
+    onToggleInProgress: (Boolean) -> Unit,
     properties: @Composable () -> Unit,
 ) {
     val y = Yantra.colors
@@ -759,13 +771,26 @@ private fun PageBand(
                     verticalAlignment = Alignment.Top,
                 ) {
                     if (isTask && node != null) {
-                        TaskCheck(
-                            done = node.done,
-                            onToggle = { onToggleDone(!node.done) },
-                            size = 24.dp,
-                            modifier = Modifier.padding(top = 6.dp),
+                        // The same glyph as the row that led here, so the task looks like itself on
+                        // its own page. Frame stays neutral: this is the task's page, not a list, and
+                        // priority is reported by its pill below.
+                        YantraCheckbox(
+                            state = when {
+                                node.done -> TaskState.DONE
+                                node.inProgress -> TaskState.IN_PROGRESS
+                                else -> TaskState.OPEN
+                            },
+                            taskId = node.id,
+                            onComplete = { onToggleDone(true) },
+                            onToggleInProgress = { onToggleInProgress(!node.inProgress) },
+                            onUndo = { onToggleDone(false) },
+                            tempo = LocalCompletionTempo.current,
+                            haptics = LocalYantraHaptics.current,
+                            darkTheme = y.isDark,
+                            size = 30.dp,
+                            modifier = Modifier.padding(top = 4.dp),
                         )
-                        Spacer(Modifier.width(14.dp))
+                        Spacer(Modifier.width(12.dp))
                     }
                     BasicTextField(
                         value = title,
@@ -830,6 +855,7 @@ private fun BlockRow(
             onMergeBack, chips, childCount, ordinal, pomoCount, autoFocus, onAutoFocusConsumed,
             onRename = { vm.rename(child.id, it) },
             onToggleDone = { vm.setDone(child.id, it) },
+            onToggleInProgress = { vm.setInProgress(child.id, it) },
             onBecome = { vm.convert(child, it) },
             onOpen = onOpen,
             editable = editable,
@@ -1024,6 +1050,7 @@ internal fun TextualBlockRow(
     onAutoFocusConsumed: () -> Unit,
     onRename: (String) -> Unit,
     onToggleDone: (Boolean) -> Unit,
+    onToggleInProgress: (Boolean) -> Unit,
     onBecome: (String) -> Unit,
     onOpen: () -> Unit,
     /**
@@ -1042,6 +1069,8 @@ internal fun TextualBlockRow(
 
     var text by remember(child.id) { mutableStateOf(child.title.orEmpty()) }
     var hasFocus by remember(child.id) { mutableStateOf(false) }
+    // Where the title's glyphs actually landed, so the ink strike can be drawn across the words.
+    var titleLayout by remember(child.id) { mutableStateOf<TextLayoutResult?>(null) }
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
     // Every task is reachable, whether or not anything is under it yet — the chevron is always
@@ -1084,12 +1113,22 @@ internal fun TextualBlockRow(
     )
 
     val titleColor = if (isTask && child.done) y.textDim else y.textPrimary
-    val deco = if (isTask && child.done) TextDecoration.LineThrough else TextDecoration.None
+    // No strikethrough. A finished task is struck through with the ink strike below — a pen mark in
+    // coral, seeded by the task id so a given task's strike is always the same wobble. The font's
+    // ruler-straight line said "field disabled"; the strike says someone crossed it off.
     val style: TextStyle = when {
         isHeading -> TextStyle(fontSize = 16.sp, fontWeight = FontWeight.W800, letterSpacing = (-0.2).sp, color = y.textPrimary)
-        isTask -> MaterialTheme.typography.bodyLarge.copy(color = titleColor, textDecoration = deco)
+        isTask -> MaterialTheme.typography.bodyLarge.copy(color = titleColor)
         else -> MaterialTheme.typography.bodyMedium.copy(color = y.textSecondary)
     }
+    // Drawn over the title, driven by done-ness. The full choreography's strike timing lives in the
+    // glyph; here it is the same one-shot, so a row struck by a tap and a row that arrives already
+    // done agree on the mark.
+    val strike by animateFloatAsState(
+        targetValue = if (isTask && child.done) 1f else 0f,
+        animationSpec = tween(if (child.done) INK_STRIKE_MS else 160),
+        label = "inkStrike",
+    )
     val placeholder = when {
         isTask -> "New task"
         isHeading -> "Heading"
@@ -1113,13 +1152,26 @@ internal fun TextualBlockRow(
     ) {
         Row(verticalAlignment = Alignment.Top) {
             if (isTask) {
-                TaskCheck(
-                    done = child.done,
-                    onToggle = { onToggleDone(!child.done) },
-                    tint = chips.firstOrNull { it.isPriority }?.color,
+                YantraCheckbox(
+                    state = when {
+                        child.done -> TaskState.DONE
+                        child.inProgress -> TaskState.IN_PROGRESS
+                        else -> TaskState.OPEN
+                    },
+                    taskId = child.id,
+                    onComplete = { onToggleDone(true) },
+                    onToggleInProgress = { onToggleInProgress(!child.inProgress) },
+                    onUndo = { onToggleDone(false) },
+                    tempo = LocalCompletionTempo.current,
+                    haptics = LocalYantraHaptics.current,
+                    darkTheme = y.isDark,
+                    size = 26.dp,
+                    // Priority draws the enclosure and nothing else. A done task loses it: there is
+                    // no urgency left to report, and the law keeps crimson off completion.
+                    frameTint = if (child.done) null else chips.firstOrNull { it.isPriority }?.color,
                     modifier = Modifier.padding(top = 1.dp),
                 )
-                Spacer(Modifier.width(13.dp))
+                Spacer(Modifier.width(11.dp))
             } else if (isBullet || isNumbered) {
                 // Right-aligned in a fixed column so "9." and "10." keep their text on the same
                 // left edge instead of the list stepping sideways as it grows.
@@ -1136,12 +1188,16 @@ internal fun TextualBlockRow(
             // the caret was in — the keyboard dropped every single time and had to be won back
             // by a retry loop. Sharing the call site means the field survives the change
             // outright: only its style and placeholder differ.
+            // The title, with the ink strike over it. Boxed together so the strike can be measured
+            // against the words rather than the row: a mark that ran the full width would float off
+            // the end of every short title.
+            Box(Modifier.weight(1f)) {
             if (!editable) {
                 // Read straight from the entity, not from the field's cached text: that cache is
                 // keyed on the block id alone, so a title renamed on its own page would come back
                 // here stale. Nothing types into this row, so there is no caret to protect.
                 val shown = child.title.orEmpty()
-                val textMod = Modifier.weight(1f).padding(top = 1.dp)
+                val textMod = Modifier.fillMaxWidth().padding(top = 1.dp)
                 if (shown.isBlank()) {
                     Text(placeholder, style = style, color = y.textMuted.copy(alpha = 0.5f), modifier = textMod)
                 } else {
@@ -1150,6 +1206,7 @@ internal fun TextualBlockRow(
                         style = style,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { titleLayout = it },
                         modifier = textMod,
                     )
                 }
@@ -1162,7 +1219,7 @@ internal fun TextualBlockRow(
                 // visible, only dimmed — see MarkdownEmphasis for why that matters.
                 visualTransformation = remember(y.textDim) { MarkdownEmphasis(y.textDim) },
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(top = 1.dp)
                     .focusRequester(focusRequester)
                     .onPreviewKeyEvent(editing::onKey)
@@ -1171,6 +1228,7 @@ internal fun TextualBlockRow(
                         onFocusChange(it.isFocused)
                         if (it.isFocused) onActivate()
                     },
+                onTextLayout = { titleLayout = it },
                 decorationBox = { inner ->
                     Box {
                         if (text.isEmpty()) {
@@ -1180,6 +1238,25 @@ internal fun TextualBlockRow(
                     }
                 },
             )
+            // Struck across the first line's actual glyph run. A wrapped title gets its first line
+            // marked, which is what you see anyway at maxLines = 2.
+            val layout = titleLayout
+            if (isTask && strike > 0f && layout != null && layout.lineCount > 0) {
+                val density = LocalDensity.current
+                val runWidth = layout.getLineRight(0).coerceAtMost(layout.size.width.toFloat())
+                val lineTop = layout.getLineTop(0)
+                val lineHeight = layout.getLineBottom(0) - lineTop
+                InkStrike(
+                    taskId = child.id,
+                    progress = strike,
+                    darkTheme = y.isDark,
+                    modifier = Modifier
+                        .offset { IntOffset(0, lineTop.roundToInt()) }
+                        .width(with(density) { runWidth.toDp() })
+                        .height(with(density) { lineHeight.toDp() }),
+                )
+            }
+            }
             // The way in, always available on a task. It carries the child count when there is
             // one, so it doubles as "there is something inside" rather than only "tappable".
             if (isTask) {

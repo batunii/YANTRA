@@ -44,7 +44,6 @@ import kotlinx.coroutines.launch
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.components.SectionLabel
-import ie.napkin.supertasks.ui.components.accentFor
 import ie.napkin.supertasks.ui.theme.SuperTasksTheme
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted

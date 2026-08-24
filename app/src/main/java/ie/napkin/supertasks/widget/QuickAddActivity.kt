@@ -112,7 +112,7 @@ class QuickAddActivity : ComponentActivity() {
         }
 
         setContent {
-            SuperTasksTheme(mode = theme.mode, hue = theme.hue, dynamic = theme.dynamic) {
+            SuperTasksTheme(mode = theme.mode) {
                 val y = Yantra.colors
                 var text by remember { mutableStateOf("") }
                 var dueToday by remember { mutableStateOf(false) }

@@ -147,6 +147,10 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.setDone(id, done) }
     }
 
+    fun setInProgress(id: String, inProgress: Boolean) {
+        viewModelScope.launch { nodes.setInProgress(id, inProgress) }
+    }
+
     fun delete(id: String) {
         viewModelScope.launch {
             // Deleting the line above an indented one leaves it indented under nothing.

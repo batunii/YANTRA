@@ -41,7 +41,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ie.napkin.supertasks.ui.theme.AccentPalette
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraMotion
 import java.time.Instant
@@ -59,9 +58,6 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-
-/** Stable accent color per node — gives lists their Yantra color identity. */
-fun accentFor(id: String): Color = AccentPalette[abs(id.hashCode()) % AccentPalette.size]
 
 /**
  * What a chip *means*, over and above what it says. Kept out of [ChipData.color] because the
@@ -172,80 +168,6 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yan
         letterSpacing = 1.4.sp,
         color = color,
     )
-}
-
-/**
- * Round Superlist-style task checkbox — square-rounded, terracotta fill on completion, with a
- * spring pop (scale 1.08) and a fading/scaling tick. Reversible.
- *
- * [tint] carries priority onto the outline while the task is open, so a flagged task reads as
- * urgent from the checkbox alone and the priority chip stops being the only carrier of it.
- */
-@Composable
-fun TaskCheck(
-    done: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 22.dp,
-    tint: Color? = null,
-) {
-    val y = Yantra.colors
-    val scale by animateFloatAsState(
-        targetValue = if (done) 1.08f else 1f,
-        animationSpec = YantraMotion.fastSpatial(),
-        label = "checkScale",
-    )
-    val tickAlpha by animateFloatAsState(
-        targetValue = if (done) 1f else 0f,
-        animationSpec = YantraMotion.effects(),
-        label = "tickAlpha",
-    )
-    val tickScale by animateFloatAsState(
-        targetValue = if (done) 1f else 0.3f,
-        animationSpec = YantraMotion.fastSpatial(),
-        label = "tickScale",
-    )
-    val border by animateColorAsState(
-        if (done) y.accent else tint ?: y.checkOutline,
-        YantraMotion.effects(),
-        label = "checkBorder",
-    )
-    val fill by animateColorAsState(if (done) y.accent else Color.Transparent, YantraMotion.effects(), label = "checkFill")
-    Box(
-        modifier = modifier
-            .size(size)
-            .scale(scale)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onToggle,
-            )
-            .border(2.dp, border, RoundedCornerShape(7.dp))
-            .background(fill, RoundedCornerShape(7.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        // The signature: completion pops a four-point compass-star (from the logo), not a tick.
-        val star = y.onAccent
-        Canvas(
-            modifier = Modifier
-                .size(size * 0.68f)
-                .graphicsLayer { alpha = tickAlpha; scaleX = tickScale; scaleY = tickScale },
-        ) {
-            val c = this.size.minDimension / 2f
-            val outer = c
-            val inner = c * 0.4f
-            val path = Path()
-            for (i in 0 until 8) {
-                val rr = if (i % 2 == 0) outer else inner
-                val ang = (-90.0 + i * 45.0) * PI / 180.0
-                val px = c + (rr * cos(ang)).toFloat()
-                val py = c + (rr * sin(ang)).toFloat()
-                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
-            }
-            path.close()
-            drawPath(path, color = star)
-        }
-    }
 }
 
 /**

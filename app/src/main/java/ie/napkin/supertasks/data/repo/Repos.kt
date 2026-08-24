@@ -154,6 +154,7 @@ class NodeRepository(private val db: AppDatabase) {
 
     suspend fun rename(id: String, title: String?) = dao.setTitle(id, title, now())
     suspend fun setDone(id: String, done: Boolean) = dao.setDone(id, done, now())
+    suspend fun setInProgress(id: String, inProgress: Boolean) = dao.setInProgress(id, inProgress, now())
     suspend fun setCollapsed(id: String, collapsed: Boolean) = dao.setCollapsed(id, collapsed, now())
 
     /**

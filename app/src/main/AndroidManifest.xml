@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The completion choreography's feel channel: a LOW_TICK when a hold arms, a THUD when the
+         bindu lands. Normal permission, no runtime prompt. It carries the whole reward when the
+         user has animations turned off. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- API 31/32: user-revocable exact-alarm permission; 33+ uses USE_EXACT_ALARM instead,
          which is auto-granted for alarm/reminder apps and needs no prompt. -->

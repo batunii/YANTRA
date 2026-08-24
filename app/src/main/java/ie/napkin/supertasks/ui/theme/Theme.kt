@@ -14,6 +14,10 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import ie.napkin.supertasks.ui.components.CompletionTempo
+import ie.napkin.supertasks.ui.components.LocalCompletionTempo
+import ie.napkin.supertasks.ui.components.LocalYantraHaptics
+import ie.napkin.supertasks.ui.components.YantraHaptics
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
@@ -204,7 +208,6 @@ object YantraMotion {
     fun <T> effects(): FiniteAnimationSpec<T> = tween(200)
 }
 
-val dynamicColorAvailable: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 /**
  * Wallpaper seed → OKLCH hue for the Yantra engine. Null when the wallpaper is near-neutral
@@ -212,32 +215,23 @@ val dynamicColorAvailable: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSIO
  * scheme's primary is used only as a stable hue carrier; hue is tone-invariant.
  */
 @RequiresApi(Build.VERSION_CODES.S)
-private fun dynamicSeedHue(context: Context): Float? {
-    val (chroma, hue) = dynamicLightColorScheme(context).primary.oklchChromaHue()
-    return if (chroma < 0.02f) null else hue
-}
-
-/**
- * Yantra theme. The whole palette is generated from [hue] + [mode] (see [yantraColors]);
- * with [dynamic] on (API 31+) the hue comes from the Material You wallpaper seed instead,
- * so all ~30 Yantra roles — and the M3 scheme mapped from them — rotate with the wallpaper.
- */
 @Composable
 fun SuperTasksTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
-    hue: Float = DEFAULT_HUE,
-    dynamic: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val resolved = mode.resolve(isSystemInDarkTheme())
+    val yantra = remember(resolved) { yantraColors(resolved) }
+    // The completion choreography's shared state. Haptics are the feel channel the motion law
+    // leans on — when the user has animations off, the thud is what is left of the reward.
     val context = LocalContext.current
-    // Wallpaper-color changes arrive as a configuration change → recompute the seed then.
-    val config = LocalConfiguration.current
-    val effectiveHue = if (dynamic && dynamicColorAvailable) {
-        remember(config) { dynamicSeedHue(context) } ?: hue
-    } else hue
-    val yantra = remember(resolved, effectiveHue) { yantraColors(effectiveHue, resolved) }
-    CompositionLocalProvider(LocalYantra provides yantra) {
+    val haptics = remember(context) { YantraHaptics(context) }
+    val tempo = remember { CompletionTempo() }
+    CompositionLocalProvider(
+        LocalYantra provides yantra,
+        LocalYantraHaptics provides haptics,
+        LocalCompletionTempo provides tempo,
+    ) {
         MaterialTheme(
             colorScheme = materialScheme(yantra),
             shapes = AppShapes,

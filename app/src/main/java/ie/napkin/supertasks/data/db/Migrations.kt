@@ -239,3 +239,14 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL("ALTER TABLE node ADD COLUMN indent INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * The task glyph gained a middle state, so a task needs somewhere to remember it. Existing tasks
+ * default to not-in-progress, which is right: nothing was ever claimed under the old two-state
+ * checkbox, so there is nothing to infer.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE node ADD COLUMN in_progress INTEGER NOT NULL DEFAULT 0")
+    }
+}

@@ -23,7 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.data.db.NodeEntity
-import ie.napkin.supertasks.ui.components.accentFor
 import ie.napkin.supertasks.ui.theme.Yantra
 
 /**
@@ -34,7 +33,10 @@ import ie.napkin.supertasks.ui.theme.Yantra
 @Composable
 fun WidgetListRow(node: NodeEntity, smartList: Boolean, onPick: (NodeEntity) -> Unit) {
     val y = Yantra.colors
-    val accent = accentFor(node.id)
+    // A list tile is structure, not effort, so it is drawn in the frame's neutral. It used to
+    // get a hue of its own from a hash of the node id — pretty, but a fifth colour layer with
+    // nothing to say, and it competed with the two that do.
+    val accent = y.checkOutline
     Row(
         Modifier
             .fillMaxWidth()

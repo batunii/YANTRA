@@ -88,6 +88,10 @@ class SmartListViewModel(
         viewModelScope.launch { nodes.setDone(id, done) }
     }
 
+    fun setInProgress(id: String, inProgress: Boolean) {
+        viewModelScope.launch { nodes.setInProgress(id, inProgress) }
+    }
+
     private suspend fun describe(d: SmartListDefEntity?, defs: List<PropertyDefEntity>, labels: List<LabelEntity>): String {
         if (d == null) return ""
         val defById = defs.associateBy { it.id }

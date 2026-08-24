@@ -36,10 +36,10 @@ class MainActivity : ComponentActivity() {
         // With dynamic color on, the stored hue's near-neutral ground is indistinguishable.
         val systemDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-        val pageColor = yantraColors(theme.hue, theme.mode.resolve(systemDark)).page
+        val pageColor = yantraColors(theme.mode.resolve(systemDark)).page
         window.setBackgroundDrawable(ColorDrawable(pageColor.toArgb()))
         setContent {
-            SuperTasksTheme(mode = theme.mode, hue = theme.hue, dynamic = theme.dynamic) {
+            SuperTasksTheme(mode = theme.mode) {
                 CompositionLocalProvider(LocalThemeController provides theme) {
                     AppNav(openTarget = openTarget, onOpenConsumed = { openTarget = null })
                 }

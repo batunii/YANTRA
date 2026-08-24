@@ -181,6 +181,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                             onAutoFocusConsumed = {},
                             onRename = {},
                             onToggleDone = { vm.setDone(task.id, it) },
+                            onToggleInProgress = { vm.setInProgress(task.id, it) },
                             // Only tasks are gathered here, so there is no type to convert to.
                             onBecome = {},
                             onOpen = { nav.navigate(Routes.node(task.id)) },
