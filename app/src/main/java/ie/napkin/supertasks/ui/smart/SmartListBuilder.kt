@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
@@ -163,7 +164,10 @@ fun SmartListBuilderSheet(
     var name by remember { mutableStateOf(initialName) }
     var show by remember { mutableStateOf(decoded?.show ?: ShowMode.OPEN) }
     val conds = remember { mutableStateListOf<Cond>().also { it.addAll(decoded?.conds.orEmpty()) } }
-    val extras = remember(editing?.nodeId) { decoded?.extras.orEmpty() }
+    // Mutable because choosing a starting point replaces the whole rule, extras included. Merely
+    // *opening* the sheet must preserve them (see Decoded), but "Start from" is an explicit request
+    // to begin again, and silently keeping a clause the form cannot show would be worse.
+    var extras by remember(editing?.nodeId) { mutableStateOf(decoded?.extras.orEmpty()) }
     var homeId by remember { mutableStateOf(editing?.homeParentId ?: lists.firstOrNull()?.id) }
     var addMenu by remember { mutableStateOf(false) }
     var pickingLabelsForIndex by remember { mutableStateOf<Int?>(null) }
@@ -199,11 +203,19 @@ fun SmartListBuilderSheet(
                 Label("Start from", y)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SmartTemplate.entries.forEach { t ->
-                        PresetChip(t.label) {
-                            val (presetShow, presetConds) = presetFor(t, defs)
+                        val (presetShow, presetConds) = presetFor(t, defs)
+                        PresetChip(
+                            label = t.label,
+                            // Only "current" when the form holds nothing this sheet cannot show;
+                            // otherwise a rule with hidden clauses would claim to be a bare preset.
+                            selected = extras.isEmpty() &&
+                                show == presetShow &&
+                                conds.toList() == presetConds,
+                        ) {
                             show = presetShow
                             conds.clear()
                             conds.addAll(presetConds)
+                            extras = emptyList()
                         }
                     }
                 }
@@ -664,18 +676,42 @@ private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * A starting point, which lights up while the form still holds exactly it.
+ *
+ * It used to look identical before and after being tapped, so the only evidence the tap registered
+ * was a condition appearing further down the sheet — you had to look somewhere else to find out
+ * whether you had been heard. [selected] is computed from the live form rather than from "which one
+ * did you last press", so editing anything afterwards dims the chip again: it reports what the rule
+ * currently is, never what you once clicked.
+ */
 @Composable
-private fun PresetChip(label: String, onClick: () -> Unit) {
+private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
     val shape = RoundedCornerShape(9.dp)
-    Box(
+    Row(
         Modifier
-            .background(y.tileWarm2, shape)
-            .border(1.dp, y.tileBorder, shape)
+            .background(if (selected) y.accentFill else y.tileWarm2, shape)
+            .border(1.dp, if (selected) y.accentBorder else y.tileBorder, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.W600, color = y.textSecondary)
+        if (selected) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = null,
+                tint = y.accentText,
+                modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(
+            label,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.W600,
+            color = if (selected) y.accentText else y.textSecondary,
+        )
     }
 }
 
