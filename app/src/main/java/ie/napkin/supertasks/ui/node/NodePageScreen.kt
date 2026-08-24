@@ -795,7 +795,8 @@ private fun PageBand(
                         val bandCommit = with(bandDensity) { 56.dp.toPx() }
                         val bandHaptics = LocalYantraHaptics.current
                         var bandArmed by remember(node.id) { mutableStateOf(false) }
-                        // Same stale-closure trap as the row swipe — see the note there.
+                        // Same stale-closure trap as the row swipe, and the same set-only rule — see
+                        // the note there.
                         val bandInProgress by rememberUpdatedState(node.inProgress)
                         Box(
                             Modifier
@@ -806,7 +807,7 @@ private fun PageBand(
                                             val commit = bandSwipe.value >= bandCommit
                                             bandArmed = false
                                             bandScope.launch {
-                                                if (commit) onToggleInProgress(!bandInProgress)
+                                                if (commit && !bandInProgress) onToggleInProgress(true)
                                                 bandSwipe.animateTo(0f, spring(dampingRatio = 0.7f))
                                             }
                                         },
@@ -1198,9 +1199,13 @@ internal fun TextualBlockRow(
 
     // Swipe right on a task to say "I am on this". This replaced a long-press on the glyph: the
     // glyph is a small target and press-and-hold is a gesture you have to be told about, whereas a
-    // row that follows your finger and shows the mark it is about to leave explains itself. It is a
-    // toggle — swipe again to put the task back down — because a state you can enter and not leave
-    // is a trap.
+    // row that follows your finger and shows the mark it is about to leave explains itself.
+    //
+    // It only ever PUTS a task in progress. It was briefly a toggle, which meant a second swipe
+    // silently undid the first — so a gesture you might repeat out of uncertainty flipped the state
+    // instead of confirming it. Swiping an already-started task is now a no-op: you land where you
+    // were aiming either way. What clears the flag is finishing the task, which clears it in the
+    // same UPDATE (see NodeDao.setDone).
     //
     // detectHorizontalDragGestures only claims the pointer after horizontal slop, so vertical
     // scrolling and the row's own tap both still work.
@@ -1265,7 +1270,7 @@ internal fun TextualBlockRow(
                             val commit = swipeX.value >= commitAt
                             armed = false
                             swipeScope.launch {
-                                if (commit) onToggleInProgress(!nowInProgress)
+                                if (commit && !nowInProgress) onToggleInProgress(true)
                                 swipeX.animateTo(0f, spring(dampingRatio = 0.7f))
                             }
                         },
