@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
@@ -51,7 +52,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ComposedEmpty
-import ie.napkin.supertasks.ui.components.GroupDivider
+import ie.napkin.supertasks.ui.components.ListGroupRow
+import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.markdownAnnotated
 import ie.napkin.supertasks.ui.components.PomodoroCount
@@ -160,24 +162,13 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             // One card, hairline-divided: two elevation layers instead of rows floating on the
             // page. Corners are rounded only where the group actually ends.
             itemsIndexed(tasks, key = { _, t -> t.id }) { index, task ->
-                val first = index == 0
-                val last = index == tasks.lastIndex
-                val shape = RoundedCornerShape(
-                    topStart = if (first) 20.dp else 0.dp,
-                    topEnd = if (first) 20.dp else 0.dp,
-                    bottomStart = if (last) 20.dp else 0.dp,
-                    bottomEnd = if (last) 20.dp else 0.dp,
-                )
-                Column(Modifier.fillMaxWidth().background(y.cardBg, shape)) {
-                    if (!first) GroupDivider()
+                ListGroupRow(first = index == 0, last = index == tasks.lastIndex) {
                     val taskChips = chips[task.id].orEmpty()
                     val pomo = pomoCounts[task.id] ?: 0
                     Row(
                         Modifier
-                            // The whole row is the target now — a chevron per row was five
-                            // pixels of arrow repeating down the page saying nothing.
                             .clickable { nav.navigate(Routes.node(task.id)) }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
                         TaskCheck(
@@ -212,6 +203,13 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                                 }
                             }
                         }
+                        // The way in, exactly as a list page shows it.
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Open",
+                            tint = y.textDim,
+                            modifier = Modifier.padding(top = 2.dp).size(18.dp),
+                        )
                     }
                 }
             }
@@ -225,64 +223,6 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                     .imePadding(),
                 onAdd = vm::addTask,
             )
-        }
-    }
-}
-
-@Composable
-private fun QuickAddBar(modifier: Modifier = Modifier, onAdd: (String) -> Unit) {
-    val y = Yantra.colors
-    var text by remember { mutableStateOf("") }
-    val send = {
-        if (text.isNotBlank()) {
-            onAdd(text.trim())
-            text = ""
-        }
-    }
-    // No explainer paragraph. Where a new task lands is already stated by the filter pill in
-    // the header; saying it twice made the input look like it needed a manual.
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(y.page)
-            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(y.cardBg, RoundedCornerShape(18.dp))
-                .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
-                .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
-                cursorBrush = SolidColor(y.accent),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (text.isEmpty()) {
-                            Text("Add a task…", color = y.textDim, fontSize = 14.sp)
-                        }
-                        inner()
-                    }
-                },
-            )
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .background(y.accentFill, RoundedCornerShape(12.dp))
-                    .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
-                    .clickable(onClick = send),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Add task", tint = y.accent, modifier = Modifier.size(18.dp))
-            }
         }
     }
 }

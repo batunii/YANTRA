@@ -119,7 +119,9 @@ import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.MarkdownEmphasis
+import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.NeutralChip
 import ie.napkin.supertasks.ui.components.PomodoroCount
@@ -354,8 +356,13 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 .weight(1f)
                 .fillMaxWidth()
                 .nestedScroll(headerScroll),
-            // The start inset moves into each block's drag gutter, so nothing shifts sideways.
-            contentPadding = PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+            // A list card is inset like a card; a document runs to the page edge, with its start
+            // inset living inside each block's drag gutter so nothing shifts sideways.
+            contentPadding = if (isTask) {
+                PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
+            } else {
+                PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+            },
         ) {
             itemsIndexed(blocks, key = { _, it -> it.id }) { index, child ->
                 // Tasks, sketches and images are carried; prose is not. A handle on every paragraph
@@ -460,7 +467,13 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                             .alpha(gripAlpha),
                     )
                 }
-                Box(Modifier.padding(start = BLOCK_GUTTER + NEST_STEP * child.indent)) {
+                // A list is a card of rows; a task's page is a document, so its blocks sit bare.
+                Wrapper(
+                    grouped = !isTask,
+                    first = index == 0,
+                    last = index == blocks.lastIndex,
+                    inset = BLOCK_GUTTER + NEST_STEP * child.indent,
+                ) {
                 BlockRow(
                     child = child,
                     active = child.id == activeBlockId,
@@ -502,6 +515,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 }
                 }
             }
+            // A list captures through the bar at the bottom, the same way a smart list does, so the
+            // blank line belongs only to a document.
+            //
             // One write line instead of a persisted run of empty blocks — but only when the page
             // does not already end in a blank one. The line exists to guarantee somewhere to
             // start typing; when the last block is itself blank it already *is* that place, and
@@ -511,7 +527,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             val endsBlank = blocks.lastOrNull()?.let {
                 it.title.isNullOrBlank() && it.type in NodeType.TEXTUAL
             } ?: false
-            if (!endsBlank) {
+            if (!endsBlank && isTask) {
                 item(key = "write-line") {
                     // The blank line offers what the page is *for*. A list is a list of tasks, so
                     // the first thing you type there is a task; a task's own page is where you
@@ -555,6 +571,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
         // Actions act on the block you last touched — the caret, or a long-pressed ink/image.
         val actOn = blocks.firstOrNull { it.id == activeBlockId }
+        // Lists capture with the same bar as a smart list. A task's page has no such bar: you type
+        // into it directly, which is what a document is.
+        if (!isTask) {
+            QuickAddBar(
+                modifier = Modifier.navigationBarsPadding().imePadding(),
+                onAdd = { title -> vm.addBlock(NodeType.TASK, title) },
+            )
+        }
         BlockTypeBar(
             modifier = Modifier
                 .navigationBarsPadding()
@@ -813,6 +837,27 @@ private fun BlockRow(
  * inside it — the icon is only the label; the whole strip, full row height, is the target.
  */
 private val BLOCK_GUTTER = 30.dp
+
+/**
+ * Puts a block either into the shared list card or bare on the page, without either branch having
+ * to know how the other is laid out.
+ */
+@Composable
+private fun Wrapper(
+    grouped: Boolean,
+    first: Boolean,
+    last: Boolean,
+    inset: androidx.compose.ui.unit.Dp,
+    content: @Composable () -> Unit,
+) {
+    if (grouped) {
+        ListGroupRow(first = first, last = last) {
+            Box(Modifier.padding(start = inset, end = 4.dp)) { content() }
+        }
+    } else {
+        Box(Modifier.padding(start = inset)) { content() }
+    }
+}
 
 /** How far each level of nesting steps in. */
 private val NEST_STEP = 20.dp
