@@ -49,7 +49,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.components.SectionLabel
-import ie.napkin.supertasks.ui.components.GatedSurface
+import ie.napkin.supertasks.ui.components.HeaderFold
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.QuickAddBar
@@ -89,14 +89,14 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         Column(
             Modifier
                 .fillMaxWidth()
-                // The band ends in the bhupura's bottom gate rather than a plain rounded edge —
-                // the mark is now carried by the surfaces themselves instead of by a watermark
-                // sitting behind them.
-                .background(y.band, GatedSurface(bottomCorner = 20.dp))
+                // A plain rounded edge. The bhupura's gate was tried here and it was too loud for
+                // a band that sits above every screen — a signature you cannot look away from stops
+                // being cosmetic. What is left is the hairline below, which reads as the fold
+                // between two sheets of paper rather than as a shape.
+                .background(y.band, RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
-                // +gate depth, so nothing sits inside the tab.
-                .padding(top = 10.dp, bottom = 30.dp),
+                .padding(top = 10.dp, bottom = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 NavCircle(
@@ -180,6 +180,9 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 }
             }
         }
+        // The whole cosmetic budget for this edge: one hairline, inset past the band's corners so
+        // it reads as the fold between two sheets rather than as an underline.
+        HeaderFold()
 
         LazyColumn(
             modifier = Modifier

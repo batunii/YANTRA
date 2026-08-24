@@ -174,6 +174,7 @@ class SmartListViewModel(
             // "open tasks" is the default reading of a task list — only the unusual case is worth
             // the pill's one line.
             is Filter.Done -> if (f.value) out += "completed"
+            is Filter.InProgress -> out += if (f.value) "started" else "not started"
             is Filter.Type -> Unit
             is Filter.HasLabel -> out += "label: ${labels[f.labelId]?.name ?: "?"}"
             is Filter.Prop -> {

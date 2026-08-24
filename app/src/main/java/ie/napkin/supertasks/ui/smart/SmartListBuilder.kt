@@ -62,7 +62,13 @@ import ie.napkin.supertasks.ui.components.selectConfig
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.launch
 
-private enum class ShowMode(val label: String) { OPEN("Open"), ALL("All"), DONE("Completed") }
+private enum class ShowMode(val label: String) {
+    OPEN("Open"),
+    /** node.in_progress — the tasks you have said you are in the middle of. */
+    STARTED("Started"),
+    ALL("All"),
+    DONE("Completed"),
+}
 
 private enum class LabelMatchMode { ANY, ALL }
 
@@ -224,8 +230,13 @@ fun SmartListBuilderSheet(
             // Show
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Label("Show", y)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ShowMode.entries.forEach { m -> SegChip(m.label, show == m) { show = m }; }
+                // FlowRow, because this grew to four and a fixed Row would push the last one off
+                // the edge on a narrow screen.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ShowMode.entries.forEach { m -> SegChip(m.label, show == m) { show = m } }
                 }
             }
 
@@ -376,12 +387,14 @@ private data class Decoded(
 private fun decodeFilter(filter: Filter): Decoded {
     val parts = (filter as? Filter.All)?.filters ?: listOf(filter)
     var show = ShowMode.ALL
+    var started = false
     val conds = mutableListOf<Cond>()
     val extras = mutableListOf<Filter>()
     parts.forEach { f ->
         when {
             // Every smart list is tasks-only; the builder never offers to change that.
             f is Filter.Type -> Unit
+            f is Filter.InProgress && f.value -> started = true
             f is Filter.Done -> show = if (f.value) ShowMode.DONE else ShowMode.OPEN
             f is Filter.Prop -> conds += Cond(
                 defId = f.defId, op = f.op, text = f.text,
@@ -400,7 +413,8 @@ private fun decodeFilter(filter: Filter): Decoded {
             else -> extras += f
         }
     }
-    return Decoded(show, conds, extras)
+    // Started is the narrower claim, so it wins over an accompanying "open".
+    return Decoded(if (started) ShowMode.STARTED else show, conds, extras)
 }
 
 private fun buildFilter(show: ShowMode, conds: List<Cond>, extras: List<Filter> = emptyList()): Filter {
@@ -409,6 +423,10 @@ private fun buildFilter(show: ShowMode, conds: List<Cond>, extras: List<Filter> 
     when (show) {
         ShowMode.OPEN -> base.add(Filter.Done(false))
         ShowMode.DONE -> base.add(Filter.Done(true))
+        // No Done(false) alongside it: completing a task clears in_progress in the same UPDATE, so
+        // "started" already means "not finished" and the extra clause would only be noise in the
+        // stored rule.
+        ShowMode.STARTED -> base.add(Filter.InProgress(true))
         ShowMode.ALL -> Unit
     }
     conds.forEach { c ->

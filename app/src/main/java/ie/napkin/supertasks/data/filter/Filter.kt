@@ -28,6 +28,17 @@ sealed interface Filter {
     @SerialName("done")
     data class Done(val value: Boolean) : Filter
 
+    /**
+     * Matches node.in_progress — the task glyph's middle state, the one you swipe to set.
+     *
+     * It was storable and drawable but not askable: nothing in the query layer knew it existed, so
+     * "what am I in the middle of" could be seen and never gathered. A state the app renders but
+     * cannot reason about is decoration.
+     */
+    @Serializable
+    @SerialName("in_progress")
+    data class InProgress(val value: Boolean) : Filter
+
     /** Matches node.type; smart lists normally filter for tasks. */
     @Serializable
     @SerialName("type")
@@ -151,7 +162,18 @@ fun deriveApplyOnCreate(filter: Filter): List<ApplyOnCreate> = when (filter) {
  * completed set to fetch.
  */
 fun completedVariant(filter: Filter): Filter? =
-    if (!hasDoneClause(filter)) null else flipDone(filter)
+    // A list of started tasks has no completed half: finishing a task clears in_progress in the
+    // same UPDATE, so flipping the done clause would ask for a set that cannot exist and render an
+    // empty "DONE" heading under every such view.
+    if (!hasDoneClause(filter) || asksForStarted(filter)) null else flipDone(filter)
+
+private fun asksForStarted(f: Filter): Boolean = when (f) {
+    is Filter.InProgress -> f.value
+    is Filter.All -> f.filters.any { asksForStarted(it) }
+    is Filter.AnyOf -> f.filters.any { asksForStarted(it) }
+    is Filter.Not -> false
+    else -> false
+}
 
 private fun hasDoneClause(f: Filter): Boolean = when (f) {
     is Filter.Done -> !f.value

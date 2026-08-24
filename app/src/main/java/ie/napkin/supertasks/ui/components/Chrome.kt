@@ -161,3 +161,22 @@ fun GroupDivider(inset: Dp = 16.dp) {
             .background(y.hairline),
     )
 }
+
+/**
+ * A hairline under a header band, inset past its rounded corners.
+ *
+ * The band briefly ended in the bhupura's gate. A mark that appears above every screen is not
+ * cosmetic any more — you cannot look away from it — so what is left is this: a fold line, the
+ * width of the content and no darker than the dividers, doing nothing but separating two sheets.
+ */
+@Composable
+fun HeaderFold(inset: Dp = 22.dp) {
+    val y = Yantra.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = inset)
+            .height(1.dp)
+            .background(y.hairline),
+    )
+}
