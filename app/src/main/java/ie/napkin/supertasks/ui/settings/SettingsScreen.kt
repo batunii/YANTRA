@@ -52,6 +52,14 @@ import ie.napkin.supertasks.ui.theme.AccentColor
 import ie.napkin.supertasks.ui.theme.LauncherIcon
 import ie.napkin.supertasks.ui.appContainer
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import ie.napkin.supertasks.data.sync.Credentials
+import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.theme.Yantra
 import androidx.compose.ui.graphics.Color
 
@@ -70,6 +78,29 @@ fun SettingsScreen(nav: NavHostController) {
         }
     }
     val y = Yantra.colors
+
+    // Read on every return to this screen, not once: adding a workspace happens on another screen
+    // and comes back here, and a list that still showed the old set would read as the add having
+    // silently failed.
+    var account by remember { mutableStateOf<String?>(null) }
+    var spaces by remember { mutableStateOf<List<WorkspaceRow>>(emptyList()) }
+    LifecycleResumeEffect(Unit) {
+        val job = container.appScope.launch {
+            container.seeding.join()
+            val rows = withContext(Dispatchers.IO) {
+                container.workspaces.all.map { store ->
+                    WorkspaceRow(
+                        id = store.id,
+                        name = store.readManifest()?.name ?: "Workspace",
+                        slug = container.slugOf(store.id),
+                    )
+                }
+            }
+            account = container.credentials.login(Credentials.ACCOUNT)
+            spaces = rows
+        }
+        onPauseOrDispose { job.cancel() }
+    }
 
     Column(
         Modifier
@@ -106,6 +137,46 @@ fun SettingsScreen(nav: NavHostController) {
                 SelectChip("OLED", theme.mode == ThemeMode.OLED, onClick = { theme.update(ctx, mode = ThemeMode.OLED) }, modifier = Modifier.weight(1f), stretch = true)
                 SelectChip("Light", theme.mode == ThemeMode.LIGHT, onClick = { theme.update(ctx, mode = ThemeMode.LIGHT) }, modifier = Modifier.weight(1f), stretch = true)
             }
+
+            Spacer(Modifier.height(28.dp))
+            // The account is not a workspace and is listed apart from them on purpose: it is what
+            // lets the app *make* one, and it is also the name that ends up on the commits and
+            // behind an assignment.
+            SectionLabel("GitHub")
+            Spacer(Modifier.height(10.dp))
+            SettingRow(
+                title = account ?: "Not signed in",
+                subtitle = account?.let { "Signed in — tap to manage" }
+                    ?: "Sync across devices, and share a list with other people",
+                onClick = { nav.navigate(Routes.GITHUB) },
+            )
+
+            Spacer(Modifier.height(28.dp))
+            SectionLabel("Workspaces")
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Each one is a repository. Today spans all of them.",
+                color = y.textMuted,
+                fontSize = 12.5.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            spaces.forEach { space ->
+                SettingRow(
+                    title = space.name,
+                    subtitle = space.slug ?: "On this device only",
+                    // Nothing to open yet — the switcher is Phase 5. Showing where each workspace
+                    // points is the part that is useful now, and a row that navigated nowhere would
+                    // be worse than one that does not pretend to.
+                    onClick = null,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+            SettingRow(
+                title = "Add a workspace",
+                subtitle = "Join a repository, or start a shared one",
+                icon = true,
+                onClick = { nav.navigate(Routes.ADD_WORKSPACE) },
+            )
 
             Spacer(Modifier.height(28.dp))
             // Everything commits on its own — this is for when you want to know it has, which
@@ -258,5 +329,49 @@ private fun GlyphSample(label: String, initial: TaskState) {
         )
         Spacer(Modifier.height(10.dp))
         Text(label, color = y.textMuted, fontSize = 11.5.sp, fontWeight = FontWeight.W600)
+    }
+}
+
+/** One workspace, as the settings list needs it: what it is called and where it points. */
+private data class WorkspaceRow(val id: String, val name: String, val slug: String?)
+
+/**
+ * A settings line with somewhere to go.
+ *
+ * [onClick] is nullable rather than defaulted to a no-op so a row that leads nowhere *looks* like it
+ * leads nowhere — no chevron, no ripple. A tappable row that does nothing when tapped is the kind of
+ * small lie that makes a whole screen feel broken.
+ */
+@Composable
+private fun SettingRow(
+    title: String,
+    subtitle: String,
+    onClick: (() -> Unit)?,
+    icon: Boolean = false,
+) {
+    val y = Yantra.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon) {
+            Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(12.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, color = y.textMuted, fontSize = 11.5.sp)
+        }
+        if (onClick != null) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                tint = y.textDim, modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }

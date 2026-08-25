@@ -26,6 +26,8 @@ import ie.napkin.supertasks.ui.pomodoro.FocusScreen
 import ie.napkin.supertasks.ui.pomodoro.StatsScreen
 import ie.napkin.supertasks.ui.smart.SmartListScreen
 import ie.napkin.supertasks.ui.settings.SettingsScreen
+import ie.napkin.supertasks.ui.sync.AddWorkspaceScreen
+import ie.napkin.supertasks.ui.sync.SignInScreen
 
 /** Pulls the app-wide container out of ViewModel CreationExtras. */
 fun CreationExtras.container(): AppContainer = (this[APPLICATION_KEY] as App).container
@@ -47,6 +49,8 @@ object Routes {
     const val FOCUS_CURRENT = "focus"
     const val STATS = "stats"
     const val SETTINGS = "settings"
+    const val GITHUB = "github"
+    const val ADD_WORKSPACE = "workspace/add"
 }
 
 @Composable
@@ -107,6 +111,12 @@ fun AppNav(
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(navController)
+        }
+        composable(Routes.GITHUB) {
+            SignInScreen(navController)
+        }
+        composable(Routes.ADD_WORKSPACE) {
+            AddWorkspaceScreen(navController)
         }
     }
 }

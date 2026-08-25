@@ -151,4 +151,30 @@ object WorkspaceSeeder {
             )
         )
     }
+
+    /**
+     * First-run content for a workspace that points at a repository.
+     *
+     * Deliberately almost nothing: one list, named after the workspace. The full seed above writes
+     * an Inbox, a Today and a High priority — all of which already exist, in the local workspace,
+     * and all of which span every workspace because the user asked for one Today rather than one per
+     * repo. Seeding them again per repository would put a second Inbox and a second Today on Home
+     * for every project someone links, which is the mess this app is supposed to be the opposite of.
+     *
+     * A system key is deliberately absent too. `SystemKey.INBOX` is an identity, not a label, and
+     * two pages claiming it would make "the Inbox" a question rather than a place.
+     */
+    fun seedLinked(store: WorkspaceStore, name: String, now: Long = System.currentTimeMillis()) {
+        store.writePage(
+            PageDoc(
+                id = UUID.randomUUID().toString(),
+                type = NodeType.LIST,
+                parent = null,
+                title = name,
+                modifiedAt = Instant.ofEpochMilli(now),
+                device = null,
+                blocks = emptyList(),
+            )
+        )
+    }
 }

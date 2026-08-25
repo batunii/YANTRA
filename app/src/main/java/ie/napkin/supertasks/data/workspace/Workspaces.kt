@@ -31,6 +31,12 @@ class Workspaces(
         return fresh
     }
 
+    /** Forgets a workspace. The files stay on disk; the caller decides whether to delete them. */
+    fun close(id: String) {
+        stores.remove(id)
+        writers.remove(id)
+    }
+
     val all: Collection<WorkspaceStore> get() = stores.values
 
     fun store(id: String): WorkspaceStore? = stores[id]

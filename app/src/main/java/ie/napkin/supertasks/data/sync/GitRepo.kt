@@ -29,8 +29,21 @@ class GitRepo(private val dir: File, private val branch: String) {
      */
     fun init(): Git = Git.init().setDirectory(dir).setInitialBranch(branch).call()
 
+    /**
+     * Points the repo at a remote, and **narrows what that remote means** to the task branch alone.
+     *
+     * JGit's `remoteAdd` writes the usual wildcard refspec, mapping every remote head into
+     * `refs/remotes/origin`, which would make every later fetch drag down the entire repository —
+     * all the code, all its history — to reach a branch that shares none of it. [WorkspaceLinker] is careful to fetch one refspec explicitly at
+     * link time; without this, the first background sync afterwards would quietly undo that and a
+     * workspace pointed at a large project would cost the user a clone over mobile data.
+     */
     fun addRemote(git: Git, url: String) {
         git.remoteAdd().setName("origin").setUri(URIish(url)).call()
+        git.repository.config.apply {
+            setString("remote", "origin", "fetch", "+refs/heads/$branch:refs/remotes/origin/$branch")
+            save()
+        }
     }
 
     /** Everything, including deletions — `addFilepattern` alone silently ignores removed files. */

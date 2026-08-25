@@ -26,14 +26,25 @@ class Credentials(context: Context) {
 
     private val prefs = context.getSharedPreferences("yantra_credentials", Context.MODE_PRIVATE)
 
-    private companion object {
-        const val KEYSTORE = "AndroidKeyStore"
-        const val KEY_ALIAS = "yantra.credentials"
-        const val GCM_TAG_BITS = 128
+    companion object {
+        /**
+         * The signed-in GitHub account, kept under a reserved workspace id.
+         *
+         * A workspace's token is scoped to that workspace, but signing in happens *before* any
+         * workspace exists — the token is what creates the repository the workspace will point at.
+         * Reserving an id rather than adding a second store means one Keystore key, one encryption
+         * path, and one place to look when asking whether anyone is signed in. The `@` cannot collide
+         * with a real id, which is a UUID.
+         */
+        const val ACCOUNT = "@account"
 
-        fun tokenKey(ws: String) = "token:$ws"
-        fun ivKey(ws: String) = "iv:$ws"
-        fun loginKey(ws: String) = "login:$ws"
+        private const val KEYSTORE = "AndroidKeyStore"
+        private const val KEY_ALIAS = "yantra.credentials"
+        private const val GCM_TAG_BITS = 128
+
+        private fun tokenKey(ws: String) = "token:$ws"
+        private fun ivKey(ws: String) = "iv:$ws"
+        private fun loginKey(ws: String) = "login:$ws"
     }
 
     /**

@@ -57,9 +57,26 @@ class RepoRefTest {
     }
 
     @Test
-    fun `a non-github host still parses to owner and name`() {
+    fun `a non-github host keeps its host`() {
         // Nothing here is GitHub-specific except the API check. Self-hosted git over HTTPS is a
         // reasonable thing to want, and the parser should not be the reason it cannot work.
-        assertEquals(RepoRef("team", "tasks"), ref("https://git.example.com/team/tasks.git"))
+        val parsed = ref("https://git.example.com/team/tasks.git")!!
+        assertEquals(RepoRef("team", "tasks", "git.example.com"), parsed)
+        // The host has to survive into the clone URL. Assuming github.com here would point the
+        // workspace at a github.com repository of the same name — which either fails confusingly or,
+        // far worse, succeeds somewhere the user did not mean.
+        assertEquals("https://git.example.com/team/tasks.git", parsed.httpsUrl)
+    }
+
+    @Test
+    fun `an ssh remote keeps its host too`() {
+        assertEquals("git.example.com", ref("git@git.example.com:team/tasks.git")!!.host)
+        assertEquals("github.com", ref("git@github.com:batunii/YANTRA.git")!!.host)
+    }
+
+    @Test
+    fun `a bare slug means github`() {
+        // There is no host to read, so the default is the only sensible reading of it.
+        assertEquals("https://github.com/batunii/YANTRA.git", ref("batunii/YANTRA")!!.httpsUrl)
     }
 }
