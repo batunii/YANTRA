@@ -92,6 +92,31 @@ class GitRepo(private val dir: File, private val branch: String) {
 
     fun conflicts(git: Git): Set<String> = git.status().call().conflicting
 
+    /**
+     * Clears a lock file left behind by an operation that never finished.
+     *
+     * Git takes `.git/index.lock` for the duration of a write and deletes it afterwards. If the
+     * process dies in between — force-stopped, killed for memory, battery pulled — the file stays,
+     * and every future write fails against it. Nothing in git removes it, so without this a single
+     * badly-timed death breaks sync **permanently**, with no remedy inside the app and no hint on
+     * screen beyond a failure the user cannot act on. That is exactly what happened here.
+     *
+     * Safe because all git work in this app is serialised through [SyncEngine]'s mutex in a single
+     * process: a lock still present when a pass begins cannot belong to anything running. The age
+     * check is belt and braces for a future caller that does not go through that mutex — [linking]
+     * being the one that already does not.
+     *
+     * Returns a description if it removed one, so the pass can report it rather than fixing things
+     * silently. A user whose sync failed for an hour deserves to see why it started working again.
+     */
+    fun clearStaleLock(staleAfterMs: Long = 60_000, now: Long = System.currentTimeMillis()): String? {
+        val lock = File(File(dir, ".git"), "index.lock")
+        if (!lock.exists()) return null
+        val age = now - lock.lastModified()
+        if (age < staleAfterMs) return null
+        return if (lock.delete()) "cleared a stale git lock left by an interrupted write" else null
+    }
+
     fun continueRebase(git: Git): RebaseCommand.Operation? =
         git.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call()
             .let { if (it.status.isSuccessful) null else RebaseCommand.Operation.CONTINUE }

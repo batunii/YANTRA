@@ -71,6 +71,10 @@ class SyncEngine(
     private suspend fun syncNow(commitMessage: String): SyncResult = mutex.withLock {
         if (!repo.exists) return SyncResult(error = "workspace is not a git repository")
 
+        // Before anything else: a lock from a write that never finished would fail every step below,
+        // and would go on failing forever.
+        val unlocked = repo.clearStaleLock()
+
         val resolutions = ArrayList<ConflictResolver.Resolution>()
         var committed = false
         var pulled = false
@@ -82,7 +86,7 @@ class SyncEngine(
                 if (!hasRemote(git)) {
                     // A workspace with nowhere to push is still a workspace; committing locally is
                     // the whole of sync for it, and saying "no remote" as an error would be wrong.
-                    return SyncResult(committed = committed, problems = reindex())
+                    return SyncResult(committed = committed, problems = reindex() + listOfNotNull(unlocked))
                 }
 
                 var attempt = 0
@@ -108,7 +112,7 @@ class SyncEngine(
 
                     val pushed = runCatching { repo.push(git, credentials); true }.getOrElse { false }
                     if (pushed || !repo.hasUnpushed(git)) {
-                        return SyncResult(committed, true, pulled, resolutions, reindex())
+                        return SyncResult(committed, true, pulled, resolutions, reindex() + listOfNotNull(unlocked))
                     }
                     // Someone else pushed between our fetch and our push. Go round again.
                     if (attempt >= MAX_ATTEMPTS) {

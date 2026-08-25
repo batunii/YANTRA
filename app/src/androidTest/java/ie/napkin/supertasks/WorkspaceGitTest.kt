@@ -248,4 +248,45 @@ class WorkspaceGitTest {
         assertEquals(listOf<Byte>(1, 2, 3, 4), strokes[0].toList())
         assertEquals(listOf<Byte>(9, 8, 7), strokes[1].toList())
     }
+
+    @Test
+    fun aLockLeftByAKilledProcessDoesNotBreakSyncForever() {
+        // What actually happened: the app was force-stopped mid-commit, `.git/index.lock` survived,
+        // and every sync afterwards failed against it. Nothing in git removes such a file, so without
+        // recovery a single badly-timed death breaks sync permanently — with no remedy inside the app
+        // and nothing on screen the user could act on.
+        val dir = File(root, "locked").apply { mkdirs() }
+        val repo = ie.napkin.supertasks.data.sync.GitRepo(dir, "yantra-tasks")
+        repo.init().use { git ->
+            buildWorkspace(dir)
+            repo.commitAll(git, "first", "Yantra", "yantra@napkin.ie")
+        }
+
+        val lock = File(File(dir, ".git"), "index.lock")
+        lock.createNewFile()
+        lock.setLastModified(System.currentTimeMillis() - 5 * 60_000)
+
+        val cleared = repo.clearStaleLock()
+
+        assertTrue("the lock was not reported", cleared != null)
+        assertTrue("the lock is still there", !lock.exists())
+    }
+
+    @Test
+    fun aLockThatMightStillBeInUseIsLeftAlone() {
+        // A fresh lock could belong to a write happening right now. Deleting one of those would
+        // corrupt the very thing the lock protects, which is far worse than a failed sync.
+        val dir = File(root, "busy").apply { mkdirs() }
+        val repo = ie.napkin.supertasks.data.sync.GitRepo(dir, "yantra-tasks")
+        repo.init().use { git ->
+            buildWorkspace(dir)
+            repo.commitAll(git, "first", "Yantra", "yantra@napkin.ie")
+        }
+
+        val lock = File(File(dir, ".git"), "index.lock")
+        lock.createNewFile()
+
+        assertEquals(null, repo.clearStaleLock())
+        assertTrue("a live lock was removed", lock.exists())
+    }
 }
