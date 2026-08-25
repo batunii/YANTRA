@@ -7,6 +7,7 @@ import ie.napkin.supertasks.data.repo.SelectConfig
 import ie.napkin.supertasks.data.repo.SelectOption
 import ie.napkin.supertasks.data.format.PageCodec
 import ie.napkin.supertasks.data.format.PageDoc
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.ByteArrayInputStream
@@ -23,6 +24,18 @@ data class Manifest(
     val createdAt: Long,
     /** Bumped when history is rewritten, so other devices know to reclone rather than merge. */
     val epoch: Int = 1,
+    /**
+     * Days a task stays after it is finished before it leaves the working set. **Zero is never.**
+     *
+     * A property of the workspace rather than the device, because archiving moves files that sync:
+     * a phone set to thirty days and a tablet set to ninety would disagree about what the repo
+     * contains, and the shorter one would silently win. It is also hand-editable here, like
+     * everything else in the format.
+     *
+     * Defaults to never. Archiving moves someone's data, and the first run of a new version is the
+     * worst possible moment to do that unasked.
+     */
+    @SerialName("archive_after_days") val archiveAfterDays: Int = 0,
 )
 
 @Serializable
@@ -267,6 +280,13 @@ class WorkspaceStore(
     private val archiveDir get() = File(root, ARCHIVE)
 
     fun archiveFile(pageId: String): File = File(archiveDir, "$pageId.md")
+
+    /** Pages that have anything archived beneath them. */
+    fun archivedPageIds(): List<String> =
+        archiveDir.listFiles { f -> f.isFile && f.name.endsWith(".md") }
+            .orEmpty()
+            .map { it.name.removeSuffix(".md") }
+            .sorted()
 
     /** An archived task's own page, if it had one. Kept apart so it is not indexed either. */
     fun archivedPageFile(pageId: String): File = File(File(archiveDir, PAGES), "$pageId.md")

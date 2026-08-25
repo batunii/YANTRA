@@ -84,6 +84,10 @@ fun SettingsScreen(nav: NavHostController) {
     // silently failed.
     var account by remember { mutableStateOf<String?>(null) }
     var spaces by remember { mutableStateOf<List<WorkspaceRow>>(emptyList()) }
+    var archiveDays by remember { mutableStateOf(0) }
+    var archived by remember { mutableStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    var said by remember { mutableStateOf<String?>(null) }
     LifecycleResumeEffect(Unit) {
         val job = container.appScope.launch {
             container.seeding.join()
@@ -98,6 +102,8 @@ fun SettingsScreen(nav: NavHostController) {
             }
             account = container.credentials.login(Credentials.ACCOUNT)
             spaces = rows
+            archiveDays = container.archiveAfterDays("")
+            archived = container.archivedCount()
         }
         onPauseOrDispose { job.cancel() }
     }
@@ -197,6 +203,89 @@ fun SettingsScreen(nav: NavHostController) {
                 stretch = true,
                 onClick = { container.syncNow("asked to sync") },
             )
+
+            Spacer(Modifier.height(28.dp))
+            SectionLabel("Archive")
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Finished tasks leave your lists after a while. They stay in the repository and can " +
+                    "be brought back — this is about keeping lists short, not deleting anything.",
+                color = y.textMuted,
+                fontSize = 12.5.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                // Never first, and the default, because archiving moves someone's work: opting in
+                // should be a decision rather than something that already happened.
+                listOf("Never" to 0, "30 days" to 30, "90 days" to 90, "A year" to 365).forEach { (label, days) ->
+                    SelectChip(
+                        label,
+                        selected = archiveDays == days,
+                        modifier = Modifier.weight(1f),
+                        stretch = true,
+                        onClick = {
+                            archiveDays = days
+                            said = null
+                            container.appScope.launch { container.setArchiveAfterDays("", days) }
+                        },
+                    )
+                }
+            }
+
+            if (archiveDays > 0) {
+                Spacer(Modifier.height(12.dp))
+                SelectChip(
+                    if (busy) "Working…" else "Archive finished tasks now",
+                    selected = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    stretch = true,
+                    onClick = {
+                        if (!busy) {
+                            busy = true
+                            container.appScope.launch {
+                                val moved = container.archiveNow()
+                                archived = container.archivedCount()
+                                said = if (moved == 0) "Nothing was old enough yet"
+                                else "$moved moved out of your lists"
+                                busy = false
+                            }
+                        }
+                    },
+                )
+            }
+
+            if (archived > 0) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "$archived archived",
+                    color = y.textMuted,
+                    fontSize = 12.5.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                // The way back, and the reason the sweep can be offered before there is a screen for
+                // browsing what it moved. One action undoes the whole thing.
+                SelectChip(
+                    "Bring everything back",
+                    selected = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    stretch = true,
+                    onClick = {
+                        if (!busy) {
+                            busy = true
+                            container.appScope.launch {
+                                val back = container.restoreAllArchived()
+                                archived = container.archivedCount()
+                                said = "$back restored"
+                                busy = false
+                            }
+                        }
+                    },
+                )
+            }
+            said?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, color = y.textSecondary, fontSize = 12.5.sp)
+            }
 
             Spacer(Modifier.height(28.dp))
             // One choice, not a wheel. The set is closed so the effort ink can never land on the

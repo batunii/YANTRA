@@ -553,6 +553,27 @@ class WorkspaceWriter(
         coming.size
     }
 
+    /** How many finished tasks are currently out of the working set. */
+    fun archivedCount(): Int = store.archivedPageIds().sumOf { store.readArchivedLines(it).size }
+
+    /**
+     * Brings everything back, from every page.
+     *
+     * The escape hatch, and the reason archiving can be offered at all before there is a screen for
+     * browsing it: whatever happens, one action undoes the whole thing. A feature that moves your
+     * work needs a way back that requires no understanding of where it went.
+     */
+    suspend fun restoreAllArchived(): Int {
+        var restored = 0
+        store.archivedPageIds().forEach { pageId ->
+            val ids = store.readArchivedLines(pageId)
+                .mapNotNull { (PageCodec.decodeBlock(it) as? TaskRef)?.id }
+                .toSet()
+            if (ids.isNotEmpty()) restored += restoreArchived(pageId, ids)
+        }
+        return restored
+    }
+
     /** True when anything beneath [taskId] is still open. Read from the index, which is a fine map. */
     private suspend fun hasUnfinishedChildren(taskId: String): Boolean =
         db.nodeDao().childrenOnce(taskId).any { !it.done }

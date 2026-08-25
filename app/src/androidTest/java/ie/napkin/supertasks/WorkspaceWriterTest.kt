@@ -344,4 +344,50 @@ class WorkspaceWriterTest {
 
         assertEquals(0, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
     }
+
+    @Test
+    fun theThresholdLivesInTheManifestAndSurvivesAReadBack() = runBlocking {
+        // A property of the workspace, not the device: archiving moves files that sync, so a phone
+        // and a tablet disagreeing about it would mean the shorter setting silently winning.
+        assertEquals(0, store.readManifest()?.archiveAfterDays)
+
+        store.readManifest()!!.let { store.writeManifest(it.copy(archiveAfterDays = 30)) }
+
+        assertEquals(30, WorkspaceStore(root, store.id).readManifest()?.archiveAfterDays)
+    }
+
+    @Test
+    fun bringingEverythingBackRestoresEveryPage() = runBlocking {
+        // The escape hatch. Archiving can be offered before there is a screen for browsing it only
+        // because one action undoes the whole thing, from every page at once.
+        val a = writer.createTopLevel(NodeType.LIST, "One")
+        val b = writer.createTopLevel(NodeType.LIST, "Two")
+        finishedTask(a, "Old one", doneDaysAgo = 400)
+        finishedTask(a, "Old two", doneDaysAgo = 400)
+        finishedTask(b, "Old three", doneDaysAgo = 400)
+
+        assertEquals(3, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
+        assertEquals(3, writer.archivedCount())
+
+        assertEquals(3, writer.restoreAllArchived())
+
+        assertEquals(0, writer.archivedCount())
+        assertTrue(store.pageFile(a).readText().contains("Old one"))
+        assertTrue(store.pageFile(a).readText().contains("Old two"))
+        assertTrue(store.pageFile(b).readText().contains("Old three"))
+    }
+
+    @Test
+    fun aWorkspaceThatNeverArchivesIsLeftAlone() = runBlocking {
+        // Zero means never, and never has to mean never rather than "archive everything at once",
+        // which is what a threshold of zero days would do if it were read as a duration.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        finishedTask(list, "Ancient", doneDaysAgo = 4000)
+
+        val manifest = store.readManifest()!!
+        assertEquals(0, manifest.archiveAfterDays)
+        // The container skips the sweep entirely at zero; nothing here should ever be asked to run.
+        assertEquals(0, writer.archivedCount())
+        assertTrue(store.pageFile(list).readText().contains("Ancient"))
+    }
 }

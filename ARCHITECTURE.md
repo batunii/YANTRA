@@ -125,9 +125,8 @@ real, including a deliberate three-minute commitment. A discarded session is sti
 with a `discarded` outcome and counted nowhere — because declining to write an end line left it open
 in the log forever and the timer kept resurrecting it.
 
-**Currently ten seconds, which is a testing value.** A minute is roughly where an accidental start
-stops being plausible; ten is there so the timer can be exercised without sitting through one, and
-should be raised before anyone relies on the history.
+**Sixty seconds.** Roughly where an accidental start stops being plausible. (It sat at ten for a
+while so the timer could be exercised without waiting out a minute; that is not a value to ship.)
 
 The screen reads the same constant and asks **at the moment of stopping** — "too short to record ·
 End anyway / Keep going" — rather than captioning the whole session. A permanent warning is noise for
@@ -393,10 +392,17 @@ never a way to lose the capture.
 
 ## 6. Still open
 
-**The archive trigger.** The data layer is done, tested and reversible; nothing calls it. What
-remains, in an order where each step makes the next safe: a threshold setting, a place to see what is
-archived, then the periodic sweep. Automating a move before there is any way to see or undo it is the
-one version of this that could lose work.
+**The archive sweep.** The threshold is set in Settings and lives in the workspace manifest — a
+property of the repo rather than the device, because archiving moves files that sync and two devices
+disagreeing would mean the shorter setting silently winning. It defaults to **never**: archiving
+moves someone's work, and the first run of a new version is the worst moment to do that unasked.
+Running it is a button, and "bring everything back" is beside it, which is what makes offering it at
+all defensible before there is a screen for browsing what moved.
+
+What remains is the automatic part — a periodic sweep for workspaces that have chosen a threshold —
+and a proper view of what is archived, with per-task restore rather than all-or-nothing. The default
+is worth revisiting once that view exists; thirty days is only a reasonable default when there is
+somewhere to go and look.
 
 **`Pomodoro` is still the name in the data layer** while the UI has said `Focus` for a long time
 (§2a). Nineteen files, a table, a directory in the file format and four widget classes — worth doing,

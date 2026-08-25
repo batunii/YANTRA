@@ -305,6 +305,42 @@ class AppContainer(val app: Application) {
     fun slugOf(workspaceId: String): String? =
         registry.entries().firstOrNull { it.id == workspaceId }?.slug
 
+    /**
+     * How long finished tasks stay before they leave the working set, and setting it.
+     *
+     * Per workspace, in its manifest — see [ie.napkin.supertasks.data.workspace.Manifest]. Zero is
+     * never, which is what a workspace starts as.
+     */
+    suspend fun archiveAfterDays(workspaceId: String): Int = withContext(Dispatchers.IO) {
+        workspaces.store(workspaceId)?.readManifest()?.archiveAfterDays ?: 0
+    }
+
+    suspend fun setArchiveAfterDays(workspaceId: String, days: Int) = withContext(Dispatchers.IO) {
+        val store = workspaces.store(workspaceId) ?: return@withContext
+        store.readManifest()?.let { store.writeManifest(it.copy(archiveAfterDays = days)) }
+    }
+
+    /** Runs the sweep now, for every workspace that has asked for one. */
+    suspend fun archiveNow(): Int = withContext(Dispatchers.IO) {
+        seeding.join()
+        workspaces.all.sumOf { store ->
+            val days = store.readManifest()?.archiveAfterDays ?: 0
+            if (days <= 0) 0
+            else workspaces.writer(store.id)
+                ?.archiveFinished(java.time.LocalDate.now().minusDays(days.toLong())) ?: 0
+        }
+    }
+
+    suspend fun archivedCount(): Int = withContext(Dispatchers.IO) {
+        seeding.join()
+        workspaces.all.sumOf { workspaces.writer(it.id)?.archivedCount() ?: 0 }
+    }
+
+    suspend fun restoreAllArchived(): Int = withContext(Dispatchers.IO) {
+        seeding.join()
+        workspaces.all.sumOf { workspaces.writer(it.id)?.restoreAllArchived() ?: 0 }
+    }
+
     /** Forgets a workspace: its credentials, its registration, and its files. */
     suspend fun forgetWorkspace(workspaceId: String) = withContext(Dispatchers.IO) {
         if (workspaceId.isEmpty()) return@withContext   // the local workspace is not optional

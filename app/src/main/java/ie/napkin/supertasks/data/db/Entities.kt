@@ -188,15 +188,15 @@ object FocusOutcome {
     /**
      * Below this, a session that did not reach its target is a mis-tap and is not recorded.
      *
-     * **Ten seconds is a testing value.** It is deliberately far too low for real use — a minute is
-     * roughly where an accidental start stops being plausible — and it is here so the timer can be
-     * exercised without sitting through one. Raise it before anyone relies on the history.
+     * A minute is roughly where an accidental start stops being plausible. Anything longer is real
+     * work, including a deliberate three-minute commitment — the rule is about accidents, not
+     * brevity, and "too short to be interesting" is a display decision that belongs in the history
+     * view where it costs nothing to change.
      *
-     * Lives here rather than inside the repository because the screen has to say so *before* the tap:
-     * a session that vanishes on being stopped is alarming, and the same fact shown a few seconds
-     * earlier is simply information. One constant, so the warning cannot disagree with the rule.
+     * Lives here rather than inside the repository because the screen has to ask before it acts on
+     * it. One constant, so the confirmation cannot disagree with the rule.
      */
-    const val MIN_KEPT_SECS = 10
+    const val MIN_KEPT_SECS = 60
 
     /** Whether a session stopped now would be kept. A finished countdown always is. */
     fun wouldBeKept(elapsedSecs: Int, plannedSecs: Int): Boolean =
