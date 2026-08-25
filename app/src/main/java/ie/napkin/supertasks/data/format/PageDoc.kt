@@ -92,6 +92,16 @@ data class TaskRef(
     val priority: String? = null,
     val labels: List<String> = emptyList(),
     val assignee: String? = null,
+    /**
+     * The day this was finished. Absent unless [status] is [TaskStatus.DONE].
+     *
+     * Nothing recorded this before, which meant the app could not answer "how long has this been
+     * done" — and so could not archive on a threshold, could not show what you finished this week,
+     * and treated a task completed this morning exactly like one completed last year. A date rather
+     * than an instant: the question is always which day, and a full timestamp on every finished line
+     * would be noise in a file people read.
+     */
+    val doneAt: LocalDate? = null,
     override val raw: String? = null,
 ) : Block
 

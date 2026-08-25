@@ -142,6 +142,7 @@ object PageCodec {
         var id = ""
         var due: DueSpec? = null
         var deadline: LocalDate? = null
+        var doneAt: LocalDate? = null
         var priority: String? = null
         var assignee: String? = null
         val labels = ArrayList<String>()
@@ -153,6 +154,8 @@ object PageCodec {
                 w.startsWith("due:") -> parseDue(w.removePrefix("due:"))?.also { due = it } != null
                 w.startsWith("deadline:") ->
                     parseDate(w.removePrefix("deadline:"))?.also { deadline = it } != null
+                w.startsWith("done:") ->
+                    parseDate(w.removePrefix("done:"))?.also { doneAt = it } != null
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { assignee = w.drop(1); true }
                 w.startsWith("#") && w.length > 1 -> { labels += w.drop(1); true }
@@ -172,6 +175,7 @@ object PageCodec {
             priority = priority,
             labels = labels.reversed(),   // scanned right to left
             assignee = assignee,
+            doneAt = doneAt,
             raw = raw,
         )
     }
@@ -194,6 +198,16 @@ object PageCodec {
         try { LocalDate.parse(s) } catch (_: DateTimeParseException) { null }
 
     // ---- encode ----
+
+    /**
+     * One block as the line it would occupy in a page — for the archive, which is a list of lines
+     * rather than a document. Round-trips through [decodeBlock].
+     */
+    fun encodeBlock(block: Block): String =
+        (if (rawStillDescribes(block, 0)) block.raw!! else render(block, 0)).ifEmpty { " " }
+
+    /** The inverse. An archive line is an ordinary block line and is parsed as one. */
+    fun decodeBlock(line: String): Block = parseBlock(line)
 
     fun encode(page: PageDoc): String = buildString {
         append(FENCE).append('\n')
@@ -297,6 +311,9 @@ object PageCodec {
         if (t.id.isNotEmpty()) append(" ^").append(t.id)
         t.due?.let { append(" due:").append(renderDue(it)) }
         t.deadline?.let { append(" deadline:").append(it) }
+        // Only ever written on a finished task, so an open one carries no dead token — and
+        // un-finishing clears it, so a task cannot claim to have been completed on a day it was not.
+        t.doneAt?.takeIf { t.status == TaskStatus.DONE }?.let { append(" done:").append(it) }
         t.priority?.let { append(" !").append(it) }
         t.labels.forEach { append(" #").append(it) }
         t.assignee?.let { append(" @").append(it) }

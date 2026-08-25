@@ -255,4 +255,93 @@ class WorkspaceWriterTest {
         // app and present in every clone. The same trap the ink sidecars were fixed for.
         assertTrue("the picture outlived its block", !store.hasImage(id))
     }
+
+    // ---- archive ----
+
+    private suspend fun finishedTask(list: String, title: String, doneDaysAgo: Long): String {
+        val id = writer.addBlock(list, NodeType.TASK, title)
+        writer.editTask(id) {
+            it.copy(
+                status = TaskStatus.DONE,
+                doneAt = java.time.LocalDate.now().minusDays(doneDaysAgo),
+            )
+        }
+        return id
+    }
+
+    @Test
+    fun oldFinishedTasksLeaveThePageAndRecentOnesStay() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        finishedTask(list, "Done last year", doneDaysAgo = 400)
+        finishedTask(list, "Done yesterday", doneDaysAgo = 1)
+        writer.addBlock(list, NodeType.TASK, "Still open")
+
+        val moved = writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        assertEquals(1, moved)
+        val page = store.pageFile(list).readText()
+        assertTrue("the old one stayed", !page.contains("Done last year"))
+        assertTrue("a recent one was taken", page.contains("Done yesterday"))
+        assertTrue("an open one was taken", page.contains("Still open"))
+
+        // Not deleted — moved. Archived is a place, and it is still in the repo, in the same format.
+        assertTrue(store.readArchivedLines(list).any { it.contains("Done last year") })
+    }
+
+    @Test
+    fun archivedTasksLeaveTheIndex() = runBlocking {
+        // The entire point: "a few hundred active" has to stay true while the total grows forever.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val old = finishedTask(list, "Ancient", doneDaysAgo = 400)
+        assertTrue(db.nodeDao().byId(old) != null)
+
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+        writer.reindex()
+
+        assertEquals(null, db.nodeDao().byId(old))
+    }
+
+    @Test
+    fun anArchivedTaskComesBackWhole() = runBlocking {
+        // Finishing something is not the same as being finished with it. An archive you cannot come
+        // back from is a delete with a longer name.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val id = finishedTask(list, "Shipped the thing", doneDaysAgo = 400)
+        writer.editTask(id) { it.copy(priority = "High", labels = listOf("release")) }
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        val restored = writer.restoreArchived(list, setOf(id))
+
+        assertEquals(1, restored)
+        val page = store.pageFile(list).readText()
+        assertTrue("the title did not come back", page.contains("Shipped the thing"))
+        // Everything the line carried, not just its text.
+        assertTrue("priority was lost", page.contains("!High"))
+        assertTrue("a label was lost", page.contains("#release"))
+        assertTrue("the archive still holds it", store.readArchivedLines(list).isEmpty())
+    }
+
+    @Test
+    fun aFinishedTaskWithUnfinishedSubtasksStaysPut() = runBlocking {
+        // Archiving it would take its children out of the working set with it, and unfinished work
+        // must never leave by accident.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val parent = finishedTask(list, "Parent looks done", doneDaysAgo = 400)
+        writer.addBlock(parent, NodeType.TASK, "But this is not")
+        writer.reindex()
+
+        assertEquals(0, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
+        assertTrue(store.pageFile(list).readText().contains("Parent looks done"))
+    }
+
+    @Test
+    fun aTaskWithNoCompletionDateIsNeverArchived() = runBlocking {
+        // Lines written before `done:` existed. Unknown age is not the same as old, and guessing
+        // would archive things a user finished this morning.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val id = writer.addBlock(list, NodeType.TASK, "Finished, date unknown")
+        writer.editTask(id) { it.copy(status = TaskStatus.DONE, doneAt = null) }
+
+        assertEquals(0, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
+    }
 }

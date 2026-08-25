@@ -61,6 +61,7 @@ class WorkspaceStore(
         const val FORMAT_VERSION = 1
         private const val META = ".yantra"
         private const val PAGES = "pages"
+        private const val ARCHIVE = "archive"
 
         /** Strokes for one ink block: `[count][len][bytes]…`, each blob exactly what StrokeCodec wrote. */
         fun encodeInk(strokes: List<ByteArray>): ByteArray {
@@ -251,6 +252,53 @@ class WorkspaceStore(
     fun writeInk(id: String, strokes: List<ByteArray>) {
         if (strokes.isEmpty()) inkFile(id).delete() else inkFile(id).writeBytesAtomically(encodeInk(strokes))
         inkCache.remove(inkFile(id).name)
+    }
+
+    // ---- archive ----
+
+    /**
+     * Where finished work goes to stop costing anything.
+     *
+     * A sibling of `pages/`, not a subdirectory of it, because [readPages] globs every markdown file
+     * directly inside `pages`, and an archive file living there would be read back into the index — which is the one thing archiving
+     * exists to prevent. It stays in the repo, in the same format, greppable and diffable: archived
+     * is a place, not a deletion, and you can open the file and read what you did last year.
+     */
+    private val archiveDir get() = File(root, ARCHIVE)
+
+    fun archiveFile(pageId: String): File = File(archiveDir, "$pageId.md")
+
+    /** An archived task's own page, if it had one. Kept apart so it is not indexed either. */
+    fun archivedPageFile(pageId: String): File = File(File(archiveDir, PAGES), "$pageId.md")
+
+    fun readArchivedLines(pageId: String): List<String> =
+        archiveFile(pageId).takeIf { it.exists() }?.readLines()?.filter { it.isNotBlank() }.orEmpty()
+
+    fun writeArchivedLines(pageId: String, lines: List<String>) {
+        if (lines.isEmpty()) {
+            archiveFile(pageId).delete()
+            return
+        }
+        archiveDir.mkdirs()
+        archiveFile(pageId).write(lines.joinToString("\n") + "\n")
+    }
+
+    /** Moves a page out of the working set, or back into it. */
+    fun moveToArchive(pageId: String) {
+        val from = pageFile(pageId)
+        if (!from.exists()) return
+        File(archiveDir, PAGES).mkdirs()
+        from.copyTo(archivedPageFile(pageId), overwrite = true)
+        from.delete()
+        pageCache.remove(from.name)
+    }
+
+    fun restoreFromArchive(pageId: String) {
+        val from = archivedPageFile(pageId)
+        if (!from.exists()) return
+        from.copyTo(pageFile(pageId), overwrite = true)
+        from.delete()
+        pageCache.remove(pageFile(pageId).name)
     }
 
     // ---- images ----

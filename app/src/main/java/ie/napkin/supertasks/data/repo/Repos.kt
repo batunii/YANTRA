@@ -195,7 +195,14 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id, Change.STRUCTURAL) {
         // Completion supersedes being started: a finished task is not still being worked on, and
         // the two were never allowed to be true at once.
-        it.copy(status = if (done) TaskStatus.DONE else TaskStatus.OPEN)
+        //
+        // The day is stamped here and cleared on reopening, so a task can never claim to have been
+        // finished on a day it was not — and so the app can finally answer how long something has
+        // been done, which archiving needs and nothing could ask before.
+        it.copy(
+            status = if (done) TaskStatus.DONE else TaskStatus.OPEN,
+            doneAt = if (done) java.time.LocalDate.now() else null,
+        )
     }
 
     suspend fun setInProgress(id: String, inProgress: Boolean) = ws.writerFor(id).editTask(id) {

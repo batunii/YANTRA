@@ -374,6 +374,21 @@ never a way to lose the capture.
 
 ## 6. Still open
 
-- The archive threshold's default, and whether it is per-workspace or global.
-- What a shared image does before the image work lands: a task with a note, or refuse it politely.
+**Archiving has a data layer and no trigger.** `archiveFinished(before)` and `restoreArchived` exist,
+are tested, and move nothing on their own. Deliberately: an automatic sweep with no screen to see it
+on and no button to undo it would move a user's finished work out of sight with no way to find out
+where it went. What remains is a threshold setting, a place to see what is archived, and the periodic
+call — in that order, because each one makes the next safe.
+
+Its prerequisite is now in place and was missing all along: **nothing recorded when a task was
+finished.** The format has `[x]` and had no date, so "done for thirty days" was unanswerable and a
+task completed this morning was indistinguishable from one completed last year. A `done:` token is
+stamped on completion and cleared on reopening. A task finished before the token existed has no date
+and is never archived — unknown age is not the same as old.
+
+Two smaller things:
+
 - Ink's preset palette still hardcodes a copy of coral that will not follow the accent (§4b).
+- `Pomodoro` is still the name in the data layer while the UI says `Focus` (§2a). A rename touches a
+  table, a directory in the file format and four widget classes; worth doing, and worth doing when it
+  is the only thing in flight.

@@ -10,6 +10,8 @@ import ie.napkin.supertasks.data.format.InkRef
 import ie.napkin.supertasks.data.format.Numbered
 import ie.napkin.supertasks.data.format.PageDoc
 import ie.napkin.supertasks.data.format.Prose
+import ie.napkin.supertasks.data.format.PageCodec
+import ie.napkin.supertasks.data.format.TaskStatus
 import ie.napkin.supertasks.data.format.TaskRef
 import ie.napkin.supertasks.data.db.SystemKey
 import ie.napkin.supertasks.data.sync.Change
@@ -473,6 +475,87 @@ class WorkspaceWriter(
         // rather than being batched behind a burst of typing.
         onChange(Change.INK)
     }
+
+    // ---- archive ----
+
+    /**
+     * Moves finished work out of the working set.
+     *
+     * A task done longer ago than [before] leaves its page: the line is appended to
+     * `archive/<pageId>.md` and its own page, if it had one, moves to `archive/pages/`. Both stay in
+     * the repo and neither is indexed, which is the whole point — "a few hundred active tasks" has to
+     * stay true while the total grows forever, and a list like Inbox otherwise carries every task it
+     * has ever held.
+     *
+     * Nothing is deleted and nothing is irreversible; see [restoreArchived].
+     *
+     * A finished task whose subtasks are *not* finished stays put. Archiving it would take its
+     * children out of the working set with it, and unfinished work must never leave by accident.
+     */
+    suspend fun archiveFinished(before: java.time.LocalDate): Int = mutex.withLock {
+        var moved = 0
+        store.readPages().forEach { page ->
+            val leaving = page.blocks.filterIsInstance<TaskRef>().filter { t ->
+                t.status == TaskStatus.DONE &&
+                    t.doneAt != null && t.doneAt < before &&
+                    !hasUnfinishedChildren(t.id)
+            }
+            if (leaving.isEmpty()) return@forEach
+
+            val lines = leaving.map { PageCodec.encodeBlock(it) }
+            store.writeArchivedLines(page.id, store.readArchivedLines(page.id) + lines)
+            leaving.forEach { store.moveToArchive(it.id) }
+
+            val ids = leaving.mapTo(HashSet()) { it.id }
+            store.writePage(
+                page.copy(
+                    blocks = page.blocks.filterNot { it is TaskRef && it.id in ids },
+                    modifiedAt = Instant.ofEpochMilli(now()),
+                    device = device,
+                )
+            )
+            moved += leaving.size
+        }
+        if (moved > 0) {
+            refreshIndex(Change.STRUCTURAL)
+            onChange(Change.STRUCTURAL)
+        }
+        moved
+    }
+
+    /**
+     * Brings a page's archived tasks back.
+     *
+     * Finishing something is not the same as being finished with it, so this exists and is not a
+     * convenience: an archive you cannot come back from is a delete with a longer name.
+     */
+    suspend fun restoreArchived(pageId: String, taskIds: Set<String>): Int = mutex.withLock {
+        val archived = store.readArchivedLines(pageId)
+        if (archived.isEmpty()) return@withLock 0
+
+        val decoded = archived.map { it to PageCodec.decodeBlock(it) }
+        val coming = decoded.filter { (_, b) -> b is TaskRef && b.id in taskIds }
+        if (coming.isEmpty()) return@withLock 0
+
+        val page = loadPage(pageId) ?: return@withLock 0
+        store.writePage(
+            page.copy(
+                blocks = page.blocks + coming.map { it.second },
+                modifiedAt = Instant.ofEpochMilli(now()),
+                device = device,
+            )
+        )
+        coming.forEach { (_, b) -> (b as? TaskRef)?.let { store.restoreFromArchive(it.id) } }
+        store.writeArchivedLines(pageId, decoded.filterNot { it in coming }.map { it.first })
+
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+        coming.size
+    }
+
+    /** True when anything beneath [taskId] is still open. Read from the index, which is a fine map. */
+    private suspend fun hasUnfinishedChildren(taskId: String): Boolean =
+        db.nodeDao().childrenOnce(taskId).any { !it.done }
 
     // ---- helpers ----
 
