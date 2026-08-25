@@ -119,9 +119,17 @@ given is evidence, and it is the feedback that tells you what your estimates are
 whether time is counted but how it ended: *reached its target · stopped by you · interrupted · lost
 to the process dying*. All of them sum.
 
-**F2 — One exception, and it is about accidents, not brevity.** A session under 60 seconds that did
-not reach a target is discarded as a mis-tap. Anything longer is real, including a deliberate
-three-minute commitment.
+**F2 — One exception, and it is about accidents, not brevity.** A session under
+`FocusOutcome.MIN_KEPT_SECS` that did not reach a target is discarded as a mis-tap. Anything longer is
+real, including a deliberate three-minute commitment. A discarded session is still *closed* — written
+with a `discarded` outcome and counted nowhere — because declining to write an end line left it open
+in the log forever and the timer kept resurrecting it.
+
+**Currently ten seconds, which is a testing value.** A minute is roughly where an accidental start
+stops being plausible; ten is there so the timer can be exercised without sitting through one, and
+should be raised before anyone relies on the history. The screen reads the same constant and says
+"too short to record" *before* the tap rather than after, because a session that vanishes on being
+stopped is alarming and the same fact a few seconds earlier is information.
 
 **F3 — "Too short to be interesting" is a display rule, never a recording rule.** The history view
 may hide or collapse sessions under a few minutes; the totals still include them. Filtering at write

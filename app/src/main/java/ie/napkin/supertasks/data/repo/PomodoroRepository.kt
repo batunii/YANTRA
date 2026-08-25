@@ -62,7 +62,8 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
     /**
      * Closes a session and writes how it ended.
      *
-     * **A mis-tap is dropped and nothing else is.** Under a minute without reaching a target is a
+     * **A mis-tap is dropped and nothing else is.** Under [FocusOutcome.MIN_KEPT_SECS] without
+     * reaching a target is a
      * timer started by accident, and nobody will ever want it back; anything longer is real, up to
      * and including a deliberate three-minute commitment that ran its course. The threshold people
      * usually mean by "too short to be interesting" — a few minutes — is a *display* rule and lives
@@ -76,14 +77,9 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
         // which is what this used to do — left the session open in the log forever, so `openSession`
         // kept finding it and the timer resurrected a session that had already been stopped.
         val settled =
-            if (actualSecs < MIN_KEPT_SECS && outcome != FocusOutcome.RAN_OUT) FocusOutcome.DISCARDED
+            if (actualSecs < FocusOutcome.MIN_KEPT_SECS && outcome != FocusOutcome.RAN_OUT) FocusOutcome.DISCARDED
             else outcome
         val ts = System.currentTimeMillis()
         append(session.copy(endedAt = ts, actualSecs = actualSecs, outcome = settled, updatedAt = ts))
-    }
-
-    private companion object {
-        /** Below this, and with no promise kept, a session is a fat-fingered start. */
-        const val MIN_KEPT_SECS = 60
     }
 }

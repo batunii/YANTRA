@@ -63,6 +63,7 @@ import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.LocalYantraHaptics
 import ie.napkin.supertasks.ui.components.isReducedMotion
 import androidx.compose.ui.platform.LocalContext
+import ie.napkin.supertasks.data.db.FocusOutcome
 import ie.napkin.supertasks.ui.components.ButtonTone
 import androidx.compose.ui.text.input.KeyboardType
 import ie.napkin.supertasks.ui.components.YantraField
@@ -438,6 +439,18 @@ private fun ActiveTimer(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             YantraButton("Finish", onComplete, tone = ButtonTone.Soft, icon = Icons.Default.Timer)
             YantraButton("Drop", onAbandon, tone = ButtonTone.Quiet)
+        }
+        // Said before the tap, not after. A session that vanishes on being stopped is alarming; the
+        // same fact a few seconds earlier is information, and it stops counting down on its own.
+        if (!FocusOutcome.wouldBeKept(state.elapsedSecs, state.plannedSecs)) {
+            val left = FocusOutcome.MIN_KEPT_SECS - state.elapsedSecs
+            Text(
+                "Too short to record — ${left}s more",
+                color = y.warning,
+                fontSize = 12.5.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 10.dp, start = 30.dp, end = 30.dp),
+            )
         }
         Spacer(Modifier.height(32.dp))
     }

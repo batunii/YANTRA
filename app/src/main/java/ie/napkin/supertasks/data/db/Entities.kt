@@ -185,6 +185,23 @@ object FocusOutcome {
     /** Whether a session's minutes belong in any total. Everything except a mis-tap does. */
     fun countsAsTime(outcome: String): Boolean = outcome != DISCARDED
 
+    /**
+     * Below this, a session that did not reach its target is a mis-tap and is not recorded.
+     *
+     * **Ten seconds is a testing value.** It is deliberately far too low for real use — a minute is
+     * roughly where an accidental start stops being plausible — and it is here so the timer can be
+     * exercised without sitting through one. Raise it before anyone relies on the history.
+     *
+     * Lives here rather than inside the repository because the screen has to say so *before* the tap:
+     * a session that vanishes on being stopped is alarming, and the same fact shown a few seconds
+     * earlier is simply information. One constant, so the warning cannot disagree with the rule.
+     */
+    const val MIN_KEPT_SECS = 10
+
+    /** Whether a session stopped now would be kept. A finished countdown always is. */
+    fun wouldBeKept(elapsedSecs: Int, plannedSecs: Int): Boolean =
+        elapsedSecs >= MIN_KEPT_SECS || (plannedSecs in 1..elapsedSecs)
+
     /** True when the promise made at the start was kept, for a history that wants to show it. */
     fun keptItsPromise(outcome: String, plannedSecs: Int): Boolean =
         plannedSecs > 0 && outcome == RAN_OUT
