@@ -17,7 +17,17 @@ data class PageDoc(
     val id: String,
     val type: String,                 // ie.napkin.supertasks.data.db.NodeType
     val parent: String?,
+    /**
+     * Authoritative **only when [parent] is null**.
+     *
+     * A task's title belongs to its line on the parent's page, not to its own file — that is what
+     * "nothing is stored twice" means. A top-level list or group has no line anywhere, so its name
+     * has to live here. A title found on a parented page is kept (nothing unrecognised is dropped)
+     * but the line wins, and the app does not write one.
+     */
     val title: String?,
+    /** [ie.napkin.supertasks.data.db.SystemKey] — `today`, `inbox`. Must survive the round trip. */
+    val systemKey: String? = null,
     val modifiedAt: Instant,
     val device: String?,
     val blocks: List<Block>,

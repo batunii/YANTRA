@@ -44,7 +44,7 @@ object Seeder {
         fun id() = UUID.randomUUID().toString()
 
         // ---- property defs ----
-        val priorityDef = id()
+        val priorityDef = BuiltIns.PRIORITY_DEF_ID
         propDao.upsertDef(
             PropertyDefEntity(
                 id = priorityDef, name = BuiltIns.PRIORITY_NAME, kind = PropertyKind.SELECT,
@@ -62,7 +62,7 @@ object Seeder {
                 createdAt = now, updatedAt = now,
             )
         )
-        val dueDef = id()
+        val dueDef = BuiltIns.DUE_DEF_ID
         propDao.upsertDef(
             PropertyDefEntity(
                 id = dueDef, name = BuiltIns.DUE_NAME, kind = PropertyKind.DATE, config = null,

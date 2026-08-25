@@ -56,7 +56,7 @@ object PageCodec {
             i++ // closing fence
         }
 
-        val known = setOf("id", "type", "parent", "title", "modified_at", "device")
+        val known = setOf("id", "type", "parent", "title", "system_key", "modified_at", "device")
         val blocks = ArrayList<Block>()
         while (i < lines.size) {
             val line = lines[i]
@@ -69,6 +69,7 @@ object PageCodec {
             type = front["type"].orEmpty(),
             parent = front["parent"]?.takeIf { it.isNotBlank() },
             title = front["title"]?.takeIf { it.isNotBlank() },
+            systemKey = front["system_key"]?.takeIf { it.isNotBlank() },
             modifiedAt = front["modified_at"]?.let { runCatching { Instant.parse(it) }.getOrNull() }
                 ?: Instant.EPOCH,
             device = front["device"]?.takeIf { it.isNotBlank() },
@@ -193,6 +194,7 @@ object PageCodec {
         append("type: ").append(page.type).append('\n')
         page.parent?.let { append("parent: ").append(it).append('\n') }
         page.title?.let { append("title: ").append(it).append('\n') }
+        page.systemKey?.let { append("system_key: ").append(it).append('\n') }
         append("modified_at: ").append(page.modifiedAt).append('\n')
         page.device?.let { append("device: ").append(it).append('\n') }
         page.unknownKeys.forEach { (k, v) -> append(k).append(": ").append(v).append('\n') }

@@ -1,9 +1,13 @@
 package ie.napkin.supertasks.data.db
 
 /**
- * Identities of the fixed built-in property defs. Due predates stable ids and keeps its
- * per-install random UUID — look it up by name (the codebase-wide convention); Deadline is
- * newer and has a fixed id shared by the Seeder and MIGRATION_3_4.
+ * Identities of the fixed built-in property defs.
+ *
+ * All three ids are fixed strings, and that is load-bearing rather than tidy. A smart list stores
+ * its rule as JSON containing `defId`, so when Due and Priority carried a per-install random UUID,
+ * a rule written on one device matched nothing on another — invisible until someone opened a shared
+ * workspace and found their Today list empty. Look-up by name still works and is still used by the
+ * reminder path; the ids are what travel.
  *
  * Due value encoding (kind "date"):
  *  - v_date: local-midnight instant (all-day) or exact instant (timed)
@@ -14,8 +18,27 @@ package ie.napkin.supertasks.data.db
  * Deadline: v_date local-midnight only.
  */
 object BuiltIns {
+    const val DUE_DEF_ID = "builtin-due"
     const val DUE_NAME = "Due"
     const val DEADLINE_DEF_ID = "builtin-deadline"
     const val DEADLINE_NAME = "Deadline"
+    const val PRIORITY_DEF_ID = "builtin-priority"
     const val PRIORITY_NAME = "Priority"
+
+    /**
+     * Who a task belongs to, as a GitHub login.
+     *
+     * A property value rather than a column: it is single-valued and per-node like `done`, so a
+     * column was the obvious shape, but routing it through the property registry means smart lists
+     * can filter on it the moment collaboration exists — "assigned to me" for free, and no schema
+     * version spent on a field nothing renders yet.
+     *
+     * Deliberately **not seeded**. There is no def row and no UI for it until Phase 5; the value
+     * still round-trips through the index, and a value whose def is missing simply draws no chip.
+     */
+    const val ASSIGNEE_DEF_ID = "builtin-assignee"
+    const val ASSIGNEE_NAME = "Assignee"
+
+    /** Every built-in identity, so a scaffold and a re-index agree on what exists. */
+    val ALL_DEF_IDS = listOf(PRIORITY_DEF_ID, DUE_DEF_ID, DEADLINE_DEF_ID, ASSIGNEE_DEF_ID)
 }
