@@ -59,6 +59,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.ink.strokes.Stroke
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -75,12 +76,36 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
 
+/**
+ * A drawing session.
+ *
+ * **The screen owns the strokes while you are drawing, not the database.** It used to be the other
+ * way round: each finished stroke was written to its sidecar, the whole workspace index was rebuilt,
+ * and the canvas re-rendered from whatever Room emitted afterwards. Drawing quickly meant a stroke
+ * leaving the live canvas and not coming back until a full rebuild had run — so it blinked out and
+ * returned, several times over, in the order they were drawn.
+ *
+ * Now a stroke lands in [held] the instant it is finished and is drawn from there. The file is
+ * written after a short pause, once, with the whole list. That removes the flicker, removes the
+ * read-modify-write that was losing strokes outright, and turns eight index rebuilds into one.
+ *
+ * The file is still the truth — it is just not asked a question mid-sentence. What is deliberately
+ * *not* done is waiting for the session to end: a screen that only saves when you leave loses
+ * everything if Android kills the app while you are drawing, and ink is the one thing here that
+ * cannot be retyped.
+ */
 class InkViewModel(
     container: AppContainer,
     val nodeId: String,
@@ -88,20 +113,114 @@ class InkViewModel(
     private val ink = container.ink
     private val nodes = container.nodes
 
+    /** Outlives this view model, so the last stroke survives leaving the screen. */
+    private val appScope = container.appScope
+
+    /** What to draw, and the bytes that would be written for it. */
+    private data class Held(val item: StrokeItem, val data: ByteArray)
+
+    private val held = MutableStateFlow<List<Held>>(emptyList())
+
+    /**
+     * Bumped on every edit and captured across a write.
+     *
+     * Without it a stroke drawn *during* a save would be marked saved by that save finishing, and
+     * the next thing the file said would quietly undraw it.
+     */
+    private var edits = 0
+    private var savedAt = 0
+    private var flush: Job? = null
+    private var live = 0
+
+    private val unsaved: Boolean get() = edits != savedAt
+
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val strokes: StateFlow<List<StrokeItem>> =
-        ink.strokes(nodeId)
-            .map { rows -> rows.mapNotNull { row -> runCatching { StrokeItem(row.id, StrokeCodec.decode(row.data)) }.getOrNull() } }
-            .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        held.map { list -> list.map { it.item } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun save(stroke: Stroke, family: String) { viewModelScope.launch { ink.addStroke(nodeId, stroke, family) } }
-    fun erase(id: String) { viewModelScope.launch { ink.deleteStroke(id) } }
-    fun undo() { viewModelScope.launch { ink.undoLast(nodeId) } }
-    fun clear() { viewModelScope.launch { ink.clear(nodeId) } }
+    init {
+        // Follow the file, but only while the screen has nothing of its own. Once something is drawn
+        // the screen is ahead of disk, and adopting disk would rub it out.
+        viewModelScope.launch {
+            ink.strokes(nodeId).collect { rows ->
+                if (unsaved) return@collect
+                held.value = withContext(Dispatchers.Default) {
+                    rows.mapNotNull { row ->
+                        runCatching { Held(StrokeItem(row.id, StrokeCodec.decode(row.data)), row.data) }
+                            .getOrNull()
+                    }
+                }
+            }
+        }
+    }
+
+    fun save(stroke: Stroke, family: String) {
+        val data = StrokeCodec.encode(stroke, family)
+        // A local id, because this stroke has no place in the file yet. The eraser works off the
+        // list the screen is holding, so it never needs the positional id the index would give it.
+        held.update { it + Held(StrokeItem("live-${live++}", stroke), data) }
+        touch()
+    }
+
+    fun erase(id: String) {
+        held.update { list -> list.filterNot { it.item.id == id } }
+        touch()
+    }
+
+    fun undo() {
+        held.update { it.dropLast(1) }
+        touch()
+    }
+
+    fun clear() {
+        held.value = emptyList()
+        touch()
+    }
+
     fun rename(title: String) { viewModelScope.launch { nodes.rename(nodeId, title) } }
+
+    /** Writes now rather than waiting out the pause — the app going to the background. */
+    fun flushNow() {
+        flush?.cancel()
+        if (unsaved) write(appScope)
+    }
+
+    private fun touch() {
+        edits++
+        flush?.cancel()
+        flush = viewModelScope.launch {
+            delay(QUIET_MS)
+            write(viewModelScope)
+        }
+    }
+
+    private fun write(scope: CoroutineScope) {
+        val at = edits
+        val snapshot = held.value.map { it.data }
+        scope.launch {
+            ink.replace(nodeId, snapshot)
+            // Only clean if nothing was drawn while that was in flight.
+            if (at == edits) savedAt = at
+        }
+    }
+
+    override fun onCleared() {
+        // The view model's scope dies with it, so the last stroke has to leave on a scope that does
+        // not. Backing out of the screen is exactly when an unsaved stroke would be lost.
+        flushNow()
+    }
+
+    private companion object {
+        /**
+         * Long enough to sit inside a burst of strokes, short enough that any real pause persists.
+         * This is not the git commit cadence — that is [ie.napkin.supertasks.data.sync.CommitPolicy],
+         * and it is measured in seconds because a commit is a much bigger thing than a file write.
+         */
+        const val QUIET_MS = 900L
+    }
 }
 
 enum class InkTool { PEN, MARKER, HIGHLIGHTER, SHAPES, ERASER }
@@ -121,6 +240,12 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
     val vm: InkViewModel = viewModel(key = "ink-$nodeId") { InkViewModel(container(), nodeId) }
     val strokes by vm.strokes.collectAsStateWithLifecycle()
     val node by vm.node.collectAsStateWithLifecycle()
+
+    // The pause before writing is short, but "the app went away" should not have to wait it out —
+    // that window is exactly when Android is most likely to kill the process.
+    LifecycleResumeEffect(Unit) {
+        onPauseOrDispose { vm.flushNow() }
+    }
     val y = Yantra.colors
     // See InkPreview: the ink layer follows the app's theme, not the phone's.
     val dark = y.isDark

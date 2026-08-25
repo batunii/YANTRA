@@ -365,33 +365,18 @@ class WorkspaceWriter(
 
     // ---- ink ----
 
-    /** Replaces an ink block's strokes wholesale. Sidecars are never merged — see the plan. */
+    /**
+     * Replaces an ink block's strokes wholesale. Sidecars are never merged — see the plan.
+     *
+     * Whole-list only, and there is no append. The drawing screen holds the session and hands over
+     * the complete set, so no caller ever reads the current strokes and writes them back — which is
+     * what lost strokes when several finished at once, each having read before any had written.
+     */
     suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
         store.writeInk(nodeId, strokes)
         indexer.rebuild(store)
         onChange(Change.INK)
     }
-
-    /**
-     * Changes an ink block by reading what is there and writing what should be — **both inside the
-     * lock**.
-     *
-     * Adding a stroke is a read-modify-write, and doing the read outside the lock loses strokes. Each
-     * finished stroke is saved in its own coroutine, so drawing quickly means several of them
-     * overlapping: every one reads the same list, each writes that list plus its own stroke, and the
-     * last write wins. Eight fast strokes and the first two are simply gone — not hidden, gone from
-     * the file, because the file is the truth.
-     *
-     * [transform] also receives what the *sidecar* holds rather than what the index thinks it holds.
-     * The index is rebuilt after each write, so a caller reading it mid-burst sees a list one or two
-     * strokes behind even when nothing overlaps at all.
-     */
-    suspend fun mutateInk(nodeId: String, transform: (List<ByteArray>) -> List<ByteArray>) =
-        mutex.withLock {
-            store.writeInk(nodeId, transform(store.readInk(nodeId)))
-            indexer.rebuild(store)
-            onChange(Change.INK)
-        }
 
     // ---- helpers ----
 

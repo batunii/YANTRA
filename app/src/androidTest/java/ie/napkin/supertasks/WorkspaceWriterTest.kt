@@ -222,37 +222,22 @@ class WorkspaceWriterTest {
     }
 
     @Test
-    fun strokesDrawnAtOnceAllSurvive() = runBlocking {
-        // Reported from a real phone: draw eight strokes quickly and the first one or two vanish.
-        //
-        // Every finished stroke is saved in its own coroutine, so a fast burst means overlapping
-        // read-modify-writes. When the read happened outside the lock they all read the same list,
-        // each wrote that list plus its own stroke, and the last write won — the lost strokes were
-        // not hidden by the UI, they never reached the file. Anything less than all of them here is
-        // that bug returning.
-        val strokes = 24
-        coroutineScope {
-            (1..strokes).map { i ->
-                async { writer.mutateInk("ink-block") { it + byteArrayOf(i.toByte(), 0, 0, 0) } }
-            }.awaitAll()
-        }
-
-        assertEquals(strokes, store.readInk("ink-block").size)
-        // Every one distinct: a lost update can also show up as the same stroke written twice.
-        assertEquals(strokes, store.readInk("ink-block").map { it.first() }.toSet().size)
-    }
-
-    @Test
-    fun anUndoRacingAStrokeLeavesTheFileCoherent() = runBlocking {
-        writer.mutateInk("ink-block") { listOf(byteArrayOf(1), byteArrayOf(2)) }
+    fun concurrentWholeListWritesLeaveOneOfThemIntact() = runBlocking {
+        // Whole-list writes cannot lose a stroke the way an append could, but they can still tear if
+        // they are not serialised — a file holding half of one drawing and half of another. The
+        // guarantee is that whichever write lands last, the file is exactly what that caller passed.
+        val a = (1..12).map { byteArrayOf(1, it.toByte()) }
+        val b = (1..7).map { byteArrayOf(2, it.toByte()) }
         coroutineScope {
             listOf(
-                async { writer.mutateInk("ink-block") { it + byteArrayOf(3) } },
-                async { writer.mutateInk("ink-block") { it.dropLast(1) } },
+                async { writer.writeInk("ink-block", a) },
+                async { writer.writeInk("ink-block", b) },
             ).awaitAll()
         }
-        // Order decides whether one or two remain; what must never happen is a torn list, and the
-        // serialisation is what guarantees the count is one of the two answers rather than neither.
-        assertTrue(store.readInk("ink-block").size in 1..2)
+
+        val onDisk = store.readInk("ink-block")
+        assertTrue("torn: ${onDisk.size} strokes", onDisk.size == a.size || onDisk.size == b.size)
+        assertEquals(1, onDisk.map { it.first() }.toSet().size)
     }
+
 }

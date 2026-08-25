@@ -130,16 +130,14 @@ class RepositoryFlowTest {
         assertTrue(!ws.primaryStore().inkFile(inkId).exists())
 
         val codec = ie.napkin.supertasks.data.ink.StrokeCodec
-        ink.addStroke(
-            inkId,
-            androidx.ink.strokes.Stroke(
-                brush = codec.brush(codec.FAMILY_PRESSURE_PEN, 0xFF000000L, 4f),
-                inputs = codec.shapeInputs(
-                    ie.napkin.supertasks.data.ink.ShapeKind.LINE, 0f, 0f, 10f, 10f
-                ),
+        val stroke = androidx.ink.strokes.Stroke(
+            brush = codec.brush(codec.FAMILY_PRESSURE_PEN, 0xFF000000L, 4f),
+            inputs = codec.shapeInputs(
+                ie.napkin.supertasks.data.ink.ShapeKind.LINE, 0f, 0f, 10f, 10f
             ),
-            codec.FAMILY_PRESSURE_PEN,
         )
+        // The drawing screen holds the session and hands over the whole set; there is no append.
+        ink.replace(inkId, listOf(codec.encode(stroke, codec.FAMILY_PRESSURE_PEN)))
         assertTrue("the stroke never reached a sidecar", ws.primaryStore().inkFile(inkId).exists())
         assertEquals(1, ink.strokes(inkId).first().size)
     }

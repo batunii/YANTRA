@@ -1,13 +1,10 @@
 package ie.napkin.supertasks.data.repo
 
-import androidx.ink.strokes.Stroke
 import ie.napkin.supertasks.data.db.AppDatabase
-import ie.napkin.supertasks.data.ink.StrokeCodec
 import ie.napkin.supertasks.data.workspace.Workspaces
-import kotlinx.coroutines.flow.first
 
 /**
- * Strokes live in a sidecar beside the page, as the exact bytes [StrokeCodec] produces.
+ * Strokes live in a sidecar beside the page, as the exact bytes the stroke codec produces.
  *
  * The sidecar is rewritten whole on every change, because a stroke set has no line structure for
  * git to merge and pretending otherwise would corrupt drawings rather than reconcile them. That is
@@ -21,32 +18,12 @@ class InkRepository(private val db: AppDatabase, private val ws: Workspaces) {
     fun strokesUnder(parentId: String) = dao.strokesUnder(parentId)
 
     /**
-     * Everything that changes a block goes through [ie.napkin.supertasks.data.workspace.WorkspaceWriter.mutateInk],
-     * which reads and writes under one lock.
+     * Replaces a block's strokes with exactly this list.
      *
-     * Reading the current strokes here and passing the new list down would be a read-modify-write
-     * with the read outside the lock — and since every finished stroke is saved in its own coroutine,
-     * drawing quickly loses strokes to whichever write lands last.
+     * The only mutation there is. The drawing screen holds the session and hands over the whole set,
+     * so nothing here reads-then-writes — which is what used to lose strokes when several finished
+     * at once, each having read the same list before any of them wrote.
      */
-    suspend fun addStroke(nodeId: String, stroke: Stroke, familyName: String) =
-        ws.writerFor(nodeId).mutateInk(nodeId) { it + StrokeCodec.encode(stroke, familyName) }
-
-    suspend fun undoLast(nodeId: String) =
-        ws.writerFor(nodeId).mutateInk(nodeId) { it.dropLast(1) }
-
-    /** Nothing to read first: the answer does not depend on what is there. */
-    suspend fun clear(nodeId: String) = ws.writerFor(nodeId).writeInk(nodeId, emptyList())
-
-    /** The eraser. Stroke ids are positional in the index, so this removes by position. */
-    suspend fun deleteStroke(id: String) {
-        val row = dao.strokeById(id) ?: return
-        val at = dao.strokes(row.nodeId).first().indexOfFirst { it.id == id }
-        if (at < 0) return
-        // Resolved from the index because that is what the user tapped, then applied to the file
-        // under the lock. A stroke added meanwhile lands after this one and leaves the position
-        // alone; the ranks only shift for strokes drawn later.
-        ws.writerFor(row.nodeId).mutateInk(row.nodeId) { blobs ->
-            if (at in blobs.indices) blobs.filterIndexed { i, _ -> i != at } else blobs
-        }
-    }
+    suspend fun replace(nodeId: String, strokes: List<ByteArray>) =
+        ws.writerFor(nodeId).writeInk(nodeId, strokes)
 }
