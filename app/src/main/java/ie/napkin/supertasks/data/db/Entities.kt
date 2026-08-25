@@ -170,6 +170,21 @@ object FocusOutcome {
     /** The process died mid-session and the end had to be inferred. */
     const val LOST = "lost"
 
+    /**
+     * A timer started by accident and stopped within a minute.
+     *
+     * Written rather than skipped, and that distinction is the whole reason this exists. Declining
+     * to append an end line left the session *open* forever: `openSession` kept finding it, so the
+     * timer resurrected a phantom running session on the next launch, widget render or worker pass,
+     * and starting a new one piled up another. A session that did not happen still has to be closed.
+     *
+     * Counted nowhere — see [countsAsTime].
+     */
+    const val DISCARDED = "discarded"
+
+    /** Whether a session's minutes belong in any total. Everything except a mis-tap does. */
+    fun countsAsTime(outcome: String): Boolean = outcome != DISCARDED
+
     /** True when the promise made at the start was kept, for a history that wants to show it. */
     fun keptItsPromise(outcome: String, plannedSecs: Int): Boolean =
         plannedSecs > 0 && outcome == RAN_OUT

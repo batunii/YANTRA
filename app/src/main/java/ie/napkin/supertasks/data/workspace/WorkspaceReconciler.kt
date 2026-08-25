@@ -151,7 +151,12 @@ object WorkspaceReconciler {
                 )
             },
             ink = ink,
-            pomodoro = readSessions(store, pageIds, ws, problems),
+            // Every node, not only the pages. A session belongs to whatever you focused on, and
+            // most tasks never own a page — a page exists only once a task holds something. Checking
+            // against page ids therefore threw away the sessions of every plain task: appended to the
+            // log, dropped by the very next rebuild, and reported as naming a task the workspace does
+            // not have. The foreign key is on `node`, which is exactly this set.
+            pomodoro = readSessions(store, nodes.mapTo(HashSet()) { it.id }, ws, problems),
             problems = problems,
         )
     }

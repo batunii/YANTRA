@@ -72,14 +72,14 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
      */
     suspend fun endSession(sessionId: String, actualSecs: Int, outcome: String) {
         val session = dao.byId(sessionId) ?: return
-        if (actualSecs < MIN_KEPT_SECS && outcome != FocusOutcome.RAN_OUT) {
-            // Never started, as far as the ledger is concerned. The line already on disk is left as
-            // an open session; the next append for this id supersedes it, and nothing sums it
-            // because an unfinished session has no actual_secs.
-            return
-        }
+        // A mis-tap is closed like anything else and simply counts nowhere. Returning early here —
+        // which is what this used to do — left the session open in the log forever, so `openSession`
+        // kept finding it and the timer resurrected a session that had already been stopped.
+        val settled =
+            if (actualSecs < MIN_KEPT_SECS && outcome != FocusOutcome.RAN_OUT) FocusOutcome.DISCARDED
+            else outcome
         val ts = System.currentTimeMillis()
-        append(session.copy(endedAt = ts, actualSecs = actualSecs, outcome = outcome, updatedAt = ts))
+        append(session.copy(endedAt = ts, actualSecs = actualSecs, outcome = settled, updatedAt = ts))
     }
 
     private companion object {

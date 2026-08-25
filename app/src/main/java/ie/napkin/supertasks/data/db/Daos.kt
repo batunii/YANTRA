@@ -305,7 +305,11 @@ interface PomodoroDao {
     @Query("SELECT * FROM pomodoro_session WHERE id = :id")
     suspend fun byId(id: String): PomodoroSessionEntity?
 
-    @Query("SELECT * FROM pomodoro_session WHERE node_id = :nodeId ORDER BY started_at DESC")
+    /** A task's sessions, newest first. Mis-taps are not history and are left out. */
+    @Query(
+        "SELECT * FROM pomodoro_session WHERE node_id = :nodeId AND outcome <> 'discarded' " +
+            "ORDER BY started_at DESC"
+    )
     fun forNode(nodeId: String): Flow<List<PomodoroSessionEntity>>
 
     @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC")
@@ -329,7 +333,7 @@ interface PomodoroDao {
     @Query(
         """
         SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
-          FROM pomodoro_session GROUP BY node_id
+          FROM pomodoro_session WHERE outcome <> 'discarded' GROUP BY node_id
         """
     )
     fun perNode(): Flow<List<NodePomoCount>>
@@ -351,7 +355,7 @@ interface PomodoroDao {
             SELECT n.id FROM node n JOIN subtree s ON n.parent_id = s.id
         )
         SELECT COALESCE(SUM(p.actual_secs), 0) FROM pomodoro_session p
-         WHERE p.node_id IN (SELECT id FROM subtree)
+         WHERE p.node_id IN (SELECT id FROM subtree) AND p.outcome <> 'discarded'
         """
     )
     fun secondsOnSubtree(nodeId: String): Flow<Int>
@@ -360,7 +364,7 @@ interface PomodoroDao {
     @Query(
         """
         SELECT COALESCE(SUM(actual_secs), 0) FROM pomodoro_session
-         WHERE started_at >= :from AND started_at < :to
+         WHERE started_at >= :from AND started_at < :to AND outcome <> 'discarded'
         """
     )
     fun totalBetween(from: Long, to: Long): Flow<Int>
@@ -370,6 +374,7 @@ interface PomodoroDao {
         """
         SELECT COALESCE(SUM(actual_secs), 0) FROM pomodoro_session
          WHERE workspace_id = :ws AND started_at >= :from AND started_at < :to
+           AND outcome <> 'discarded'
         """
     )
     fun totalBetweenIn(ws: String, from: Long, to: Long): Flow<Int>
@@ -386,6 +391,7 @@ interface PomodoroDao {
         SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
           FROM pomodoro_session
          WHERE node_id IN (:nodeIds) AND started_at >= :from AND started_at < :to
+           AND outcome <> 'discarded'
          GROUP BY node_id
         """
     )
@@ -395,7 +401,7 @@ interface PomodoroDao {
     @Query(
         """
         SELECT * FROM pomodoro_session
-         WHERE started_at >= :from AND started_at < :to
+         WHERE started_at >= :from AND started_at < :to AND outcome <> 'discarded'
          ORDER BY started_at DESC
         """
     )

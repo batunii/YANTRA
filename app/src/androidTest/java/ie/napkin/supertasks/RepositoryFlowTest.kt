@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import ie.napkin.supertasks.data.db.AppDatabase
 import ie.napkin.supertasks.data.db.BuiltIns
+import ie.napkin.supertasks.data.db.FocusOutcome
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.repo.InkRepository
 import ie.napkin.supertasks.data.repo.LabelRepository
@@ -43,6 +44,7 @@ class RepositoryFlowTest {
     private lateinit var props: PropertyRepository
     private lateinit var labels: LabelRepository
     private lateinit var ink: InkRepository
+    private lateinit var pomodoro: ie.napkin.supertasks.data.repo.PomodoroRepository
     private lateinit var root: File
 
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -60,6 +62,7 @@ class RepositoryFlowTest {
         props = PropertyRepository(db, ws)
         labels = LabelRepository(db, ws)
         ink = InkRepository(db, ws)
+        pomodoro = ie.napkin.supertasks.data.repo.PomodoroRepository(db, ws)
     }
 
     @After
@@ -309,5 +312,68 @@ class RepositoryFlowTest {
         val list = nodes.create(null, NodeType.LIST, "Notes")
         val id = nodes.captureTask(list, "today", labels, props)!!
         assertEquals("today", db.nodeDao().byId(id)?.title)
+    }
+
+    // ---- focus sessions ----
+
+    @Test
+    fun endingASessionEarlyLeavesNoSessionRunning() = runBlocking {
+        // The bug this exists for: a session stopped inside a minute was skipped rather than closed,
+        // so its opening line stayed in the log with no end. `openSession` kept finding it and the
+        // timer resurrected a session that had already been stopped — on the next launch, every
+        // widget render, and every worker pass. Starting another simply added a second ghost.
+        val list = nodes.create(null, NodeType.LIST, "Work")
+        val task = nodes.create(list, NodeType.TASK, "Write the thing")
+
+        val id = pomodoro.startSession(task, plannedSecs = 1500)
+        assertNotNull("the session was never opened", pomodoro.openSession())
+
+        pomodoro.endSession(id, actualSecs = 12, outcome = FocusOutcome.STOPPED)
+
+        assertNull("a stopped session is still running", pomodoro.openSession())
+    }
+
+    @Test
+    fun aMisTapIsClosedButCountsNowhere() = runBlocking {
+        val list = nodes.create(null, NodeType.LIST, "Work")
+        val task = nodes.create(list, NodeType.TASK, "Thing")
+        val id = pomodoro.startSession(task, plannedSecs = 1500)
+        pomodoro.endSession(id, actualSecs = 12, outcome = FocusOutcome.STOPPED)
+
+        // Closed, so nothing thinks it is running — and absent from history and totals, because it
+        // did not happen in any sense the user would recognise.
+        assertNull(pomodoro.openSession())
+        assertTrue(pomodoro.forNode(task).first().isEmpty())
+        assertEquals(0, pomodoro.secondsOnSubtree(task).first())
+    }
+
+    @Test
+    fun endingEarlyPastTheThresholdIsRealTimeAndCounts() = runBlocking {
+        // "Ending early" is a legitimate thing to do, not a failure — the ledger measures what you
+        // gave, not whether you obeyed yourself.
+        val list = nodes.create(null, NodeType.LIST, "Work")
+        val task = nodes.create(list, NodeType.TASK, "Thing")
+        val id = pomodoro.startSession(task, plannedSecs = 1500)
+
+        pomodoro.endSession(id, actualSecs = 400, outcome = FocusOutcome.STOPPED)
+
+        assertNull(pomodoro.openSession())
+        assertEquals(1, pomodoro.forNode(task).first().size)
+        assertEquals(400, pomodoro.secondsOnSubtree(task).first())
+        assertEquals(FocusOutcome.STOPPED, pomodoro.forNode(task).first().single().outcome)
+    }
+
+    @Test
+    fun aSecondSessionDoesNotStrandTheFirst() = runBlocking {
+        // Starting a new session interrupts any running one. If that close is skipped, every start
+        // leaves another ghost behind it.
+        val list = nodes.create(null, NodeType.LIST, "Work")
+        val task = nodes.create(list, NodeType.TASK, "Thing")
+
+        val first = pomodoro.startSession(task, plannedSecs = 1500)
+        pomodoro.endSession(first, actualSecs = 5, outcome = FocusOutcome.INTERRUPTED)
+        val second = pomodoro.startSession(task, plannedSecs = 1500)
+
+        assertEquals("the wrong session is open", second, pomodoro.openSession()?.id)
     }
 }
