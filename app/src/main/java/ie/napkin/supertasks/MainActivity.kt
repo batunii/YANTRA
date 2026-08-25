@@ -53,10 +53,16 @@ class MainActivity : ComponentActivity() {
         targetFrom(intent)?.let { openTarget = it }
     }
 
-    /** Keep placed widgets in sync with edits made in-app when we leave the foreground. */
+    /**
+     * Leaving the foreground refreshes the widgets and commits whatever is still batched.
+     *
+     * Android may kill the process from here without warning, and an edit that reached its file but
+     * never became a commit would sit there until the app happened to be opened again.
+     */
     override fun onStop() {
         super.onStop()
         val container = (application as App).container
+        container.syncNow("app went to the background")
         container.appScope.launch { WidgetRefresh.refreshAll(applicationContext) }
     }
 

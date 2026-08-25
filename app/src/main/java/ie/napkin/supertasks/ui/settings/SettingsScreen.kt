@@ -45,6 +45,9 @@ import ie.napkin.supertasks.ui.components.TaskState
 import ie.napkin.supertasks.ui.components.YantraCheckbox
 import ie.napkin.supertasks.ui.theme.LocalThemeController
 import ie.napkin.supertasks.ui.theme.ThemeMode
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
 import ie.napkin.supertasks.ui.theme.AccentColor
 import ie.napkin.supertasks.ui.theme.LauncherIcon
 import ie.napkin.supertasks.ui.appContainer
@@ -57,6 +60,15 @@ fun SettingsScreen(nav: NavHostController) {
     val ctx = LocalContext.current
     val container = appContainer()
     val theme = LocalThemeController.current
+    val lastSync by (container.syncState() ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
+    val syncStatus = lastSync?.let { r ->
+        when {
+            r.error != null -> "Not synced: ${r.error}"
+            r.conflicts.isNotEmpty() -> "Synced · ${r.conflicts.size} conflict(s) resolved"
+            r.committed || r.pushed -> "Synced"
+            else -> "Nothing to sync"
+        }
+    }
     val y = Yantra.colors
 
     Column(
@@ -94,6 +106,26 @@ fun SettingsScreen(nav: NavHostController) {
                 SelectChip("OLED", theme.mode == ThemeMode.OLED, onClick = { theme.update(ctx, mode = ThemeMode.OLED) }, modifier = Modifier.weight(1f), stretch = true)
                 SelectChip("Light", theme.mode == ThemeMode.LIGHT, onClick = { theme.update(ctx, mode = ThemeMode.LIGHT) }, modifier = Modifier.weight(1f), stretch = true)
             }
+
+            Spacer(Modifier.height(28.dp))
+            // Everything commits on its own — this is for when you want to know it has, which
+            // matters more than it should on Android, where the system is free to decide your
+            // background work can wait until tomorrow.
+            SectionLabel("Sync")
+            Spacer(Modifier.height(2.dp))
+            Text(
+                syncStatus ?: "Every change is saved to a file and committed on its own",
+                color = y.textMuted,
+                fontSize = 12.5.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            SelectChip(
+                "Sync now",
+                selected = false,
+                modifier = Modifier.fillMaxWidth(),
+                stretch = true,
+                onClick = { container.syncNow("asked to sync") },
+            )
 
             Spacer(Modifier.height(28.dp))
             // One choice, not a wheel. The set is closed so the effort ink can never land on the

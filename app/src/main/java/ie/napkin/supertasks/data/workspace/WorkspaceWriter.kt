@@ -12,6 +12,7 @@ import ie.napkin.supertasks.data.format.PageDoc
 import ie.napkin.supertasks.data.format.Prose
 import ie.napkin.supertasks.data.format.TaskRef
 import ie.napkin.supertasks.data.db.SystemKey
+import ie.napkin.supertasks.data.sync.Change
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
@@ -36,6 +37,12 @@ class WorkspaceWriter(
     private val db: AppDatabase,
     private val indexer: Indexer,
     private val device: String? = null,
+    /**
+     * Told about every write that actually happened, so something can decide when files become a
+     * commit. Reported here rather than by each repository because a mutation that changed nothing
+     * must not count — and this is the only place that knows whether one did.
+     */
+    private val onChange: (Change) -> Unit = {},
 ) {
     /**
      * One writer at a time.
@@ -63,7 +70,11 @@ class WorkspaceWriter(
      * forgotten by whichever mutation is added next. It is the field the conflict resolver reads,
      * and a page that lies about when it changed loses arbitrations it should win.
      */
-    suspend fun editPage(pageId: String, transform: (PageDoc) -> PageDoc): Unit = mutex.withLock {
+    suspend fun editPage(
+        pageId: String,
+        change: Change = Change.EDIT,
+        transform: (PageDoc) -> PageDoc,
+    ): Unit = mutex.withLock {
         val page = loadPage(pageId) ?: return
         val next = transform(page)
 
@@ -76,6 +87,7 @@ class WorkspaceWriter(
 
         store.writePage(next.copy(modifiedAt = Instant.ofEpochMilli(now()), device = device))
         indexer.rebuild(store)
+        onChange(change)
     }
 
     private fun loadPage(pageId: String): PageDoc? =
@@ -93,6 +105,7 @@ class WorkspaceWriter(
                 )
             )
             indexer.rebuild(store)
+            onChange(Change.STRUCTURAL)
             id
         }
 
@@ -146,13 +159,18 @@ class WorkspaceWriter(
 
         store.writePage(page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device))
         indexer.rebuild(store)
+        onChange(Change.STRUCTURAL)
         if (id.isNotEmpty()) id else PageMapper.blockId(pageId, blocks.indexOf(block))
     }
 
     /** Applies [transform] to whichever block on whichever page carries [nodeId]. */
-    suspend fun editBlock(nodeId: String, transform: (Block) -> Block) {
+    suspend fun editBlock(
+        nodeId: String,
+        change: Change = Change.EDIT,
+        transform: (Block) -> Block,
+    ) {
         val home = homePageOf(nodeId) ?: return
-        editPage(home) { page ->
+        editPage(home, change) { page ->
             page.copy(
                 blocks = page.blocks.mapIndexed { i, b ->
                     if (blockIdOf(b, page.id, page.blocks, i) == nodeId) transform(b) else b
@@ -162,8 +180,11 @@ class WorkspaceWriter(
     }
 
     /** [transform] applied only if the block is a task line; other kinds are left alone. */
-    suspend fun editTask(nodeId: String, transform: (TaskRef) -> TaskRef) =
-        editBlock(nodeId) { if (it is TaskRef) transform(it) else it }
+    suspend fun editTask(
+        nodeId: String,
+        change: Change = Change.EDIT,
+        transform: (TaskRef) -> TaskRef,
+    ) = editBlock(nodeId, change) { if (it is TaskRef) transform(it) else it }
 
     /** Moves a block to [toIndex] among its siblings, which is what reordering *is* in this format. */
     suspend fun moveBlock(nodeId: String, toIndex: Int) {
@@ -196,6 +217,7 @@ class WorkspaceWriter(
             store.deletePage(nodeId)
             store.inkFile(nodeId).delete()
             indexer.rebuild(store)
+            onChange(Change.STRUCTURAL)
         }
     }
 
@@ -230,6 +252,7 @@ class WorkspaceWriter(
             store.writePage(it.copy(parent = newParent, modifiedAt = Instant.ofEpochMilli(now()), device = device))
         }
         indexer.rebuild(store)
+        onChange(Change.STRUCTURAL)
     }
 
     // ---- structure ----
@@ -315,12 +338,14 @@ class WorkspaceWriter(
             )
             store.writeSmartList(def.copy(nodeId = id))
             indexer.rebuild(store)
+            onChange(Change.STRUCTURAL)
             id
         }
 
     suspend fun updateSmartList(def: SmartListDef) = mutex.withLock {
         store.writeSmartList(def)
         indexer.rebuild(store)
+        onChange(Change.EDIT)
     }
 
     /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
@@ -328,12 +353,14 @@ class WorkspaceWriter(
         val kept = store.readLabels().filterNot { it.id == label.id }
         store.writeLabels(kept + label)
         indexer.rebuild(store)
+        onChange(Change.EDIT)
     }
 
     /** One line, appended. Never rewritten — that is what keeps two offline devices from colliding. */
     suspend fun appendPomodoro(line: String, month: String) = mutex.withLock {
         store.appendPomodoro(line, month)
         indexer.rebuild(store)
+        onChange(Change.EDIT)
     }
 
     // ---- ink ----
@@ -342,6 +369,7 @@ class WorkspaceWriter(
     suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
         store.writeInk(nodeId, strokes)
         indexer.rebuild(store)
+        onChange(Change.INK)
     }
 
     // ---- helpers ----

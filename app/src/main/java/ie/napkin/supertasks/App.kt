@@ -13,6 +13,9 @@ import ie.napkin.supertasks.data.repo.SmartListRepository
 import ie.napkin.supertasks.data.seed.WorkspaceSeeder
 import ie.napkin.supertasks.data.workspace.Indexer
 import ie.napkin.supertasks.data.workspace.Workspaces
+import ie.napkin.supertasks.data.sync.CommitScheduler
+import ie.napkin.supertasks.data.sync.GitRepo
+import ie.napkin.supertasks.data.sync.SyncEngine
 import ie.napkin.supertasks.domain.PomodoroTimer
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
@@ -49,6 +52,9 @@ class App : Application() {
     }
 }
 
+/** The branch tasks live on, kept off whatever else a remote repo contains. */
+const val BRANCH = "yantra-tasks"
+
 /** Plain-manual DI: one graph for the whole app. */
 class AppContainer(app: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -62,7 +68,21 @@ class AppContainer(app: Application) {
      * reads from [db] and writes through here. The local workspace has the empty id — it is the one
      * that existed before any repo was attached, and the one rows migrated from v9 belong to.
      */
-    val workspaces = Workspaces(db, Indexer(db), android.os.Build.MODEL?.lowercase())
+    private val device: String = android.os.Build.MODEL?.lowercase().orEmpty()
+
+    val workspaces = Workspaces(db, Indexer(db), device) { id, change ->
+        commits[id]?.record(change)
+    }
+
+    /** One scheduler per workspace: each repo commits on its own rhythm. */
+    private val commits = LinkedHashMap<String, CommitScheduler>()
+
+    /** Commit and sync everything now — the manual pull-to-refresh, and app shutdown. */
+    fun syncNow(reason: String = "asked to sync") = commits.values.forEach { it.requestFlush(reason) }
+
+    /** The most recent sync of the workspace the user is looking at. */
+    fun syncState(): kotlinx.coroutines.flow.StateFlow<ie.napkin.supertasks.data.sync.SyncResult?>? =
+        commits.values.firstOrNull()?.lastResult
 
     val nodes = NodeRepository(db, workspaces)
     val properties = PropertyRepository(db, workspaces)
@@ -89,6 +109,20 @@ class AppContainer(app: Application) {
         )
         if (fresh) WorkspaceSeeder.seed(workspaces.primaryStore())
         workspaces.reindexAll()
+
+        // The local workspace is a git repo from the start, with no remote and nothing to push to.
+        // That is not a placeholder: it is what gives the tasks a history at all, and it means
+        // attaching a remote later is one command rather than a migration.
+        workspaces.all.forEach { store ->
+            val repo = GitRepo(store.root, BRANCH)
+            if (!repo.exists) repo.init().use { git ->
+                repo.commitAll(git, "scaffold", "Yantra", "yantra@napkin.ie")
+            }
+            commits[store.id] = CommitScheduler(
+                appScope,
+                SyncEngine(store, Indexer(db), repo, device),
+            )
+        }
     }
 
     init {

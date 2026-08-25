@@ -15,6 +15,8 @@ class Workspaces(
     private val db: AppDatabase,
     private val indexer: Indexer,
     private val device: String?,
+    /** Told about every write, with the workspace it belongs to, so commits can be scheduled. */
+    private val onChange: (String, ie.napkin.supertasks.data.sync.Change) -> Unit = { _, _ -> },
 ) {
     private val stores = LinkedHashMap<String, WorkspaceStore>()
     private val writers = LinkedHashMap<String, WorkspaceWriter>()
@@ -25,7 +27,7 @@ class Workspaces(
         val fresh = !store.exists
         if (fresh) store.scaffold(name, System.currentTimeMillis())
         stores[id] = store
-        writers[id] = WorkspaceWriter(store, db, indexer, device)
+        writers[id] = WorkspaceWriter(store, db, indexer, device) { onChange(id, it) }
         return fresh
     }
 

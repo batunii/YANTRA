@@ -30,6 +30,7 @@ import ie.napkin.supertasks.data.format.Prose
 import ie.napkin.supertasks.data.format.TaskRef
 import ie.napkin.supertasks.data.format.TaskStatus
 import ie.napkin.supertasks.data.workspace.Workspaces
+import ie.napkin.supertasks.data.sync.Change
 import ie.napkin.supertasks.data.workspace.LabelDef
 import ie.napkin.supertasks.data.workspace.SmartListDef
 import ie.napkin.supertasks.data.format.DueSpec
@@ -155,7 +156,7 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun rename(id: String, title: String?) =
         ws.writerFor(id).editBlock(id) { renamed(it, title.orEmpty()) }
 
-    suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id) {
+    suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id, Change.STRUCTURAL) {
         // Completion supersedes being started: a finished task is not still being worked on, and
         // the two were never allowed to be true at once.
         it.copy(status = if (done) TaskStatus.DONE else TaskStatus.OPEN)
