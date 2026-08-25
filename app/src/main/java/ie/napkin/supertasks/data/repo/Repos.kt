@@ -180,6 +180,11 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         return ws.store(node.workspaceId)?.imageFile(name)?.takeIf { it.exists() }
     }
 
+    /** Re-files a task under a different list. What the share sheet's "change list" does. */
+    suspend fun moveToList(taskId: String, listId: String) {
+        ws.writerFor(taskId).reparent(taskId, listId)
+    }
+
     /** Fast capture: new task into the Inbox. */
     suspend fun quickCaptureToInbox(title: String): String =
         create(inboxList(), NodeType.TASK, title)

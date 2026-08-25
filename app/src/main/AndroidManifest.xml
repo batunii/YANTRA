@@ -177,6 +177,29 @@
                 android:resource="@xml/pomodoro_widget_info" />
         </receiver>
 
+        <!--
+            Yantra as somewhere to share to. Translucent and historyless like QuickAdd: it is an
+            acknowledgement, not a screen, and the task exists before it draws.
+        -->
+        <activity
+            android:name=".ui.share.ShareTargetActivity"
+            android:exported="true"
+            android:label="Add to Yantra"
+            android:theme="@style/Theme.SuperTasks.QuickAdd"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".widget.QuickAddActivity"
             android:exported="false"
