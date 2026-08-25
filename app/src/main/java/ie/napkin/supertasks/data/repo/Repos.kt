@@ -370,7 +370,7 @@ class SmartListRepository(private val db: AppDatabase) {
         val sort = def.sortJson
             ?.let { FilterJson.decodeFromString(ListSerializer(SortSpec.serializer()), it) }
             ?: emptyList()
-        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort)
+        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort, workspaceId = def.workspaceId)
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 
@@ -385,7 +385,7 @@ class SmartListRepository(private val db: AppDatabase) {
     fun queryCompleted(def: SmartListDefEntity): Flow<List<NodeEntity>>? {
         val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
         val flipped = completedVariant(filter) ?: return null
-        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList())
+        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList(), workspaceId = def.workspaceId)
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 

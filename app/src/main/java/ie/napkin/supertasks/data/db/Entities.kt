@@ -55,12 +55,24 @@ object SystemKey {
     ],
     indices = [
         Index(value = ["parent_id", "rank"], name = "idx_node_parent"),
+        Index(value = ["workspace_id"], name = "idx_node_workspace"),
         // SQLite unique indexes allow multiple NULLs — only system-keyed nodes are constrained.
-        Index(value = ["system_key"], unique = true, name = "idx_node_system_key"),
+        // Scoped by workspace: every workspace has its own Inbox and its own Today, and a global
+        // constraint would reject the second one on insert.
+        Index(value = ["workspace_id", "system_key"], unique = true, name = "idx_node_system_key"),
     ]
 )
 data class NodeEntity(
     @PrimaryKey val id: String,                              // client-generated UUID (sync-ready)
+    /**
+     * Which repo this came from.
+     *
+     * One database holds every workspace, so Home can answer "what is on my plate today" across
+     * personal, project and shared at once. The cost is that **every query has to say which
+     * workspace it means** — an unscoped one silently mixes your work repo into your personal one,
+     * which is the failure mode `WorkspaceLeakTest` exists to catch.
+     */
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "parent_id") val parentId: String?,   // NULL = top-level list
     val type: String,
     val title: String?,
@@ -130,6 +142,7 @@ data class PropertyDefEntity(
 data class PropertyValueEntity(
     @ColumnInfo(name = "node_id") val nodeId: String,
     @ColumnInfo(name = "def_id") val defId: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "v_text") val vText: String? = null,  // populate the column matching def.kind
     @ColumnInfo(name = "v_number") val vNumber: Double? = null,
     @ColumnInfo(name = "v_date") val vDate: Long? = null,    // epoch millis: comparable + indexable
@@ -146,6 +159,7 @@ data class PropertyValueEntity(
 )
 data class PomodoroSessionEntity(
     @PrimaryKey val id: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "node_id") val nodeId: String,        // pomodoro is always attached to a node
     @ColumnInfo(name = "started_at") val startedAt: Long,
     @ColumnInfo(name = "ended_at") val endedAt: Long? = null,
@@ -164,6 +178,7 @@ data class PomodoroSessionEntity(
 )
 data class SmartListDefEntity(
     @PrimaryKey @ColumnInfo(name = "node_id") val nodeId: String,   // the smart_list node itself
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "scope_root_id") val scopeRootId: String?,   // NULL = whole workspace
     @ColumnInfo(name = "filter_json") val filterJson: String,       // read side: what qualifies
     @ColumnInfo(name = "sort_json") val sortJson: String?,
@@ -180,6 +195,7 @@ data class SmartListDefEntity(
 )
 data class InkStrokeEntity(
     @PrimaryKey val id: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "node_id") val nodeId: String,        // the 'ink' block this stroke belongs to
     val data: ByteArray,                                     // serialized Ink StrokeInputBatch + brush envelope
     @ColumnInfo(name = "bbox_x") val bboxX: Double? = null,  // future canvas culling / erase hit-test
@@ -200,9 +216,13 @@ data class InkStrokeEntity(
  * This is the one open-ended, user-extensible mechanism; [PropertyDefEntity] is reserved for the
  * fixed built-in fields (Priority/Due) and is never user-extended.
  */
-@Entity(tableName = "label", indices = [Index(value = ["name"], unique = true, name = "idx_label_name")])
+@Entity(
+    tableName = "label",
+    indices = [Index(value = ["workspace_id", "name"], unique = true, name = "idx_label_name")]
+)
 data class LabelEntity(
     @PrimaryKey val id: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     val name: String,
     val color: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
@@ -222,6 +242,7 @@ data class LabelEntity(
 data class NodeLabelEntity(
     @ColumnInfo(name = "node_id") val nodeId: String,
     @ColumnInfo(name = "label_id") val labelId: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "created_at") val createdAt: Long,
 )
 

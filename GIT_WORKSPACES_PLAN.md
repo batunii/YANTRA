@@ -28,6 +28,9 @@ Local data is mock and is not being preserved. No migration path is owed to it.
 | Decision | Choice |
 |---|---|
 | Workspace | 1 workspace = 1 repo + 1 branch (default `yantra-tasks`, orphan) |
+| Many workspaces | **One database, `workspace_id` on every scoped table** — so a single Today can span personal, project and shared. The cost is that scoping is mandatory; `WorkspaceLeakTest` is the guard |
+| Workspace as a label | **Derived, never written to a file.** Where a page came from is provenance, not content: a file claiming its own workspace would be lying the moment the repo was cloned as a second one, and a hand-edit could move a task between workspaces by deleting a tag. The index synthesises one on import so smart lists can filter by workspace through the machinery that already exists |
+| Pomodoro | Append-only lines in `pomodoro/<yyyy-mm>.log`. Two devices focusing offline produce two different tails and git takes both |
 | Git library | JGit 7.3.0 — **verified on device**, see Phase 0 |
 | Auth | Fine-grained PAT over HTTPS first (fewer failure modes), Ed25519 SSH later |
 | Source of truth | Files. Room is an index, rebuilt from the working tree |

@@ -19,6 +19,12 @@ object FilterCompiler {
         filter: Filter?,
         sort: List<SortSpec> = emptyList(),
         nowMillis: Long = System.currentTimeMillis(),
+        /**
+         * Which workspace this rule may see. Null spans all of them, which is what a unified Today
+         * wants and what nothing else should ask for — one database holds every repo, so an
+         * unscoped rule written in a work workspace quietly matches personal tasks too.
+         */
+        workspaceId: String? = null,
     ): CompiledQuery {
         val args = mutableListOf<Any>()
         val sb = StringBuilder()
@@ -42,6 +48,10 @@ object FilterCompiler {
         }
 
         sb.append("\nWHERE n.deleted_at IS NULL")
+        if (workspaceId != null) {
+            sb.append(" AND n.workspace_id = ?")
+            args += workspaceId
+        }
         if (filter != null) {
             sb.append(" AND ")
             appendClause(sb, args, filter, nowMillis)

@@ -305,3 +305,33 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         }
     }
 }
+
+/**
+ * Every row learns which repo it came from.
+ *
+ * One database holds every workspace so a single Today can span personal, project and shared. The
+ * price is that scoping becomes mandatory rather than optional, and two constraints that were
+ * global have to be re-cut per workspace: `system_key`, because every workspace has its own Inbox
+ * and its own Today and a global unique index rejects the second on insert, and `label.name`,
+ * because two repos may both use `#sync` without meaning one tag.
+ *
+ * Existing rows are stamped with the empty workspace, which is what the local pre-git workspace is
+ * called. Nothing needs to move.
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf(
+            "node", "property_value", "pomodoro_session",
+            "smart_list_def", "ink_stroke", "label", "node_label",
+        ).forEach {
+            db.execSQL("ALTER TABLE $it ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''")
+        }
+
+        db.execSQL("DROP INDEX IF EXISTS idx_node_system_key")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_node_system_key ON node (workspace_id, system_key)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_node_workspace ON node (workspace_id)")
+
+        db.execSQL("DROP INDEX IF EXISTS idx_label_name")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_label_name ON label (workspace_id, name)")
+    }
+}

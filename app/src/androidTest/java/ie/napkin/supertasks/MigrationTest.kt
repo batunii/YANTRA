@@ -13,6 +13,7 @@ import ie.napkin.supertasks.data.db.MIGRATION_4_5
 import ie.napkin.supertasks.data.db.MIGRATION_5_6
 import ie.napkin.supertasks.data.db.MIGRATION_6_7
 import ie.napkin.supertasks.data.db.MIGRATION_7_8
+import ie.napkin.supertasks.data.db.MIGRATION_8_9
 import ie.napkin.supertasks.data.label.LabelPalette
 import ie.napkin.supertasks.data.db.SystemKey
 import org.junit.Assert.assertEquals
@@ -39,7 +40,7 @@ class MigrationTest {
 
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-        MIGRATION_7_8,
+        MIGRATION_7_8, MIGRATION_8_9,
     )
 
     @get:Rule
@@ -52,7 +53,7 @@ class MigrationTest {
 
     private companion object {
         const val DB = "migration-test.db"
-        const val LATEST = 8
+        const val LATEST = 9
     }
 
     private fun SupportSQLiteDatabase.scalar(sql: String): String? =
@@ -301,6 +302,50 @@ class MigrationTest {
         helper.createDatabase(DB, 7).close()
         helper.runMigrationsAndValidate(DB, 8, true, MIGRATION_7_8).use { db ->
             assertEquals(0, db.count("SELECT COUNT(*) FROM label"))
+        }
+    }
+
+    @Test
+    fun migration8to9_stampsExistingRowsWithTheLocalWorkspace() {
+        helper.createDatabase(DB, 8).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, parent_id, type, title, rank, done, in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('n1', NULL, 'list', 'Inbox', 'i', 0, 0, 0, 0, 1, 1)"
+            )
+            db.execSQL("INSERT INTO label (id, name, created_at, updated_at) VALUES ('l1', 'sync', 1, 1)")
+        }
+        helper.runMigrationsAndValidate(DB, 9, true, MIGRATION_8_9).use { db ->
+            // Rows from before workspaces existed belong to the local one, which is the empty name.
+            assertEquals("", db.scalar("SELECT workspace_id FROM node WHERE id = 'n1'"))
+            assertEquals("", db.scalar("SELECT workspace_id FROM label WHERE id = 'l1'"))
+        }
+    }
+
+    @Test
+    fun migration8to9_letsTwoWorkspacesEachHaveAnInbox() {
+        // The unique index on system_key was global, so the second workspace's Inbox was rejected
+        // on insert — a failure that only appears when someone adds their second repo.
+        helper.createDatabase(DB, 8).close()
+        helper.runMigrationsAndValidate(DB, 9, true, MIGRATION_8_9).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, in_progress, collapsed, indent, system_key, created_at, updated_at) " +
+                    "VALUES ('a', 'work', NULL, 'list', 'Inbox', 'i', 0, 0, 0, 0, 'inbox', 1, 1)"
+            )
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, in_progress, collapsed, indent, system_key, created_at, updated_at) " +
+                    "VALUES ('b', 'personal', NULL, 'list', 'Inbox', 'i', 0, 0, 0, 0, 'inbox', 1, 1)"
+            )
+            assertEquals(2, db.count("SELECT COUNT(*) FROM node WHERE system_key = 'inbox'"))
+        }
+    }
+
+    @Test
+    fun migration8to9_letsTwoWorkspacesUseTheSameTagName() {
+        helper.createDatabase(DB, 8).close()
+        helper.runMigrationsAndValidate(DB, 9, true, MIGRATION_8_9).use { db ->
+            db.execSQL("INSERT INTO label (id, workspace_id, name, created_at, updated_at) VALUES ('a', 'work', 'sync', 1, 1)")
+            db.execSQL("INSERT INTO label (id, workspace_id, name, created_at, updated_at) VALUES ('b', 'personal', 'sync', 1, 1)")
+            assertEquals(2, db.count("SELECT COUNT(*) FROM label WHERE name = 'sync'"))
         }
     }
 

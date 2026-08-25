@@ -41,7 +41,7 @@ class PageMapperTest {
     /** Rows back to a page, the way the reconciler will do it. */
     private fun roundTrip(source: String): String {
         val doc = PageCodec.decode(source)
-        val m = PageMapper.toRows(doc, zone)
+        val m = PageMapper.toRows(doc, "", zone)
         return PageCodec.encode(
             PageMapper.toPage(
                 node = m.page,
@@ -71,7 +71,7 @@ class PageMapperTest {
     fun `a nested page does not write a title of its own`() {
         // The line on the parent owns it. Writing it here too is the duplication the format avoids.
         val doc = PageCodec.decode(page)
-        val m = PageMapper.toRows(doc, zone)
+        val m = PageMapper.toRows(doc, "", zone)
         val out = PageCodec.encode(
             PageMapper.toPage(m.page, m.children, emptyMap(), emptyMap(), null, titleIsOwn = false)
         )
@@ -82,7 +82,7 @@ class PageMapperTest {
 
     @Test
     fun `blocks become rows of the right type, in order`() {
-        val kinds = PageMapper.toRows(PageCodec.decode(page), zone).children.map { it.type }
+        val kinds = PageMapper.toRows(PageCodec.decode(page), "", zone).children.map { it.type }
         assertEquals(
             listOf(
                 NodeType.HEADING, NodeType.PARAGRAPH,
@@ -95,14 +95,14 @@ class PageMapperTest {
 
     @Test
     fun `ranks follow line order`() {
-        val ranks = PageMapper.toRows(PageCodec.decode(page), zone).children.map { it.rank }
+        val ranks = PageMapper.toRows(PageCodec.decode(page), "", zone).children.map { it.rank }
         assertEquals("ranks are not ascending", ranks.sorted(), ranks)
         assertEquals("ranks are not distinct", ranks.size, ranks.toSet().size)
     }
 
     @Test
     fun `status maps onto the done and in-progress pair`() {
-        val tasks = PageMapper.toRows(PageCodec.decode(page), zone)
+        val tasks = PageMapper.toRows(PageCodec.decode(page), "", zone)
             .children.filter { it.type == NodeType.TASK }
         assertEquals(listOf(false, true, false), tasks.map { it.done })
         assertEquals(listOf(false, false, true), tasks.map { it.inProgress })
@@ -112,7 +112,7 @@ class PageMapperTest {
 
     @Test
     fun `ink and task ids come from the file, other blocks from their position`() {
-        val c = PageMapper.toRows(PageCodec.decode(page), zone).children
+        val c = PageMapper.toRows(PageCodec.decode(page), "", zone).children
         assertEquals("9f1e", c[2].id)
         assertEquals("5b8a", c[5].id)
         assertEquals(PageMapper.blockId("7c3f", 0), c[0].id)
@@ -120,7 +120,7 @@ class PageMapperTest {
 
     @Test
     fun `indent survives as indent and not as parentage`() {
-        val c = PageMapper.toRows(PageCodec.decode(page), zone).children
+        val c = PageMapper.toRows(PageCodec.decode(page), "", zone).children
         assertEquals(1, c[3].indent)
         // Every block on a page is a direct child of it, whatever it looks like.
         assertTrue(c.all { it.parentId == "7c3f" })
@@ -130,7 +130,7 @@ class PageMapperTest {
 
     @Test
     fun `an all-day due becomes local midnight and is marked as such`() {
-        val v = PageMapper.toRows(PageCodec.decode(page), zone).values
+        val v = PageMapper.toRows(PageCodec.decode(page), "", zone).values
             .single { it.nodeId == "9f1e" && it.defId == BuiltIns.DUE_DEF_ID }
         assertEquals(false, v.vBool)
         assertEquals(
@@ -143,7 +143,7 @@ class PageMapperTest {
     fun `a timed due keeps the exact instant`() {
         val src = "---\nid: p\ntype: task\nmodified_at: 2026-01-01T00:00:00Z\n---\n" +
             "- [ ] call ^t1 due:2026-08-26T09:00:00Z\n"
-        val v = PageMapper.toRows(PageCodec.decode(src), zone).values.single()
+        val v = PageMapper.toRows(PageCodec.decode(src), "", zone).values.single()
         assertEquals(true, v.vBool)
         assertEquals(java.time.Instant.parse("2026-08-26T09:00:00Z").toEpochMilli(), v.vDate)
         assertEquals(src, roundTrip(src))
@@ -153,20 +153,20 @@ class PageMapperTest {
     fun `a reminder offset survives the index, negative and all`() {
         val src = "---\nid: p\ntype: task\nmodified_at: 2026-01-01T00:00:00Z\n---\n" +
             "- [ ] wake ^t1 due:2026-08-26+r-540\n"
-        assertEquals(-540.0, PageMapper.toRows(PageCodec.decode(src), zone).values.single().vNumber)
+        assertEquals(-540.0, PageMapper.toRows(PageCodec.decode(src), "", zone).values.single().vNumber)
         assertEquals(src, roundTrip(src))
     }
 
     @Test
     fun `properties use the stable built-in ids`() {
         // The per-install UUID is what made a shared smart list match nothing on a second device.
-        val ids = PageMapper.toRows(PageCodec.decode(page), zone).values.map { it.defId }.toSet()
+        val ids = PageMapper.toRows(PageCodec.decode(page), "", zone).values.map { it.defId }.toSet()
         assertTrue(ids.all { it in BuiltIns.ALL_DEF_IDS })
     }
 
     @Test
     fun `labels are collected per node by name`() {
-        val l = PageMapper.toRows(PageCodec.decode(page), zone).labels
+        val l = PageMapper.toRows(PageCodec.decode(page), "", zone).labels
         assertEquals(1, l.size)
         assertEquals("9f1e", l[0].nodeId)
         assertEquals("sync", l[0].name)
@@ -174,7 +174,7 @@ class PageMapperTest {
 
     @Test
     fun `ink blocks report the sidecars a page needs`() {
-        assertEquals(listOf("5b8a"), PageMapper.toRows(PageCodec.decode(page), zone).inkNodeIds)
+        assertEquals(listOf("5b8a"), PageMapper.toRows(PageCodec.decode(page), "", zone).inkNodeIds)
     }
 
     // ---- what the index is not allowed to remember ----
@@ -183,7 +183,7 @@ class PageMapperTest {
     fun `fields the format drops come back at their defaults`() {
         // collapsed is device-local, deleted_at is git's job, canvas is unused. If any of these
         // survived a round trip the index would have become a second source of truth.
-        val m = PageMapper.toRows(PageCodec.decode(page), zone)
+        val m = PageMapper.toRows(PageCodec.decode(page), "", zone)
         assertTrue(m.nodes.none { it.collapsed })
         assertTrue(m.nodes.all { it.deletedAt == null })
         assertTrue(m.nodes.all { it.canvasX == null && it.canvasY == null })
@@ -193,7 +193,7 @@ class PageMapperTest {
     fun `an empty page maps to a bare node and nothing else`() {
         val m = PageMapper.toRows(
             PageCodec.decode("---\nid: e\ntype: list\ntitle: Empty\nmodified_at: 2026-01-01T00:00:00Z\n---\n"),
-            zone,
+            "", zone,
         )
         assertTrue(m.children.isEmpty())
         assertTrue(m.values.isEmpty())

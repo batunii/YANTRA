@@ -21,26 +21,33 @@ class Indexer(private val db: AppDatabase) {
         now: Long = System.currentTimeMillis(),
     ): List<String> {
         val index = WorkspaceReconciler.read(store, now)
-        apply(index)
+        apply(index, store.id)
         return index.problems
     }
 
-    suspend fun apply(index: WorkspaceIndex) = db.withTransaction {
+    suspend fun apply(index: WorkspaceIndex, workspaceId: String) = db.withTransaction {
         val nodes = db.nodeDao()
         val props = db.propertyDao()
         val labels = db.labelDao()
         val smart = db.smartListDao()
         val ink = db.inkDao()
 
-        // Order matters on the way out as much as on the way in: node_label and property_value
-        // point at node, so they go first and come back last.
-        labels.clearNodeLabels()
-        labels.clearLabels()
-        props.clearValues()
+        // Scoped: one database holds every workspace, so an unscoped wipe here would erase the
+        // other repos rather than refresh this one.
+        //
+        // Order matters on the way out as much as on the way in: node_label, property_value,
+        // ink_stroke and pomodoro_session all point at node, so they go first and come back last.
+        // Pomodoro is included for exactly that reason — a scoped node wipe fails on its foreign
+        // key otherwise, which is why sessions had to become part of the workspace rather than
+        // something the index alone remembered.
+        labels.clearNodeLabels(workspaceId)
+        labels.clearLabels(workspaceId)
+        props.clearValues(workspaceId)
         props.clearDefs()
-        smart.clearSmartLists()
-        ink.clearStrokes()
-        nodes.clearNodes()
+        smart.clearSmartLists(workspaceId)
+        ink.clearStrokes(workspaceId)
+        db.pomodoroDao().clearSessions(workspaceId)
+        nodes.clearNodes(workspaceId)
 
         props.insertDefs(index.defs)
         // Parents before children, or the foreign key on node.parent_id rejects the insert.
@@ -50,6 +57,7 @@ class Indexer(private val db: AppDatabase) {
         labels.attachAll(index.nodeLabels)
         smart.insertAll(index.smartLists)
         ink.insertAll(index.ink)
+        db.pomodoroDao().insertAll(index.pomodoro)
     }
 
     /**

@@ -46,7 +46,14 @@ data class SmartListDef(
  * product, and this class is only the part of the app that knows where things sit. It deliberately
  * knows nothing about git or Room. A workspace is valid without either.
  */
-class WorkspaceStore(val root: File) {
+class WorkspaceStore(
+    val root: File,
+    /**
+     * Stable id for this workspace, used to scope its rows in the shared index. The empty string is
+     * the local pre-git workspace, which is what rows migrated from before workspaces belong to.
+     */
+    val id: String = "",
+) {
 
     companion object {
         const val FORMAT_VERSION = 1
@@ -154,6 +161,32 @@ class WorkspaceStore(val root: File) {
     fun writeInk(id: String, strokes: List<ByteArray>) {
         if (strokes.isEmpty()) inkFile(id).delete() else inkFile(id).writeBytesAtomically(encodeInk(strokes))
     }
+
+    // ---- pomodoro ----
+
+    /**
+     * Focus sessions, one line per session, appended and never rewritten.
+     *
+     * Append-only is the merge-friendly shape: two devices that both focus offline produce two
+     * different tails, and git takes both. Rewriting a shared file would put them in conflict over
+     * work neither of them disagrees about. Split by month so the file a busy week appends to stays
+     * small and the diff stays readable.
+     *
+     * Tab-separated with a trailing field count that never shrinks, so an older app reading a newer
+     * log can ignore what it does not recognise instead of failing on the line.
+     */
+    private val pomodoroDir get() = File(root, "pomodoro")
+
+    fun appendPomodoro(line: String, month: String) {
+        val f = File(pomodoroDir, "$month.log")
+        f.parentFile?.mkdirs()
+        f.appendText(line.trimEnd('\n') + "\n")
+    }
+
+    fun readPomodoro(): List<String> =
+        pomodoroDir.listFiles { f -> f.name.endsWith(".log") }.orEmpty().sortedBy { it.name }
+            .flatMap { it.readLines() }
+            .filter { it.isNotBlank() }
 
     // ---- registries ----
 

@@ -4,6 +4,7 @@ import ie.napkin.supertasks.data.db.InkStrokeEntity
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeLabelEntity
+import ie.napkin.supertasks.data.db.PomodoroSessionEntity
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.db.SmartListDefEntity
@@ -29,6 +30,7 @@ data class WorkspaceIndex(
     val defs: List<PropertyDefEntity> = emptyList(),
     val smartLists: List<SmartListDefEntity> = emptyList(),
     val ink: List<InkStrokeEntity> = emptyList(),
+    val pomodoro: List<PomodoroSessionEntity> = emptyList(),
     val problems: List<String> = emptyList(),
 )
 
@@ -50,7 +52,8 @@ object WorkspaceReconciler {
         val pages = store.readPages()
         val problems = ArrayList<String>()
 
-        val mapped = pages.map { PageMapper.toRows(it, zone) }
+        val ws = store.id
+        val mapped = pages.map { PageMapper.toRows(it, ws, zone) }
 
         // Every row a *line* produced, by id. For a task that also owns a page these are the two
         // halves of one node, and the line holds the half the file does not: what it is called,
@@ -94,17 +97,23 @@ object WorkspaceReconciler {
             nodes += m.children.filterNot { it.id in pageIds }
             values += m.values
             links += m.labels
-            ink += strokesFor(store, m, now, problems)
+            ink += strokesFor(store, m, now, problems, ws)
         }
 
-        val labels = resolveLabels(store, links, now)
+        val labels = resolveLabels(store, links, now, ws)
+        val workspaceLabel = workspaceLabel(store, ws, now)
+        val workspaceLinks = if (workspaceLabel == null) emptyList() else
+            nodes.filter { it.type == ie.napkin.supertasks.data.db.NodeType.TASK }
+                .map { NodeLabelEntity(it.id, workspaceLabel.id, ws, now) }
         return WorkspaceIndex(
             nodes = nodes,
             values = values,
-            labels = labels.values.toList().sortedBy { it.name },
-            nodeLabels = links.mapNotNull { l ->
-                labels[l.name.lowercase()]?.let { NodeLabelEntity(l.nodeId, it.id, now) }
-            }.distinctBy { it.nodeId to it.labelId },
+            labels = (labels.values + listOfNotNull(workspaceLabel)).sortedBy { it.name },
+            nodeLabels = (
+                links.mapNotNull { l ->
+                    labels[l.name.lowercase()]?.let { NodeLabelEntity(l.nodeId, it.id, ws, now) }
+                } + workspaceLinks
+                ).distinctBy { it.nodeId to it.labelId },
             defs = store.readProperties().map {
                 PropertyDefEntity(
                     id = it.id, name = it.name, kind = it.kind, config = it.config,
@@ -113,21 +122,56 @@ object WorkspaceReconciler {
             },
             smartLists = store.readSmartLists().map {
                 SmartListDefEntity(
-                    nodeId = it.nodeId, scopeRootId = it.scopeRootId, filterJson = it.filterJson,
+                    nodeId = it.nodeId, workspaceId = ws, scopeRootId = it.scopeRootId, filterJson = it.filterJson,
                     sortJson = it.sortJson, homeParentId = it.homeParentId,
                     applyOnCreateJson = it.applyOnCreateJson,
                 )
             },
             ink = ink,
+            pomodoro = readSessions(store, pageIds, ws, problems),
             problems = problems,
         )
     }
+
+    /**
+     * One line per focus session. A line naming a task this workspace does not have is reported and
+     * skipped rather than inserted — the foreign key would reject it anyway, and failing the whole
+     * reindex over one stale log line would take the rest of the workspace down with it.
+     */
+    private fun readSessions(
+        store: WorkspaceStore,
+        knownNodes: Set<String>,
+        ws: String,
+        problems: MutableList<String>,
+    ): List<PomodoroSessionEntity> = store.readPomodoro().mapNotNull { line ->
+        val f = line.split('\t')
+        if (f.size < 7) { problems += "unreadable pomodoro line: $line"; return@mapNotNull null }
+        val nodeId = f[1]
+        if (nodeId !in knownNodes) {
+            problems += "pomodoro session ${f[0]} names a task ($nodeId) this workspace does not have"
+            return@mapNotNull null
+        }
+        val started = f[2].toLongOrNull() ?: return@mapNotNull null
+        PomodoroSessionEntity(
+            id = f[0], workspaceId = ws, nodeId = nodeId, startedAt = started,
+            endedAt = f[3].toLongOrNull(), plannedSecs = f[4].toIntOrNull() ?: 0,
+            actualSecs = f[5].toIntOrNull(), completed = f[6] == "1",
+            createdAt = started, updatedAt = f[3].toLongOrNull() ?: started,
+        )
+    }
+
+    /** The inverse of [readSessions]; the writer appends whatever this returns. */
+    fun sessionLine(s: PomodoroSessionEntity): String = listOf(
+        s.id, s.nodeId, s.startedAt, s.endedAt ?: "", s.plannedSecs,
+        s.actualSecs ?: "", if (s.completed) "1" else "0",
+    ).joinToString("\t")
 
     private fun strokesFor(
         store: WorkspaceStore,
         m: MappedPage,
         now: Long,
         problems: MutableList<String>,
+        ws: String,
     ): List<InkStrokeEntity> = m.inkNodeIds.flatMap { nodeId ->
         val blobs = store.readInk(nodeId)
         if (blobs.isEmpty() && !store.inkFile(nodeId).exists()) {
@@ -136,10 +180,33 @@ object WorkspaceReconciler {
         var rank = Rank.after(null)
         blobs.map { data ->
             InkStrokeEntity(
-                id = "$nodeId#${rank}", nodeId = nodeId, data = data,
+                id = "$nodeId#${rank}", workspaceId = ws, nodeId = nodeId, data = data,
                 rank = rank, createdAt = now, updatedAt = now,
             ).also { rank = Rank.after(rank) }
         }
+    }
+
+    /**
+     * The label that stands for the workspace itself.
+     *
+     * Derived, never written to a file. Where a page came from is provenance, not content — a file
+     * that claimed its own workspace would be lying the moment the repo was cloned as a second one,
+     * and a hand-edit could move a task between workspaces by deleting a tag. So the column is the
+     * truth and this is a view of it, generated on import so smart lists can say "everything from
+     * Work" through the label machinery that already exists, with no new filter syntax.
+     *
+     * Null for the local workspace, which has no name and nothing to be told apart from.
+     */
+    private fun workspaceLabel(store: WorkspaceStore, ws: String, now: Long): LabelEntity? {
+        if (ws.isEmpty()) return null
+        val name = store.readManifest()?.name ?: return null
+        return LabelEntity(
+            id = "$ws:workspace",
+            workspaceId = ws,
+            name = name,
+            color = LabelPalette.defaultFor(name),
+            createdAt = now, updatedAt = now,
+        )
     }
 
     /**
@@ -153,16 +220,20 @@ object WorkspaceReconciler {
         store: WorkspaceStore,
         links: List<LabelLink>,
         now: Long,
+        ws: String,
     ): Map<String, LabelEntity> {
         val byName = LinkedHashMap<String, LabelEntity>()
         store.readLabels().forEach {
-            byName[it.name.lowercase()] = LabelEntity(it.id, it.name, it.color, now, now)
+            byName[it.name.lowercase()] = LabelEntity(it.id, ws, it.name, it.color, now, now)
         }
         links.forEach { link ->
             val key = link.name.lowercase()
             if (key !in byName) {
                 byName[key] = LabelEntity(
-                    id = "label-$key",
+                    // Scoped: two repos may both use #sync without meaning one tag, and an
+                    // unscoped id would silently merge them into the same row.
+                    id = "$ws:label:$key",
+                    workspaceId = ws,
                     name = link.name,
                     color = LabelPalette.defaultFor(link.name),
                     createdAt = now, updatedAt = now,

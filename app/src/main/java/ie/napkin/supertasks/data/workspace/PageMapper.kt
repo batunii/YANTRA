@@ -65,7 +65,7 @@ object PageMapper {
 
     // ---- file -> rows ----
 
-    fun toRows(page: PageDoc, zone: ZoneId = ZoneId.systemDefault()): MappedPage {
+    fun toRows(page: PageDoc, workspaceId: String = "", zone: ZoneId = ZoneId.systemDefault()): MappedPage {
         val ts = page.modifiedAt.toEpochMilli()
         val children = ArrayList<NodeEntity>(page.blocks.size)
         val values = ArrayList<PropertyValueEntity>()
@@ -81,6 +81,7 @@ object PageMapper {
             }
             children += NodeEntity(
                 id = id,
+                workspaceId = workspaceId,
                 parentId = page.id,
                 type = typeOf(block),
                 title = titleOf(block),
@@ -95,7 +96,7 @@ object PageMapper {
 
             if (block is InkRef) ink += block.id
             if (block is TaskRef) {
-                values += valuesFor(id, block, ts, zone)
+                values += valuesFor(id, block, ts, zone, workspaceId)
                 block.labels.forEach { labels += LabelLink(id, it) }
             }
         }
@@ -103,6 +104,7 @@ object PageMapper {
         return MappedPage(
             page = NodeEntity(
                 id = page.id,
+                workspaceId = workspaceId,
                 parentId = page.parent,
                 type = page.type,
                 // Authoritative only at the top level; the reconciler overwrites it from the
@@ -140,13 +142,13 @@ object PageMapper {
         is InkRef -> null
     }
 
-    private fun valuesFor(id: String, t: TaskRef, ts: Long, zone: ZoneId): List<PropertyValueEntity> {
+    private fun valuesFor(id: String, t: TaskRef, ts: Long, zone: ZoneId, ws: String): List<PropertyValueEntity> {
         val out = ArrayList<PropertyValueEntity>(3)
         t.due?.let { due ->
             // The encoding on BuiltIns: v_bool carries hasTime, v_number the reminder offset.
             val allDay = due.value is DueValue.AllDay
             out += PropertyValueEntity(
-                nodeId = id, defId = BuiltIns.DUE_DEF_ID,
+                nodeId = id, defId = BuiltIns.DUE_DEF_ID, workspaceId = ws,
                 vDate = when (val v = due.value) {
                     is DueValue.AllDay -> startOfDay(v.date, zone)
                     is DueValue.At -> v.instant.toEpochMilli()
@@ -158,18 +160,18 @@ object PageMapper {
         }
         t.deadline?.let {
             out += PropertyValueEntity(
-                nodeId = id, defId = BuiltIns.DEADLINE_DEF_ID,
+                nodeId = id, defId = BuiltIns.DEADLINE_DEF_ID, workspaceId = ws,
                 vDate = startOfDay(it, zone), updatedAt = ts,
             )
         }
         t.priority?.let {
             out += PropertyValueEntity(
-                nodeId = id, defId = BuiltIns.PRIORITY_DEF_ID, vText = it, updatedAt = ts,
+                nodeId = id, defId = BuiltIns.PRIORITY_DEF_ID, workspaceId = ws, vText = it, updatedAt = ts,
             )
         }
         t.assignee?.let {
             out += PropertyValueEntity(
-                nodeId = id, defId = BuiltIns.ASSIGNEE_DEF_ID, vText = it, updatedAt = ts,
+                nodeId = id, defId = BuiltIns.ASSIGNEE_DEF_ID, workspaceId = ws, vText = it, updatedAt = ts,
             )
         }
         return out
