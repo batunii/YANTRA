@@ -240,4 +240,19 @@ class WorkspaceWriterTest {
         assertEquals(1, onDisk.map { it.first() }.toSet().size)
     }
 
+
+    @Test
+    fun removingAnImageBlockTakesItsPictureWithIt() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "Trip")
+        val id = "img-1"
+        writer.writeImage(id, ByteArray(2048) { 7 })
+        val block = writer.addBlock(list, NodeType.IMAGE, id)
+        assertTrue(store.hasImage(id))
+
+        writer.removeBlock(block)
+
+        // A picture nothing refers to is a megabyte committed to the repo forever, invisible in the
+        // app and present in every clone. The same trap the ink sidecars were fixed for.
+        assertTrue("the picture outlived its block", !store.hasImage(id))
+    }
 }

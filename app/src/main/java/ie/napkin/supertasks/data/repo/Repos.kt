@@ -149,6 +149,37 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         else ws.writerFor(parentId).addBlock(parentId, type, title, afterId, indent)
 
 
+    /**
+     * Adds a picture to a page.
+     *
+     * The block's payload is the image's own id, not a path and never a `content://` URI — the file
+     * sits beside the page as `<id>.jpg` and travels with the repo. Bytes first, block second, so a
+     * page is never indexed while pointing at a picture that is not there yet.
+     */
+    suspend fun addImage(
+        parentId: String,
+        bytes: ByteArray,
+        afterId: String? = null,
+        indent: Int = 0,
+    ): String {
+        val id = java.util.UUID.randomUUID().toString()
+        val writer = ws.writerFor(parentId)
+        writer.writeImage(id, bytes)
+        writer.addBlock(parentId, NodeType.IMAGE, id, afterId, indent)
+        return id
+    }
+
+    /**
+     * Where an image block's picture lives on disk, or null if the block predates the workspace copy
+     * and still names a `content://` URI.
+     */
+    suspend fun imageFile(nodeId: String): java.io.File? {
+        val node = dao.byId(nodeId) ?: return null
+        val name = node.title.orEmpty()
+        if (name.isEmpty() || name.startsWith("content://")) return null
+        return ws.store(node.workspaceId)?.imageFile(name)?.takeIf { it.exists() }
+    }
+
     /** Fast capture: new task into the Inbox. */
     suspend fun quickCaptureToInbox(title: String): String =
         create(inboxList(), NodeType.TASK, title)

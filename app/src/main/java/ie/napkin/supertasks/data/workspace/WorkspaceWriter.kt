@@ -275,6 +275,17 @@ class WorkspaceWriter(
      */
     suspend fun removeBlock(nodeId: String) {
         val home = homePageOf(nodeId) ?: return
+
+        // Which picture this block owned, resolved while the block still exists. An image block's own
+        // id is positional — only tasks and ink blocks carry a generated one — so the file is named
+        // by the `ImageRef`'s payload rather than by the node, and deleting `<nodeId>.jpg` would miss
+        // it and leave a megabyte in the repo that nothing refers to.
+        val picture = loadPage(home)?.blocks
+            ?.withIndex()
+            ?.firstOrNull { (i, b) -> blockIdOf(b, home, emptyList(), i) == nodeId }
+            ?.value
+            ?.let { (it as? ImageRef)?.uri }
+
         editPage(home) { page ->
             page.copy(blocks = page.blocks.filterIndexed { i, b ->
                 blockIdOf(b, page.id, page.blocks, i) != nodeId
@@ -282,7 +293,10 @@ class WorkspaceWriter(
         }
         mutex.withLock {
             store.deletePage(nodeId)
+            // Both sidecars a block can own. An image left behind is worse than a stray stroke file:
+            // it is a megabyte, it is committed, and nothing on any device refers to it again.
             store.inkFile(nodeId).delete()
+            picture?.let { store.imageFile(it).delete() }
             refreshIndex(Change.STRUCTURAL)
             onChange(Change.STRUCTURAL)
         }
@@ -446,6 +460,17 @@ class WorkspaceWriter(
     suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
         store.writeInk(nodeId, strokes)
         refreshIndex(Change.INK)
+        onChange(Change.INK)
+    }
+
+    /**
+     * Puts a picture in the workspace. Written before the block that names it, so the file is never
+     * referenced by a page that has already been indexed.
+     */
+    suspend fun writeImage(id: String, bytes: ByteArray) = mutex.withLock {
+        store.writeImage(id, bytes)
+        // Committed like ink: a binary blob that arrives occasionally and is worth its own commit
+        // rather than being batched behind a burst of typing.
         onChange(Change.INK)
     }
 

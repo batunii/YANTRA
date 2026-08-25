@@ -210,6 +210,9 @@ class WorkspaceStore(
                     inkFile(b.id).delete()
                     inkCache.remove(inkFile(b.id).name)
                 }
+                // Named after the block, like a stroke sidecar: deleting only the page would leave
+                // the picture on disk with nothing referring to it, invisible and committed.
+                is ie.napkin.supertasks.data.format.ImageRef -> imageFile(b.uri).delete()
                 is ie.napkin.supertasks.data.format.TaskRef ->
                     if (pageFile(b.id).exists()) deletePage(b.id, seen)
                 else -> Unit
@@ -249,6 +252,23 @@ class WorkspaceStore(
         if (strokes.isEmpty()) inkFile(id).delete() else inkFile(id).writeBytesAtomically(encodeInk(strokes))
         inkCache.remove(inkFile(id).name)
     }
+
+    // ---- images ----
+
+    /**
+     * A picture, beside the page that shows it.
+     *
+     * Same shape as an ink sidecar and for the same reason: it is part of the workspace, so it is in
+     * the repo, so it reaches every device. What lands here is a downscaled copy — see
+     * `ARCHITECTURE.md` §5 — because git keeps every version of a binary forever and a phone photo is
+     * several megabytes. The device that picked it may also hold the original; that is device-local
+     * and never named in a file.
+     */
+    fun imageFile(id: String): File = File(pagesDir, "$id.jpg")
+
+    fun writeImage(id: String, bytes: ByteArray) = imageFile(id).writeBytesAtomically(bytes)
+
+    fun hasImage(id: String): Boolean = imageFile(id).exists()
 
     // ---- pomodoro ----
 

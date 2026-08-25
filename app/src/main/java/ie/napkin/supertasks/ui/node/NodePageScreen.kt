@@ -199,12 +199,15 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            // Held so this device can keep drawing the full-size original. Not required: the copy
+            // that goes into the workspace is what everything falls back to, including this device
+            // if the grant is ever revoked.
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             }
-            vm.addBlock(NodeType.IMAGE, uri.toString(), afterId = lastCaretBlockId)
+            vm.addImage(uri, afterId = lastCaretBlockId)
         }
     }
 
@@ -1542,6 +1545,14 @@ private fun InkBlockRow(
     }
 }
 
+/**
+ * A picture.
+ *
+ * Drawn from the best copy this device has. The workspace holds a downscaled one that reached here
+ * through git and is always correct; the device that picked the image also kept the original and
+ * prefers it. Falling back costs sharpness and nothing else — never a missing picture, which is what
+ * happened before the workspace carried its own copy.
+ */
 @Composable
 private fun ImageBlockRow(
     child: NodeEntity,
@@ -1549,6 +1560,16 @@ private fun ImageBlockRow(
     onActivate: () -> Unit,
     vm: NodePageViewModel,
 ) {
+    // The block id is the file name; a value left over from before the copy existed is a
+    // `content://` URI, and is still worth drawing on the device that owns it.
+    val imageId = child.title.orEmpty()
+    var inRepo by remember(imageId) { mutableStateOf<java.io.File?>(null) }
+    LaunchedEffect(imageId) { inRepo = vm.imageFile(child.id) }
+
+    val model: Any? = remember(imageId, inRepo) {
+        vm.originalFor(imageId) ?: inRepo ?: imageId.takeIf { it.startsWith("content://") }
+    }
+
     Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(vertical = 6.dp)) {
         Surface(
             modifier = Modifier
@@ -1558,7 +1579,7 @@ private fun ImageBlockRow(
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             AsyncImage(
-                model = child.title,
+                model = model,
                 contentDescription = "Image block",
                 modifier = Modifier.fillMaxWidth(),
             )

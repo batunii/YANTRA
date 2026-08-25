@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class NodePageViewModel(
     private val container: AppContainer,
@@ -115,6 +116,42 @@ class NodePageViewModel(
             }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** The full-size picture this device happens to hold for a block, if any. */
+    private val originals = ie.napkin.supertasks.data.image.LocalOriginals(container.app)
+
+    fun originalFor(blockId: String) = originals.originalFor(blockId)
+
+    /** Where the workspace's copy of an image block lives, once it has one. */
+    suspend fun imageFile(nodeId: String) = nodes.imageFile(nodeId)
+
+    /**
+     * Brings a picked image into the workspace.
+     *
+     * Downscaled and stripped of metadata on the way in — see
+     * [ie.napkin.supertasks.data.image.ImageImport]. The original stays where it was and is
+     * remembered locally, so this device draws the sharp one and every other device draws the copy
+     * that actually travels.
+     */
+    fun addImage(uri: android.net.Uri, afterId: String? = null, onFailed: () -> Unit = {}) {
+        viewModelScope.launch {
+            val bytes: ByteArray? = withContext(Dispatchers.Default) {
+                ie.napkin.supertasks.data.image.ImageImport.downscale(container.app, uri)
+            }
+            if (bytes == null) {
+                onFailed()
+                return@launch
+            }
+            val after = afterId?.let { nodes.byId(it) }
+            val id = nodes.addImage(
+                parentId = after?.parentId ?: nodeId,
+                bytes = bytes,
+                afterId = afterId,
+                indent = after?.indent ?: 0,
+            )
+            originals.remember(id, uri)
+        }
+    }
 
     // ---- block ops ----
 

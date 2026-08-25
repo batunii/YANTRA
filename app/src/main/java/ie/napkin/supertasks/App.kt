@@ -81,7 +81,7 @@ sealed interface AddResult {
 }
 
 /** Plain-manual DI: one graph for the whole app. */
-class AppContainer(app: Application) {
+class AppContainer(val app: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val db: AppDatabase = AppDatabase.build(app)
