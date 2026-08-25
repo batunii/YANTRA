@@ -154,6 +154,18 @@ class NodePageViewModel(
         }
     }
 
+    /**
+     * A task from a line of typing, with whatever the line said applied.
+     *
+     * Goes through the shared capture path so the quick-add bar agrees with the widget and the share
+     * sheet about what "tomorrow" means.
+     */
+    fun captureTask(text: String) {
+        viewModelScope.launch {
+            nodes.captureTask(nodeId, text, container.labels, container.properties)
+        }
+    }
+
     // ---- block ops ----
 
     /**

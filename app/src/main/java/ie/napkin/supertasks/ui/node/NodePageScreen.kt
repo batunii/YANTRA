@@ -641,7 +641,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         if (!isTask) {
             QuickAddBar(
                 modifier = Modifier.navigationBarsPadding().imePadding(),
-                onAdd = { title -> vm.addBlock(NodeType.TASK, title) },
+                onAdd = { title -> vm.captureTask(title) },
             )
         }
         BlockTypeBar(

@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,6 +64,8 @@ import ie.napkin.supertasks.ui.components.LocalYantraHaptics
 import ie.napkin.supertasks.ui.components.isReducedMotion
 import androidx.compose.ui.platform.LocalContext
 import ie.napkin.supertasks.ui.components.ButtonTone
+import androidx.compose.ui.text.input.KeyboardType
+import ie.napkin.supertasks.ui.components.YantraField
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
@@ -207,10 +210,41 @@ private fun IdleScroll(sessions: List<PomodoroSessionEntity>, top: @Composable (
     }
 }
 
+/** One duration option. Its own function now that there are four of them and one is a door. */
+@Composable
+private fun DurationChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val y = Yantra.colors
+    Box(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) y.accent.copy(alpha = 0.16f) else y.cardBg)
+            .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            fontSize = 17.sp,
+            fontWeight = if (selected) FontWeight.W800 else FontWeight.W700,
+            color = if (selected) y.accentText else y.textSecondary,
+        )
+    }
+}
+
+private val PRESETS = listOf(15, 25, 50)
+
 @Composable
 private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
     val y = Yantra.colors
     var minutes by remember { mutableIntStateOf(25) }
+    var picking by remember { mutableStateOf(false) }
+    var custom by remember { mutableStateOf("") }
     Column(Modifier.padding(horizontal = 30.dp)) {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Focus on")
@@ -233,25 +267,48 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(15, 25, 50).forEach { m ->
-                val selected = minutes == m
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (selected) y.accent.copy(alpha = 0.16f) else y.cardBg)
-                        .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
-                        .clickable { minutes = m }
-                        .padding(vertical = 16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "$m",
-                        fontSize = 17.sp,
-                        fontWeight = if (selected) FontWeight.W800 else FontWeight.W700,
-                        color = if (selected) y.accentText else y.textSecondary,
-                    )
-                }
+                DurationChip(
+                    label = "$m",
+                    selected = minutes == m,
+                    modifier = Modifier.weight(1f),
+                    onClick = { minutes = m },
+                )
             }
+            // Three presets were three opinions about how long you should sit, and "exactly this
+            // long" was the whole point of the committed mode. Ninety minutes is a real answer.
+            DurationChip(
+                label = if (minutes in PRESETS) "···" else "$minutes",
+                selected = minutes !in PRESETS,
+                modifier = Modifier.weight(1f),
+                onClick = { picking = true },
+            )
+        }
+        if (picking) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                YantraField(
+                    value = custom,
+                    onValue = { typed -> custom = typed.filter { it.isDigit() }.take(3) },
+                    placeholder = "minutes",
+                    keyboard = KeyboardType.Number,
+                    modifier = Modifier.weight(1f),
+                )
+                YantraButton(
+                    label = "Set",
+                    tone = ButtonTone.Quiet,
+                    enabled = (custom.toIntOrNull() ?: 0) > 0,
+                    onClick = {
+                        custom.toIntOrNull()?.takeIf { it > 0 }?.let { minutes = it }
+                        picking = false
+                    },
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Anything up to a few hours. 90 for a long stretch, 5 for a nudge.",
+                color = y.textDim,
+                fontSize = 11.5.sp,
+            )
         }
         Spacer(Modifier.height(24.dp))
         YantraButton(

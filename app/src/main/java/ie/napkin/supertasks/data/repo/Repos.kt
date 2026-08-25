@@ -3,6 +3,7 @@ package ie.napkin.supertasks.data.repo
 import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
 import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.capture.CaptureParse
 import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
@@ -183,6 +184,41 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     /** Re-files a task under a different list. What the share sheet's "change list" does. */
     suspend fun moveToList(taskId: String, listId: String) {
         ws.writerFor(taskId).reparent(taskId, listId)
+    }
+
+    /**
+     * Creates a task from a line of typing, applying whatever the line turned out to say.
+     *
+     * One path, so every capture surface behaves identically — the quick-add bar, the create sheet,
+     * the widget and the share target should not each have their own idea of what "tomorrow" means.
+     *
+     * Ordering is deliberate: the task exists after the first call, so a failure in any of the
+     * property writes afterwards leaves a task with less on it rather than no task at all. Capture is
+     * the thing that must not be lost; a due date is a nicety by comparison.
+     */
+    suspend fun captureTask(
+        parentId: String?,
+        text: String,
+        labels: LabelRepository,
+        properties: PropertyRepository,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    ): String? {
+        val parsed = CaptureParse.parse(text)
+        if (parsed.title.isBlank()) return null
+
+        val id = create(parentId ?: inboxList(), NodeType.TASK, parsed.title)
+
+        parsed.dueAt()?.let { at ->
+            properties.setDue(
+                id,
+                at.atZone(zone).toInstant().toEpochMilli(),
+                hasTime = parsed.time != null,
+                reminderOffsetMin = null,
+            )
+        }
+        parsed.priority?.let { properties.setValue(id, BuiltIns.PRIORITY_DEF_ID, text = it) }
+        parsed.labels.forEach { name -> labels.attach(id, labels.getOrCreate(name).id) }
+        return id
     }
 
     /** Fast capture: new task into the Inbox. */

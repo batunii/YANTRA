@@ -91,7 +91,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     fun quickAddTask(title: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
             val inboxId = nodes.inboxList()
-            nodes.create(inboxId, NodeType.TASK, title)
+            nodes.captureTask(inboxId, title, container.labels, container.properties)
             onDone(inboxId)
         }
     }

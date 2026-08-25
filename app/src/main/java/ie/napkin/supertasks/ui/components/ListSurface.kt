@@ -108,6 +108,15 @@ fun QuickAddBar(
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
                 cursorBrush = SolidColor(y.accent),
+                // Typing "buy milk tomorrow #home" tints what it understood as you write it, so a
+                // word that is about to leave the title says so first.
+                visualTransformation = remember(y.due, y.accentText, y.overdue) {
+                    CaptureHighlight(
+                        dateColor = y.due,
+                        labelColor = y.accentText,
+                        priorityColor = y.overdue,
+                    )
+                },
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box(contentAlignment = Alignment.CenterStart) {

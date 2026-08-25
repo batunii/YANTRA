@@ -91,6 +91,10 @@ class ShareTargetActivity : ComponentActivity() {
         val created = MutableStateFlow<String?>(null)
         container.appScope.launch {
             container.seeding.join()
+            // Deliberately not the capture parser. What arrives here was written by a web page —
+            // a headline as the subject, a selection as the text — not typed by someone encoding
+            // modifiers, and "10 things to do today" must not lose its last word and acquire a due
+            // date. Parsing is for what a person typed; this is for what they pointed at.
             val id = container.nodes.quickCaptureToInbox(title)
             // The link itself, on the task's page — kept out of the title so a list stays readable.
             if (text.isNotEmpty() && text != title) {

@@ -87,7 +87,8 @@ class QuickAddActivity : ComponentActivity() {
                 // appScope: outlives this activity, which finishes immediately.
                 container.appScope.launch {
                     val newId: String? = when {
-                        targetNode == null -> container.nodes.quickCaptureToInbox(trimmed)
+                        targetNode == null ->
+                            container.nodes.captureTask(null, trimmed, container.labels, container.properties)
                         // Smart list: addTask applies the list's apply-on-create values
                         // (e.g. Today stamps Due = today); stale target falls back to Inbox.
                         targetIsSmart -> container.smartLists.defById(targetNode)

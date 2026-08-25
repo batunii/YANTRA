@@ -265,4 +265,49 @@ class RepositoryFlowTest {
         assertEquals("Some notes", db.nodeDao().byId(note)?.title)
         assertEquals("High", db.propertyDao().valuesForNodeOnce(task).single().vText)
     }
+
+    // ---- capture from a line of typing ----
+
+    @Test
+    fun aTypedLineBecomesATaskWithEverythingItSaid() = runBlocking {
+        val list = nodes.create(null, NodeType.LIST, "Errands")
+        val id = nodes.captureTask(list, "buy milk tomorrow 6pm #home !high", labels, props)!!
+
+        // The title is what is left, and the file is what proves it.
+        val page = ws.primaryStore().pageFile(list).readText()
+        assertTrue("the modifiers stayed in the title: $page", page.contains("buy milk"))
+        assertTrue("a modifier survived into the title", !page.contains("tomorrow"))
+
+        // Each one landed where it belongs, not merely got stripped from the text.
+        assertEquals("High", db.propertyDao().valuesForNodeOnce(id).firstOrNull {
+            it.defId == ie.napkin.supertasks.data.db.BuiltIns.PRIORITY_DEF_ID
+        }?.vText)
+        assertTrue(
+            "no due date was set",
+            db.propertyDao().valuesForNodeOnce(id).any {
+                it.defId == ie.napkin.supertasks.data.db.BuiltIns.DUE_DEF_ID && it.vDate != null
+            },
+        )
+        assertTrue("the label was not attached", page.contains("#home"))
+    }
+
+    @Test
+    fun plainTypingIsLeftExactlyAsWritten() = runBlocking {
+        // Far more common than the clever case, and the one where being wrong is most annoying.
+        val list = nodes.create(null, NodeType.LIST, "Notes")
+        val id = nodes.captureTask(list, "think about the roadmap", labels, props)!!
+
+        assertEquals("think about the roadmap", db.nodeDao().byId(id)?.title)
+        assertTrue(db.propertyDao().valuesForNodeOnce(id).none {
+            it.defId == ie.napkin.supertasks.data.db.BuiltIns.DUE_DEF_ID
+        })
+    }
+
+    @Test
+    fun aLineThatIsOnlyModifiersStaysATask() = runBlocking {
+        // "today" is a perfectly good task name and must not become an empty task due today.
+        val list = nodes.create(null, NodeType.LIST, "Notes")
+        val id = nodes.captureTask(list, "today", labels, props)!!
+        assertEquals("today", db.nodeDao().byId(id)?.title)
+    }
 }
