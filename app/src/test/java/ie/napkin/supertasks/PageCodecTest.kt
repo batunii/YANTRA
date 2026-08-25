@@ -41,7 +41,7 @@ class PageCodecTest {
         A list holds tasks.
 
         - [ ] Tasks can nest ^9f1e due:2026-08-26 !high #sync @batunii
-        >> - [x] An indented, finished subtask ^4d2c
+        » - [x] An indented, finished subtask ^4d2c
 
         ![[ink:5b8a]]
     """.trimIndent() + "\n"
@@ -289,10 +289,24 @@ class PageCodecTest {
     @Test
     fun `indent is written back at the depth it was read`() {
         val b = PageCodec.decode(
-            "---\nid: a\ntype: task\nmodified_at: 2026-01-01T00:00:00Z\n---\n>> >> deep prose\n"
+            "---\nid: a\ntype: task\nmodified_at: 2026-01-01T00:00:00Z\n---\n» » deep prose\n"
         ).blocks.single()
         assertEquals(2, b.indent)
-        assertTrue(PageCodec.encode(page(listOf(Prose("deep prose", 2)))).contains(">> >> deep prose"))
+        assertTrue(PageCodec.encode(page(listOf(Prose("deep prose", 2)))).contains("» » deep prose"))
+    }
+
+    @Test
+    fun `markdown blockquotes and callouts stay prose at depth zero`() {
+        // What the guillemet buys: `>>` is a nested blockquote in markdown, and with `>>` as the
+        // indent marker it was silently read as an indented line instead.
+        listOf("> a quote", ">> a nested quote", "> [!NOTE] a callout").forEach { line ->
+            val b = PageCodec.decode(
+                "---\nid: a\ntype: task\nmodified_at: 2026-01-01T00:00:00Z\n---\n$line\n"
+            ).blocks.single()
+            assertTrue("$line was not prose", b is Prose)
+            assertEquals(line, (b as Prose).text)
+            assertEquals("$line was indented", 0, b.indent)
+        }
     }
 
     @Test

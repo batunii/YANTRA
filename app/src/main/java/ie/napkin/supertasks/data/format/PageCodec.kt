@@ -26,8 +26,15 @@ import java.time.format.DateTimeParseException
  */
 object PageCodec {
 
-    /** One level of visual indent. Deliberately not nesting — see [PageDoc]. */
-    const val INDENT = ">>"
+    /**
+     * One level of visual indent. Deliberately not nesting — see [PageDoc].
+     *
+     * A guillemet rather than `>>` because `>>` is a nested blockquote in markdown, and rather than
+     * leading whitespace because markdown reads indentation as list *nesting* — which is precisely
+     * the conflation this format exists to avoid. This character means nothing to markdown, so
+     * blockquotes and callouts pass through as the prose they are.
+     */
+    const val INDENT = "\u00BB"
 
     private const val FENCE = "---"
 
@@ -70,14 +77,20 @@ object PageCodec {
         )
     }
 
-    private fun parseBlock(raw: String): Block {
-        var rest = raw
-        var indent = 0
+    /** Peels indent markers off the front, returning the depth and what is left. */
+    private fun splitIndent(line: String): Pair<Int, String> {
+        var rest = line
+        var depth = 0
         while (rest.startsWith(INDENT)) {
-            indent++
+            depth++
             rest = rest.removePrefix(INDENT).removePrefix(" ")
         }
-        rest = rest.trimEnd()
+        return depth to rest
+    }
+
+    private fun parseBlock(raw: String): Block {
+        val (indent, body) = splitIndent(raw)
+        val rest = body.trimEnd()
 
         inkOrImage(rest, indent, raw)?.let { return it }
 
@@ -208,7 +221,7 @@ object PageCodec {
         val raw = block.raw ?: return false
         if (stripRaw(parseBlock(raw)) != stripRaw(block)) return false
         if (block !is Numbered) return true
-        return NUMBERED_PREFIX.find(raw.trimStart('>', ' '))?.groupValues?.get(1)?.toIntOrNull() == ordinal
+        return NUMBERED_PREFIX.find(splitIndent(raw).second)?.groupValues?.get(1)?.toIntOrNull() == ordinal
     }
 
     private val NUMBERED_PREFIX = Regex("""^(\d+)\.""")

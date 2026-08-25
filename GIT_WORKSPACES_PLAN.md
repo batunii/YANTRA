@@ -82,8 +82,8 @@ device: sm-s921b
 A list holds tasks. A task's own page holds anything.
 
 - [ ] Tasks can nest ^9f1e... due:2026-08-26 !high #sync @batunii
->> - [x] An indented, finished subtask ^4d2c...
->> Prose indented under it, still prose.
+» - [x] An indented, finished subtask ^4d2c...
+» Prose indented under it, still prose.
 
 ![[ink:5b8a...]]
 ```
@@ -92,8 +92,11 @@ Rules:
 
 - **Body lines are blocks, in order.** Order is line position — there is no `rank` in the format.
   Reordering rewrites the file; the index regenerates ranks on import.
-- **`>>` prefixes visual indent**, one per level. Deliberately not nesting: YANTRA separates how a
-  line is laid out from where it lives, and a markdown-native format would conflate them.
+- **`»` prefixes visual indent**, one per level. Deliberately not nesting: YANTRA separates how a
+  line is laid out from where it lives, and a markdown-native format would conflate them. A
+  guillemet rather than `>>`, which is a nested blockquote, or leading whitespace, which is
+  markdown's own nesting — this character means nothing to markdown, so quotes and callouts
+  survive as the prose they are.
 - **`- [ ]` / `- [x]` / `- [~]`** are open / done / in progress.
 - **`^<id>`** on a task line is the id its page file and its ink sidecars are keyed by.
 - **Inline properties** on a task line: `due:`, `deadline:`, `!priority`, `#label`, `@assignee`.
