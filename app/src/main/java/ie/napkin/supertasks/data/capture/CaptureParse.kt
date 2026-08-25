@@ -83,8 +83,11 @@ object CaptureParse {
     )
 
     /** `26 aug`, `aug 26`, `26 august`. */
-    private val DAY_MONTH = Regex("""(?<=^|\s)(\d{1,2})\s+([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
-    private val MONTH_DAY = Regex("""(?<=^|\s)([a-z]{3,9})\s+(\d{1,2})(?=$|\s)""", RegexOption.IGNORE_CASE)
+    /** `26 aug`, `1st sept` — the ordinal suffix is optional and ignored. */
+    private val DAY_MONTH =
+        Regex("""(?<=^|\s)(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
+    private val MONTH_DAY =
+        Regex("""(?<=^|\s)([a-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?(?=$|\s)""", RegexOption.IGNORE_CASE)
 
     private val NEXT_WEEKDAY = Regex("""(?<=^|\s)next\s+([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
     private val WEEKDAY = Regex("""(?<=^|\s)([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
@@ -101,23 +104,19 @@ object CaptureParse {
             spans += Captured.Span(m.range, Captured.Kind.LABEL)
         }
 
-        PRIORITY.find(input)?.let { m ->
-            val named = PRIORITIES.firstOrNull { it.equals(m.groupValues[1], ignoreCase = true) }
+        PRIORITY.firstMeaning(input, { true }) { m ->
+            PRIORITIES.firstOrNull { it.equals(m.groupValues[1], ignoreCase = true) }
                 ?: shorthandPriority(m.groupValues[1])
-            if (named != null) {
-                priority = named
-                spans += Captured.Span(m.range, Captured.Kind.PRIORITY)
-            }
+        }?.let { (named, range) ->
+            priority = named
+            spans += Captured.Span(range, Captured.Kind.PRIORITY)
         }
 
-        TIME.find(input)?.let { m ->
-            parseTime(m)?.let {
-                time = it
-                spans += Captured.Span(m.range, Captured.Kind.TIME)
-            }
+        TIME.firstMeaning(input, { true }) { parseTime(it) }?.let { (t, range) ->
+            time = t
+            spans += Captured.Span(range, Captured.Kind.TIME)
         }
 
-        // Most specific first: an explicit date beats a weekday beats "tomorrow".
         val dateMatch = findDate(input, today, spans.map { it.range })
         if (dateMatch != null) {
             date = dateMatch.first
@@ -161,64 +160,75 @@ object CaptureParse {
         }.getOrNull()
     }
 
+    /**
+     * Every match of [this], not merely the first, until one of them means something.
+     *
+     * The bug this exists to prevent was subtle and common: each pattern used `find`, which returns
+     * the first *textual* match whether or not it parses. "buy 6 eggs 1 sept" offered "6 eggs" as its
+     * first day-month pair, which is not a date, and the attempt was then abandoned — so the real
+     * date two words later was never seen. Any number beside a word, anywhere earlier in the title,
+     * silently disabled date parsing for the whole line.
+     */
+    private fun <T : Any> Regex.firstMeaning(
+        input: String,
+        free: (IntRange) -> Boolean,
+        read: (MatchResult) -> T?,
+    ): Pair<T, IntRange>? = findAll(input).firstNotNullOfOrNull { m ->
+        if (!free(m.range)) null else read(m)?.let { it to m.range }
+    }
+
     /** The date, and where it was written. Skips anything already claimed by another token. */
     private fun findDate(
         input: String,
         today: LocalDate,
         taken: List<IntRange>,
     ): Pair<LocalDate, IntRange>? {
-        fun free(r: IntRange) = taken.none { it.first <= r.last && r.first <= it.last }
+        val free = { r: IntRange -> taken.none { it.first <= r.last && r.first <= it.last } }
 
-        ISO_DATE.find(input)?.takeIf { free(it.range) }?.let { m ->
+        // Most specific first: an explicit date beats a weekday beats "tomorrow".
+        ISO_DATE.firstMeaning(input, free) { m ->
             runCatching {
                 LocalDate.of(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())
-            }.getOrNull()?.let { return it to m.range }
-        }
+            }.getOrNull()
+        }?.let { return it }
 
-        NUMERIC_DATE.find(input)?.takeIf { free(it.range) }?.let { m ->
-            val day = m.groupValues[1].toInt()
-            val month = m.groupValues[2].toInt()
+        NUMERIC_DATE.firstMeaning(input, free) { m ->
             val year = m.groupValues[3].toIntOrNull()?.let { if (it < 100) 2000 + it else it }
-            runCatching { LocalDate.of(year ?: today.year, month, day) }.getOrNull()?.let {
+            runCatching {
+                LocalDate.of(year ?: today.year, m.groupValues[2].toInt(), m.groupValues[1].toInt())
+            }.getOrNull()?.let {
                 // No year written means the next time this date comes round, not one in the past.
-                return (if (year == null && it < today) it.plusYears(1) else it) to m.range
+                if (year == null && it < today) it.plusYears(1) else it
             }
-        }
+        }?.let { return it }
 
-        DAY_MONTH.find(input)?.takeIf { free(it.range) }?.let { m ->
+        DAY_MONTH.firstMeaning(input, free) { m ->
             monthOf(m.groupValues[2])?.let { month ->
-                runCatching { LocalDate.of(today.year, month, m.groupValues[1].toInt()) }.getOrNull()?.let {
-                    return (if (it < today) it.plusYears(1) else it) to m.range
-                }
+                runCatching { LocalDate.of(today.year, month, m.groupValues[1].toInt()) }.getOrNull()
+                    ?.let { if (it < today) it.plusYears(1) else it }
             }
-        }
+        }?.let { return it }
 
-        MONTH_DAY.find(input)?.takeIf { free(it.range) }?.let { m ->
+        MONTH_DAY.firstMeaning(input, free) { m ->
             monthOf(m.groupValues[1])?.let { month ->
-                runCatching { LocalDate.of(today.year, month, m.groupValues[2].toInt()) }.getOrNull()?.let {
-                    return (if (it < today) it.plusYears(1) else it) to m.range
-                }
+                runCatching { LocalDate.of(today.year, month, m.groupValues[2].toInt()) }.getOrNull()
+                    ?.let { if (it < today) it.plusYears(1) else it }
             }
-        }
+        }?.let { return it }
 
-        NEXT_WEEKDAY.find(input)?.takeIf { free(it.range) }?.let { m ->
-            weekdayOf(m.groupValues[1])?.let { day ->
-                // "next monday" is the one after this coming one when today is before it, which is
-                // what people mean and is a week further out than "monday" alone.
-                return nextOccurrence(today, day).plusWeeks(1) to m.range
-            }
-        }
+        NEXT_WEEKDAY.firstMeaning(input, free) { m ->
+            // "next monday" is the one after this coming one, a week further out than "monday" alone.
+            weekdayOf(m.groupValues[1])?.let { nextOccurrence(today, it).plusWeeks(1) }
+        }?.let { return it }
 
-        WEEKDAY.findAll(input).forEach { m ->
-            if (!free(m.range)) return@forEach
+        WEEKDAY.firstMeaning(input, free) { m ->
             when (m.groupValues[1].lowercase()) {
-                "today" -> return today to m.range
-                "tomorrow", "tmrw" -> return today.plusDays(1) to m.range
-                "tonight" -> return today to m.range
-                else -> Unit
+                "today", "tonight" -> today
+                "tomorrow", "tmrw" -> today.plusDays(1)
+                else -> weekdayOf(m.groupValues[1])?.let { nextOccurrence(today, it) }
             }
-            weekdayOf(m.groupValues[1])?.let { return nextOccurrence(today, it) to m.range }
-        }
+        }?.let { return it }
+
         return null
     }
 

@@ -188,4 +188,43 @@ class CaptureParseTest {
         assertTrue("no day was chosen", c.date != null)
         assertTrue(c.date == today || c.date == today.plusDays(1))
     }
+
+    // ---- a number earlier in the title must not disable date parsing ----
+
+    @Test
+    fun `a number beside a word earlier in the title does not swallow the date`() {
+        // Reported: "1 sept" did not work while "sept 1" did. The cause was worse than the symptom —
+        // each pattern used the *first* textual match whether or not it parsed, so "6 eggs" was
+        // offered as a day-month pair, rejected, and the attempt abandoned before reaching the real
+        // date two words later. Any number beside a word, anywhere earlier, silently disabled dates
+        // for the whole line.
+        listOf(
+            "buy 6 eggs 1 sept",
+            "buy 6 eggs sept 1",
+            "pay 2 bills 1 sept",
+            "get 3 things done 4 sep",
+        ).forEach { line ->
+            assertEquals("failed on: $line", LocalDate.of(2026, 9, 1).month, parse(line).date?.month)
+        }
+    }
+
+    @Test
+    fun `a number earlier does not swallow a plain tomorrow either`() {
+        val c = parse("buy 6 eggs tomorrow")
+        assertEquals(today.plusDays(1), c.date)
+        assertEquals("buy 6 eggs", c.title)
+    }
+
+    @Test
+    fun `an impossible time does not prevent a real one later`() {
+        // Same flaw, same fix: the first match that looks like a time is not necessarily one.
+        assertEquals(LocalTime.of(15, 0), parse("call 25:99 at 3pm").time)
+    }
+
+    @Test
+    fun `ordinals are read the same as bare numbers`() {
+        assertEquals(LocalDate.of(2026, 9, 1), parse("1st sept thing").date)
+        assertEquals(LocalDate.of(2026, 9, 1), parse("thing sept 1st").date)
+        assertEquals(LocalDate.of(2026, 12, 21), parse("thing 21st dec").date)
+    }
 }
