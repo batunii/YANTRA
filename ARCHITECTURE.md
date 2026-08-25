@@ -1,0 +1,213 @@
+# Yantra — what it is, and the architecture that follows
+
+Written after the app existed, which is the wrong order, and is why this document exists: several
+subsystems were built for a reason that was true at the time and are now slightly out of step with
+what the app turned out to be. Part 1 says what it is. Part 2 derives the rules. Part 3 audits the
+code against them.
+
+---
+
+## 1. What Yantra is
+
+**A todo app whose notes are as good as a notes app's.**
+
+Not a notes app that tracks tasks. The spine is a task list, and the test of the whole thing is a
+loop that has to be excellent:
+
+> **capture → triage → do**
+
+Everything else is in service of that, including the notes.
+
+### The three pillars
+
+| Pillar | What it means | Test of success |
+|---|---|---|
+| **Tasks** | The spine. Lists, Today, priorities, due dates, nesting. | A task is captured in under two seconds from anywhere. |
+| **Notes** | Detail attached to a task, in whatever form the thought arrived. | **Attaching detail costs the same as adding the task.** |
+| **Focus** | Doing the work, tracked as seriously as planning it. | A session's history survives and is visible where the work is. |
+
+### What "first class notes" actually demands
+
+The user's words: *"however you like to add details — via a pic, a link, a handwritten note in your
+tab, anything."* That is a stronger claim than "notes are supported", and it has an architectural
+consequence: **prose, headings, bullets, ink, images and links are peers.** None of them may be the
+one that is awkward, lossy, or stored somewhere the others are not.
+
+### Scale
+
+**A few hundred *active* tasks feel instant.** The word active is doing work: the total is unbounded
+and grows forever, so the architecture owes an answer for how the working set stays small. That
+answer is archiving, and it is a concept the app needs rather than a feature it might add.
+
+### Priorities, stated plainly
+
+1. Capture, triage, do — the loop.
+2. Notes of any kind, as cheap as a task.
+3. Focus and its history.
+4. **Sync is a capability, not the product.** Multi-device and shared repos are why the file format
+   is what it is, and they are worth building — but nothing in the core loop may pay for them at the
+   point of use.
+
+### Compromises accepted, and why
+
+| Compromise | Why it is acceptable |
+|---|---|
+| Ink merges last-writer-wins | A stroke set has no line structure for git to merge; pretending otherwise corrupts drawings rather than reconciling them. |
+| Background sync is best-effort | Android's 15-minute floor is a request, not a promise. Pull-to-sync exists because of it. |
+| Room holds every workspace in one database | So a single Today can span personal, project and shared. The cost is that scoping is mandatory. |
+| Task ids are positional for unidentified blocks | A re-index during editing renumbers them; the alternative is an id on every prose line. |
+
+---
+
+## 2. The laws
+
+Six invariants. Anything that breaks one of these is incoherent even when it works.
+
+**L1 — Files are the truth, and the truth is complete.**
+Everything a task carries lives inside the workspace directory. Not a pointer to it. If it is not in
+the repo, it does not survive the device.
+
+**L2 — The index is derived and disposable.**
+Room is a cache of what the files say. Deleting it costs nothing. Nothing may exist only there.
+
+**L3 — Capture is never blocked.**
+No network, no lock, no rebuild, no confirmation stands between an intent to record something and it
+being recorded. Everything expensive happens after, and may be deferred or coalesced.
+
+**L4 — Sync observes; it never participates in a write.**
+A write finishes without knowing sync exists. Sync learns afterwards, through a callback, and does
+its work on its own schedule.
+
+**L5 — One control per idea.**
+A chip, a field, a button means the same thing on every screen. Learned once.
+
+**L6 — The colour law.**
+Neutral is structure. The accent is the user's own effort. Crimson and amber are the world asking.
+Grey is rest. No hue means two things, and priority is never a preference.
+
+---
+
+## 3. The shape
+
+```
+  UI (Compose)            screens · components · theme
+        │                 reads Room entities, calls repositories
+        ▼
+  Repositories            NodeRepository, PropertyRepository, LabelRepository,
+        │                 SmartListRepository, PomodoroRepository, InkRepository
+        │                 ── the only door between UI and data ──
+        ▼
+  Workspaces  ──►  WorkspaceWriter ──► WorkspaceStore ──► files on disk  ◄── TRUTH
+        │                 │                                    │
+        │                 └── onChange(Change) ──► CommitScheduler ──► SyncEngine ──► git
+        │                        (L4: an observer)
+        ▼
+  Indexer ──► WorkspaceReconciler ──► Room   ◄── a cache of the above
+```
+
+**Read path:** UI observes Room Flows. **Write path:** UI → repository → writer → file → index.
+The index is refreshed after the file, never before, so nothing can be in Room that is not on disk.
+
+### Where each idea lives
+
+| Idea | Home | Note |
+|---|---|---|
+| What a page contains | `data/format` — `PageDoc`, `PageCodec` | The public contract. A user may edit these files by hand. |
+| Turning files into rows | `data/workspace` — mapper, reconciler, indexer | Pure function of the working tree. |
+| Making a change | `WorkspaceWriter` | One mutex, one place that stamps `modified_at`. |
+| Git | `data/sync` | Reached only through a callback. |
+| Rules for smart lists | `data/filter` | Compiled to SQL against the index. |
+
+---
+
+## 4. Audit — where the code diverges
+
+Ranked by how much the divergence costs, not by how hard it is to fix.
+
+### A. Images are not in the workspace — breaks **L1**, and the notes promise
+
+An image block stores a `content://` URI as its payload. A persistable permission is taken, so it
+survives a reboot *on that device*, and the bytes are never copied anywhere.
+
+The consequences follow directly: the image is not in the git repo, so it does not sync; on a second
+device the block is a URI that means nothing; and if the source is deleted or the SD card is
+unmounted, the note is gone with no trace of what it was.
+
+Ink, the other handwritten-note pillar, does the opposite and does it correctly — strokes are `.ink`
+sidecars inside the workspace, committed with everything else. **So the two first-class note types
+have opposite storage philosophies, and the one the user named first is the broken one.**
+
+> Fix: copy the bytes into the workspace on pick (`pages/<id>.img`, or an `assets/` directory),
+> reference relatively, and let git carry them. Around a day, plus a decision about large files.
+
+### B. There is no archive — the working set grows forever
+
+"A few hundred **active** tasks" implies a boundary between active and finished-long-ago. Nothing in
+the app draws one. A completed task stays in its page, is re-read on every index rebuild, and is
+re-inserted into Room forever. Deletion is the only removal and it is destructive.
+
+This is the one finding that is not a bug today and is certain to become one: the indexing work done
+this session is measured against the *whole* workspace, so a year of use degrades the core loop.
+
+> Fix: an archive concept in the format (a `pages/archive/` directory, or a per-page `archived_at`),
+> excluded from the index by default and from Today always. Needs a product decision first: is
+> archiving automatic after N days, manual, or per-list?
+
+### C. No share target — the cheapest capture path is missing
+
+The stated requirement is that adding a link or a picture is as easy as adding a task. The manifest
+has no `ACTION_SEND` filter, so the ordinary way anyone captures a link — share sheet, from the
+browser, mid-thought — does not exist. Yantra cannot be shared *to*.
+
+This is the largest gap against the core loop and among the smallest to close.
+
+> Fix: a share-target activity reusing `QuickAddActivity`'s path. Text becomes a task or a note;
+> an image becomes an image block, once (A) gives images somewhere to live.
+
+### D. Property definitions are wiped globally — a real bug
+
+`PropertyDao.clearDefs()` is `DELETE FROM property_def` with no workspace filter, while every other
+clear in `Indexer.apply` is scoped. Rebuilding one workspace's index empties the property registry
+for all of them and refills it from that one workspace. Harmless only because every workspace
+currently scaffolds the same built-ins.
+
+> Fix: scope the table, or accept that defs are global and stop rewriting them per workspace. An hour.
+
+### E. Sync got the investment; the core loop got less
+
+Not an architectural fault — the boundary is clean, and `L4` holds: `data/sync` is reached only
+through `onChange`, and the UI touches it in two setup screens. Worth stating plainly anyway, since
+it is the thing this session was mostly spent on and it is, by the product's own priority ordering,
+fourth. Recorded so the next weeks go elsewhere.
+
+### F. The UI is shaped by the index — tension with **L2**, but leave it
+
+`ui/` imports `data.db` 47 times: screens read Room entities directly. Strictly, a disposable cache
+should not also be the app's model. In practice the entities *are* a faithful projection of the file
+format, the repository boundary is intact (the UI never imports `data.workspace` or `data.format`),
+and interposing a domain model would add a layer of translation for an app this size and buy nothing.
+
+> Recommendation: **do not change.** Recorded so it is a decision rather than an oversight.
+
+### What is already coherent
+
+Worth saying, because most of it is:
+
+- **The repository boundary holds.** No screen reaches past it; every task is created through one path.
+- **Focus is genuinely a pillar** — sessions are append-only log lines in the workspace (merge-friendly
+  by construction), history survives, and per-task counts appear on the page where the work is.
+- **The write path obeys L1 and L2** end to end, and is now proven by tests that throw the index away
+  and rebuild from files.
+- **L3 holds after this session**: writes are immediate, indexing is deferred, commits are batched,
+  strokes buffer in the session.
+- **L5 and L6 hold**: one chip, one field, one button; the accent is a closed set that cannot reach
+  the priority band.
+
+---
+
+## 5. Decisions this document is waiting on
+
+1. **Images** — copy into the workspace (agreed direction), but: cap the size? Down-scale on import?
+   What happens to an image that would make the repo huge?
+2. **Archive** — automatic after N days done, manual, or per-list? This shapes the format.
+3. **Share target** — does shared text become a task in the Inbox, or open the triage sheet?
