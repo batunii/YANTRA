@@ -60,7 +60,11 @@ object PageCodec {
         val blocks = ArrayList<Block>()
         while (i < lines.size) {
             val line = lines[i]
-            if (line.isNotBlank()) blocks += parseBlock(line)
+            // Empty, not blank. A truly empty line is the separator the emitter puts between
+            // blocks; a line holding only whitespace is an empty *block*, which the editor needs to
+            // exist because it makes one and then types into it. Skipping both, as this did, meant
+            // every new note and every ink block was written and then read back as nothing.
+            if (line.isNotEmpty()) blocks += parseBlock(line)
             i++
         }
 
@@ -203,7 +207,9 @@ object PageCodec {
         page.blocks.forEachIndexed { i, block ->
             if (i > 0 && needsBlankBefore(page.blocks[i - 1], block)) append('\n')
             val ordinal = ordinalOf(page.blocks, i)
-            append(if (rawStillDescribes(block, ordinal)) block.raw!! else render(block, ordinal))
+            val text = if (rawStillDescribes(block, ordinal)) block.raw!! else render(block, ordinal)
+            // An empty block still has to occupy a line, or reading the file back would lose it.
+            append(text.ifEmpty { " " })
             append('\n')
         }
     }

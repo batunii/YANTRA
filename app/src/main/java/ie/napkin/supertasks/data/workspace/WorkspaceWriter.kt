@@ -103,11 +103,15 @@ class WorkspaceWriter(
      * empty documents and make every clone slower for nothing. The file appears the moment there is
      * something to put in it.
      */
-    private fun ensurePage(id: String, parent: String) {
+    private suspend fun ensurePage(id: String) {
         if (store.pageFile(id).exists()) return
+        val row = db.nodeDao().byId(id) ?: return
         store.writePage(
             PageDoc(
-                id = id, type = NodeType.TASK, parent = parent, title = null,
+                id = id, type = row.type, parent = row.parentId,
+                // Only a top-level page carries its own title; anything nested is named by its line.
+                title = row.title?.takeIf { row.parentId == null },
+                systemKey = row.systemKey,
                 modifiedAt = Instant.ofEpochMilli(now()), device = device, blocks = emptyList(),
             )
         )
@@ -130,6 +134,10 @@ class WorkspaceWriter(
         indent: Int = 0,
     ): String = mutex.withLock {
         val id = if (type == NodeType.TASK || type == NodeType.INK) newId() else ""
+        // A task is only a line until it holds something — this is the moment it earns a document.
+        // Without this, the first block added to any task went nowhere at all: no page to load, no
+        // write, no error, and a screen that looked dead to the touch.
+        ensurePage(pageId)
         val page = loadPage(pageId) ?: return@withLock ""
         val block = blockOf(type, id, title.orEmpty(), indent)
         val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
@@ -210,7 +218,7 @@ class WorkspaceWriter(
         }
         if (newParent != null) {
             // The new home may be a task that has never held anything and so has no file yet.
-            db.nodeDao().byId(newParent)?.parentId?.let { ensurePage(newParent, it) }
+            ensurePage(newParent)
             loadPage(newParent)?.let { p ->
                 val moved = line ?: TaskRef(id = nodeId, title = "")
                 store.writePage(
