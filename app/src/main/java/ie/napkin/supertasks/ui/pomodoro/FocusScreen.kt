@@ -65,6 +65,7 @@ import ie.napkin.supertasks.ui.components.isReducedMotion
 import androidx.compose.ui.platform.LocalContext
 import ie.napkin.supertasks.data.db.FocusOutcome
 import ie.napkin.supertasks.ui.components.ButtonTone
+import ie.napkin.supertasks.ui.components.ConfirmDialog
 import androidx.compose.ui.text.input.KeyboardType
 import ie.napkin.supertasks.ui.components.YantraField
 import ie.napkin.supertasks.ui.components.YantraButton
@@ -436,20 +437,35 @@ private fun ActiveTimer(
             )
         }
         Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            YantraButton("Finish", onComplete, tone = ButtonTone.Soft, icon = Icons.Default.Timer)
-            YantraButton("Drop", onAbandon, tone = ButtonTone.Quiet)
+
+        // Asked at the moment of stopping rather than hovering over the whole session. A permanent
+        // caption is noise for the ninety-nine per cent of a session that is long enough, and it
+        // nags while you are working; the question only matters when you are about to act on it.
+        var confirming by remember { mutableStateOf<(() -> Unit)?>(null) }
+        fun stopping(end: () -> Unit): () -> Unit = {
+            if (FocusOutcome.wouldBeKept(state.elapsedSecs, state.plannedSecs)) end()
+            else confirming = end
         }
-        // Said before the tap, not after. A session that vanishes on being stopped is alarming; the
-        // same fact a few seconds earlier is information, and it stops counting down on its own.
-        if (!FocusOutcome.wouldBeKept(state.elapsedSecs, state.plannedSecs)) {
-            val left = FocusOutcome.MIN_KEPT_SECS - state.elapsedSecs
-            Text(
-                "Too short to record — ${left}s more",
-                color = y.warning,
-                fontSize = 12.5.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 10.dp, start = 30.dp, end = 30.dp),
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            YantraButton("Finish", stopping(onComplete), tone = ButtonTone.Soft, icon = Icons.Default.Timer)
+            YantraButton("Drop", stopping(onAbandon), tone = ButtonTone.Quiet)
+        }
+
+        confirming?.let { end ->
+            ConfirmDialog(
+                title = "Too short to record",
+                body = "Nothing has been focused on for long enough to keep. Stopping now ends the " +
+                    "session without adding it to your history.",
+                confirmLabel = "End anyway",
+                // Not "Cancel": backing out here continues the session rather than cancelling it,
+                // and the wrong word on the safe option is how people press the wrong one.
+                dismissLabel = "Keep going",
+                onDismiss = { confirming = null },
+                onConfirm = {
+                    confirming = null
+                    end()
+                },
             )
         }
         Spacer(Modifier.height(32.dp))

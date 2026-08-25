@@ -127,9 +127,13 @@ in the log forever and the timer kept resurrecting it.
 
 **Currently ten seconds, which is a testing value.** A minute is roughly where an accidental start
 stops being plausible; ten is there so the timer can be exercised without sitting through one, and
-should be raised before anyone relies on the history. The screen reads the same constant and says
-"too short to record" *before* the tap rather than after, because a session that vanishes on being
-stopped is alarming and the same fact a few seconds earlier is information.
+should be raised before anyone relies on the history.
+
+The screen reads the same constant and asks **at the moment of stopping** — "too short to record ·
+End anyway / Keep going" — rather than captioning the whole session. A permanent warning is noise for
+the great majority of a session that is long enough and nags while you are working; the question only
+matters when you are about to act on it. What it must never do is stay silent and let the session
+disappear, which is where this started.
 
 **F3 — "Too short to be interesting" is a display rule, never a recording rule.** The history view
 may hide or collapse sessions under a few minutes; the totals still include them. Filtering at write

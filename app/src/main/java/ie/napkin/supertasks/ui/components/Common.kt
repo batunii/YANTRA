@@ -243,6 +243,8 @@ fun ConfirmDialog(
     title: String,
     body: String,
     confirmLabel: String = "Delete",
+    /** What backing out is called. "Cancel" is wrong wherever the choice is not destroy-or-abort. */
+    dismissLabel: String = "Cancel",
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -256,7 +258,7 @@ fun ConfirmDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(dismissLabel) }
         },
     )
 }
