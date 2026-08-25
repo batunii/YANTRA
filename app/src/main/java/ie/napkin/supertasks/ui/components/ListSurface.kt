@@ -77,6 +77,8 @@ fun ListGroupRow(
 fun QuickAddBar(
     modifier: Modifier = Modifier,
     placeholder: String = "Add a task…",
+    /** The workspace's labels, so a typed `#tag` is tinted the colour it is about to become. */
+    labels: List<ie.napkin.supertasks.data.db.LabelEntity> = emptyList(),
     onAdd: (String) -> Unit,
 ) {
     val y = Yantra.colors
@@ -110,13 +112,7 @@ fun QuickAddBar(
                 cursorBrush = SolidColor(y.accent),
                 // Typing "buy milk tomorrow #home" tints what it understood as you write it, so a
                 // word that is about to leave the title says so first.
-                visualTransformation = remember(y.due, y.accentText, y.overdue) {
-                    CaptureHighlight(
-                        dateColor = y.due,
-                        labelColor = y.accentText,
-                        priorityColor = y.overdue,
-                    )
-                },
+                visualTransformation = rememberCaptureHighlight(labels),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box(contentAlignment = Alignment.CenterStart) {

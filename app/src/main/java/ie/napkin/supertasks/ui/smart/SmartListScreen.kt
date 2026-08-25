@@ -268,6 +268,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 modifier = Modifier
                     .navigationBarsPadding()
                     .imePadding(),
+                labels = labels,
                 onAdd = vm::addTask,
             )
         }
