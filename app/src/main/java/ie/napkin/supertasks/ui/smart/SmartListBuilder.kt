@@ -733,11 +733,14 @@ private fun Field(value: String, onValue: (String) -> Unit, placeholder: String,
     ) {
         BasicTextField(
             value = value, onValueChange = onValue, singleLine = true,
+            // Sized to the text without this, so an empty field is a few pixels wide and only a tap
+            // at the very left edge reaches it.
+            modifier = Modifier.fillMaxWidth(),
             textStyle = TextStyle(fontSize = 15.sp, color = y.textPrimary),
             cursorBrush = SolidColor(y.accent),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             decorationBox = { inner ->
-                Box(contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) Text(placeholder, fontSize = 15.sp, color = y.textDim)
                     inner()
                 }
@@ -757,11 +760,12 @@ private fun ValueField(value: String, numeric: Boolean, y: YantraColors, onValue
     ) {
         BasicTextField(
             value = value, onValueChange = onValue, singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
             textStyle = TextStyle(fontSize = 13.sp, color = y.textPrimary),
             cursorBrush = SolidColor(y.accent),
             keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text, imeAction = ImeAction.Done),
             decorationBox = { inner ->
-                Box(contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) Text(if (numeric) "0" else "value", fontSize = 13.sp, color = y.textDim)
                     inner()
                 }

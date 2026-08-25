@@ -65,6 +65,11 @@ fun YantraField(
             onValueChange = onValue,
             singleLine = true,
             enabled = enabled,
+            // Without this the field is only as wide as the text in it, which for an empty one is a
+            // sliver at the left edge. The box around it fills the width and the placeholder is
+            // painted by the decoration, so it *looks* like a field across the screen while every tap
+            // outside those few pixels lands on nothing — a field that cannot be typed into.
+            modifier = Modifier.fillMaxWidth(),
             textStyle = style,
             cursorBrush = SolidColor(y.accent),
             visualTransformation =
@@ -77,7 +82,7 @@ fun YantraField(
                 imeAction = imeAction,
             ),
             decorationBox = { inner ->
-                Box(contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
                         Text(placeholder, fontSize = 15.sp, color = y.textDim, style = style.copy(color = y.textDim))
                     }
