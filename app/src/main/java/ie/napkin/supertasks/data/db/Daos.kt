@@ -283,9 +283,6 @@ interface PropertyDao {
     @Query("DELETE FROM property_value WHERE workspace_id = :ws")
     suspend fun clearValues(ws: String)
 
-    @Query("DELETE FROM property_def")
-    suspend fun clearDefs()
-
     @Query("DELETE FROM property_value WHERE node_id = :nodeId AND def_id = :defId")
     suspend fun deleteValue(nodeId: String, defId: String)
 }

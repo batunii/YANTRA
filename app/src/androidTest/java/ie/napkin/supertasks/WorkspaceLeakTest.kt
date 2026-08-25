@@ -157,4 +157,21 @@ class WorkspaceLeakTest {
         assertTrue("the derived label leaked into the repo", !text.contains("ws-work:workspace"))
         assertTrue(!work.readLabels().any { it.name == "Work" })
     }
+
+    @Test
+    fun reindexingOneWorkspaceKeepsAnothersProperties() = runBlocking {
+        // property_def is the one table with no workspace column, and its clear was the one clear in
+        // Indexer.apply that was not scoped — so rebuilding either workspace emptied the registry
+        // for both and refilled it from one. Invisible while every workspace scaffolds the same
+        // built-ins, and data loss the moment one has a property of its own.
+        val mine = db.propertyDao().defsOnce().map { it.id }.toSet()
+        assertTrue("no property definitions to test with", mine.isNotEmpty())
+
+        personalW.reindex()
+
+        assertTrue(
+            "reindexing another workspace removed property definitions",
+            db.propertyDao().defsOnce().map { it.id }.toSet().containsAll(mine),
+        )
+    }
 }

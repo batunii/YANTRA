@@ -90,12 +90,17 @@ class Indexer(private val db: AppDatabase) {
         if (linksChanged) labels.clearNodeLabels(workspaceId)
         if (labelsChanged) labels.clearLabels(workspaceId)
         if (valuesChanged) props.clearValues(workspaceId)
-        if (defsChanged) props.clearDefs()
         if (smartChanged) smart.clearSmartLists(workspaceId)
         if (inkChanged) ink.clearStrokes(workspaceId)
         if (pomodoroChanged) db.pomodoroDao().clearSessions(workspaceId)
         if (nodesChanged) nodes.clearNodes(workspaceId)
 
+        // Upserted, never wiped. The property registry is the one table with no workspace column —
+        // a Priority means the same thing in every repo — so the wipe that used to precede this was
+        // unscoped while every other clear here is scoped, and rebuilding one workspace's index
+        // emptied the registry for all of them. Harmless only because every workspace happens to
+        // scaffold the same built-ins; a workspace with a property of its own lost it until the next
+        // time it was indexed. REPLACE on conflict already does the whole job.
         if (defsChanged) props.insertDefs(index.defs)
         // Parents before children, or the foreign key on node.parent_id rejects the insert.
         if (nodesChanged) nodes.insertAll(inParentOrder(index))

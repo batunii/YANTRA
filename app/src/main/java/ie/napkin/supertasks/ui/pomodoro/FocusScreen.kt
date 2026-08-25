@@ -227,7 +227,9 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(28.dp))
-        SectionLabel("Duration")
+        // Two instruments, and the screen has to make the difference legible rather than hide one
+        // behind the other: a promise you are making, or a clock you are simply starting.
+        SectionLabel("How long")
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(15, 25, 50).forEach { m ->
@@ -253,10 +255,26 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
         }
         Spacer(Modifier.height(24.dp))
         YantraButton(
-            label = "Start focus",
+            label = "Focus for $minutes min",
             modifier = Modifier.fillMaxWidth(),
             tone = ButtonTone.Soft,
             onClick = { onStart(minutes * 60) },
+        )
+        Spacer(Modifier.height(10.dp))
+        // The stopwatch. Quieter than the commitment, because committing to a length is the more
+        // useful habit — but a first-class way to start, not a fallback.
+        YantraButton(
+            label = "Just start the clock",
+            modifier = Modifier.fillMaxWidth(),
+            tone = ButtonTone.Quiet,
+            onClick = { onStart(0) },
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "A set length is a promise to yourself; the clock just records what you gave. Both go " +
+                "into the same history.",
+            color = y.textDim,
+            fontSize = 11.5.sp,
         )
     }
 }
@@ -294,7 +312,11 @@ private fun ActiveTimer(
         //
         // The frame stays neutral here even for a high-priority task. Twenty-five minutes staring
         // at a crimson enclosure is ambient alarm; priority survives as the label above.
-        val elapsed = if (state.plannedSecs == 0) 0f
+        // An open session has no destination, so there is no fraction of it to be at. The ring
+        // fills over an hour purely so the screen is not frozen — it marks passing time, not
+        // progress toward anything, because there is nothing to be progressing toward.
+        val elapsed = if (state.isOpen) (state.elapsedSecs / 3600f)
+        else if (state.plannedSecs == 0) 0f
         else (state.plannedSecs - state.remainingSecs).toFloat() / state.plannedSecs
         val progress by animateFloatAsState(elapsed.coerceIn(0f, 1f), tween(400), label = "sessionArc")
         val haptics = LocalYantraHaptics.current
@@ -312,8 +334,11 @@ private fun ActiveTimer(
         )
         // Digits go BELOW the glyph, never over the ring band — a numeral across the strata fights
         // the marks it is supposed to be summarising.
+        // A countdown shows what is left; a stopwatch shows what has been given. Reading a
+        // stopwatch's "remaining" would show 0:00 for the whole session.
+        val shown = if (state.isOpen) state.elapsedSecs else state.remainingSecs
         Text(
-            "%d:%02d".format(state.remainingSecs / 60, state.remainingSecs % 60),
+            "%d:%02d".format(shown / 60, shown % 60),
             style = MonoLarge,
             color = y.textPrimary,
             modifier = Modifier.padding(top = 26.dp),
@@ -400,7 +425,11 @@ private fun DoneContent(
             modifier = Modifier.padding(top = 16.dp),
         )
         Text(
-            "${state.plannedSecs / 60} min on ${state.nodeTitle.ifBlank { "your task" }} · +1 focus",
+            buildString {
+                val task = state.nodeTitle.ifBlank { "your task" }
+                if (state.isOpen) append("${(state.actualOrElapsed()) / 60} min on $task")
+                else append("${state.plannedSecs / 60} min on $task")
+            },
             fontSize = 13.5.sp,
             color = y.textMuted,
             textAlign = TextAlign.Center,

@@ -39,6 +39,9 @@ class PomodoroTimer(
         val isFinished: Boolean = false,
     ) {
         val isOpen: Boolean get() = plannedSecs <= 0
+
+        /** What to report as "given" — the same number for either instrument. */
+        fun actualOrElapsed(): Int = elapsedSecs
     }
 
     private val _state = MutableStateFlow<State?>(null)
