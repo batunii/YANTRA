@@ -90,6 +90,13 @@ dependencies {
 
     testImplementation(libs.junit)
 
+    // Compose UI tests exist for one reason: the states of the sign-in screen that cannot be reached
+    // by hand. Reaching "signed in, app not installed yet" on a device needs a registered GitHub App
+    // and a real account, so without this those screens ship unseen.
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)

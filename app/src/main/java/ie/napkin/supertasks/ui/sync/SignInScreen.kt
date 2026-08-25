@@ -106,7 +106,10 @@ fun SignInScreen(nav: NavHostController) {
     var account by remember { mutableStateOf(container.credentials.login(Credentials.ACCOUNT)) }
     var viaApp by remember { mutableStateOf(container.credentials.viaApp(Credentials.ACCOUNT)) }
     var stage by remember { mutableStateOf<Stage>(Stage.Idle) }
-    var pasting by remember { mutableStateOf(false) }
+    // Open already when there is no App registered to sign into. Otherwise this screen says
+    // "signing in is unavailable" and hides the only thing that works behind a link, which reads as
+    // a dead end. Once a client id is set this state never occurs.
+    var pasting by remember { mutableStateOf(!GitHubAuth.configured) }
     var token by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
@@ -356,7 +359,7 @@ fun SignInScreen(nav: NavHostController) {
  * function that is two screens was the thing making this file hard to follow.
  */
 @Composable
-private fun SignedIn(
+internal fun SignedIn(
     account: String,
     install: InstallState?,
     localSlug: String?,
