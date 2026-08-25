@@ -20,8 +20,9 @@ import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
 import ie.napkin.supertasks.data.rank.Rank
+import ie.napkin.supertasks.data.time.localMidnight
+import ie.napkin.supertasks.data.label.LabelPalette
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
@@ -29,13 +30,11 @@ import java.util.UUID
 private fun now(): Long = System.currentTimeMillis()
 private fun newId(): String = UUID.randomUUID().toString()
 
-/** Floor an instant to the local-midnight instant of its local calendar day. */
-internal fun localMidnight(millis: Long): Long =
-    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-        .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-
 /** Where blocks that were sitting loose on a list get gathered, so nothing is lost. */
 private const val STRAY_NOTES_TASK = "Notes"
+
+/** Title given to a capture list that has to be created; also the pre-[SystemKey] fallback. */
+private const val INBOX_TITLE = "Inbox"
 
 class NodeRepository(private val db: AppDatabase) {
     private val dao = db.nodeDao()
@@ -46,7 +45,6 @@ class NodeRepository(private val db: AppDatabase) {
     suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
     fun observe(id: String) = dao.observe(id)
     suspend fun byId(id: String) = dao.byId(id)
-    fun topLevelTaskCounts() = dao.topLevelTaskCounts()
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
     fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)
@@ -63,6 +61,28 @@ class NodeRepository(private val db: AppDatabase) {
                 // (unique index) — the lookup result is valid either way.
                 runCatching { dao.setSystemKey(it.id, SystemKey.TODAY, now()) }
             }
+
+    /**
+     * The capture list, by stable identity — the single answer to "where does a quick-add go".
+     *
+     * Unlike [todaySmartList] this always returns something: capture is a gesture that must not
+     * fail or ask, so a missing Inbox is created rather than reported. The order matters — key
+     * first, then title, then create — because it is the fallback that used to be the whole
+     * lookup, and doing it top-level-only is what let a grouped or renamed Inbox be duplicated.
+     * Whatever the title match finds adopts the key, so the ambiguity is resolved once.
+     */
+    suspend fun inboxList(): String {
+        dao.bySystemKey(SystemKey.INBOX)?.let { return it.id }
+        dao.byTypeAndTitle(NodeType.LIST, INBOX_TITLE)?.let {
+            // Best-effort, exactly as in [todaySmartList]: a tombstone may still hold the key
+            // under the unique index, and the id we return is correct either way.
+            runCatching { dao.setSystemKey(it.id, SystemKey.INBOX, now()) }
+            return it.id
+        }
+        val id = create(null, NodeType.LIST, INBOX_TITLE)
+        runCatching { dao.setSystemKey(id, SystemKey.INBOX, now()) }
+        return id
+    }
 
     /** Create a Home group/banner (organizational container for lists & smart lists). */
     suspend fun createGroup(title: String): String = create(null, NodeType.GROUP, title)
@@ -128,13 +148,14 @@ class NodeRepository(private val db: AppDatabase) {
      * Anything else that ends up directly on a list — from an older build, or an import — is moved
      * onto a task on that same list rather than hidden or deleted. Writing belongs on a task's
      * page, so that is where it goes, and it stays reachable by opening that task. Idempotent: in
-     * the normal case this is one query that finds nothing.
+     * the normal case this is one query per list that finds nothing and writes nothing.
      */
     suspend fun tidyListsToTasksOnly() {
         for (list in dao.allListsOnce()) {
-            val stray = dao.childrenOnce(list.id).filter { it.type != NodeType.TASK }
+            val children = dao.childrenOnce(list.id)
+            val stray = children.filter { it.type != NodeType.TASK }
             if (stray.isEmpty()) continue
-            val home = dao.childrenOnce(list.id)
+            val home = children
                 .firstOrNull { it.type == NodeType.TASK && it.title == STRAY_NOTES_TASK }
                 ?.id
                 ?: create(list.id, NodeType.TASK, STRAY_NOTES_TASK)
@@ -144,13 +165,9 @@ class NodeRepository(private val db: AppDatabase) {
         }
     }
 
-    /** Fast capture: new task into the Inbox (found by name, recreated if missing). */
-    suspend fun quickCaptureToInbox(title: String): String {
-        val inbox = dao.topLevel().first().firstOrNull {
-            it.type == NodeType.LIST && it.title.equals("Inbox", ignoreCase = true)
-        }?.id ?: create(null, NodeType.LIST, "Inbox")
-        return create(inbox, NodeType.TASK, title)
-    }
+    /** Fast capture: new task into the Inbox. */
+    suspend fun quickCaptureToInbox(title: String): String =
+        create(inboxList(), NodeType.TASK, title)
 
     suspend fun rename(id: String, title: String?) = dao.setTitle(id, title, now())
     suspend fun setDone(id: String, done: Boolean) = dao.setDone(id, done, now())
@@ -242,14 +259,6 @@ class PropertyRepository(private val db: AppDatabase) {
     fun valuesForNode(nodeId: String) = dao.valuesForNode(nodeId)
     fun valuesUnder(parentId: String) = dao.valuesUnder(parentId)
 
-    suspend fun createDef(name: String, kind: String, config: String? = null): String {
-        val ts = now()
-        val id = newId()
-        dao.upsertDef(
-            PropertyDefEntity(id = id, name = name, kind = kind, config = config, createdAt = ts, updatedAt = ts)
-        )
-        return id
-    }
 
     /**
      * Generic whole-row write (REPLACE — omitted columns become NULL). Never use for
@@ -306,9 +315,6 @@ class PropertyRepository(private val db: AppDatabase) {
 
     suspend fun clearValue(nodeId: String, defId: String) = dao.deleteValue(nodeId, defId)
 
-    fun parseSelectConfig(def: PropertyDefEntity): SelectConfig =
-        def.config?.let { runCatching { FilterJson.decodeFromString(SelectConfig.serializer(), it) }.getOrNull() }
-            ?: SelectConfig()
 }
 
 class LabelRepository(private val db: AppDatabase) {
@@ -320,12 +326,22 @@ class LabelRepository(private val db: AppDatabase) {
     fun forChildrenOf(parentId: String) = dao.forChildrenOf(parentId)
     fun allNodeLabels() = dao.allNodeLabels()
 
-    /** Reuses an existing label by name (case-insensitive) or creates a new one. */
+    /**
+     * Reuses an existing label by name (case-insensitive) or creates a new one.
+     *
+     * A new label is never colourless: [color] wins if given, otherwise the palette picks one from
+     * the name. Reuse keeps the colour the tag already has — typing an existing name is asking for
+     * that tag, not asking to restyle it.
+     */
     suspend fun getOrCreate(name: String, color: Long? = null): LabelEntity {
         val trimmed = name.trim()
         dao.byName(trimmed)?.let { return it }
         val ts = now()
-        val label = LabelEntity(id = newId(), name = trimmed, color = color, createdAt = ts, updatedAt = ts)
+        val label = LabelEntity(
+            id = newId(), name = trimmed,
+            color = color ?: LabelPalette.defaultFor(trimmed),
+            createdAt = ts, updatedAt = ts,
+        )
         dao.upsert(label)
         return dao.byName(trimmed) ?: label
     }
@@ -335,8 +351,9 @@ class LabelRepository(private val db: AppDatabase) {
 
     suspend fun detach(nodeId: String, labelId: String) = dao.detach(nodeId, labelId)
 
-    /** Real delete — detaches this label from every task it was on (node_label cascades). */
-    suspend fun deleteLabel(labelId: String) = dao.delete(labelId)
+    /** Recolour a label. Null clears it back to the neutral chip. */
+    suspend fun setColor(labelId: String, color: Long?) = dao.setColor(labelId, color, now())
+
 }
 
 class SmartListRepository(private val db: AppDatabase) {
@@ -446,7 +463,7 @@ class SmartListRepository(private val db: AppDatabase) {
                         PropertyValueEntity(
                             nodeId = id, defId = p.defId,
                             vText = p.text, vNumber = p.number, vDate = date,
-                            vBool = p.bool?.let { it },
+                            vBool = p.bool,
                             updatedAt = ts,
                         )
                     )

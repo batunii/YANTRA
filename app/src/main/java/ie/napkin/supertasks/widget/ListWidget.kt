@@ -62,6 +62,7 @@ import ie.napkin.supertasks.R
 import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
+import ie.napkin.supertasks.data.time.todayMidnight
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.filter.Filter
 import ie.napkin.supertasks.data.filter.FilterJson
@@ -80,8 +81,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import java.time.LocalDate
-import java.time.ZoneId
+import ie.napkin.supertasks.ui.theme.YantraColors
 
 /**
  * Glance-state keys for the configured binding and per-widget settings — see [YantraListWidget]
@@ -196,7 +196,7 @@ internal fun buildRows(
     hideTodayDue: Boolean = false,
 ): List<WidgetRow> {
     val byNode = values.groupBy { it.nodeId }
-    val todayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val todayStart = todayMidnight()
     return nodes.map { n ->
         val dueRow = byNode[n.id]?.firstOrNull { it.defId == due }
         val deadlineRow = byNode[n.id]?.firstOrNull { it.defId == deadline }
@@ -361,8 +361,7 @@ open class YantraListWidget : GlanceAppWidget() {
                     // completed that still matches the date rule and quietly grows forever.
                     // There is no completed_at column, so updatedAt is the proxy: a task
                     // completed today was, necessarily, touched today.
-                    val midnight = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
-                        .toInstant().toEpochMilli()
+                    val midnight = todayMidnight()
                     val doneTasks = allDone
                         .filter { it.updatedAt >= midnight }
                         .sortedByDescending { it.updatedAt }
@@ -608,7 +607,7 @@ private fun EmptyState(setUp: Boolean, metrics: WidgetMetrics, onAdd: androidx.g
 }
 
 @Composable
-private fun TaskRow(row: WidgetRow, status: ie.napkin.supertasks.ui.theme.YantraColors, m: WidgetMetrics) {
+private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
     val context = LocalContext.current
     val toggle = actionRunCallback<ToggleDoneAction>(
         actionParametersOf(

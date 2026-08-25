@@ -1,22 +1,17 @@
 package ie.napkin.supertasks.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,8 +26,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.remember
 import ie.napkin.supertasks.ui.components.bhupuraPath
 import ie.napkin.supertasks.ui.components.drawPartialPath
-import ie.napkin.supertasks.ui.components.YantraMark
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraDisplay
 
 @Composable
 fun SplashScreen(nav: NavHostController) {
@@ -80,7 +75,7 @@ fun SplashScreen(nav: NavHostController) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Yantra", fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay, fontSize = 46.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.5).sp, color = y.textPrimary)
+                Text("Yantra", fontFamily = YantraDisplay, fontSize = 46.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.5).sp, color = y.textPrimary)
                 Text(
                     "Yet Another Notes, Todos & Reminder App",
                     fontSize = 12.5.sp,

@@ -20,18 +20,19 @@ fun yantraGlanceColors(context: Context): ColorProviders? {
     val theme = loadThemeController(context)
     val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
         Configuration.UI_MODE_NIGHT_YES
-    val scheme = materialScheme(yantraColors(theme.mode.resolve(systemDark)))
+    val scheme = materialScheme(yantraColors(theme.mode.resolve(systemDark), theme.accent))
     return glanceColorProviders(light = scheme, dark = scheme)
 }
 
 /**
- * The palette's meaning-bearing inks (priority crimson/amber, effort coral) for widget content.
- * Only the light/dark decision matters — every hue is fixed by the colour law. A user-fixed mode
- * wins over the launcher's, matching [yantraGlanceColors].
+ * The palette's meaning-bearing inks (priority crimson/amber, and whichever ink the user chose for
+ * effort) for widget content. A user-fixed mode wins over the launcher's, matching
+ * [yantraGlanceColors] — and the accent is read from the same prefs, so a widget never disagrees
+ * with the app about what "your effort" looks like.
  */
 fun yantraStatusColors(context: Context): YantraColors {
     val theme = loadThemeController(context)
     val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
         Configuration.UI_MODE_NIGHT_YES
-    return yantraColors(theme.mode.resolve(systemDark))
+    return yantraColors(theme.mode.resolve(systemDark), theme.accent)
 }

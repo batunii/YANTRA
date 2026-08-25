@@ -19,11 +19,10 @@ import ie.napkin.supertasks.data.filter.SortBy
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
 import ie.napkin.supertasks.data.rank.Rank
+import ie.napkin.supertasks.data.time.todayMidnight
 import ie.napkin.supertasks.data.repo.SelectConfig
 import ie.napkin.supertasks.data.repo.SelectOption
 import kotlinx.serialization.builtins.ListSerializer
-import java.time.LocalDate
-import java.time.ZoneId
 import java.util.UUID
 
 /** First-run content: two property defs, an Inbox + sample list, and two smart lists. */
@@ -48,7 +47,7 @@ object Seeder {
         val priorityDef = id()
         propDao.upsertDef(
             PropertyDefEntity(
-                id = priorityDef, name = "Priority", kind = PropertyKind.SELECT,
+                id = priorityDef, name = BuiltIns.PRIORITY_NAME, kind = PropertyKind.SELECT,
                 config = FilterJson.encodeToString(
                     SelectConfig.serializer(),
                     SelectConfig(
@@ -66,7 +65,7 @@ object Seeder {
         val dueDef = id()
         propDao.upsertDef(
             PropertyDefEntity(
-                id = dueDef, name = "Due", kind = PropertyKind.DATE, config = null,
+                id = dueDef, name = BuiltIns.DUE_NAME, kind = PropertyKind.DATE, config = null,
                 isBuiltIn = true,
                 createdAt = now, updatedAt = now,
             )
@@ -83,7 +82,7 @@ object Seeder {
         var rank = Rank.FIRST
         val inbox = id()
         nodeDao.insert(
-            NodeEntity(id = inbox, parentId = null, type = NodeType.LIST, title = "Inbox", rank = rank, createdAt = now, updatedAt = now)
+            NodeEntity(id = inbox, parentId = null, type = NodeType.LIST, title = "Inbox", rank = rank, systemKey = SystemKey.INBOX, createdAt = now, updatedAt = now)
         )
 
         rank = Rank.after(rank)
@@ -101,7 +100,7 @@ object Seeder {
         )
         propDao.upsertValue(PropertyValueEntity(nodeId = sampleTask, defId = priorityDef, vText = "High", updatedAt = now))
         // All-day Due = today's local midnight (encoding on BuiltIns).
-        val todayMidnight = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val todayMidnight = todayMidnight()
         propDao.upsertValue(
             PropertyValueEntity(nodeId = sampleTask, defId = dueDef, vDate = todayMidnight, vBool = false, updatedAt = now)
         )

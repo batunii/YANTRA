@@ -44,6 +44,7 @@ package ie.napkin.supertasks.ui.pomodoro
  * midnight simply opens with a trikona.
  */
 
+import ie.napkin.supertasks.ui.theme.Yantra
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -70,6 +71,7 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.compose.ui.graphics.StrokeJoin
 
 // ---------------------------------------------------------------------------
 // Data: session log → per-day counts → marks
@@ -170,7 +172,7 @@ fun YantraFocusGlyph(
     reducedMotion: Boolean = false,
     onDeposit: (() -> Unit)? = null,
 ) {
-    val coral = YantraInk.coral(darkTheme)
+    val coral = Yantra.colors.accent
     val neutral = YantraInk.neutral(darkTheme)
     val marks = strataMarks(dayCounts)
     val anims = remember { mutableStateListOf<MarkAnim>() }
@@ -317,7 +319,7 @@ private fun DrawScope.drawTrikona(
         if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
     path.close()
-    drawPath(path, color, style = Stroke(strokeWidth, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+    drawPath(path, color, style = Stroke(strokeWidth, join = StrokeJoin.Round))
 }
 
 // ---------------------------------------------------------------------------

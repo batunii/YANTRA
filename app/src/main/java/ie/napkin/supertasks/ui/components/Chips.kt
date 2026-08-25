@@ -14,6 +14,7 @@ import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.filter.FilterJson
+import ie.napkin.supertasks.data.time.localDateOf
 import ie.napkin.supertasks.data.repo.SelectConfig
 
 /** Turns raw typed values into displayable chips, grouped by node id. */
@@ -100,9 +101,6 @@ fun chipFor(def: PropertyDefEntity, v: PropertyValueEntity): ChipData? = when (d
     PropertyKind.CHECKBOX -> if (v.vBool == true) ChipData(def.id, def.name, null) else null
     else -> v.vText?.takeIf { it.isNotBlank() }?.let { ChipData(def.id, it, null) }
 }
-
-private fun localDateOf(millis: Long): java.time.LocalDate =
-    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
 
 fun labelChipFor(label: LabelEntity): ChipData =
     ChipData(label.id, label.name, label.color?.let { Color(it) }, Icons.AutoMirrored.Filled.Label)

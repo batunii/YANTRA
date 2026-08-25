@@ -59,8 +59,18 @@ import ie.napkin.supertasks.data.filter.Op
 import ie.napkin.supertasks.data.filter.SortBy
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.ui.components.selectConfig
+import ie.napkin.supertasks.ui.components.ChipSize
+import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.launch
+import ie.napkin.supertasks.ui.theme.YantraDisplay
+import ie.napkin.supertasks.ui.theme.YantraColors
+import ie.napkin.supertasks.ui.components.SectionLabel
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.TextButton
 
 private enum class ShowMode(val label: String) {
     OPEN("Open"),
@@ -144,7 +154,7 @@ private fun presetFor(template: SmartTemplate, defs: List<PropertyDefEntity>): P
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SmartListBuilderSheet(
     defs: List<PropertyDefEntity>,
@@ -236,7 +246,7 @@ fun SmartListBuilderSheet(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ShowMode.entries.forEach { m -> SegChip(m.label, show == m) { show = m } }
+                    ShowMode.entries.forEach { m -> SelectChip(m.label, show == m) { show = m } }
                 }
             }
 
@@ -449,7 +459,7 @@ private fun buildSort(conds: List<Cond>): List<SortSpec> {
     else listOf(SortSpec(by = SortBy.CREATED, desc = true))
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) -> Unit, onRemove: () -> Unit) {
     val y = Yantra.colors
@@ -524,7 +534,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
  * One or more labels, matched by Any/All. Tapping the body reopens the checklist to adjust
  * the selection; the mode toggle only matters (and only shows) once 2+ labels are picked.
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LabelConditionCard(
     labelNames: List<String>,
@@ -548,8 +558,8 @@ private fun LabelConditionCard(
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (labelNames.size > 1) {
-                        MiniSegChip("Any", match == LabelMatchMode.ANY) { onModeChange(LabelMatchMode.ANY) }
-                        MiniSegChip("All", match == LabelMatchMode.ALL) { onModeChange(LabelMatchMode.ALL) }
+                        SelectChip("Any", match == LabelMatchMode.ANY, size = ChipSize.Small) { onModeChange(LabelMatchMode.ANY) }
+                        SelectChip("All", match == LabelMatchMode.ALL, size = ChipSize.Small) { onModeChange(LabelMatchMode.ALL) }
                     }
                     labelNames.forEach { name -> LabelNameChip(name) }
                 }
@@ -561,20 +571,6 @@ private fun LabelConditionCard(
     }
 }
 
-@Composable
-private fun MiniSegChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(7.dp)
-    Box(
-        Modifier
-            .background(if (selected) y.accent.copy(alpha = 0.18f) else y.cardBg, shape)
-            .then(if (selected) Modifier.border(1.dp, y.accent, shape) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(label, fontSize = 10.5.sp, fontWeight = FontWeight.W700, color = if (selected) y.accentText else y.textDim)
-    }
-}
 
 @Composable
 private fun LabelNameChip(name: String) {
@@ -597,7 +593,7 @@ private fun LabelChecklistDialog(
     onConfirm: (Set<String>) -> Unit,
 ) {
     val y = Yantra.colors
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     var checked by remember { mutableStateOf(initiallyChecked) }
     var localLabels by remember { mutableStateOf(allLabels) }
     var query by remember { mutableStateOf("") }
@@ -608,7 +604,7 @@ private fun LabelChecklistDialog(
         checked = if (id in checked) checked - id else checked + id
     }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Filter by labels") },
         text = {
@@ -623,7 +619,7 @@ private fun LabelChecklistDialog(
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            androidx.compose.material3.Checkbox(
+                            Checkbox(
                                 checked = label.id in checked,
                                 onCheckedChange = { toggle(label.id) },
                             )
@@ -654,10 +650,10 @@ private fun LabelChecklistDialog(
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = { onConfirm(checked) }) { Text("Apply") }
+            TextButton(onClick = { onConfirm(checked) }) { Text("Apply") }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }
@@ -666,12 +662,12 @@ private fun LabelChecklistDialog(
 
 @Composable
 private fun MaterialThemeTitle() = TextStyle(
-    fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay, fontWeight = FontWeight.W700, fontSize = 22.sp, letterSpacing = (-0.3).sp,
+    fontFamily = YantraDisplay, fontWeight = FontWeight.W700, fontSize = 22.sp, letterSpacing = (-0.3).sp,
 )
 
 @Composable
-private fun Label(text: String, y: ie.napkin.supertasks.ui.theme.YantraColors) =
-    ie.napkin.supertasks.ui.components.SectionLabel(text, color = y.textMuted)
+private fun Label(text: String, y: YantraColors) =
+    SectionLabel(text, color = y.textMuted)
 
 @Composable
 private fun DropChip(label: String, onClick: () -> Unit) {
@@ -689,20 +685,6 @@ private fun DropChip(label: String, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
-    Box(
-        Modifier
-            .background(if (selected) y.accent.copy(alpha = 0.16f) else y.tileWarm2, shape)
-            .then(if (selected) Modifier.border(1.dp, y.accent, shape) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 9.dp),
-    ) {
-        Text(label, fontSize = 13.sp, fontWeight = if (selected) FontWeight.W700 else FontWeight.W600, color = if (selected) y.accentText else y.textSecondary)
-    }
-}
 
 /**
  * A starting point, which lights up while the form still holds exactly it.
@@ -714,34 +696,15 @@ private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
  * currently is, never what you once clicked.
  */
 @Composable
-private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(9.dp)
-    Row(
-        Modifier
-            .background(if (selected) y.accentFill else y.tileWarm2, shape)
-            .border(1.dp, if (selected) y.accentBorder else y.tileBorder, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (selected) {
-            Icon(
-                Icons.Default.Check,
-                contentDescription = null,
-                tint = y.accentText,
-                modifier = Modifier.size(13.dp),
-            )
-            Spacer(Modifier.width(5.dp))
-        }
-        Text(
-            label,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.W600,
-            color = if (selected) y.accentText else y.textSecondary,
-        )
-    }
-}
+private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) =
+    SelectChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
+        // The tick is what makes "selected" legible on a chip you tapped a moment ago and
+        // then edited underneath; the shared chip's coral alone reads as decoration here.
+        icon = if (selected) Icons.Default.Check else null,
+    )
 
 @Composable
 private fun GhostButton(label: String, onClick: () -> Unit) {
@@ -760,7 +723,7 @@ private fun GhostButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Field(value: String, onValue: (String) -> Unit, placeholder: String, y: ie.napkin.supertasks.ui.theme.YantraColors) {
+private fun Field(value: String, onValue: (String) -> Unit, placeholder: String, y: YantraColors) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -784,7 +747,7 @@ private fun Field(value: String, onValue: (String) -> Unit, placeholder: String,
 }
 
 @Composable
-private fun ValueField(value: String, numeric: Boolean, y: ie.napkin.supertasks.ui.theme.YantraColors, onValue: (String) -> Unit) {
+private fun ValueField(value: String, numeric: Boolean, y: YantraColors, onValue: (String) -> Unit) {
     Box(
         Modifier
             .width(if (numeric) 84.dp else 150.dp)

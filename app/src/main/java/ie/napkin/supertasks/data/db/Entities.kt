@@ -35,6 +35,13 @@ object NodeType {
  */
 object SystemKey {
     const val TODAY = "today"
+
+    /**
+     * The capture list. Quick-add has to land somewhere without asking, and "the list called
+     * Inbox" was not a stable enough answer: renaming it, or moving it into a group, made the
+     * lookup miss and quietly created a second one beside it.
+     */
+    const val INBOX = "inbox"
 }
 
 @Entity(

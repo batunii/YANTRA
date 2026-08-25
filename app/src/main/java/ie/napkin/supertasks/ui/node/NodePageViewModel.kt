@@ -262,11 +262,17 @@ class NodePageViewModel(
         viewModelScope.launch { labels.detach(targetId, labelId) }
     }
 
-    fun createAndAttachLabel(targetId: String, name: String) {
+    /** [color] null means "let the palette choose from the name" — never means "no colour". */
+    fun createAndAttachLabel(targetId: String, name: String, color: Long? = null) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val label = labels.getOrCreate(name)
+            val label = labels.getOrCreate(name, color)
             labels.attach(targetId, label.id)
         }
+    }
+
+    /** Recolour a label wherever it appears. Null clears it back to the neutral chip. */
+    fun setLabelColor(labelId: String, color: Long?) {
+        viewModelScope.launch { labels.setColor(labelId, color) }
     }
 }

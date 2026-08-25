@@ -2,7 +2,6 @@ package ie.napkin.supertasks.ui.pomodoro
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,12 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +70,11 @@ import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import ie.napkin.supertasks.ui.components.YantraMark
+import ie.napkin.supertasks.ui.theme.YantraDisplay
+import ie.napkin.supertasks.ui.theme.YantraMono
+import ie.napkin.supertasks.domain.PomodoroTimer
+import androidx.compose.ui.graphics.vector.ImageVector
 
 class FocusViewModel(
     container: AppContainer,
@@ -166,7 +165,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
-                        ie.napkin.supertasks.ui.components.YantraMark(
+                        YantraMark(
                             Modifier.size(60.dp),
                             tint = y.checkOutline,
                             checkTint = y.accent.copy(alpha = 0.55f),
@@ -212,7 +211,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
         SectionLabel("Focus on")
         Text(
             node.title.orEmpty().ifBlank { "Untitled task" },
-            fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay,
+            fontFamily = YantraDisplay,
             fontSize = 32.sp,
             lineHeight = 39.sp,
             fontWeight = FontWeight.W700,
@@ -264,7 +263,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
 
 @Composable
 private fun ActiveTimer(
-    state: ie.napkin.supertasks.domain.PomodoroTimer.State,
+    state: PomodoroTimer.State,
     dayCounts: List<Int>,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -330,7 +329,7 @@ private fun ActiveTimer(
                     append(dayCounts.size)
                 }
             },
-            fontFamily = ie.napkin.supertasks.ui.theme.YantraMono,
+            fontFamily = YantraMono,
             fontSize = 11.sp,
             letterSpacing = 1.sp,
             color = y.textDim,
@@ -364,7 +363,7 @@ private fun ActiveTimer(
 
 @Composable
 private fun DoneContent(
-    state: ie.napkin.supertasks.domain.PomodoroTimer.State,
+    state: PomodoroTimer.State,
     onStartAnother: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -393,7 +392,7 @@ private fun DoneContent(
         }
         Text(
             "Session complete",
-            fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay,
+            fontFamily = YantraDisplay,
             fontSize = 24.sp,
             fontWeight = FontWeight.W700,
             letterSpacing = (-0.4).sp,
@@ -436,7 +435,7 @@ private fun SecondaryButton(
     text: String,
     onClick: () -> Unit,
     textColor: Color,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    icon: ImageVector? = null,
 ) {
     Box(
         Modifier

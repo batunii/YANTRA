@@ -15,6 +15,8 @@ import ie.napkin.supertasks.domain.PomodoroTimer
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
 import ie.napkin.supertasks.reminders.Reminders
+import ie.napkin.supertasks.ui.theme.LauncherIcon
+import ie.napkin.supertasks.ui.theme.loadThemeController
 import ie.napkin.supertasks.widget.PomodoroFinalizeWorker
 import ie.napkin.supertasks.widget.PomodoroWidget
 import androidx.glance.appwidget.updateAll
@@ -36,6 +38,12 @@ class App : Application() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(Reminders.CHANNEL_ID, "Reminders", NotificationManager.IMPORTANCE_HIGH)
         )
+        // Component enabled-states are package state, not app data: a reinstall resets them to the
+        // manifest defaults while the stored accent survives in prefs, which would leave a coral
+        // icon on an indigo app. Cheap to check and a no-op whenever they already agree.
+        container.appScope.launch {
+            LauncherIcon.apply(this@App, loadThemeController(this@App).accent)
+        }
     }
 }
 

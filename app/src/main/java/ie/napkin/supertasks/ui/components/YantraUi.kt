@@ -24,17 +24,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraMotion
+import androidx.compose.ui.text.font.FontWeight
 
 /**
  * Yantra's signature action affordance: a translucent accent fill + 1px accent border + accent
@@ -73,7 +71,7 @@ fun AccentPillButton(
             Icon(icon, contentDescription = null, tint = y.accent, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = y.accentText, fontSize = 13.5.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.W700)
+        Text(text, color = y.accentText, fontSize = 13.5.sp, fontWeight = FontWeight.W700)
     }
 }
 
@@ -99,7 +97,7 @@ fun NeutralChip(
             Icon(icon, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = y.textSecondary, fontSize = 13.5.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.W600)
+        Text(text, color = y.textSecondary, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
     }
 }
 

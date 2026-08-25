@@ -5,9 +5,11 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import ie.napkin.supertasks.App
@@ -15,6 +17,9 @@ import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.MainActivity
 import ie.napkin.supertasks.R
 import ie.napkin.supertasks.data.db.BuiltIns
+import ie.napkin.supertasks.ui.theme.ThemeMode
+import ie.napkin.supertasks.ui.theme.loadThemeController
+import ie.napkin.supertasks.ui.theme.resolve
 import ie.napkin.supertasks.widget.ListWidgetProvider
 import ie.napkin.supertasks.widget.WidgetRefresh
 import kotlinx.coroutines.launch
@@ -67,8 +72,18 @@ class ReminderReceiver : BroadcastReceiver() {
             data = Uri.parse("yantra://done/$nodeId")
             putExtra(Reminders.EXTRA_NODE_ID, nodeId)
         }
+        // The bhupura in the status bar is tinted by the system from this colour, so a reminder
+        // arrives in whatever ink the user chose for effort — the notification is the app speaking
+        // from outside itself, and it should not be the one place that still says coral.
+        val theme = loadThemeController(context)
+        val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val accent = theme.accent.ink(theme.mode.resolve(systemDark) != ThemeMode.LIGHT)
+
         val notification = NotificationCompat.Builder(context, Reminders.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notif_reminder)
+            .setColor(accent.toArgb())
+            .setColorized(false)
             .setContentTitle(node.title?.takeIf { it.isNotBlank() } ?: "Reminder")
             .setContentText("Reminder")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

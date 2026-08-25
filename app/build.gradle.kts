@@ -16,6 +16,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -39,6 +40,10 @@ android {
         compose = true
     }
 }
+
+// The exported schemas are not just a record — MigrationTest reads them back and replays every
+// migration against the real thing, so they are a test fixture and belong on the test source path.
+android.sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
@@ -81,4 +86,9 @@ dependencies {
     implementation(libs.work.runtime.ktx)
 
     testImplementation(libs.junit)
+
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.room.testing)
 }

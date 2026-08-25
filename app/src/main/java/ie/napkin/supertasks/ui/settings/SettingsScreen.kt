@@ -1,9 +1,10 @@
 package ie.napkin.supertasks.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,11 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -34,17 +31,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
-import ie.napkin.supertasks.ui.Routes
-import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.NavCircle
-import ie.napkin.supertasks.ui.components.PropertyChip
-import ie.napkin.supertasks.ui.components.ChipData
+import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.LocalCompletionTempo
 import ie.napkin.supertasks.ui.components.LocalYantraHaptics
@@ -52,13 +45,17 @@ import ie.napkin.supertasks.ui.components.TaskState
 import ie.napkin.supertasks.ui.components.YantraCheckbox
 import ie.napkin.supertasks.ui.theme.LocalThemeController
 import ie.napkin.supertasks.ui.theme.ThemeMode
+import ie.napkin.supertasks.ui.theme.AccentColor
+import ie.napkin.supertasks.ui.theme.LauncherIcon
+import ie.napkin.supertasks.ui.appContainer
+import kotlinx.coroutines.launch
 import ie.napkin.supertasks.ui.theme.Yantra
-import ie.napkin.supertasks.ui.theme.oklch
-import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun SettingsScreen(nav: NavHostController) {
     val ctx = LocalContext.current
+    val container = appContainer()
     val theme = LocalThemeController.current
     val y = Yantra.colors
 
@@ -92,16 +89,43 @@ fun SettingsScreen(nav: NavHostController) {
             SectionLabel("Theme")
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                ThemeChip("System", theme.mode == ThemeMode.SYSTEM, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.SYSTEM) }
-                ThemeChip("Dark", theme.mode == ThemeMode.DARK, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.DARK) }
-                ThemeChip("OLED", theme.mode == ThemeMode.OLED, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.OLED) }
-                ThemeChip("Light", theme.mode == ThemeMode.LIGHT, Modifier.weight(1f)) { theme.update(ctx, mode = ThemeMode.LIGHT) }
+                SelectChip("System", theme.mode == ThemeMode.SYSTEM, onClick = { theme.update(ctx, mode = ThemeMode.SYSTEM) }, modifier = Modifier.weight(1f), stretch = true)
+                SelectChip("Dark", theme.mode == ThemeMode.DARK, onClick = { theme.update(ctx, mode = ThemeMode.DARK) }, modifier = Modifier.weight(1f), stretch = true)
+                SelectChip("OLED", theme.mode == ThemeMode.OLED, onClick = { theme.update(ctx, mode = ThemeMode.OLED) }, modifier = Modifier.weight(1f), stretch = true)
+                SelectChip("Light", theme.mode == ThemeMode.LIGHT, onClick = { theme.update(ctx, mode = ThemeMode.LIGHT) }, modifier = Modifier.weight(1f), stretch = true)
             }
 
             Spacer(Modifier.height(28.dp))
-            // The palette is not a preference any more, so this says what the inks mean instead of
-            // offering to change them. Each hue belongs to exactly one layer; a slider that could
-            // paint effort in the priority hue would make the glyphs unreadable.
+            // One choice, not a wheel. The set is closed so the effort ink can never land on the
+            // priority hues, which is the constraint the colour law actually rests on.
+            SectionLabel("Accent")
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "The ink that means your effort",
+                color = y.textMuted,
+                fontSize = 12.5.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                AccentColor.entries.forEach { option ->
+                    AccentSwatch(
+                        color = option.ink(y.isDark),
+                        selected = theme.accent == option,
+                        onClick = {
+                            theme.update(ctx, accent = option)
+                            // Off the main thread: enabling a component makes the package manager
+                            // rebuild and the launcher re-read, which is far too slow to do under
+                            // a tap. App.onCreate reconciles anyway, so a dropped call self-heals.
+                            container.appScope.launch { LauncherIcon.apply(ctx, option) }
+                        },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+            // Priority and structure are still not preferences: those hues carry meaning the user
+            // does not get to reassign, so this says what they mean rather than offering to change
+            // them. The accent above is the one ink whose hue is a choice.
             SectionLabel("Ink")
             Spacer(Modifier.height(2.dp))
             Text(
@@ -144,25 +168,21 @@ fun SettingsScreen(nav: NavHostController) {
     }
 }
 
+
+/** An accent option. Bigger than a label swatch, because this one repaints the whole app. */
 @Composable
-private fun ThemeChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AccentSwatch(color: Color, selected: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(11.dp)
     Box(
-        modifier
-            .background(if (selected) y.accentFill else y.neutralChipBg, shape)
-            .border(1.dp, if (selected) y.accentBorder else y.tileBorder, shape)
+        // clickable before the insets: the target is the whole swatch, not the drawn circle.
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            label,
-            color = if (selected) y.accentText else y.textSecondary,
-            fontWeight = FontWeight.W700,
-            fontSize = 13.5.sp,
-        )
-    }
+            .then(if (selected) Modifier.border(2.dp, y.textPrimary, CircleShape) else Modifier)
+            .padding(if (selected) 6.dp else 3.dp)
+            .background(color, CircleShape),
+    )
 }
 
 /**
@@ -170,7 +190,7 @@ private fun ThemeChip(label: String, selected: Boolean, modifier: Modifier = Mod
  * plus a noun — the point is that the palette is explainable, not adjustable.
  */
 @Composable
-private fun InkLegendRow(color: androidx.compose.ui.graphics.Color, name: String, where: String) {
+private fun InkLegendRow(color: Color, name: String, where: String) {
     val y = Yantra.colors
     Row(
         Modifier.fillMaxWidth().padding(vertical = 5.dp),

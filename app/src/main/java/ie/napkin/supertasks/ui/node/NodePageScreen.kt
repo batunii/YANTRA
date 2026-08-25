@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,12 +36,9 @@ import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.graphics.Path
-import ie.napkin.supertasks.ui.components.drawPartialPath
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.Canvas
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
@@ -58,11 +53,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Draw
@@ -78,9 +71,7 @@ import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -120,7 +111,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,9 +130,9 @@ import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.NeutralChip
+import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.PomodoroCount
 import ie.napkin.supertasks.ui.components.PropertyChip
-import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.INK_STRIKE_MS
 import ie.napkin.supertasks.ui.components.InkStrike
 import ie.napkin.supertasks.ui.components.LocalCompletionTempo
@@ -155,6 +145,16 @@ import ie.napkin.supertasks.ui.ink.inkContentHeight
 import ie.napkin.supertasks.ui.theme.MonoBreadcrumb
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraMotion
+import ie.napkin.supertasks.ui.theme.YantraDisplay
+import ie.napkin.supertasks.ui.theme.YantraText
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -297,7 +297,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         onClear = { defId -> vm.clearProperty(nodeId, defId) },
                         onAttachLabel = { label -> vm.attachLabel(nodeId, label.id) },
                         onDetachLabel = { label -> vm.detachLabel(nodeId, label.id) },
-                        onCreateAndAttachLabel = { name -> vm.createAndAttachLabel(nodeId, name) },
+                        onCreateAndAttachLabel = { name, colour -> vm.createAndAttachLabel(nodeId, name, colour) },
+                        onRecolourLabel = { label, colour -> vm.setLabelColor(label.id, colour) },
                         modifier = Modifier.padding(top = 16.dp),
                     )
                 }
@@ -318,7 +319,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         // The row under the finger, preferring the one it is actually inside. Resolved from the
         // finger rather than the middle of the block being carried: a full-page sketch has its
         // centre far off screen, and a centre-based hit test aimed at rows nobody pointed at.
-        fun rowUnderFinger(): androidx.compose.foundation.lazy.LazyListItemInfo? {
+        fun rowUnderFinger(): LazyListItemInfo? {
             val id = drag.id ?: return null
             val ids = blocks.mapTo(mutableSetOf()) { it.id }
             val rows = dragRows.filter { it.key in ids && it.key != id }
@@ -508,6 +509,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 Wrapper(
                     grouped = !isTask,
                     inset = (if (draggable) BLOCK_GUTTER else PROSE_MARGIN) + NEST_STEP * child.indent,
+                    // Completion supersedes it and the repository clears the flag, so a finished
+                    // task never arrives here still lit.
+                    started = child.inProgress,
                 ) {
                 BlockRow(
                     child = child,
@@ -739,10 +743,10 @@ private fun PageBand(
             if (collapsed) {
                 Text(
                     title.ifBlank { "Untitled" },
-                    fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay,
+                    fontFamily = YantraDisplay,
                     fontSize = 16.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.2).sp,
                     color = y.textPrimary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -770,11 +774,11 @@ private fun PageBand(
                 }
                 Text(
                     trail,
-                    fontFamily = ie.napkin.supertasks.ui.theme.YantraText,
+                    fontFamily = YantraText,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.W500,
                     color = y.textMuted,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -978,26 +982,41 @@ private val PROSE_MARGIN = 20.dp
 @Composable
 private fun Wrapper(
     grouped: Boolean,
-    inset: androidx.compose.ui.unit.Dp,
+    inset: Dp,
+    /**
+     * Whether this is a task you have said you are on. The card carries the wash on a list, the
+     * bare block carries it on a task's page — the same claim, drawn on whatever surface the row
+     * happens to have.
+     */
+    started: Boolean,
     content: @Composable () -> Unit,
 ) {
+    val y = Yantra.colors
     if (grouped) {
-        ListGroupRow {
+        ListGroupRow(started = started) {
             Box(Modifier.padding(start = inset, end = 4.dp)) { content() }
         }
     } else {
-        Box(Modifier.padding(start = inset)) { content() }
+        Box(
+            Modifier
+                .padding(start = inset)
+                // After the inset, so the wash lines up with the block and not with the gutter.
+                .then(
+                    if (started) Modifier.background(y.startedWash, RoundedCornerShape(10.dp))
+                    else Modifier
+                )
+        ) { content() }
     }
 }
 
 /** How far each level of nesting steps in. */
 private val NEST_STEP = 20.dp
 
-@androidx.compose.runtime.Stable
+@Stable
 private class BlockDrag {
     var id by mutableStateOf<String?>(null)
         private set
-    var dy by androidx.compose.runtime.mutableFloatStateOf(0f)
+    var dy by mutableFloatStateOf(0f)
         private set
     /**
      * Where the finger first went down, in viewport coordinates. The drop target comes from the
@@ -1005,7 +1024,7 @@ private class BlockDrag {
      * dp tall, so its centre sits far off screen and a centre-based hit test aimed at rows nobody
      * was pointing at.
      */
-    var startY by androidx.compose.runtime.mutableFloatStateOf(0f)
+    var startY by mutableFloatStateOf(0f)
         private set
 
     val pointerY: Float get() = startY + dy
@@ -1127,7 +1146,7 @@ private fun Modifier.activeBlock(active: Boolean): Modifier {
  * NodePageViewModel, which is why the smart list had to grow a second, read-only copy of this row
  * that then drifted (tap-to-edit on one screen, tap-to-open on the other).
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TextualBlockRow(
     child: NodeEntity,
@@ -1171,26 +1190,26 @@ internal fun TextualBlockRow(
     var hasFocus by remember(child.id) { mutableStateOf(false) }
     // Where the title's glyphs actually landed, so the ink strike can be drawn across the words.
     var titleLayout by remember(child.id) { mutableStateOf<TextLayoutResult?>(null) }
-    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusRequester = remember { FocusRequester() }
 
     // Every task is reachable, whether or not anything is under it yet — the chevron is always
     // there. And the text is always editable in place. Those are two different targets on one row
     // rather than one target with two meanings, which is what makes both feel direct: the words
     // are the words, the arrow is the way in.
 
-    androidx.compose.runtime.LaunchedEffect(autoFocus, editable) {
+    LaunchedEffect(autoFocus, editable) {
         if (autoFocus && editable) {
             runCatching { focusRequester.requestFocus() }
             onAutoFocusConsumed()
         }
     }
-    androidx.compose.runtime.LaunchedEffect(claimCaret, editable) {
+    LaunchedEffect(claimCaret, editable) {
         if (!claimCaret || !editable) return@LaunchedEffect
         // Before focusing, put the caret where the writing stopped. A block claims the caret when
         // the block after it was merged into it, so the end of this text is exactly where the
         // deleted line used to begin — carrying on typing should carry on from there.
         field = field.copy(selection = TextRange(field.text.length))
-        androidx.compose.runtime.withFrameNanos { }
+        withFrameNanos { }
         // Always ask at least once: if a blur has not propagated yet then hasFocus is still true,
         // a guarded loop exits immediately, and focus never gets requested at all.
         runCatching { focusRequester.requestFocus() }
@@ -1348,7 +1367,7 @@ internal fun TextualBlockRow(
                 Text(
                     if (isBullet) "•" else "$ordinal.",
                     style = MaterialTheme.typography.bodyMedium.copy(color = y.textMuted),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    textAlign = TextAlign.End,
                     modifier = Modifier.width(22.dp).padding(top = 1.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -1589,16 +1608,16 @@ private fun BlockTypeBar(
     ) {
         val noFocus = Modifier.focusProperties { canFocus = false }
         if (showTypes) {
-            TypeChip("Task", selected = currentType == NodeType.TASK, onClick = onTask)
-            TypeChip("Note", selected = currentType == NodeType.PARAGRAPH, onClick = onText)
-            TypeChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, icon = Icons.Default.Title)
-            TypeChip(
+            SelectChip("Task", selected = currentType == NodeType.TASK, onClick = onTask)
+            SelectChip("Note", selected = currentType == NodeType.PARAGRAPH, onClick = onText)
+            SelectChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, icon = Icons.Default.Title)
+            SelectChip(
                 "Bullet",
                 selected = currentType == NodeType.BULLET,
                 onClick = onBullet,
                 icon = Icons.AutoMirrored.Filled.FormatListBulleted,
             )
-            TypeChip(
+            SelectChip(
                 "Numbered",
                 selected = currentType == NodeType.NUMBERED,
                 onClick = onNumbered,
@@ -1668,41 +1687,6 @@ private fun DangerChip(text: String, onClick: () -> Unit, modifier: Modifier = M
  * win it back, and even when it did the drop-and-return read as "the keyboard shut on me". Refusing
  * focus here means the caret never leaves the text in the first place.
  */
-@Composable
-private fun TypeChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
-    Row(
-        Modifier
-            .focusProperties { canFocus = false }
-            .background(if (selected) y.accentFill else y.tileWarm2, shape)
-            .border(1.dp, if (selected) y.accentBorder else y.tileBorder, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 15.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (selected) y.accent else y.textSecondary,
-                modifier = Modifier.size(15.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-        }
-        Text(
-            text,
-            color = if (selected) y.accent else y.textSecondary,
-            fontSize = 13.5.sp,
-            fontWeight = FontWeight.W600,
-        )
-    }
-}
 
 /**
  * The one blank slot on the page, held open by the UI rather than by a stored empty block. Tapping

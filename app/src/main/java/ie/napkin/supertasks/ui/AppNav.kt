@@ -17,7 +17,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import ie.napkin.supertasks.App
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.ui.home.HomeScreen
@@ -26,6 +25,7 @@ import ie.napkin.supertasks.ui.node.NodePageScreen
 import ie.napkin.supertasks.ui.pomodoro.FocusScreen
 import ie.napkin.supertasks.ui.pomodoro.StatsScreen
 import ie.napkin.supertasks.ui.smart.SmartListScreen
+import ie.napkin.supertasks.ui.settings.SettingsScreen
 
 /** Pulls the app-wide container out of ViewModel CreationExtras. */
 fun CreationExtras.container(): AppContainer = (this[APPLICATION_KEY] as App).container
@@ -106,7 +106,7 @@ fun AppNav(
             StatsScreen(navController)
         }
         composable(Routes.SETTINGS) {
-            ie.napkin.supertasks.ui.settings.SettingsScreen(navController)
+            SettingsScreen(navController)
         }
     }
 }

@@ -25,6 +25,7 @@ package ie.napkin.supertasks.ui.components
  * pen actually decides: finished, or not.
  */
 
+import ie.napkin.supertasks.ui.theme.Yantra
 import android.content.Context
 import android.os.Build
 import android.os.VibrationEffect
@@ -53,8 +54,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,8 +63,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.random.Random
+import androidx.compose.ui.geometry.Rect
 
 // ---------------------------------------------------------------------------
 // State + ink
@@ -205,7 +204,7 @@ fun inkStrikePath(taskId: String, width: Float, midY: Float): Path {
     repeat(segments) {
         val cx = x + step / 2f + (rnd.nextFloat() - 0.5f) * step * 0.2f
         x += step
-        p.quadraticBezierTo(cx, jy(), x.coerceAtMost(width), jy())
+        p.quadraticTo(cx, jy(), x.coerceAtMost(width), jy())
     }
     return p
 }
@@ -246,7 +245,7 @@ fun YantraCheckbox(
 ) {
     val context = LocalContext.current
     val reduced = remember { isReducedMotion(context) }
-    val coral = YantraInk.coral(darkTheme)
+    val coral = Yantra.colors.accent
     val neutral = frameTint ?: YantraInk.neutral(darkTheme)
     val scope = rememberCoroutineScope()
 
@@ -413,7 +412,7 @@ fun YantraCheckbox(
                         }
                         val circle = Path().apply {
                             addOval(
-                                androidx.compose.ui.geometry.Rect(
+                                Rect(
                                     center - Offset(r, r), center + Offset(r, r)
                                 )
                             )
@@ -448,7 +447,7 @@ fun InkStrike(
     darkTheme: Boolean = false,
     strokeWidth: Dp = 2.2.dp,
 ) {
-    val coral = YantraInk.coral(darkTheme)
+    val coral = Yantra.colors.accent
     Canvas(modifier) {
         if (progress <= 0f) return@Canvas
         // 44% height: through the x-height, like a real pen strike.

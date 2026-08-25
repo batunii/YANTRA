@@ -41,6 +41,8 @@ import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
 /**
  * Bottom sheet editing one node's built-in properties (Priority/Due) plus its labels.
@@ -90,13 +92,14 @@ fun PropertySheet(
                 attached = attachedLabels,
                 onDetach = { label -> vm.detachLabel(targetId, label.id) },
                 onAttach = { label -> vm.attachLabel(targetId, label.id) },
-                onCreateAndAttach = { name -> vm.createAndAttachLabel(targetId, name) },
+                onCreateAndAttach = { name, colour -> vm.createAndAttachLabel(targetId, name, colour) },
+                onRecolour = { label, colour -> vm.setLabelColor(label.id, colour) },
             )
         }
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PropertyEditor(
     def: PropertyDefEntity,
@@ -114,7 +117,7 @@ private fun PropertyEditor(
         )
         when (def.kind) {
             PropertyKind.SELECT -> {
-                androidx.compose.foundation.layout.FlowRow(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {

@@ -2,6 +2,7 @@ package ie.napkin.supertasks.data.db
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import ie.napkin.supertasks.data.label.LabelPalette
 import ie.napkin.supertasks.data.filter.ApplyOnCreate
 import ie.napkin.supertasks.data.filter.DateRel
 import ie.napkin.supertasks.data.filter.Filter
@@ -139,7 +140,7 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 db.execSQL(
                     "UPDATE property_value SET v_date = ?, v_bool = 0, v_number = NULL, updated_at = ? " +
                         "WHERE node_id = ? AND def_id = ?",
-                    arrayOf(DueMigrationLogic.normalizeDueDate(v), now, nodeId, dueId)
+                    arrayOf<Any?>(DueMigrationLogic.normalizeDueDate(v), now, nodeId, dueId)
                 )
             }
 
@@ -157,13 +158,13 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                     db.execSQL(
                         "INSERT OR REPLACE INTO property_value (node_id, def_id, v_text, v_number, v_date, v_bool, updated_at) " +
                             "VALUES (?, '${BuiltIns.DEADLINE_DEF_ID}', NULL, NULL, ?, NULL, ?)",
-                        arrayOf(nodeId, oldDue, now)
+                        arrayOf<Any?>(nodeId, oldDue, now)
                     )
                 }
                 db.execSQL(
                     "INSERT OR REPLACE INTO property_value (node_id, def_id, v_text, v_number, v_date, v_bool, updated_at) " +
                         "VALUES (?, ?, NULL, 0.0, ?, 1, ?)",
-                    arrayOf(nodeId, dueId, reminderAt, now)
+                    arrayOf<Any?>(nodeId, dueId, reminderAt, now)
                 )
             }
         }
@@ -248,5 +249,59 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
 val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE node ADD COLUMN in_progress INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/**
+ * Claims the existing Inbox for [SystemKey.INBOX], data-only (schema 7 is identical to 6).
+ *
+ * Quick capture used to find the Inbox by title, top-level only — so renaming it or moving it
+ * into a group made every subsequent capture create a fresh "Inbox" beside the real one. The
+ * identity mechanism for exactly this already existed and only Today was using it.
+ *
+ * Oldest wins, matching how MIGRATION_2_3 claimed Today. An install whose Inbox was already
+ * renamed gets no key here and adopts one the first time capture runs (see
+ * NodeRepository.inboxList), which is the best guess available either way.
+ */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            UPDATE node SET system_key = 'inbox' WHERE id = (
+                SELECT id FROM node
+                 WHERE type = 'list' AND title = 'Inbox' AND deleted_at IS NULL
+                   AND system_key IS NULL
+                 ORDER BY created_at LIMIT 1
+            )
+            """.trimIndent()
+        )
+    }
+}
+
+/**
+ * Gives every existing label a colour, data-only (schema 8 is identical to 7).
+ *
+ * `label.color` has existed since the table did, and the chip renderer has always honoured it —
+ * but no code path ever set it, so every label ever made is NULL and draws neutral grey. Labels
+ * created from here on get a palette colour at birth; without this, the ones already in the
+ * database would be the only colourless things left, and the user would have to retype each tag
+ * to fix it.
+ *
+ * Uses [LabelPalette.defaultFor] rather than SQL so a backfilled label lands on exactly the colour
+ * a freshly-typed one of the same name would. Only NULLs are touched.
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val names = ArrayList<Pair<String, String>>()
+        db.query("SELECT id, name FROM label WHERE color IS NULL").use { c ->
+            while (c.moveToNext()) names.add(c.getString(0) to c.getString(1))
+        }
+        val now = System.currentTimeMillis()
+        names.forEach { (id, name) ->
+            db.execSQL(
+                "UPDATE label SET color = ?, updated_at = ? WHERE id = ?",
+                arrayOf<Any?>(LabelPalette.defaultFor(name), now, id),
+            )
+        }
     }
 }

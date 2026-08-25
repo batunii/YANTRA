@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ie.napkin.supertasks.data.db.NodeType
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmartListViewModel(
@@ -104,15 +105,15 @@ class SmartListViewModel(
     // What the rule editor needs to offer choices: the properties you can filter on, the labels you
     // can match, and the lists a new task could land in. Same three inputs the create sheet takes on
     // the home screen, because it is the same sheet.
-    val defs: StateFlow<List<ie.napkin.supertasks.data.db.PropertyDefEntity>> =
+    val defs: StateFlow<List<PropertyDefEntity>> =
         properties.builtInDefs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val labels: StateFlow<List<ie.napkin.supertasks.data.db.LabelEntity>> =
+    val labels: StateFlow<List<LabelEntity>> =
         container.labels.all().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val lists: StateFlow<List<NodeEntity>> =
         nodes.allLists()
-            .map { all -> all.filter { it.type == ie.napkin.supertasks.data.db.NodeType.LIST } }
+            .map { all -> all.filter { it.type == NodeType.LIST } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     suspend fun createLabel(name: String) = container.labels.getOrCreate(name)

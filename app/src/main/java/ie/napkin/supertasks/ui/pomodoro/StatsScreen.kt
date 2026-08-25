@@ -21,13 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +50,7 @@ import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import ie.napkin.supertasks.ui.theme.YantraDisplay
 
 data class DayStat(val date: LocalDate, val completed: Int, val totalSecs: Int)
 data class TaskStat(val nodeId: String, val title: String, val completed: Int, val totalSecs: Int)
@@ -130,7 +129,7 @@ fun StatsScreen(nav: NavHostController) {
                 onClick = { nav.popBackStack() },
                 iconSize = 22.dp,
             )
-            Text("Focus stats", fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay, fontSize = 24.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.4).sp, color = y.textPrimary)
+            Text("Focus stats", fontFamily = YantraDisplay, fontSize = 24.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.4).sp, color = y.textPrimary)
         }
 
         LazyColumn(
@@ -198,7 +197,7 @@ private fun StatCard(title: String, count: Int, sub: String, accent: Boolean, mo
         Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 10.dp)) {
             Text(
                 "$count",
-                fontFamily = ie.napkin.supertasks.ui.theme.YantraDisplay,
+                fontFamily = YantraDisplay,
                 fontSize = 38.sp,
                 fontWeight = FontWeight.W700,
                 letterSpacing = (-0.5).sp,
@@ -219,7 +218,7 @@ private fun StatCard(title: String, count: Int, sub: String, accent: Boolean, mo
 @Composable
 private fun DayBars(days: List<DayStat>) {
     val y = Yantra.colors
-    val barBg = Color(0xFF3A2A20)
+    val barBg = y.tileWarm
     val max = (days.maxOfOrNull { it.totalSecs } ?: 0).coerceAtLeast(1)
     Row(
         Modifier.fillMaxWidth().height(140.dp),

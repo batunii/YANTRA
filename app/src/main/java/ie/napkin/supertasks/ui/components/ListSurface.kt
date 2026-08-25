@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +29,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraColors
 
 /**
  * One task, one card.
@@ -48,14 +48,21 @@ import ie.napkin.supertasks.ui.theme.Yantra
 @Composable
 fun ListGroupRow(
     modifier: Modifier = Modifier,
+    /** Lit in the accent while you are on this task — see [YantraColors.startedWash]. */
+    started: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val y = Yantra.colors
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
-            .background(y.cardBg, RoundedCornerShape(16.dp)),
+            .background(y.cardBg, shape)
+            // A second layer rather than a blended colour: the wash has to sit *over* the card so
+            // it reads the same on the card as it does on a bare block, where there is no card
+            // underneath it to blend with.
+            .then(if (started) Modifier.background(y.startedWash, shape) else Modifier),
     ) {
         content()
     }

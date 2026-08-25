@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ie.napkin.supertasks.data.db.PropertyDefEntity
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(private val container: AppContainer) : ViewModel() {
@@ -72,7 +73,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     val timerState: StateFlow<PomodoroTimer.State?> = container.timer.state
 
     /** Built-in property definitions (Priority, Due), for the smart-list filter builder. */
-    val defs: StateFlow<List<ie.napkin.supertasks.data.db.PropertyDefEntity>> =
+    val defs: StateFlow<List<PropertyDefEntity>> =
         properties.builtInDefs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Labels, for the smart-list filter builder's "has label" condition. */
@@ -86,12 +87,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { nodes.create(null, NodeType.LIST, title) }
     }
 
-    /** Quick-capture a task from the cog: drop it in an "Inbox" list (created once), open it. */
+    /** Quick-capture a task from the cog: drop it in the Inbox, then open that list. */
     fun quickAddTask(title: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
-            val inboxId = allLists.value.firstOrNull {
-                it.parentId == null && it.type == NodeType.LIST && it.title.equals("Inbox", ignoreCase = true)
-            }?.id ?: nodes.create(null, NodeType.LIST, "Inbox")
+            val inboxId = nodes.inboxList()
             nodes.create(inboxId, NodeType.TASK, title)
             onDone(inboxId)
         }

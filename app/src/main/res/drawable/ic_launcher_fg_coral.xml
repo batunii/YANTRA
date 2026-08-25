@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Yantra's mark: the bhupura (gated square) with the bindu at its centre.
+
+  The path is the SAME geometry the app draws at runtime (bhupuraPath in YantraGlyph.kt, a 28-unit
+  design space) so the launcher icon, the task glyph, the focus glyph and the notification icon are
+  demonstrably one shape rather than four drawings of an idea. Here the 28 units are mapped onto the
+  adaptive-icon 108dp viewport, inset to the 66dp safe zone: scale 66/28 = 2.357, offset 21dp.
+
+  Colour follows the law — neutral structure for the frame, the chosen accent for the bindu, because
+  the centre is where the user's own effort lands. One file per accent, swapped by activity-alias:
+  a launcher icon is a static resource the launcher resolves, so it cannot be tinted at runtime. The old mark was a gold compass-rose with a tick in it; it
+  belonged to a palette this app no longer has, and a tick is exactly the gesture the bindu replaced.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group android:translateX="21" android:translateY="21"
+        android:scaleX="2.357" android:scaleY="2.357">
+
+        <!-- the gated square -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFB4B2A9"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M8,4 L11,4 L11,2 L17,2 L17,4 L20,4 Q24,4 24,8 L24,11 L26,11 L26,17 L24,17 L24,20 Q24,24 20,24 L17,24 L17,26 L11,26 L11,24 L8,24 Q4,24 4,20 L4,17 L2,17 L2,11 L4,11 L4,8 Q4,4 8,4 Z" />
+
+        <!-- the bindu: the centre, and the only accent in the mark. This is the Coral variant;
+         every variant differs in this one fill and nothing else. Generated from
+         AccentColor.CORAL.ink(dark = true) — the icon ground is warm graphite. -->
+        <path
+            android:fillColor="#FFE8865F"
+            android:pathData="M14,10.4 A3.6,3.6 0 1 1 14,17.6 A3.6,3.6 0 1 1 14,10.4 Z" />
+    </group>
+</vector>

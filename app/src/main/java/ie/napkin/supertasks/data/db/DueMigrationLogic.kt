@@ -1,6 +1,7 @@
 package ie.napkin.supertasks.data.db
 
 import ie.napkin.supertasks.data.filter.Filter
+import ie.napkin.supertasks.data.time.startOfDay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -21,12 +22,12 @@ object DueMigrationLogic {
     fun normalizeDueDate(v: Long, zone: ZoneId = ZoneId.systemDefault()): Long {
         val localDate =
             if (v % 86_400_000L == 0L) Instant.ofEpochMilli(v).atZone(ZoneOffset.UTC).toLocalDate()
-            else Instant.ofEpochMilli(v).atZone(zone).toLocalDate()
-        return localDate.atStartOfDay(zone).toInstant().toEpochMilli()
+            else localDateOf(v, zone)
+        return startOfDay(localDate, zone)
     }
 
     fun localDateOf(v: Long, zone: ZoneId = ZoneId.systemDefault()): LocalDate =
-        Instant.ofEpochMilli(v).atZone(zone).toLocalDate()
+        ie.napkin.supertasks.data.time.localDateOf(v, zone)
 
     /**
      * Merge decision for a task that had both an all-day Due and a Reminder: the reminder

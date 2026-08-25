@@ -1,6 +1,5 @@
 package ie.napkin.supertasks.ui.ink
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,6 +68,8 @@ import ie.napkin.supertasks.data.ink.ShapeKind
 import ie.napkin.supertasks.data.ink.StrokeCodec
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.ChipSize
+import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -78,6 +79,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.ui.text.TextStyle
 
 class InkViewModel(
     container: AppContainer,
@@ -120,7 +122,8 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
     val strokes by vm.strokes.collectAsStateWithLifecycle()
     val node by vm.node.collectAsStateWithLifecycle()
     val y = Yantra.colors
-    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    // See InkPreview: the ink layer follows the app's theme, not the phone's.
+    val dark = y.isDark
     val density = LocalDensity.current
 
     var tool by remember { mutableStateOf(InkTool.PEN) }
@@ -194,7 +197,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 value = title,
                 onValueChange = { title = it; vm.rename(it) },
                 singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
+                textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
                 cursorBrush = SolidColor(y.accent),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
@@ -271,7 +274,7 @@ private fun ToolTray(
     onUndo: () -> Unit, onClear: () -> Unit, onNextPage: () -> Unit,
 ) {
     val y = Yantra.colors
-    val trayBg = Color(0xFF161311)
+    val trayBg = y.railBg
     Column(
         Modifier.fillMaxWidth().background(trayBg).navigationBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 22.dp),
@@ -284,7 +287,7 @@ private fun ToolTray(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 InkTool.entries.forEach { t ->
-                    ToolChip(labelFor(t), selected = tool == t) { onTool(t) }
+                    SelectChip(labelFor(t), selected = tool == t, size = ChipSize.Small) { onTool(t) }
                 }
             }
             TrayIconBtn(onUndo) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = y.textSecondary, modifier = Modifier.size(16.dp)) }
@@ -292,7 +295,7 @@ private fun ToolTray(
             TrayIconBtn(onClear) { Icon(Icons.Default.DeleteOutline, "Clear", tint = y.textSecondary, modifier = Modifier.size(16.dp)) }
             Spacer(Modifier.width(6.dp))
             Box(
-                Modifier.background(Color(0xFF211B16), RoundedCornerShape(10.dp)).clickable(enabled = page < pageCount, onClick = onNextPage)
+                Modifier.background(y.tileWarm2, RoundedCornerShape(10.dp)).clickable(enabled = page < pageCount, onClick = onNextPage)
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) { Text("$page/$pageCount", fontSize = 11.sp, fontWeight = FontWeight.W700, color = y.textMuted) }
         }
@@ -300,7 +303,7 @@ private fun ToolTray(
         // contextual settings
         if (tool == InkTool.SHAPES) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                shapeLabels.forEach { (k, label) -> ToolChip(label, selected = shapeKind == k) { onShapeKind(k) } }
+                shapeLabels.forEach { (k, label) -> SelectChip(label, selected = shapeKind == k, size = ChipSize.Small) { onShapeKind(k) } }
             }
         }
         if (tool != InkTool.ERASER) {
@@ -320,14 +323,14 @@ private fun ToolTray(
             Text(if (tool == InkTool.ERASER) "Eraser" else "Size", fontSize = 11.sp, color = y.textMuted, modifier = Modifier.width(52.dp))
             Slider(
                 value = size, onValueChange = onSize, valueRange = sizeRange,
-                colors = SliderDefaults.colors(thumbColor = y.accent, activeTrackColor = y.accent, inactiveTrackColor = Color(0xFF2A211B)),
+                colors = SliderDefaults.colors(thumbColor = y.accent, activeTrackColor = y.accent, inactiveTrackColor = y.tileWarm),
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
             Text("${size.roundToInt()}", fontSize = 11.sp, color = y.textDim, modifier = Modifier.width(24.dp))
         }
         if (tool == InkTool.PEN || tool == InkTool.MARKER) {
-            ToolChip(if (snap) "Snap to shapes: on" else "Snap to shapes: off", selected = snap) { onSnap(!snap) }
+            SelectChip(if (snap) "Snap to shapes: on" else "Snap to shapes: off", selected = snap, size = ChipSize.Small) { onSnap(!snap) }
         }
     }
 }
@@ -342,20 +345,6 @@ private val shapeLabels = listOf(
     ShapeKind.ELLIPSE to "Oval", ShapeKind.ARROW to "Arrow",
 )
 
-@Composable
-private fun ToolChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(9.dp)
-    Box(
-        Modifier
-            .background(if (selected) y.accent.copy(alpha = 0.16f) else Color(0xFF211B16), shape)
-            .then(if (selected) Modifier.border(1.dp, y.accent, shape) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    ) {
-        Text(label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.W700 else FontWeight.W600, color = if (selected) y.accentText else y.textSecondary)
-    }
-}
 
 @Composable
 private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
@@ -371,8 +360,9 @@ private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun TrayIconBtn(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val y = Yantra.colors
     Box(
-        Modifier.size(32.dp).background(Color(0xFF211B16), RoundedCornerShape(10.dp)).clickable(onClick = onClick),
+        Modifier.size(32.dp).background(y.tileWarm2, RoundedCornerShape(10.dp)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -391,7 +381,7 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
     var value by remember { mutableFloatStateOf(hsv[2]) }
     val current = Color.hsv(hue, sat, value)
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF161311)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.railBg) {
         Column(
             Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),

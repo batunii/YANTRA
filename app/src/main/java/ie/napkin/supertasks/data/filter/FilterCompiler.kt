@@ -1,6 +1,8 @@
 package ie.napkin.supertasks.data.filter
 
-import java.util.Calendar
+import ie.napkin.supertasks.data.time.localDateOf
+import ie.napkin.supertasks.data.time.endOfDay
+import ie.napkin.supertasks.data.time.startOfDay
 
 /** A compiled SELECT over node + property_value, ready for a Room @RawQuery. */
 data class CompiledQuery(val sql: String, val args: List<Any>)
@@ -146,16 +148,10 @@ object FilterCompiler {
     }
 
     private fun resolveDateRel(rel: DateRel, now: Long): Long {
-        val cal = Calendar.getInstance().apply {
-            timeInMillis = now
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
+        val today = localDateOf(now)
         return when (rel) {
-            DateRel.TODAY_START -> cal.timeInMillis
-            DateRel.TODAY_END -> cal.timeInMillis + 24L * 60 * 60 * 1000 - 1
+            DateRel.TODAY_START -> startOfDay(today)
+            DateRel.TODAY_END -> endOfDay(today)
         }
     }
 

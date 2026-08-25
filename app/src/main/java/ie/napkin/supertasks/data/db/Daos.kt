@@ -129,37 +129,6 @@ interface NodeDao {
         softDelete(subtreeIds(rootId), now)
     }
 
-    @Query("SELECT COUNT(*) FROM node WHERE parent_id = :parentId AND deleted_at IS NULL")
-    suspend fun childCount(parentId: String): Int
-
-    @Query(
-        """
-        SELECT EXISTS(
-            SELECT 1 FROM node WHERE parent_id = :parentId AND deleted_at IS NULL LIMIT 1
-        )
-        """
-    )
-    fun hasChildren(parentId: String): Flow<Boolean>
-
-    /** Task totals per top-level node, counting the entire subtree of each. */
-    @Query(
-        """
-        WITH RECURSIVE sub(rootId, id) AS (
-            SELECT id, id FROM node WHERE parent_id IS NULL AND deleted_at IS NULL
-          UNION ALL
-            SELECT s.rootId, n.id FROM node n JOIN sub s ON n.parent_id = s.id
-             WHERE n.deleted_at IS NULL
-        )
-        SELECT s.rootId AS rootId,
-               COUNT(*) AS total,
-               COALESCE(SUM(n.done), 0) AS doneCount
-          FROM sub s JOIN node n ON n.id = s.id
-         WHERE n.type = 'task'
-         GROUP BY s.rootId
-        """
-    )
-    fun topLevelTaskCounts(): Flow<List<SubtreeTaskCount>>
-
     /** Task totals per list node (rooted at every list, so grouped lists count too). */
     @Query(
         """
@@ -179,8 +148,7 @@ interface NodeDao {
     )
     fun listTaskCounts(): Flow<List<SubtreeTaskCount>>
 
-    /**
- How many live (direct) children each child of :parentId has — for chevrons/badges. */
+    /** How many live (direct) children each child of :parentId has — for chevrons/badges. */
     @Query(
         """
         SELECT n.parent_id AS rootId,
@@ -231,9 +199,6 @@ interface PropertyDao {
 
     @Query("SELECT * FROM property_def WHERE deleted_at IS NULL AND is_built_in = 1 ORDER BY name COLLATE NOCASE")
     suspend fun builtInDefsOnce(): List<PropertyDefEntity>
-
-    @Query("SELECT * FROM property_def WHERE id = :id")
-    suspend fun defById(id: String): PropertyDefEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDef(def: PropertyDefEntity)
@@ -368,10 +333,6 @@ interface LabelDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun upsert(label: LabelEntity)
 
-    /** A real delete — node_label rows cascade away with it. */
-    @Query("DELETE FROM label WHERE id = :id")
-    suspend fun delete(id: String)
-
     @Query("SELECT * FROM node_label WHERE node_id = :nodeId")
     fun forNode(nodeId: String): Flow<List<NodeLabelEntity>>
 
@@ -392,6 +353,10 @@ interface LabelDao {
 
     @Query("DELETE FROM node_label WHERE node_id = :nodeId AND label_id = :labelId")
     suspend fun detach(nodeId: String, labelId: String)
+
+    /** Recolour a label everywhere at once — the colour belongs to the tag, not to an attachment. */
+    @Query("UPDATE label SET color = :color, updated_at = :now WHERE id = :id")
+    suspend fun setColor(id: String, color: Long?, now: Long)
 }
 
 @Dao
@@ -400,8 +365,7 @@ interface InkDao {
     @Query("SELECT * FROM ink_stroke WHERE node_id = :nodeId AND deleted_at IS NULL ORDER BY rank")
     fun strokes(nodeId: String): Flow<List<InkStrokeEntity>>
 
-    /**
- Strokes for every ink block that is a direct child of :parentId — page previews. */
+    /** Strokes for every ink block that is a direct child of :parentId — page previews. */
     @Query(
         """
         SELECT s.* FROM ink_stroke s
