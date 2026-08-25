@@ -390,4 +390,37 @@ class WorkspaceWriterTest {
         assertEquals(0, writer.archivedCount())
         assertTrue(store.pageFile(list).readText().contains("Ancient"))
     }
+
+    @Test
+    fun oneTaskCanComeBackWithoutTheRest() = runBlocking {
+        // What the archive screen does. Restoring a single thing must not require understanding the
+        // archive as a whole, which is all "bring everything back" could ever offer.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val keep = finishedTask(list, "Stay archived", doneDaysAgo = 400)
+        val back = finishedTask(list, "Come back", doneDaysAgo = 400)
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        assertEquals(1, writer.restoreArchived(list, setOf(back)))
+
+        val page = store.pageFile(list).readText()
+        assertTrue("the restored task did not return", page.contains("Come back"))
+        assertTrue("an untouched task came back too", !page.contains("Stay archived"))
+        assertEquals(1, writer.archivedCount())
+        assertTrue(store.readArchivedLines(list).single().contains("Stay archived"))
+        assertTrue("ids should be stable across the move", keep.isNotEmpty())
+    }
+
+    @Test
+    fun anArchivedTaskKnowsWhenItWasFinished() = runBlocking {
+        // The archive screen reads the files, not the index, so the completion date has to survive
+        // the move — it is the only thing on the row that says how long ago this was.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        finishedTask(list, "Long done", doneDaysAgo = 400)
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        val line = store.readArchivedLines(list).single()
+        val block = PageCodec.decodeBlock(line) as ie.napkin.supertasks.data.format.TaskRef
+        assertEquals(java.time.LocalDate.now().minusDays(400), block.doneAt)
+        assertEquals("Long done", block.title)
+    }
 }

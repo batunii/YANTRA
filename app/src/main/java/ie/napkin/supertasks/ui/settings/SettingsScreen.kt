@@ -256,30 +256,10 @@ fun SettingsScreen(nav: NavHostController) {
 
             if (archived > 0) {
                 Spacer(Modifier.height(10.dp))
-                Text(
-                    "$archived archived",
-                    color = y.textMuted,
-                    fontSize = 12.5.sp,
-                )
-                Spacer(Modifier.height(8.dp))
-                // The way back, and the reason the sweep can be offered before there is a screen for
-                // browsing what it moved. One action undoes the whole thing.
-                SelectChip(
-                    "Bring everything back",
-                    selected = false,
-                    modifier = Modifier.fillMaxWidth(),
-                    stretch = true,
-                    onClick = {
-                        if (!busy) {
-                            busy = true
-                            container.appScope.launch {
-                                val back = container.restoreAllArchived()
-                                archived = container.archivedCount()
-                                said = "$back restored"
-                                busy = false
-                            }
-                        }
-                    },
+                SettingRow(
+                    title = "$archived archived",
+                    subtitle = "See what left, and put any of it back",
+                    onClick = { nav.navigate(Routes.ARCHIVE) },
                 )
             }
             said?.let {

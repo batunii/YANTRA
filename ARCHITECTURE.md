@@ -392,17 +392,18 @@ never a way to lose the capture.
 
 ## 6. Still open
 
-**The archive sweep.** The threshold is set in Settings and lives in the workspace manifest — a
-property of the repo rather than the device, because archiving moves files that sync and two devices
-disagreeing would mean the shorter setting silently winning. It defaults to **never**: archiving
-moves someone's work, and the first run of a new version is the worst moment to do that unasked.
-Running it is a button, and "bring everything back" is beside it, which is what makes offering it at
-all defensible before there is a screen for browsing what moved.
+**Archiving is finished.** The threshold lives in the workspace manifest — a property of the repo
+rather than the device, because archiving moves files that sync and two devices disagreeing would
+mean the shorter setting silently winning. It defaults to **never**, since archiving moves someone's
+work and the first launch after an update is the worst moment to do that unasked.
 
-What remains is the automatic part — a periodic sweep for workspaces that have chosen a threshold —
-and a proper view of what is archived, with per-task restore rather than all-or-nothing. The default
-is worth revisiting once that view exists; thirty days is only a reasonable default when there is
-somewhere to go and look.
+The sweep runs daily via `ArchiveWorker` **and once on launch**, because Android is free to decide a
+periodic job can wait until tomorrow and archiving is what keeps the working set at the size the
+whole indexing design assumes. For a workspace that has not opted in it costs one manifest read.
+
+The archive screen is the reason the sweep can exist at all: it reads the archive files directly —
+archived tasks are deliberately not indexed, which is the point of moving them — groups what it finds
+by the list each task came from, and puts any single one back where it was.
 
 **`Pomodoro` is still the name in the data layer** while the UI has said `Focus` for a long time
 (§2a). Nineteen files, a table, a directory in the file format and four widget classes — worth doing,

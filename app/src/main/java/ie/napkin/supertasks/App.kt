@@ -68,11 +68,24 @@ class App : Application() {
         // The only path that pulls other people's work down without being asked. Everything else
         // syncs because you did something.
         SyncWorker.schedule(this)
+        // Once a day, and a no-op for every workspace that has not asked for it.
+        ie.napkin.supertasks.data.sync.ArchiveWorker.schedule(this)
     }
 }
 
 /** The branch tasks live on, kept off whatever else a remote repo contains. */
 const val BRANCH = "yantra-tasks"
+
+/** A finished task that has left the working set, as the archive screen needs it. */
+data class ArchivedTask(val id: String, val title: String, val doneAt: java.time.LocalDate?)
+
+/** Archived tasks, grouped by the list they came from. */
+data class ArchivedGroup(
+    val workspaceId: String,
+    val pageId: String,
+    val listTitle: String,
+    val tasks: List<ArchivedTask>,
+)
 
 /** The outcome of adding a workspace, in terms a screen can say out loud. */
 sealed interface AddResult {
@@ -197,6 +210,16 @@ class AppContainer(val app: Application) {
         }
         workspaces.reindexAll()
         workspaces.all.forEach { attach(it) }
+
+        // Also on launch, not only on the daily worker. Android is free to decide a periodic job can
+        // wait until tomorrow — Samsung especially — and archiving is what keeps the working set at
+        // the size the whole indexing design assumes. A file scan on a workspace that has not opted
+        // in costs one manifest read, so the common case pays nothing.
+        //
+        // `sweep`, not `archiveNow`: the latter waits for seeding, and this *is* seeding. A job that
+        // joins itself waits forever, and everything downstream waits with it — the splash screen
+        // holds on this job, so the app never got past its own logo.
+        sweep()
     }
 
     /**
@@ -321,8 +344,18 @@ class AppContainer(val app: Application) {
     }
 
     /** Runs the sweep now, for every workspace that has asked for one. */
-    suspend fun archiveNow(): Int = withContext(Dispatchers.IO) {
+    suspend fun archiveNow(): Int {
         seeding.join()
+        return sweep()
+    }
+
+    /**
+     * The sweep itself, without waiting for seeding.
+     *
+     * Separate so that seeding can call it: [archiveNow] joins, and a caller inside the job it joins
+     * deadlocks. Everything else should use [archiveNow].
+     */
+    private suspend fun sweep(): Int = withContext(Dispatchers.IO) {
         workspaces.all.sumOf { store ->
             val days = store.readManifest()?.archiveAfterDays ?: 0
             if (days <= 0) 0
@@ -335,6 +368,40 @@ class AppContainer(val app: Application) {
         seeding.join()
         workspaces.all.sumOf { workspaces.writer(it.id)?.archivedCount() ?: 0 }
     }
+
+    /**
+     * What is currently out of the working set, grouped by the list it came from.
+     *
+     * Read from the archive files rather than the index — archived tasks are deliberately not
+     * indexed, which is the entire point of moving them, so this is the one screen that has to go to
+     * the files directly.
+     */
+    suspend fun archivedItems(): List<ArchivedGroup> = withContext(Dispatchers.IO) {
+        seeding.join()
+        workspaces.all.flatMap { store ->
+            store.archivedPageIds().mapNotNull { pageId ->
+                val tasks = store.readArchivedLines(pageId).mapNotNull { line ->
+                    (ie.napkin.supertasks.data.format.PageCodec.decodeBlock(line)
+                        as? ie.napkin.supertasks.data.format.TaskRef)
+                        ?.let { ArchivedTask(it.id, it.title, it.doneAt) }
+                }
+                if (tasks.isEmpty()) null
+                else ArchivedGroup(
+                    workspaceId = store.id,
+                    pageId = pageId,
+                    // The page is still indexed; only its finished children left.
+                    listTitle = db.nodeDao().byId(pageId)?.title.orEmpty().ifBlank { "Untitled list" },
+                    tasks = tasks.sortedByDescending { it.doneAt },
+                )
+            }
+        }.sortedBy { it.listTitle }
+    }
+
+    /** Brings one task back to the list it came from. */
+    suspend fun restoreArchived(workspaceId: String, pageId: String, taskId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            (workspaces.writer(workspaceId)?.restoreArchived(pageId, setOf(taskId)) ?: 0) > 0
+        }
 
     suspend fun restoreAllArchived(): Int = withContext(Dispatchers.IO) {
         seeding.join()

@@ -26,6 +26,7 @@ import ie.napkin.supertasks.ui.pomodoro.FocusScreen
 import ie.napkin.supertasks.ui.pomodoro.StatsScreen
 import ie.napkin.supertasks.ui.smart.SmartListScreen
 import ie.napkin.supertasks.ui.settings.SettingsScreen
+import ie.napkin.supertasks.ui.archive.ArchiveScreen
 import ie.napkin.supertasks.ui.sync.AddWorkspaceScreen
 import ie.napkin.supertasks.ui.sync.SignInScreen
 
@@ -51,6 +52,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val GITHUB = "github"
     const val ADD_WORKSPACE = "workspace/add"
+    const val ARCHIVE = "archive"
 }
 
 @Composable
@@ -117,6 +119,9 @@ fun AppNav(
         }
         composable(Routes.ADD_WORKSPACE) {
             AddWorkspaceScreen(navController)
+        }
+        composable(Routes.ARCHIVE) {
+            ArchiveScreen(navController)
         }
     }
 }
