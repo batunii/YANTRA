@@ -14,6 +14,9 @@ import ie.napkin.supertasks.data.seed.WorkspaceSeeder
 import ie.napkin.supertasks.data.workspace.Indexer
 import ie.napkin.supertasks.data.workspace.Workspaces
 import ie.napkin.supertasks.data.sync.CommitScheduler
+import ie.napkin.supertasks.data.sync.Credentials
+import ie.napkin.supertasks.data.sync.WorkspaceLinker
+import ie.napkin.supertasks.data.sync.SyncWorker
 import ie.napkin.supertasks.data.sync.GitRepo
 import ie.napkin.supertasks.data.sync.SyncEngine
 import ie.napkin.supertasks.domain.PomodoroTimer
@@ -49,6 +52,9 @@ class App : Application() {
         container.appScope.launch {
             LauncherIcon.apply(this@App, loadThemeController(this@App).accent)
         }
+        // The only path that pulls other people's work down without being asked. Everything else
+        // syncs because you did something.
+        SyncWorker.schedule(this)
     }
 }
 
@@ -69,6 +75,12 @@ class AppContainer(app: Application) {
      * that existed before any repo was attached, and the one rows migrated from v9 belong to.
      */
     private val device: String = android.os.Build.MODEL?.lowercase().orEmpty()
+
+    /** Keystore-backed tokens, one per workspace. */
+    val credentials = Credentials(app)
+
+    /** Validates a repo, creates or adopts its task branch, and stores the token. */
+    val linker = WorkspaceLinker()
 
     val workspaces = Workspaces(db, Indexer(db), device) { id, change ->
         commits[id]?.record(change)
@@ -120,7 +132,14 @@ class AppContainer(app: Application) {
             }
             commits[store.id] = CommitScheduler(
                 appScope,
-                SyncEngine(store, Indexer(db), repo, device),
+                SyncEngine(
+                    store, Indexer(db), repo,
+                    // The login is the conflict tiebreak, so a linked workspace arbitrates by who
+                    // you are and an unlinked one falls back to the device name. Both are stable
+                    // and both compare the same way on either side, which is all the rule needs.
+                    device = credentials.login(store.id) ?: device,
+                    credentials = credentials.providerFor(store.id),
+                ),
             )
         }
     }
