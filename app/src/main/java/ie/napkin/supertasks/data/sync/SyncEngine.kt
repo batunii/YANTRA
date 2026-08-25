@@ -2,8 +2,10 @@ package ie.napkin.supertasks.data.sync
 
 import ie.napkin.supertasks.data.workspace.Indexer
 import ie.napkin.supertasks.data.workspace.WorkspaceStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.transport.CredentialsProvider
 import java.io.File
@@ -54,7 +56,19 @@ class SyncEngine(
         const val MAX_ATTEMPTS = 3
     }
 
-    suspend fun sync(commitMessage: String = "sync"): SyncResult = mutex.withLock {
+    /**
+     * **On the IO dispatcher, always.**
+     *
+     * Git and the network are blocking work, and putting this here rather than at each call site is
+     * the difference between a rule and a hope. Every caller until now happened to arrive on a
+     * background scope, so nothing complained; the first one that did not — pull-to-sync, which runs
+     * on the composable's scope, and therefore on the main thread — got a
+     * `NetworkOnMainThreadException` in place of a sync.
+     */
+    suspend fun sync(commitMessage: String = "sync"): SyncResult =
+        withContext(Dispatchers.IO) { syncNow(commitMessage) }
+
+    private suspend fun syncNow(commitMessage: String): SyncResult = mutex.withLock {
         if (!repo.exists) return SyncResult(error = "workspace is not a git repository")
 
         val resolutions = ArrayList<ConflictResolver.Resolution>()

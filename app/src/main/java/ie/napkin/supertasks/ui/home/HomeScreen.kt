@@ -58,6 +58,7 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PullToSync
 import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.NavCircleSurface
@@ -162,50 +163,52 @@ fun HomeScreen(nav: NavHostController) {
             )
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 18.dp),
-        ) {
-            item(key = "greet") {
-                Greeting(
-                    openCount = openCount,
-                    listCount = listCount,
-                    onSettings = { nav.navigate(Routes.SETTINGS) },
-                )
-            }
-
-            if (timer != null) {
-                item(key = "timer") {
-                    ActiveTimerCard(
-                        title = timer!!.nodeTitle,
-                        remainingSecs = timer!!.remainingSecs,
-                        plannedSecs = timer!!.plannedSecs,
-                        onClick = { nav.navigate(Routes.FOCUS_CURRENT) },
+        PullToSync(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 18.dp),
+            ) {
+                item(key = "greet") {
+                    Greeting(
+                        openCount = openCount,
+                        listCount = listCount,
+                        onSettings = { nav.navigate(Routes.SETTINGS) },
                     )
                 }
-            }
 
-            if (ungroupedSmart.isNotEmpty()) {
-                item(key = "smart-header") { SectionHeader("Pinned") }
-                items(ungroupedSmart, key = { it.id }) { renderRow(it) }
-            }
-            if (ungroupedLists.isNotEmpty()) {
-                item(key = "lists-header") { SectionHeader("Lists") }
-                items(ungroupedLists, key = { it.id }) { renderRow(it) }
-            }
-            groups.forEach { group ->
-                item(key = "g-${group.id}") {
-                    GroupBanner(
-                        title = group.title.orEmpty().ifBlank { "Untitled group" },
-                        count = byGroup[group.id]?.size ?: 0,
-                        onRename = { renaming = group },
-                        onDelete = { deleting = group },
-                    )
+                if (timer != null) {
+                    item(key = "timer") {
+                        ActiveTimerCard(
+                            title = timer!!.nodeTitle,
+                            remainingSecs = timer!!.remainingSecs,
+                            plannedSecs = timer!!.plannedSecs,
+                            onClick = { nav.navigate(Routes.FOCUS_CURRENT) },
+                        )
+                    }
                 }
-                items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
-            }
 
-            item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
+                if (ungroupedSmart.isNotEmpty()) {
+                    item(key = "smart-header") { SectionHeader("Pinned") }
+                    items(ungroupedSmart, key = { it.id }) { renderRow(it) }
+                }
+                if (ungroupedLists.isNotEmpty()) {
+                    item(key = "lists-header") { SectionHeader("Lists") }
+                    items(ungroupedLists, key = { it.id }) { renderRow(it) }
+                }
+                groups.forEach { group ->
+                    item(key = "g-${group.id}") {
+                        GroupBanner(
+                            title = group.title.orEmpty().ifBlank { "Untitled group" },
+                            count = byGroup[group.id]?.size ?: 0,
+                            onRename = { renaming = group },
+                            onDelete = { deleting = group },
+                        )
+                    }
+                    items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                }
+
+                item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
+            }
         }
     }
 

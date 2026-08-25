@@ -154,12 +154,18 @@ class GitHubDeviceAuthTest {
     }
 
     @Test
-    fun `an unreachable server is a failure and not a crash`() {
+    fun `an unreachable server is offline, which is not the same as refused`() {
         // Port 1 is nothing. Polling has to survive a dropped connection: it happens on every
         // sign-in that starts on wifi and finishes in a lift.
         val a = GitHubDeviceAuth(clientId = "x", base = "http://127.0.0.1:1")
         val code = ie.napkin.supertasks.data.sync.DeviceCode("d", "U-1", "https://x", 5, 900)
-        assertTrue(a.poll(code) is DevicePoll.Failed)
+
+        // Offline, specifically — the caller keeps polling. Reading a dropped request as a refusal
+        // is what killed a sign-in that was going perfectly the first time this ran for real.
+        assertTrue(a.poll(code) is DevicePoll.Offline)
+        assertTrue(a.poll(code) !is DevicePoll.Failed)
+
+        // Starting is different: there is no code to keep waiting on, so there is nothing to retry.
         assertTrue(a.start() is DeviceStart.Failed)
     }
 }

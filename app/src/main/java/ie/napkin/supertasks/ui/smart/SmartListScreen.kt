@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PullToSync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import ie.napkin.supertasks.ui.components.TextFieldDialog
@@ -225,41 +226,41 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             }
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        ) {
-            if (tasks.isEmpty() && completed.isEmpty()) {
-                item(key = "empty") {
-                    ComposedEmpty("Nothing matches right now")
+        PullToSync(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                if (tasks.isEmpty() && completed.isEmpty()) {
+                    item(key = "empty") {
+                        ComposedEmpty("Nothing matches right now")
+                    }
+                } else if (tasks.isEmpty()) {
+                    // Everything this view asked for is finished. Saying so beats "nothing matches",
+                    // which would be true of the rule and wrong about the day.
+                    item(key = "all-done") {
+                        ComposedEmpty("All done here")
+                    }
                 }
-            } else if (tasks.isEmpty()) {
-                // Everything this view asked for is finished. Saying so beats "nothing matches",
-                // which would be true of the rule and wrong about the day.
-                item(key = "all-done") {
-                    ComposedEmpty("All done here")
-                }
-            }
-            // One card, hairline-divided: two elevation layers instead of rows floating on the
-            // page. Corners are rounded only where the group actually ends.
-            // Open first, then what you finished. Two cards rather than one run of rows: the done
-            // half is not part of the rule's ordering — it is there because you did it today, not
-            // because it still matches — and giving it its own surface says so.
-            items(tasks, key = { it.id }) { task -> SmartTaskRow(task) }
+                // One card, hairline-divided: two elevation layers instead of rows floating on the
+                // page. Corners are rounded only where the group actually ends.
+                // Open first, then what you finished. Two cards rather than one run of rows: the done
+                // half is not part of the rule's ordering — it is there because you did it today, not
+                // because it still matches — and giving it its own surface says so.
+                items(tasks, key = { it.id }) { task -> SmartTaskRow(task) }
 
-            if (completed.isNotEmpty()) {
-                item(key = "done-header") {
-                    SectionLabel(
-                        "DONE · ${completed.size}",
-                        modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
-                    )
+                if (completed.isNotEmpty()) {
+                    item(key = "done-header") {
+                        SectionLabel(
+                            "DONE · ${completed.size}",
+                            modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+                        )
+                    }
+                    items(completed, key = { "done-" + it.id }) { task -> SmartTaskRow(task) }
                 }
-                items(completed, key = { "done-" + it.id }) { task -> SmartTaskRow(task) }
-            }
 
-            item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
+                item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
+            }
         }
 
         if (def?.homeParentId != null || def?.scopeRootId != null) {

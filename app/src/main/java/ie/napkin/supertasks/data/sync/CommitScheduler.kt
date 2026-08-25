@@ -54,6 +54,15 @@ class CommitScheduler(
     }
 
     /**
+     * The same, awaited.
+     *
+     * Pull-to-sync needs this: a spinner that stops on a timer rather than on the work finishing is
+     * a lie, and the one thing a person pulling down wants to know is when it is actually done.
+     * [SyncEngine] already serialises per workspace and never throws, so waiting here is safe.
+     */
+    suspend fun flushNow(reason: String): SyncResult = flush(reason)
+
+    /**
      * Waits out the batch and flushes when the policy says so.
      *
      * Re-armed on every edit rather than left running, so a burst of typing keeps pushing the
@@ -74,7 +83,7 @@ class CommitScheduler(
         }
     }
 
-    private suspend fun flush(reason: String) {
+    private suspend fun flush(reason: String): SyncResult {
         val had = mutex.withLock {
             val p = pending
             pending = CommitPolicy.Pending()
@@ -83,7 +92,7 @@ class CommitScheduler(
         }
         // A structural change with nothing batched behind it still commits: the change itself is
         // already on disk and is exactly what we are here to record.
-        _state.value = engine.sync(commitMessage(reason, had))
+        return engine.sync(commitMessage(reason, had)).also { _state.value = it }
     }
 
     /**

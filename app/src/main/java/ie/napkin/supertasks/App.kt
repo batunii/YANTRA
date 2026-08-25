@@ -41,6 +41,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -120,8 +123,35 @@ class AppContainer(app: Application) {
     /** One scheduler per workspace: each repo commits on its own rhythm. */
     private val commits = LinkedHashMap<String, CommitScheduler>()
 
-    /** Commit and sync everything now — the manual pull-to-refresh, and app shutdown. */
+    /** Commit and sync everything now, without waiting — app shutdown, and the Settings button. */
     fun syncNow(reason: String = "asked to sync") = commits.values.forEach { it.requestFlush(reason) }
+
+    /**
+     * The same, waited on, one pass per workspace.
+     *
+     * Concurrently, because workspaces are independent and someone with three repos should not wait
+     * for three round trips in a row. Each engine serialises itself, so the only thing being
+     * overlapped here is network latency.
+     *
+     * Joins [seeding] first: pulling to sync during a cold start would otherwise find no schedulers
+     * and report a successful sync of nothing.
+     */
+    suspend fun syncAwait(reason: String): List<ie.napkin.supertasks.data.sync.SyncResult> {
+        seeding.join()
+        return coroutineScope {
+            commits.values.toList().map { async { it.flushNow(reason) } }.awaitAll()
+        }
+    }
+
+    /**
+     * Whether any workspace has somewhere to sync *to*.
+     *
+     * Without this, pulling to sync before signing in succeeds instantly and says nothing, which
+     * reads as "synced with GitHub" when nothing of the sort happened.
+     */
+    suspend fun anyRemote(): Boolean = withContext(Dispatchers.IO) {
+        registry.entries().any { it.slug != null }
+    }
 
     /** The most recent sync of the workspace the user is looking at. */
     fun syncState(): kotlinx.coroutines.flow.StateFlow<ie.napkin.supertasks.data.sync.SyncResult?>? =
