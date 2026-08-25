@@ -95,7 +95,10 @@ object PageCodec {
 
     private fun parseBlock(raw: String): Block {
         val (indent, body) = splitIndent(raw)
-        val rest = body.trimEnd()
+        // Deliberately not trimmed. An empty heading is written "# " and an empty bullet "- ", and
+        // trimming turns those into "#" and "-", which match nothing and come back as prose. The
+        // marker's trailing space is part of the marker, not whitespace to tidy away.
+        val rest = body
 
         inkOrImage(rest, indent, raw)?.let { return it }
 
