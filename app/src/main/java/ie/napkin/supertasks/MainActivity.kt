@@ -63,7 +63,13 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         val container = (application as App).container
         container.syncNow("app went to the background")
-        container.appScope.launch { WidgetRefresh.refreshAll(applicationContext) }
+        container.appScope.launch {
+            // A rebuild deferred by the last keystroke: harmless to lose, since the files are
+            // written either way and the next launch reads them — but the widgets refresh from the
+            // index a line below, and they should not show the title from before the last word.
+            container.workspaces.flushIndexes()
+            WidgetRefresh.refreshAll(applicationContext)
+        }
     }
 
     private fun targetFrom(intent: Intent?): OpenTarget? {

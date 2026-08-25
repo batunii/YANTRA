@@ -85,6 +85,10 @@ interface NodeDao {
     @Query("DELETE FROM node WHERE workspace_id = :ws")
     suspend fun clearNodes(ws: String)
 
+    /** How many rows the index actually holds — see [ie.napkin.supertasks.data.workspace.Indexer]. */
+    @Query("SELECT COUNT(*) FROM node WHERE workspace_id = :ws")
+    suspend fun countNodes(ws: String): Int
+
     @Update
     suspend fun update(node: NodeEntity)
 

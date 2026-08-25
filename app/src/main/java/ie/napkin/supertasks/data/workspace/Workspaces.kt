@@ -15,6 +15,8 @@ class Workspaces(
     private val db: AppDatabase,
     private val indexer: Indexer,
     private val device: String?,
+    /** Where deferred index rebuilds run. Null keeps every write's rebuild inline. */
+    private val scope: kotlinx.coroutines.CoroutineScope? = null,
     /** Told about every write, with the workspace it belongs to, so commits can be scheduled. */
     private val onChange: (String, ie.napkin.supertasks.data.sync.Change) -> Unit = { _, _ -> },
 ) {
@@ -27,7 +29,7 @@ class Workspaces(
         val fresh = !store.exists
         if (fresh) store.scaffold(name, System.currentTimeMillis())
         stores[id] = store
-        writers[id] = WorkspaceWriter(store, db, indexer, device) { onChange(id, it) }
+        writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
         return fresh
     }
 
@@ -59,6 +61,9 @@ class Workspaces(
         val ws = nodeId?.let { db.nodeDao().byId(it)?.workspaceId }
         return ws?.let { writers[it] } ?: primary()
     }
+
+    /** Applies any index rebuild a deferred edit still owes. The app going to the background. */
+    suspend fun flushIndexes() = writers.values.forEach { it.flushIndex() }
 
     /** Rebuilds every workspace's index — a cold start, or after a sync. */
     suspend fun reindexAll(): List<String> = stores.values.flatMap { indexer.rebuild(it) }

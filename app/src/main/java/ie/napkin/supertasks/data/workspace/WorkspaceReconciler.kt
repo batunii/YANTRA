@@ -48,12 +48,34 @@ data class WorkspaceIndex(
  */
 object WorkspaceReconciler {
 
-    fun read(store: WorkspaceStore, now: Long, zone: ZoneId = ZoneId.systemDefault()): WorkspaceIndex {
+    /**
+     * [now] is accepted for callers that have a clock to hand, but **nothing derived from it ends up
+     * in a row**. See [stampFor].
+     */
+    /**
+     * [mapCache] lets a caller that rebuilds repeatedly — which is every caller, since the index is
+     * rebuilt after every write — reuse the mapping of pages that did not change. Keyed by page id
+     * and validated by *identity*: [WorkspaceStore] returns the same [PageDoc] instance while a file
+     * is untouched, so same instance means same file. Omit it and every page is mapped afresh.
+     */
+    fun read(
+        store: WorkspaceStore,
+        now: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+        mapCache: MutableMap<String, Pair<PageDoc, MappedPage>>? = null,
+    ): WorkspaceIndex {
         val pages = store.readPages()
         val problems = ArrayList<String>()
 
         val ws = store.id
-        val mapped = pages.map { PageMapper.toRows(it, ws, zone) }
+        val stamp = stampFor(store, now)
+        val mapped = pages.map { page ->
+            val hit = mapCache?.get(page.id)
+            if (hit != null && hit.first === page) hit.second
+            else PageMapper.toRows(page, ws, zone).also { mapCache?.put(page.id, page to it) }
+        }
+        // A page that is gone stays in the cache otherwise, one entry per deleted page forever.
+        mapCache?.keys?.retainAll(pages.mapTo(HashSet()) { it.id })
 
         // Every row a *line* produced, by id. For a task that also owns a page these are the two
         // halves of one node, and the line holds the half the file does not: what it is called,
@@ -97,27 +119,27 @@ object WorkspaceReconciler {
             nodes += m.children.filterNot { it.id in pageIds }
             values += m.values
             links += m.labels
-            ink += strokesFor(store, m, now, problems, ws)
+            ink += strokesFor(store, m, stamp, problems, ws)
         }
 
-        val labels = resolveLabels(store, links, now, ws)
-        val workspaceLabel = workspaceLabel(store, ws, now)
+        val labels = resolveLabels(store, links, stamp, ws)
+        val workspaceLabel = workspaceLabel(store, ws, stamp)
         val workspaceLinks = if (workspaceLabel == null) emptyList() else
             nodes.filter { it.type == ie.napkin.supertasks.data.db.NodeType.TASK }
-                .map { NodeLabelEntity(it.id, workspaceLabel.id, ws, now) }
+                .map { NodeLabelEntity(it.id, workspaceLabel.id, ws, stamp) }
         return WorkspaceIndex(
             nodes = nodes,
             values = values,
             labels = (labels.values + listOfNotNull(workspaceLabel)).sortedBy { it.name },
             nodeLabels = (
                 links.mapNotNull { l ->
-                    labels[l.name.lowercase()]?.let { NodeLabelEntity(l.nodeId, it.id, ws, now) }
+                    labels[l.name.lowercase()]?.let { NodeLabelEntity(l.nodeId, it.id, ws, stamp) }
                 } + workspaceLinks
                 ).distinctBy { it.nodeId to it.labelId },
             defs = store.readProperties().map {
                 PropertyDefEntity(
                     id = it.id, name = it.name, kind = it.kind, config = it.config,
-                    isBuiltIn = true, createdAt = now, updatedAt = now,
+                    isBuiltIn = true, createdAt = stamp, updatedAt = stamp,
                 )
             },
             smartLists = store.readSmartLists().map {
@@ -219,6 +241,22 @@ object WorkspaceReconciler {
      * wins — otherwise `#Sync` on one device and `#sync` on another would be two tags that look
      * like one.
      */
+    /**
+     * A timestamp for rows whose real creation time nothing records.
+     *
+     * Labels, property definitions, ink strokes and label links carry `created_at`/`updated_at`
+     * because the tables have the columns, and **no query reads any of them** — only `node.created_at`
+     * is ever ordered by, and that comes from the page's own `modified_at`.
+     *
+     * Stamping those with the rebuild clock quietly cost a great deal. It made every row differ from
+     * the identical row written a moment earlier, so the index could never be compared with itself
+     * and every rebuild had to rewrite every table — on every keystroke. Taking the workspace's
+     * creation date instead makes the index **a pure function of the working tree**, which is what it
+     * always claimed to be, and lets a rebuild write only the tables that actually changed.
+     */
+    private fun stampFor(store: WorkspaceStore, fallback: Long): Long =
+        store.readManifest()?.createdAt ?: fallback
+
     private fun resolveLabels(
         store: WorkspaceStore,
         links: List<LabelLink>,

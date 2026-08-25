@@ -116,7 +116,16 @@ class AppContainer(app: Application) {
      */
     val registry = WorkspaceRegistry(File(app.filesDir, "workspaces"))
 
-    val workspaces = Workspaces(db, Indexer(db), device) { id, change ->
+    /**
+     * One indexer for the whole app, deliberately.
+     *
+     * It remembers what each workspace's tables already hold so a rebuild can skip the ones that did
+     * not change. A second instance would start with that memory empty and rewrite everything on its
+     * first pass — which, since the sync engine used to have its own, is what every sync did.
+     */
+    private val indexer = Indexer(db)
+
+    val workspaces = Workspaces(db, indexer, device, appScope) { id, change ->
         commits[id]?.record(change)
     }
 
@@ -138,6 +147,9 @@ class AppContainer(app: Application) {
      */
     suspend fun syncAwait(reason: String): List<ie.napkin.supertasks.data.sync.SyncResult> {
         seeding.join()
+        // A deferred rebuild owes the index an edit; sync reads files so it does not care, but it
+        // reindexes at the end and would otherwise race the timer to do the same work twice.
+        workspaces.flushIndexes()
         return coroutineScope {
             commits.values.toList().map { async { it.flushNow(reason) } }.awaitAll()
         }
@@ -202,7 +214,7 @@ class AppContainer(app: Application) {
         commits[store.id] = CommitScheduler(
             appScope,
             SyncEngine(
-                store, Indexer(db), repo,
+                store, indexer, repo,
                 // The login is the conflict tiebreak, so a linked workspace arbitrates by who you
                 // are and an unlinked one falls back to the device name. Both are stable and both
                 // compare the same way on either side, which is all the rule needs.

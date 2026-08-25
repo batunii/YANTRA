@@ -78,6 +78,19 @@ class WorkspaceStore(
             }
     }
 
+    /**
+     * What a cached parse was taken from. Two writes in the same millisecond could share a timestamp,
+     * so length is carried too — and our own writes evict outright rather than trusting either.
+     */
+    private data class Stamp(val modified: Long, val length: Long)
+
+    private class Cached<T>(val stamp: Stamp, val value: T)
+
+    // Concurrent: the writer's mutex serialises mutations, but a sync reindex and a UI-driven read
+    // can arrive on different threads.
+    private val pageCache = java.util.concurrent.ConcurrentHashMap<String, Cached<PageDoc>>()
+    private val inkCache = java.util.concurrent.ConcurrentHashMap<String, Cached<List<ByteArray>>>()
+
     private val metaDir get() = File(root, META)
     private val pagesDir get() = File(root, PAGES)
     private val manifestFile get() = File(metaDir, "manifest.json")
@@ -137,13 +150,49 @@ class WorkspaceStore(
 
     fun pageFile(id: String): File = File(pagesDir, "$id.md")
 
-    fun readPages(): List<PageDoc> =
-        pagesDir.listFiles { f -> f.isFile && f.name.endsWith(".md") }
+    /**
+     * Every page, parsed.
+     *
+     * Reparsing is cached on the file's own identity — last-modified plus length — because the index
+     * is rebuilt after *every* write and a keystroke changes exactly one file. Without this, typing
+     * one character in a thirty-page workspace re-read and re-parsed the other twenty-nine, which
+     * measured at 68ms per keystroke and grew linearly from there.
+     *
+     * Safe against anything that changes a file behind our back, which on this app means git: a
+     * rebase or a hard reset rewrites the file and moves its timestamp, so the entry is discarded.
+     * Our own writes evict explicitly rather than relying on that, since two writes inside the same
+     * millisecond could otherwise agree on both stamp and length.
+     */
+    fun readPages(): List<PageDoc> {
+        val files = pagesDir.listFiles { f -> f.isFile && f.name.endsWith(".md") }
             .orEmpty()
             .sortedBy { it.name }               // deterministic, so two devices index in one order
-            .map { PageCodec.decode(it.readText()) }
 
-    fun writePage(doc: PageDoc) = pageFile(doc.id).write(PageCodec.encode(doc))
+        // Anything no longer on disk is gone for good; keeping it would leak a parse per deleted
+        // page for the lifetime of the process.
+        val live = files.mapTo(HashSet()) { it.name }
+        pageCache.keys.retainAll(live)
+
+        return files.map { f ->
+            val stamp = Stamp(f.lastModified(), f.length())
+            pageCache[f.name]?.takeIf { it.stamp == stamp }?.value
+                ?: PageCodec.decode(f.readText()).also { pageCache[f.name] = Cached(stamp, it) }
+        }
+    }
+
+    /** One page, parsed, through the same cache [readPages] uses. */
+    fun readPage(id: String): PageDoc? {
+        val f = pageFile(id)
+        if (!f.exists()) return null
+        val stamp = Stamp(f.lastModified(), f.length())
+        return pageCache[f.name]?.takeIf { it.stamp == stamp }?.value
+            ?: PageCodec.decode(f.readText()).also { pageCache[f.name] = Cached(stamp, it) }
+    }
+
+    fun writePage(doc: PageDoc) {
+        pageFile(doc.id).write(PageCodec.encode(doc))
+        pageCache.remove("${doc.id}.md")
+    }
 
     /**
      * Removes a page, the sidecars its blocks own, and every page beneath it.
@@ -157,7 +206,10 @@ class WorkspaceStore(
         if (!seen.add(id)) return    // a malformed workspace can name a cycle; do not follow it twice
         runCatching { PageCodec.decode(pageFile(id).readText()) }.getOrNull()?.blocks?.forEach { b ->
             when (b) {
-                is ie.napkin.supertasks.data.format.InkRef -> inkFile(b.id).delete()
+                is ie.napkin.supertasks.data.format.InkRef -> {
+                    inkFile(b.id).delete()
+                    inkCache.remove(inkFile(b.id).name)
+                }
                 is ie.napkin.supertasks.data.format.TaskRef ->
                     if (pageFile(b.id).exists()) deletePage(b.id, seen)
                 else -> Unit
@@ -165,6 +217,8 @@ class WorkspaceStore(
         }
         pageFile(id).delete()
         inkFile(id).delete()
+        pageCache.remove(pageFile(id).name)
+        inkCache.remove(inkFile(id).name)
         deleteSmartList(id)
     }
 
@@ -172,11 +226,28 @@ class WorkspaceStore(
 
     fun inkFile(id: String): File = File(pagesDir, "$id.ink")
 
-    fun readInk(id: String): List<ByteArray> =
-        inkFile(id).takeIf { it.exists() }?.let { decodeInk(it.readBytes()) }.orEmpty()
+    /**
+     * A block's strokes, cached the same way and for a sharper reason.
+     *
+     * Stroke blobs are the heaviest thing in a workspace and the least likely to change: a page of
+     * drawings is hundreds of kilobytes that a rebuild used to re-read and re-decode because someone
+     * renamed a task. The returned lists are the *same instances* while the file is unchanged, which
+     * is what lets [Indexer] notice that the ink table does not need rewriting at all.
+     */
+    fun readInk(id: String): List<ByteArray> {
+        val f = inkFile(id)
+        if (!f.exists()) {
+            inkCache.remove(f.name)
+            return emptyList()
+        }
+        val stamp = Stamp(f.lastModified(), f.length())
+        return inkCache[f.name]?.takeIf { it.stamp == stamp }?.value
+            ?: decodeInk(f.readBytes()).also { inkCache[f.name] = Cached(stamp, it) }
+    }
 
     fun writeInk(id: String, strokes: List<ByteArray>) {
         if (strokes.isEmpty()) inkFile(id).delete() else inkFile(id).writeBytesAtomically(encodeInk(strokes))
+        inkCache.remove(inkFile(id).name)
     }
 
     // ---- pomodoro ----

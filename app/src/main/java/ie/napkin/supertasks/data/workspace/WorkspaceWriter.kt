@@ -13,6 +13,8 @@ import ie.napkin.supertasks.data.format.Prose
 import ie.napkin.supertasks.data.format.TaskRef
 import ie.napkin.supertasks.data.db.SystemKey
 import ie.napkin.supertasks.data.sync.Change
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
@@ -38,6 +40,11 @@ class WorkspaceWriter(
     private val indexer: Indexer,
     private val device: String? = null,
     /**
+     * Where a deferred index rebuild runs. Null rebuilds inline after every write, which is what
+     * tests want and what any one-shot caller should get.
+     */
+    private val scope: kotlinx.coroutines.CoroutineScope? = null,
+    /**
      * Told about every write that actually happened, so something can decide when files become a
      * commit. Reported here rather than by each repository because a mutation that changed nothing
      * must not count — and this is the only place that knows whether one did.
@@ -60,6 +67,66 @@ class WorkspaceWriter(
 
     /** Rebuilds the index from disk. Returns anything the workspace could not resolve. */
     suspend fun reindex(): List<String> = indexer.rebuild(store)
+
+    private var pendingIndex: kotlinx.coroutines.Job? = null
+    private var indexOwed = false
+
+    /**
+     * Brings the index up to date after a write — at once, or after the typing stops.
+     *
+     * The file is already written by the time this runs; the index is a cache of what the files say,
+     * and rebuilding it is by far the most expensive part of a write. Measured on an S24, a workspace
+     * of thirty pages spent about 45ms of that per keystroke and one of eighty pages about 135ms,
+     * which is a keyboard the app cannot keep up with.
+     *
+     * So a plain edit defers, exactly as a burst of strokes does and for the same reason: the text
+     * being typed is already on screen from the field's own state, nothing else on screen depends on
+     * it mid-word, and a deferred rebuild can never be *wrong* — it reads the files, which are always
+     * current. The worst it can be is late.
+     *
+     * A **structural** change never defers. Creating, deleting, completing or moving a block changes
+     * what the list contains, and that list is drawn from the index — defer it and the new task does
+     * not appear until the timer fires.
+     */
+    private suspend fun refreshIndex(change: Change) {
+        val scope = scope
+        if (scope == null || change != Change.EDIT) {
+            pendingIndex?.cancel()
+            pendingIndex = null
+            indexOwed = false
+            indexer.rebuild(store)
+            return
+        }
+        indexOwed = true
+        pendingIndex?.cancel()
+        pendingIndex = scope.launch {
+            delay(INDEX_QUIET_MS)
+            // Fresh acquisition: the caller is holding the mutex right now and will release it long
+            // before this runs.
+            mutex.withLock {
+                if (indexOwed) {
+                    indexer.rebuild(store)
+                    indexOwed = false
+                }
+            }
+        }
+    }
+
+    /**
+     * Rebuilds anything a deferred edit still owes, now.
+     *
+     * For leaving the app: the files are safe either way, but coming back to an index that is one
+     * edit behind would show the old title until something else happened to trigger a rebuild.
+     */
+    suspend fun flushIndex() {
+        pendingIndex?.cancel()
+        mutex.withLock {
+            if (indexOwed) {
+                indexer.rebuild(store)
+                indexOwed = false
+            }
+        }
+    }
 
     // ---- pages ----
 
@@ -86,13 +153,13 @@ class WorkspaceWriter(
         if (next.copy(modifiedAt = page.modifiedAt, device = page.device) == page) return
 
         store.writePage(next.copy(modifiedAt = Instant.ofEpochMilli(now()), device = device))
-        indexer.rebuild(store)
+        refreshIndex(change)
         onChange(change)
     }
 
-    private fun loadPage(pageId: String): PageDoc? =
-        store.pageFile(pageId).takeIf { it.exists() }
-            ?.let { ie.napkin.supertasks.data.format.PageCodec.decode(it.readText()) }
+    // Through the store's cache rather than straight off disk: every write loads the page it is
+    // about, and the rebuild that follows immediately parses the same file again.
+    private fun loadPage(pageId: String): PageDoc? = store.readPage(pageId)
 
     /** A page with no parent: a list, a group, a smart list. Its title lives in its own frontmatter. */
     suspend fun createTopLevel(type: String, title: String?, systemKey: String? = null): String =
@@ -104,7 +171,7 @@ class WorkspaceWriter(
                     modifiedAt = Instant.ofEpochMilli(now()), device = device, blocks = emptyList(),
                 )
             )
-            indexer.rebuild(store)
+            refreshIndex(Change.STRUCTURAL)
             onChange(Change.STRUCTURAL)
             id
         }
@@ -158,7 +225,7 @@ class WorkspaceWriter(
         if (afterId != null && at >= 0) blocks.add(at + 1, block) else blocks += block
 
         store.writePage(page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device))
-        indexer.rebuild(store)
+        refreshIndex(Change.STRUCTURAL)
         onChange(Change.STRUCTURAL)
         if (id.isNotEmpty()) id else PageMapper.blockId(pageId, blocks.indexOf(block))
     }
@@ -216,7 +283,7 @@ class WorkspaceWriter(
         mutex.withLock {
             store.deletePage(nodeId)
             store.inkFile(nodeId).delete()
-            indexer.rebuild(store)
+            refreshIndex(Change.STRUCTURAL)
             onChange(Change.STRUCTURAL)
         }
     }
@@ -251,7 +318,7 @@ class WorkspaceWriter(
         page?.let {
             store.writePage(it.copy(parent = newParent, modifiedAt = Instant.ofEpochMilli(now()), device = device))
         }
-        indexer.rebuild(store)
+        refreshIndex(Change.STRUCTURAL)
         onChange(Change.STRUCTURAL)
     }
 
@@ -337,14 +404,16 @@ class WorkspaceWriter(
                 )
             )
             store.writeSmartList(def.copy(nodeId = id))
-            indexer.rebuild(store)
+            refreshIndex(Change.STRUCTURAL)
             onChange(Change.STRUCTURAL)
             id
         }
 
     suspend fun updateSmartList(def: SmartListDef) = mutex.withLock {
         store.writeSmartList(def)
-        indexer.rebuild(store)
+        // Not deferred despite being an edit: changing a rule changes which tasks a list contains,
+        // and that list is drawn from the index.
+        refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
     }
 
@@ -352,14 +421,16 @@ class WorkspaceWriter(
     suspend fun upsertLabel(label: LabelDef) = mutex.withLock {
         val kept = store.readLabels().filterNot { it.id == label.id }
         store.writeLabels(kept + label)
-        indexer.rebuild(store)
+        // A renamed or recoloured label is visible on every chip carrying it; deferring would leave
+        // the old colour on screen for no reason anyone could see.
+        refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
     }
 
     /** One line, appended. Never rewritten — that is what keeps two offline devices from colliding. */
     suspend fun appendPomodoro(line: String, month: String) = mutex.withLock {
         store.appendPomodoro(line, month)
-        indexer.rebuild(store)
+        refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
     }
 
@@ -374,7 +445,7 @@ class WorkspaceWriter(
      */
     suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
         store.writeInk(nodeId, strokes)
-        indexer.rebuild(store)
+        refreshIndex(Change.INK)
         onChange(Change.INK)
     }
 
@@ -400,4 +471,17 @@ class WorkspaceWriter(
             is InkRef -> b.id
             else -> PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b))
         }
+
+    private companion object {
+        /**
+         * How long typing has to stop before the index catches up.
+         *
+         * Long enough to swallow a burst at any plausible typing speed, short enough that stepping
+         * back to a list right after typing does not show the old title for a visible beat. This is
+         * not the commit cadence — [ie.napkin.supertasks.data.sync.CommitPolicy] measures that in
+         * seconds, because a commit is a much larger thing than refreshing a cache.
+         */
+        const val INDEX_QUIET_MS = 200L
+    }
+
 }
