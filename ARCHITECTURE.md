@@ -192,9 +192,11 @@ The index is refreshed after the file, never before, so nothing can be in Room t
 
 ## 4. Audit — where the code diverges
 
-Ranked by how much the divergence costs, not by how hard it is to fix.
+Ranked by how much the divergence costs, not by how hard it is to fix. Status appended after each
+heading; the detail below every one is the finding as first written, kept so the reasoning survives
+the fix.
 
-### A. Images are not in the workspace — breaks **L1**, and the notes promise
+### A. Images are not in the workspace — breaks **L1**, and the notes promise · **DONE**
 
 An image block stores a `content://` URI as its payload. A persistable permission is taken, so it
 survives a reboot *on that device*, and the bytes are never copied anywhere.
@@ -210,7 +212,7 @@ have opposite storage philosophies, and the one the user named first is the brok
 > Fix: copy the bytes into the workspace on pick (`pages/<id>.img`, or an `assets/` directory),
 > reference relatively, and let git carry them. Around a day, plus a decision about large files.
 
-### B. There is no archive — the working set grows forever
+### B. There is no archive — the working set grows forever · **PART DONE**
 
 "A few hundred **active** tasks" implies a boundary between active and finished-long-ago. Nothing in
 the app draws one. A completed task stays in its page, is re-read on every index rebuild, and is
@@ -219,11 +221,16 @@ re-inserted into Room forever. Deletion is the only removal and it is destructiv
 This is the one finding that is not a bug today and is certain to become one: the indexing work done
 this session is measured against the *whole* workspace, so a year of use degrades the core loop.
 
-> Fix: an archive concept in the format (a `pages/archive/` directory, or a per-page `archived_at`),
-> excluded from the index by default and from Today always. Needs a product decision first: is
-> archiving automatic after N days, manual, or per-list?
+> Done: `archiveFinished(before)` moves a finished task's line to `archive/<pageId>.md` and its page
+> to `archive/pages/`, out of the index and still in the repo; `restoreArchived` brings it back whole.
+> Its prerequisite turned out to be missing entirely — nothing recorded *when* a task was finished, so
+> a `done:` token was added to the line format.
+>
+> **Not done: the trigger.** No threshold setting, no view of what is archived, no periodic sweep.
+> Deliberate — an automatic move with nowhere to see it and no undo is the one version of this that
+> could lose someone's work. See §6.
 
-### C. No share target — the cheapest capture path is missing
+### C. No share target — the cheapest capture path is missing · **DONE**
 
 The stated requirement is that adding a link or a picture is as easy as adding a task. The manifest
 has no `ACTION_SEND` filter, so the ordinary way anyone captures a link — share sheet, from the
@@ -234,7 +241,7 @@ This is the largest gap against the core loop and among the smallest to close.
 > Fix: a share-target activity reusing `QuickAddActivity`'s path. Text becomes a task or a note;
 > an image becomes an image block, once (A) gives images somewhere to live.
 
-### D. Property definitions are wiped globally — a real bug
+### D. Property definitions are wiped globally — a real bug · **DONE**
 
 `PropertyDao.clearDefs()` is `DELETE FROM property_def` with no workspace filter, while every other
 clear in `Indexer.apply` is scoped. Rebuilding one workspace's index empties the property registry
@@ -243,14 +250,14 @@ currently scaffolds the same built-ins.
 
 > Fix: scope the table, or accept that defs are global and stop rewriting them per workspace. An hour.
 
-### E. Sync got the investment; the core loop got less
+### E. Sync got the investment; the core loop got less · **NOTED, NO ACTION**
 
 Not an architectural fault — the boundary is clean, and `L4` holds: `data/sync` is reached only
 through `onChange`, and the UI touches it in two setup screens. Worth stating plainly anyway, since
 it is the thing this session was mostly spent on and it is, by the product's own priority ordering,
 fourth. Recorded so the next weeks go elsewhere.
 
-### F. The UI is shaped by the index — tension with **L2**, but leave it
+### F. The UI is shaped by the index — tension with **L2**, but leave it · **DECIDED: LEAVE**
 
 `ui/` imports `data.db` 47 times: screens read Room entities directly. Strictly, a disposable cache
 should not also be the app's model. In practice the entities *are* a faithful projection of the file
@@ -276,7 +283,7 @@ Worth saying, because most of it is:
 
 ---
 
-### G. Focus is measured in pomodoros, not time — see §2a
+### G. Focus is measured in pomodoros, not time — see §2a · **DONE, EXCEPT THE RENAME**
 
 Ranked here rather than in §2a because it is a divergence like the others: the ledger counts fixed
 units and sums nothing, which is correct only while every session is the same length. Settled in
@@ -374,21 +381,40 @@ never a way to lose the capture.
 
 ## 6. Still open
 
-**Archiving has a data layer and no trigger.** `archiveFinished(before)` and `restoreArchived` exist,
-are tested, and move nothing on their own. Deliberately: an automatic sweep with no screen to see it
-on and no button to undo it would move a user's finished work out of sight with no way to find out
-where it went. What remains is a threshold setting, a place to see what is archived, and the periodic
-call — in that order, because each one makes the next safe.
+**The archive trigger.** The data layer is done, tested and reversible; nothing calls it. What
+remains, in an order where each step makes the next safe: a threshold setting, a place to see what is
+archived, then the periodic sweep. Automating a move before there is any way to see or undo it is the
+one version of this that could lose work.
 
-Its prerequisite is now in place and was missing all along: **nothing recorded when a task was
-finished.** The format has `[x]` and had no date, so "done for thirty days" was unanswerable and a
-task completed this morning was indistinguishable from one completed last year. A `done:` token is
-stamped on completion and cleared on reopening. A task finished before the token existed has no date
-and is never archived — unknown age is not the same as old.
+**`Pomodoro` is still the name in the data layer** while the UI has said `Focus` for a long time
+(§2a). Nineteen files, a table, a directory in the file format and four widget classes — worth doing,
+and worth doing when it is the only thing in flight rather than alongside behaviour changes.
 
-Two smaller things:
+**Ink's preset palette** still hardcodes a copy of coral that will not follow the accent (§4b).
 
-- Ink's preset palette still hardcodes a copy of coral that will not follow the accent (§4b).
-- `Pomodoro` is still the name in the data layer while the UI says `Focus` (§2a). A rename touches a
-  table, a directory in the file format and four widget classes; worth doing, and worth doing when it
-  is the only thing in flight.
+## 7. Added since, and not from the audit
+
+Two things landed that no finding asked for, and both are architecture rather than features.
+
+**A task records when it was finished.** The format had `[x]` and no date, so "done for thirty days"
+was unanswerable and a task completed this morning was indistinguishable from one completed last
+year. Archiving needed it; nothing else had ever asked.
+
+**Typing carries its own meaning.** `buy milk tomorrow 6pm #home !high` is one line and four
+decisions where the alternative was a task plus four taps, which is the capture loop the app exists
+for. Deterministic — a fixed grammar, no model, no service — so it works offline, identically,
+forever, and cannot invent a date.
+
+Three rules keep it honest, and they are the interesting part:
+
+- **Nothing is consumed silently.** Every match is tinted in place as you type, which is why the
+  parser returns positions and not just values. A label is tinted the colour it is *about to become*,
+  resolved through the same function the chips use so the preview cannot drift from the chip.
+- **A token is never the whole title.** "Today" is a task called Today, not an empty task due today.
+- **`#label` and `!priority` are the file format's own syntax** for those fields, so what you type is
+  what the file says.
+
+One path — `captureTask` — so the quick-add bar, the create sheet, smart lists and the widget cannot
+disagree about what "tomorrow" means. The share target deliberately does *not* parse: what arrives
+there was written by a web page, and a headline like "10 things to do today" must not lose its last
+word and acquire a due date. Parsing is for what a person typed.
