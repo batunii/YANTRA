@@ -76,6 +76,15 @@ interface NodeDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(node: NodeEntity)
 
+    // ---- index rebuild. The rows are derived from files, so replacing them wholesale is not
+    // destructive; it is the only way to be sure the index says exactly what the workspace says.
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(nodes: List<NodeEntity>)
+
+    @Query("DELETE FROM node")
+    suspend fun clearNodes()
+
     @Update
     suspend fun update(node: NodeEntity)
 
@@ -261,6 +270,18 @@ interface PropertyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertValue(value: PropertyValueEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertValues(values: List<PropertyValueEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDefs(defs: List<PropertyDefEntity>)
+
+    @Query("DELETE FROM property_value")
+    suspend fun clearValues()
+
+    @Query("DELETE FROM property_def")
+    suspend fun clearDefs()
+
     @Query("DELETE FROM property_value WHERE node_id = :nodeId AND def_id = :defId")
     suspend fun deleteValue(nodeId: String, defId: String)
 }
@@ -314,6 +335,12 @@ interface SmartListDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(def: SmartListDefEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(defs: List<SmartListDefEntity>)
+
+    @Query("DELETE FROM smart_list_def")
+    suspend fun clearSmartLists()
 }
 
 @Dao
@@ -351,6 +378,18 @@ interface LabelDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun attach(nodeLabel: NodeLabelEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(labels: List<LabelEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun attachAll(links: List<NodeLabelEntity>)
+
+    @Query("DELETE FROM label")
+    suspend fun clearLabels()
+
+    @Query("DELETE FROM node_label")
+    suspend fun clearNodeLabels()
+
     @Query("DELETE FROM node_label WHERE node_id = :nodeId AND label_id = :labelId")
     suspend fun detach(nodeId: String, labelId: String)
 
@@ -381,6 +420,12 @@ interface InkDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(stroke: InkStrokeEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(strokes: List<InkStrokeEntity>)
+
+    @Query("DELETE FROM ink_stroke")
+    suspend fun clearStrokes()
 
     @Query(
         """

@@ -1,0 +1,249 @@
+package ie.napkin.supertasks.data.workspace
+
+import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.db.NodeType
+import ie.napkin.supertasks.data.format.Block
+import ie.napkin.supertasks.data.format.Bullet
+import ie.napkin.supertasks.data.format.Heading
+import ie.napkin.supertasks.data.format.ImageRef
+import ie.napkin.supertasks.data.format.InkRef
+import ie.napkin.supertasks.data.format.Numbered
+import ie.napkin.supertasks.data.format.PageDoc
+import ie.napkin.supertasks.data.format.Prose
+import ie.napkin.supertasks.data.format.TaskRef
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * Every write the app makes, expressed as a change to a file.
+ *
+ * This is where the inversion actually happens. The repositories used to hand a row to Room and be
+ * done; now they hand a transformation to this, which rewrites the page it belongs to and then
+ * rebuilds the index from what is on disk. The order is the point — **the file changes first, and
+ * Room only ever learns what the files already say.** Nothing can end up in the index that is not in
+ * the repo, so nothing can be lost by throwing the index away.
+ *
+ * Almost every mutation turns out to touch exactly one file: the page holding the line. A task's
+ * title, its status, its indent, its position, its due date, its labels — all of those live on the
+ * line, so changing any of them rewrites the parent's page and nothing else. Only creating,
+ * deleting and re-homing touch two.
+ */
+class WorkspaceWriter(
+    private val store: WorkspaceStore,
+    private val db: AppDatabase,
+    private val indexer: Indexer,
+    private val device: String? = null,
+) {
+    /**
+     * One writer at a time.
+     *
+     * Read-modify-write on a whole file has no smaller unit to be atomic at: two coroutines editing
+     * different tasks on the same page would each load it, apply their own change, and write it
+     * back, and whichever finished second would erase the other. The UI is happy to fire several
+     * of these at once — a rename racing an indent change is ordinary.
+     */
+    private val mutex = Mutex()
+
+    private fun now() = System.currentTimeMillis()
+
+    private fun newId(): String = UUID.randomUUID().toString()
+
+    /** Rebuilds the index from disk. Returns anything the workspace could not resolve. */
+    suspend fun reindex(): List<String> = indexer.rebuild(store)
+
+    // ---- pages ----
+
+    /**
+     * Loads a page, applies [transform], writes it back, and reindexes.
+     *
+     * [PageDoc.modifiedAt] is stamped here rather than by callers, so the LWW clock cannot be
+     * forgotten by whichever mutation is added next. It is the field the conflict resolver reads,
+     * and a page that lies about when it changed loses arbitrations it should win.
+     */
+    suspend fun editPage(pageId: String, transform: (PageDoc) -> PageDoc): Unit = mutex.withLock {
+        val page = loadPage(pageId) ?: return
+        store.writePage(
+            transform(page).copy(modifiedAt = Instant.ofEpochMilli(now()), device = device)
+        )
+        indexer.rebuild(store)
+    }
+
+    private fun loadPage(pageId: String): PageDoc? =
+        store.pageFile(pageId).takeIf { it.exists() }
+            ?.let { ie.napkin.supertasks.data.format.PageCodec.decode(it.readText()) }
+
+    /** A page with no parent: a list, a group, a smart list. Its title lives in its own frontmatter. */
+    suspend fun createTopLevel(type: String, title: String?, systemKey: String? = null): String =
+        mutex.withLock {
+            val id = newId()
+            store.writePage(
+                PageDoc(
+                    id = id, type = type, parent = null, title = title, systemKey = systemKey,
+                    modifiedAt = Instant.ofEpochMilli(now()), device = device, blocks = emptyList(),
+                )
+            )
+            indexer.rebuild(store)
+            id
+        }
+
+    /**
+     * Makes sure a task has a page of its own, because it is about to hold something.
+     *
+     * A task with nothing under it is only a line; giving every one a file would fill the repo with
+     * empty documents and make every clone slower for nothing. The file appears the moment there is
+     * something to put in it.
+     */
+    private fun ensurePage(id: String, parent: String) {
+        if (store.pageFile(id).exists()) return
+        store.writePage(
+            PageDoc(
+                id = id, type = NodeType.TASK, parent = parent, title = null,
+                modifiedAt = Instant.ofEpochMilli(now()), device = device, blocks = emptyList(),
+            )
+        )
+    }
+
+    // ---- blocks on a page ----
+
+    /**
+     * Adds a block to [pageId], after [afterId] or at the end.
+     *
+     * Returns the new block's id. For anything that is not a task the id is positional and will be
+     * regenerated by the next reindex — see [PageMapper.blockId] — so it is only good for the call
+     * that made it.
+     */
+    suspend fun addBlock(
+        pageId: String,
+        type: String,
+        title: String?,
+        afterId: String? = null,
+        indent: Int = 0,
+    ): String = mutex.withLock {
+        val id = if (type == NodeType.TASK || type == NodeType.INK) newId() else ""
+        val page = loadPage(pageId) ?: return@withLock ""
+        val block = blockOf(type, id, title.orEmpty(), indent)
+        val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
+        val blocks = page.blocks.toMutableList()
+        if (afterId != null && at >= 0) blocks.add(at + 1, block) else blocks += block
+
+        store.writePage(page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device))
+        indexer.rebuild(store)
+        if (id.isNotEmpty()) id else PageMapper.blockId(pageId, blocks.indexOf(block))
+    }
+
+    /** Applies [transform] to whichever block on whichever page carries [nodeId]. */
+    suspend fun editBlock(nodeId: String, transform: (Block) -> Block) {
+        val home = homePageOf(nodeId) ?: return
+        editPage(home) { page ->
+            page.copy(
+                blocks = page.blocks.mapIndexed { i, b ->
+                    if (blockIdOf(b, page.id, page.blocks, i) == nodeId) transform(b) else b
+                }
+            )
+        }
+    }
+
+    /** [transform] applied only if the block is a task line; other kinds are left alone. */
+    suspend fun editTask(nodeId: String, transform: (TaskRef) -> TaskRef) =
+        editBlock(nodeId) { if (it is TaskRef) transform(it) else it }
+
+    /** Moves a block to [toIndex] among its siblings, which is what reordering *is* in this format. */
+    suspend fun moveBlock(nodeId: String, toIndex: Int) {
+        val home = homePageOf(nodeId) ?: return
+        editPage(home) { page ->
+            val from = page.blocks.indexOfFirst { i -> blockIdOf(i, page.id, page.blocks) == nodeId }
+            if (from < 0) return@editPage page
+            val blocks = page.blocks.toMutableList()
+            val moved = blocks.removeAt(from)
+            blocks.add(toIndex.coerceIn(0, blocks.size), moved)
+            page.copy(blocks = blocks)
+        }
+    }
+
+    /**
+     * Removes a block, and the page and sidecars it owned.
+     *
+     * The line goes first and the files second, so a crash between the two leaves an orphaned page
+     * — which the reconciler reports — rather than a line pointing at nothing, which would render
+     * as a task whose page opens empty.
+     */
+    suspend fun removeBlock(nodeId: String) {
+        val home = homePageOf(nodeId) ?: return
+        editPage(home) { page ->
+            page.copy(blocks = page.blocks.filterIndexed { i, b ->
+                blockIdOf(b, page.id, page.blocks, i) != nodeId
+            })
+        }
+        mutex.withLock {
+            store.deletePage(nodeId)
+            store.inkFile(nodeId).delete()
+            indexer.rebuild(store)
+        }
+    }
+
+    /** Re-homes a page: its own frontmatter moves, and so does the line that points at it. */
+    suspend fun reparent(nodeId: String, newParent: String?) = mutex.withLock {
+        val old = homePageOf(nodeId)
+        val page = loadPage(nodeId)
+        var line: Block? = null
+
+        if (old != null) {
+            loadPage(old)?.let { p ->
+                line = p.blocks.firstOrNull { blockIdOf(it, p.id, p.blocks) == nodeId }
+                store.writePage(
+                    p.copy(
+                        blocks = p.blocks.filterNot { blockIdOf(it, p.id, p.blocks) == nodeId },
+                        modifiedAt = Instant.ofEpochMilli(now()), device = device,
+                    )
+                )
+            }
+        }
+        if (newParent != null) {
+            // The new home may be a task that has never held anything and so has no file yet.
+            db.nodeDao().byId(newParent)?.parentId?.let { ensurePage(newParent, it) }
+            loadPage(newParent)?.let { p ->
+                val moved = line ?: TaskRef(id = nodeId, title = "")
+                store.writePage(
+                    p.copy(blocks = p.blocks + moved, modifiedAt = Instant.ofEpochMilli(now()), device = device)
+                )
+            }
+        }
+        page?.let {
+            store.writePage(it.copy(parent = newParent, modifiedAt = Instant.ofEpochMilli(now()), device = device))
+        }
+        indexer.rebuild(store)
+    }
+
+    // ---- ink ----
+
+    /** Replaces an ink block's strokes wholesale. Sidecars are never merged — see the plan. */
+    suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
+        store.writeInk(nodeId, strokes)
+        indexer.rebuild(store)
+    }
+
+    // ---- helpers ----
+
+    /** Which page holds this node's line. The index is a fine lookup even though files are truth. */
+    private suspend fun homePageOf(nodeId: String): String? =
+        db.nodeDao().byId(nodeId)?.parentId
+
+    private fun blockOf(type: String, id: String, text: String, indent: Int): Block = when (type) {
+        NodeType.TASK -> TaskRef(id = id, title = text, indent = indent)
+        NodeType.HEADING -> Heading(text, indent)
+        NodeType.BULLET -> Bullet(text, indent)
+        NodeType.NUMBERED -> Numbered(text, indent)
+        NodeType.INK -> InkRef(id, indent)
+        NodeType.IMAGE -> ImageRef(text, indent)
+        else -> Prose(text, indent)
+    }
+
+    private fun blockIdOf(b: Block, pageId: String, all: List<Block>, index: Int = -1): String =
+        when (b) {
+            is TaskRef -> b.id.ifEmpty { PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b)) }
+            is InkRef -> b.id
+            else -> PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b))
+        }
+}
