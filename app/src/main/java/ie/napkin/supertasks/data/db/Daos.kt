@@ -321,14 +321,88 @@ interface PomodoroDao {
     @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC LIMIT 1")
     suspend fun lastSession(): PomodoroSessionEntity?
 
-    /** Completed-session counts per node — the little tomato badges on task rows. */
+    /**
+     * Time and sessions per node — what a task row shows.
+     *
+     * Every session counts, which is the change. `WHERE completed = 1` was correct only while every
+     * session was the same length: it discarded the interrupted ones, and once a stopwatch exists a
+     * *count* is not a measure of anything — three four-minute sessions would outrank one deliberate
+     * ninety-minute block.
+     */
     @Query(
         """
         SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
-          FROM pomodoro_session WHERE completed = 1 GROUP BY node_id
+          FROM pomodoro_session GROUP BY node_id
         """
     )
-    fun completedCounts(): Flow<List<NodePomoCount>>
+    fun perNode(): Flow<List<NodePomoCount>>
+
+    /**
+     * Everything given to one task, **including its subtasks**.
+     *
+     * A subtask's `parent_id` is its parent task's id, so this walks down the tree from [nodeId] and
+     * sums what it finds. A parent reading zero while its children read hours would look broken.
+     *
+     * Never add these across tasks: the same session belongs to every ancestor, so a total built by
+     * summing rollups counts most of its minutes several times. Totals go to [totalBetween].
+     */
+    @Query(
+        """
+        WITH RECURSIVE subtree(id) AS (
+            SELECT :nodeId
+            UNION
+            SELECT n.id FROM node n JOIN subtree s ON n.parent_id = s.id
+        )
+        SELECT COALESCE(SUM(p.actual_secs), 0) FROM pomodoro_session p
+         WHERE p.node_id IN (SELECT id FROM subtree)
+        """
+    )
+    fun secondsOnSubtree(nodeId: String): Flow<Int>
+
+    /** Everything given in a window, counted once — the honest total. */
+    @Query(
+        """
+        SELECT COALESCE(SUM(actual_secs), 0) FROM pomodoro_session
+         WHERE started_at >= :from AND started_at < :to
+        """
+    )
+    fun totalBetween(from: Long, to: Long): Flow<Int>
+
+    /** The same, for one workspace. */
+    @Query(
+        """
+        SELECT COALESCE(SUM(actual_secs), 0) FROM pomodoro_session
+         WHERE workspace_id = :ws AND started_at >= :from AND started_at < :to
+        """
+    )
+    fun totalBetweenIn(ws: String, from: Long, to: Long): Flow<Int>
+
+    /**
+     * Time in a window, per task, for a set of tasks the caller has already chosen.
+     *
+     * The set comes from the filter language the smart lists compile — labels, workspace, priority,
+     * anything expressible as a smart list — so a focus report is a task query plus a window plus a
+     * sum, and there is no second query language to learn or maintain.
+     */
+    @Query(
+        """
+        SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
+          FROM pomodoro_session
+         WHERE node_id IN (:nodeIds) AND started_at >= :from AND started_at < :to
+         GROUP BY node_id
+        """
+    )
+    fun perNodeBetween(nodeIds: List<String>, from: Long, to: Long): Flow<List<NodePomoCount>>
+
+    /** Sessions in a window, newest first — the history view. */
+    @Query(
+        """
+        SELECT * FROM pomodoro_session
+         WHERE started_at >= :from AND started_at < :to
+         ORDER BY started_at DESC
+        """
+    )
+    fun between(from: Long, to: Long): Flow<List<PomodoroSessionEntity>>
 }
 
 @Dao

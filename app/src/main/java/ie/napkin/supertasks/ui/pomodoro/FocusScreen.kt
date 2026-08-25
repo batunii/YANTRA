@@ -113,7 +113,10 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
     // first ring always arrive together and an abandoned session leaves no trace.
     val dayCounts = remember(sessions) {
         groupSessionsByDay(
-            sessions.filter { it.completed }.map { java.time.Instant.ofEpochMilli(it.startedAt) }
+            // Every session that happened, not only the ones that ran their course — the point of
+            // the ledger is time given, and an interrupted hour is still an hour.
+            sessions.filter { it.actualSecs != null }
+                .map { java.time.Instant.ofEpochMilli(it.startedAt) }
         )
     }
     val active = timerState
@@ -152,7 +155,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                     dayCounts = dayCounts,
                     onPause = vm.timer::pause,
                     onResume = vm.timer::resume,
-                    onComplete = vm.timer::completeEarly,
+                    onComplete = vm.timer::finish,
                     onAbandon = vm.timer::abandon,
                 )
                 requestedNode != null -> IdleScroll(sessions) {
@@ -435,8 +438,9 @@ private fun SessionRow(s: PomodoroSessionEntity) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (s.completed) {
-            Icon(Icons.Default.Timer, contentDescription = "Completed", tint = y.accent, modifier = Modifier.size(16.dp))
+        // A filled mark for a promise kept; an open one for time given without one. Both are time.
+        if (ie.napkin.supertasks.data.db.FocusOutcome.keptItsPromise(s.outcome, s.plannedSecs)) {
+            Icon(Icons.Default.Timer, contentDescription = "Ran its course", tint = y.accent, modifier = Modifier.size(16.dp))
         } else {
             Text("◌", fontSize = 16.sp, color = y.textDim)
         }
@@ -448,9 +452,19 @@ private fun SessionRow(s: PomodoroSessionEntity) {
                 color = y.textPrimary,
             )
             Text(
-                if (s.endedAt == null) "In progress"
-                else if (s.completed) "Completed · ${durationLabel(s.actualSecs ?: 0)}"
-                else "Abandoned · ${durationLabel(s.actualSecs ?: 0)}",
+                when {
+                    s.endedAt == null -> "In progress"
+                    else -> {
+                        val how = when (s.outcome) {
+                            ie.napkin.supertasks.data.db.FocusOutcome.RAN_OUT -> "Ran its course"
+                            ie.napkin.supertasks.data.db.FocusOutcome.STOPPED ->
+                                if (s.plannedSecs > 0) "Stopped early" else "Stopped"
+                            ie.napkin.supertasks.data.db.FocusOutcome.LOST -> "Ended by itself"
+                            else -> "Interrupted"
+                        }
+                        "$how · ${durationLabel(s.actualSecs ?: 0)}"
+                    }
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = y.textMuted,
             )

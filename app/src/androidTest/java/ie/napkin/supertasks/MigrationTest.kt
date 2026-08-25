@@ -14,6 +14,7 @@ import ie.napkin.supertasks.data.db.MIGRATION_5_6
 import ie.napkin.supertasks.data.db.MIGRATION_6_7
 import ie.napkin.supertasks.data.db.MIGRATION_7_8
 import ie.napkin.supertasks.data.db.MIGRATION_8_9
+import ie.napkin.supertasks.data.db.MIGRATION_9_10
 import ie.napkin.supertasks.data.label.LabelPalette
 import ie.napkin.supertasks.data.db.SystemKey
 import org.junit.Assert.assertEquals
@@ -40,7 +41,7 @@ class MigrationTest {
 
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-        MIGRATION_7_8, MIGRATION_8_9,
+        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
     )
 
     @get:Rule
@@ -53,7 +54,7 @@ class MigrationTest {
 
     private companion object {
         const val DB = "migration-test.db"
-        const val LATEST = 9
+        const val LATEST = 10
     }
 
     private fun SupportSQLiteDatabase.scalar(sql: String): String? =
@@ -365,6 +366,26 @@ class MigrationTest {
                     "VALUES ('inbox-2', NULL, 'list', 'Inbox', 'j', 0, 0, 0, 0, 'inbox', 300, 300)"
             )
             assertTrue(db.count("SELECT COUNT(*) FROM node WHERE system_key = 'inbox'") == 1)
+        }
+    }
+
+    @Test
+    fun v10RecordsHowASessionEndedAndForgetsTheOldBoolean() {
+        helper.createDatabase(DB, 9).use { db ->
+            db.execSQL("INSERT INTO node (id, type, rank, done, in_progress, indent, collapsed, created_at, updated_at, workspace_id) VALUES ('n1','task','a',0,0,0,0,1,1,'')")
+            db.execSQL(
+                "INSERT INTO pomodoro_session (id, node_id, started_at, ended_at, planned_secs, actual_secs, completed, created_at, updated_at, workspace_id) " +
+                    "VALUES ('s1','n1',1000,2000,1500,1500,1,1000,2000,'')"
+            )
+        }
+
+        helper.runMigrationsAndValidate(DB, 10, true, MIGRATION_9_10).use { db ->
+            // The table is derived from pomodoro/*.log inside the workspace, so recreating it loses
+            // nothing that the next index rebuild does not put straight back. What matters is that
+            // the new shape validates against the exported schema.
+            db.query("SELECT outcome FROM pomodoro_session").use { c ->
+                assertEquals(0, c.count)
+            }
         }
     }
 }

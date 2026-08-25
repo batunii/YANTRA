@@ -86,7 +86,7 @@ class SmartListViewModel(
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val pomoCounts: StateFlow<Map<String, Int>> =
-        container.pomodoro.completedCounts()
+        container.pomodoro.perNode()
             .map { list -> list.associate { it.nodeId to it.count } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 

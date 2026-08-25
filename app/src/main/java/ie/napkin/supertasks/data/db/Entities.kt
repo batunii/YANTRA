@@ -150,6 +150,31 @@ data class PropertyValueEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
 
+/**
+ * How a focus session ended.
+ *
+ * A string rather than an enum because it is written to an append-only log that older builds must
+ * keep reading: an unknown value has to degrade to "some session happened", which a `when` over a
+ * sealed set could not do.
+ */
+object FocusOutcome {
+    /** A committed session that reached its target. */
+    const val RAN_OUT = "ran_out"
+
+    /** Ended deliberately — the only way an open session can finish, and a fine way to end any. */
+    const val STOPPED = "stopped"
+
+    /** Abandoned. The time still counts; you were still at the desk for it. */
+    const val INTERRUPTED = "interrupted"
+
+    /** The process died mid-session and the end had to be inferred. */
+    const val LOST = "lost"
+
+    /** True when the promise made at the start was kept, for a history that wants to show it. */
+    fun keptItsPromise(outcome: String, plannedSecs: Int): Boolean =
+        plannedSecs > 0 && outcome == RAN_OUT
+}
+
 @Entity(
     tableName = "pomodoro_session",
     foreignKeys = [
@@ -163,9 +188,17 @@ data class PomodoroSessionEntity(
     @ColumnInfo(name = "node_id") val nodeId: String,        // pomodoro is always attached to a node
     @ColumnInfo(name = "started_at") val startedAt: Long,
     @ColumnInfo(name = "ended_at") val endedAt: Long? = null,
+    /** What was committed to in advance. **Zero means open** — a stopwatch, with nothing promised. */
     @ColumnInfo(name = "planned_secs") val plannedSecs: Int,
     @ColumnInfo(name = "actual_secs") val actualSecs: Int? = null,
-    val completed: Boolean = false,                          // finished vs abandoned
+    /**
+     * How the session ended — see [FocusOutcome].
+     *
+     * Replaces a `completed` boolean, which could only ask "did it run to the end" and so had no
+     * answer at all for a stopwatch. Interrupted sessions count toward every total; the outcome is
+     * there so the history can be read honestly, not so time can be filtered out of it.
+     */
+    val outcome: String = FocusOutcome.RAN_OUT,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )

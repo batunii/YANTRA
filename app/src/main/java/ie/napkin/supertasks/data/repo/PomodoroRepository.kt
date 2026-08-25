@@ -1,6 +1,7 @@
 package ie.napkin.supertasks.data.repo
 
 import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.db.FocusOutcome
 import ie.napkin.supertasks.data.db.PomodoroSessionEntity
 import ie.napkin.supertasks.data.workspace.WorkspaceReconciler
 import ie.napkin.supertasks.data.workspace.Workspaces
@@ -25,7 +26,16 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
 
     fun forNode(nodeId: String) = dao.forNode(nodeId)
     fun all() = dao.all()
-    fun completedCounts() = dao.completedCounts()
+    fun perNode() = dao.perNode()
+
+    /** Everything given to a task and its subtasks. Never summed across tasks — see the DAO. */
+    fun secondsOnSubtree(nodeId: String) = dao.secondsOnSubtree(nodeId)
+
+    /** Everything given in a window, counted once. */
+    fun totalBetween(from: Long, to: Long) = dao.totalBetween(from, to)
+
+    /** Sessions in a window, newest first. */
+    fun between(from: Long, to: Long) = dao.between(from, to)
     suspend fun openSession() = dao.openSession()
     suspend fun lastSession() = dao.lastSession()
     suspend fun nodeTitle(nodeId: String): String? = db.nodeDao().byId(nodeId)?.title
@@ -49,9 +59,31 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
         return id
     }
 
-    suspend fun endSession(sessionId: String, actualSecs: Int, completed: Boolean) {
+    /**
+     * Closes a session and writes how it ended.
+     *
+     * **A mis-tap is dropped and nothing else is.** Under a minute without reaching a target is a
+     * timer started by accident, and nobody will ever want it back; anything longer is real, up to
+     * and including a deliberate three-minute commitment that ran its course. The threshold people
+     * usually mean by "too short to be interesting" — a few minutes — is a *display* rule and lives
+     * in the history view, because filtering at write time would bake a display decision into an
+     * append-only record and understate effort in the one direction nothing on screen would reveal.
+     * See `ARCHITECTURE.md` §2a, F2 and F3.
+     */
+    suspend fun endSession(sessionId: String, actualSecs: Int, outcome: String) {
         val session = dao.byId(sessionId) ?: return
+        if (actualSecs < MIN_KEPT_SECS && outcome != FocusOutcome.RAN_OUT) {
+            // Never started, as far as the ledger is concerned. The line already on disk is left as
+            // an open session; the next append for this id supersedes it, and nothing sums it
+            // because an unfinished session has no actual_secs.
+            return
+        }
         val ts = System.currentTimeMillis()
-        append(session.copy(endedAt = ts, actualSecs = actualSecs, completed = completed, updatedAt = ts))
+        append(session.copy(endedAt = ts, actualSecs = actualSecs, outcome = outcome, updatedAt = ts))
+    }
+
+    private companion object {
+        /** Below this, and with no promise kept, a session is a fat-fingered start. */
+        const val MIN_KEPT_SECS = 60
     }
 }

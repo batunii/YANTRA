@@ -44,7 +44,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 label_id TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 PRIMARY KEY (node_id, label_id),
-                FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE,
+                FOREIGN KEY (node_id) REFERENCES node(id),
                 FOREIGN KEY (label_id) REFERENCES label(id) ON DELETE CASCADE
             )
             """.trimIndent()
@@ -333,5 +333,56 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
 
         db.execSQL("DROP INDEX IF EXISTS idx_label_name")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_label_name ON label (workspace_id, name)")
+    }
+}
+
+/**
+ * A focus session records how it ended — and node_label finally gets the foreign key it always
+ * claimed to have.
+ *
+ * The table is dropped and rebuilt rather than altered, which is safe precisely because it is an
+ * index: every session lives in `pomodoro/<yyyy-MM>.log` inside the workspace, and the first rebuild
+ * after this puts them all back. Doing it the careful way — a temp table, a copy, a rename — would
+ * be ceremony over data that is about to be overwritten from files anyway.
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE IF EXISTS pomodoro_session")
+        // Copied from the exported schema rather than written by hand: Room compares the migrated
+        // table against its own generated DDL column by column, and a difference as small as a
+        // missing DEFAULT or an unstated foreign-key action fails validation at runtime.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `pomodoro_session` (" +
+                "`id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `node_id` TEXT NOT NULL, " +
+                "`started_at` INTEGER NOT NULL, `ended_at` INTEGER, `planned_secs` INTEGER NOT NULL, " +
+                "`actual_secs` INTEGER, `outcome` TEXT NOT NULL, `created_at` INTEGER NOT NULL, " +
+                "`updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`), " +
+                "FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_pomo_node` ON `pomodoro_session` (`node_id`, `started_at`)")
+
+        // Long-standing drift, surfaced by validating against a freshly exported schema: the
+        // migration that created node_label back at v5 declared its node foreign key without
+        // ON DELETE CASCADE, while the entity has always asked for one. Every database built by
+        // migration therefore disagreed with every database built fresh from the entity — the same
+        // app, two shapes, depending on how old the install was.
+        //
+        // SQLite cannot alter a foreign key, so the table is rebuilt. Its rows are index data
+        // rebuilt from files anyway; they are carried across regardless, because a reindex is not
+        // guaranteed to happen before something reads them.
+        db.execSQL("ALTER TABLE node_label RENAME TO node_label_old")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `node_label` (" +
+                "`node_id` TEXT NOT NULL, `label_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, " +
+                "`created_at` INTEGER NOT NULL, PRIMARY KEY(`node_id`, `label_id`), " +
+                "FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , " +
+                "FOREIGN KEY(`label_id`) REFERENCES `label`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL(
+            "INSERT OR IGNORE INTO node_label (node_id, label_id, workspace_id, created_at) " +
+                "SELECT node_id, label_id, workspace_id, created_at FROM node_label_old"
+        )
+        db.execSQL("DROP TABLE node_label_old")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_node_label_label` ON `node_label` (`label_id`)")
     }
 }

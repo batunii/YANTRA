@@ -76,7 +76,9 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
         fun dayOf(s: PomodoroSessionEntity): LocalDate =
             Instant.ofEpochMilli(s.startedAt).atZone(zone).toLocalDate()
 
-        val completed = sessions.filter { it.completed }
+        // Every session that produced time, whatever it was called at the end. Filtering on
+        // "completed" discarded the interrupted ones, which is exactly the time the ledger is for.
+        val completed = sessions.filter { it.actualSecs != null }
         val todaySessions = completed.filter { dayOf(it) == today }
         val weekStart = today.minusDays(6)
 

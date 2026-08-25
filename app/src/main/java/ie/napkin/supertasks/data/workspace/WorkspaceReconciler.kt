@@ -4,6 +4,7 @@ import ie.napkin.supertasks.data.db.InkStrokeEntity
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeLabelEntity
+import ie.napkin.supertasks.data.db.FocusOutcome
 import ie.napkin.supertasks.data.db.PomodoroSessionEntity
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyValueEntity
@@ -177,7 +178,12 @@ object WorkspaceReconciler {
         PomodoroSessionEntity(
             id = f[0], workspaceId = ws, nodeId = nodeId, startedAt = started,
             endedAt = f[3].toLongOrNull(), plannedSecs = f[4].toIntOrNull() ?: 0,
-            actualSecs = f[5].toIntOrNull(), completed = f[6] == "1",
+            actualSecs = f[5].toIntOrNull(),
+            // Field 8 is new. A line written by an older build has only the boolean, so it is read
+            // the way that build meant it: finished means the target was reached, and anything else
+            // is a session that stopped — which is true, and is all the old field ever knew.
+            outcome = f.getOrNull(7)?.takeIf { it.isNotEmpty() }
+                ?: if (f[6] == "1") FocusOutcome.RAN_OUT else FocusOutcome.STOPPED,
             createdAt = started, updatedAt = f[3].toLongOrNull() ?: started,
         )
     }
@@ -188,7 +194,11 @@ object WorkspaceReconciler {
     /** The inverse of [readSessions]; the writer appends whatever this returns. */
     fun sessionLine(s: PomodoroSessionEntity): String = listOf(
         s.id, s.nodeId, s.startedAt, s.endedAt ?: "", s.plannedSecs,
-        s.actualSecs ?: "", if (s.completed) "1" else "0",
+        s.actualSecs ?: "",
+        // The old boolean, still written, so a build from before the outcome existed keeps reading
+        // these lines correctly rather than skipping them.
+        if (s.outcome == FocusOutcome.RAN_OUT) "1" else "0",
+        s.outcome,
     ).joinToString("\t")
 
     private fun strokesFor(
