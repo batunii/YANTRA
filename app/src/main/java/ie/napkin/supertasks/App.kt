@@ -10,7 +10,9 @@ import ie.napkin.supertasks.data.repo.NodeRepository
 import ie.napkin.supertasks.data.repo.PomodoroRepository
 import ie.napkin.supertasks.data.repo.PropertyRepository
 import ie.napkin.supertasks.data.repo.SmartListRepository
-import ie.napkin.supertasks.data.seed.Seeder
+import ie.napkin.supertasks.data.seed.WorkspaceSeeder
+import ie.napkin.supertasks.data.workspace.Indexer
+import ie.napkin.supertasks.data.workspace.Workspaces
 import ie.napkin.supertasks.domain.PomodoroTimer
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
@@ -52,21 +54,41 @@ class AppContainer(app: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val db: AppDatabase = AppDatabase.build(app)
-    val nodes = NodeRepository(db)
-    val properties = PropertyRepository(db)
-    val labels = LabelRepository(db)
-    val smartLists = SmartListRepository(db)
-    val pomodoro = PomodoroRepository(db)
-    val ink = InkRepository(db)
+
+    /**
+     * The workspaces the app has open, and the writer for each.
+     *
+     * Files are the source of truth and Room is an index rebuilt from them, so everything below
+     * reads from [db] and writes through here. The local workspace has the empty id — it is the one
+     * that existed before any repo was attached, and the one rows migrated from v9 belong to.
+     */
+    val workspaces = Workspaces(db, Indexer(db), android.os.Build.MODEL?.lowercase())
+
+    val nodes = NodeRepository(db, workspaces)
+    val properties = PropertyRepository(db, workspaces)
+    val labels = LabelRepository(db, workspaces)
+    val smartLists = SmartListRepository(db, workspaces)
+    val pomodoro = PomodoroRepository(db, workspaces)
+    val ink = InkRepository(db, workspaces)
     val timer = PomodoroTimer(pomodoro, appScope)
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
-    /** First-run seeding; the splash joins this before resolving the Today smart list. */
+    /**
+     * Opens the local workspace and builds the index from it. The splash joins this.
+     *
+     * Seeding is gated on having just scaffolded the directory, never on the index being empty —
+     * the index is empty on every device that clones an existing workspace, and gating the other way
+     * would give each machine that joins its own second Inbox and its own second Today.
+     */
     val seeding: Job = appScope.launch {
-        Seeder.seedIfEmpty(db)
-        // A list holds tasks; anything else that got onto one is gathered onto a task there.
-        nodes.tidyListsToTasksOnly()
+        val fresh = workspaces.open(
+            id = "",
+            root = java.io.File(app.filesDir, "workspaces/local"),
+            name = "Personal",
+        )
+        if (fresh) WorkspaceSeeder.seed(workspaces.primaryStore())
+        workspaces.reindexAll()
     }
 
     init {

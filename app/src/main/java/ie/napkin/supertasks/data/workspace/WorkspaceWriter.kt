@@ -11,6 +11,7 @@ import ie.napkin.supertasks.data.format.Numbered
 import ie.napkin.supertasks.data.format.PageDoc
 import ie.napkin.supertasks.data.format.Prose
 import ie.napkin.supertasks.data.format.TaskRef
+import ie.napkin.supertasks.data.db.SystemKey
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
@@ -64,9 +65,16 @@ class WorkspaceWriter(
      */
     suspend fun editPage(pageId: String, transform: (PageDoc) -> PageDoc): Unit = mutex.withLock {
         val page = loadPage(pageId) ?: return
-        store.writePage(
-            transform(page).copy(modifiedAt = Instant.ofEpochMilli(now()), device = device)
-        )
+        val next = transform(page)
+
+        // An edit that changes nothing writes nothing. The UI asks for these constantly — a tap
+        // that lands on a row, a rename to the text already there — and honouring them would bump
+        // modified_at each time. That is not merely wasteful: modified_at is what the conflict
+        // resolver arbitrates on, so a page that keeps claiming to be newer would start winning
+        // against real edits made elsewhere, and the sync history would fill with empty diffs.
+        if (next.copy(modifiedAt = page.modifiedAt, device = page.device) == page) return
+
+        store.writePage(next.copy(modifiedAt = Instant.ofEpochMilli(now()), device = device))
         indexer.rebuild(store)
     }
 
@@ -213,6 +221,110 @@ class WorkspaceWriter(
         page?.let {
             store.writePage(it.copy(parent = newParent, modifiedAt = Instant.ofEpochMilli(now()), device = device))
         }
+        indexer.rebuild(store)
+    }
+
+    // ---- structure ----
+
+    /**
+     * The one rule indentation obeys: the first line of a run sits flush left, and no line is more
+     * than one step deeper than the line above it. Anything else cannot be read as structure.
+     *
+     * Indent is stored rather than derived, so it does not stay true on its own — deleting the line
+     * above one, or dragging a block to the top, can leave an indent with nothing to be indented
+     * under. Every operation that changes a run ends here.
+     */
+    suspend fun normalizeIndents(pageId: String) = editPage(pageId) { page ->
+        var ceiling = 0
+        page.copy(
+            blocks = page.blocks.map { b ->
+                val fixed = b.indent.coerceIn(0, ceiling)
+                ceiling = fixed + 1
+                if (fixed == b.indent) b else withIndent(b, fixed)
+            }
+        )
+    }
+
+    /**
+     * Changes a block's kind, keeping its text and depth.
+     *
+     * Refuses to convert a task that owns a page: its id lives in the `^…` marker and nothing else
+     * carries one, so becoming a paragraph would leave the page with no line pointing at it and
+     * everything on it unreachable. Better to decline than to strand it.
+     */
+    suspend fun convertBlock(nodeId: String, type: String) {
+        if (type != NodeType.TASK && store.pageFile(nodeId).exists()) {
+            if (loadPage(nodeId)?.blocks?.isNotEmpty() == true) return
+            store.deletePage(nodeId)
+        }
+        editBlock(nodeId) { b ->
+            val text = when (b) {
+                is TaskRef -> b.title
+                is Heading -> b.text
+                is Bullet -> b.text
+                is Numbered -> b.text
+                is Prose -> b.text
+                is ImageRef -> b.uri
+                is InkRef -> ""
+            }
+            val id = if (b is TaskRef) b.id else nodeId
+            blockOf(type, id, text, b.indent)
+        }
+    }
+
+    private fun withIndent(b: Block, indent: Int): Block = when (b) {
+        is TaskRef -> b.copy(indent = indent)
+        is Heading -> b.copy(indent = indent)
+        is Bullet -> b.copy(indent = indent)
+        is Numbered -> b.copy(indent = indent)
+        is Prose -> b.copy(indent = indent)
+        is InkRef -> b.copy(indent = indent)
+        is ImageRef -> b.copy(indent = indent)
+    }
+
+    /**
+     * Claims a stable identity for a page — `today`, `inbox`.
+     *
+     * Writes the file, not the row: the key is frontmatter, so stamping it only in the index would
+     * hold until the next reindex and then quietly come undone, which is exactly the sort of bug
+     * that looks like the app forgetting things at random.
+     */
+    suspend fun setSystemKey(pageId: String, key: String) =
+        editPage(pageId) { it.copy(systemKey = key) }
+
+    // ---- registries ----
+
+    /** A smart list is a page with no blocks; its rule lives beside it in the workspace meta. */
+    suspend fun createSmartList(def: SmartListDef, title: String, systemKey: String? = null): String =
+        mutex.withLock {
+            val id = def.nodeId.ifEmpty { newId() }
+            store.writePage(
+                PageDoc(
+                    id = id, type = NodeType.SMART_LIST, parent = null, title = title,
+                    systemKey = systemKey, modifiedAt = Instant.ofEpochMilli(now()),
+                    device = device, blocks = emptyList(),
+                )
+            )
+            store.writeSmartList(def.copy(nodeId = id))
+            indexer.rebuild(store)
+            id
+        }
+
+    suspend fun updateSmartList(def: SmartListDef) = mutex.withLock {
+        store.writeSmartList(def)
+        indexer.rebuild(store)
+    }
+
+    /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
+    suspend fun upsertLabel(label: LabelDef) = mutex.withLock {
+        val kept = store.readLabels().filterNot { it.id == label.id }
+        store.writeLabels(kept + label)
+        indexer.rebuild(store)
+    }
+
+    /** One line, appended. Never rewritten — that is what keeps two offline devices from colliding. */
+    suspend fun appendPomodoro(line: String, month: String) = mutex.withLock {
+        store.appendPomodoro(line, month)
         indexer.rebuild(store)
     }
 

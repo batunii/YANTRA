@@ -3,6 +3,8 @@ package ie.napkin.supertasks.data.workspace
 import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.filter.FilterJson
+import ie.napkin.supertasks.data.repo.SelectConfig
+import ie.napkin.supertasks.data.repo.SelectOption
 import ie.napkin.supertasks.data.format.PageCodec
 import ie.napkin.supertasks.data.format.PageDoc
 import kotlinx.serialization.Serializable
@@ -101,7 +103,22 @@ class WorkspaceStore(
         writeManifest(Manifest(name = name, createdAt = now))
         writeProperties(
             listOf(
-                PropertyDef(BuiltIns.PRIORITY_DEF_ID, BuiltIns.PRIORITY_NAME, PropertyKind.SELECT),
+                // Priority carries its option colours in config. Scaffolding without them left
+                // every High chip drawing as an unnamed neutral, because the chip looks its colour
+                // up by option name and found no options at all.
+                PropertyDef(
+                    BuiltIns.PRIORITY_DEF_ID, BuiltIns.PRIORITY_NAME, PropertyKind.SELECT,
+                    config = FilterJson.encodeToString(
+                        SelectConfig.serializer(),
+                        SelectConfig(
+                            listOf(
+                                SelectOption("High", 0xFFFF4A1F),
+                                SelectOption("Medium", 0xFFFFB020),
+                                SelectOption("Low", 0xFF4A90D9),
+                            )
+                        ),
+                    ),
+                ),
                 PropertyDef(BuiltIns.DUE_DEF_ID, BuiltIns.DUE_NAME, PropertyKind.DATE),
                 PropertyDef(BuiltIns.DEADLINE_DEF_ID, BuiltIns.DEADLINE_NAME, PropertyKind.DATE),
             )

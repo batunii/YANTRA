@@ -159,6 +159,9 @@ object WorkspaceReconciler {
             createdAt = started, updatedAt = f[3].toLongOrNull() ?: started,
         )
     }
+        // A session is appended once when it starts and again when it ends, so the last line for an
+        // id is the current one. Keeping both would leave every finished session looking open.
+        .associateBy { it.id }.values.toList()
 
     /** The inverse of [readSessions]; the writer appends whatever this returns. */
     fun sessionLine(s: PomodoroSessionEntity): String = listOf(

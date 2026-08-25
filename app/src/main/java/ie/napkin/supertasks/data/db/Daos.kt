@@ -421,6 +421,9 @@ interface InkDao {
     )
     fun strokesUnder(parentId: String): Flow<List<InkStrokeEntity>>
 
+    @Query("SELECT * FROM ink_stroke WHERE id = :id")
+    suspend fun strokeById(id: String): InkStrokeEntity?
+
     @Query("SELECT MAX(rank) FROM ink_stroke WHERE node_id = :nodeId AND deleted_at IS NULL")
     suspend fun lastRank(nodeId: String): String?
 
