@@ -87,6 +87,76 @@ Grey is rest. No hue means two things, and priority is never a preference.
 
 ---
 
+## 2a. Focus — a ledger, not a timer
+
+Focus is a pillar, and the current implementation is the pomodoro technique rather than the thing
+the app actually needs. The correction is the same inversion as files-as-truth: **the session record
+is the durable object, and the timer is one way of writing to it.**
+
+### Two instruments, one history
+
+| Mode | What it is | Why it exists |
+|---|---|---|
+| **Committed** (countdown) | This task gets exactly forty minutes. | A commitment device. Its value is not measuring — it is making *stopping early* visible to you. |
+| **Open** (stopwatch) | Start, work, stop. | An observation device. Constrains nothing, tells the truth about where the time went. |
+
+Time-boxing and time-tracking: prospective and retrospective. Most apps pick one. Both write the
+same record.
+
+### Why this is the app's own idea, not a borrowed one
+
+The colour law already names **the accent as the user's own effort**, against crimson and amber for
+the world asking. Effort is one of four things the palette treats as fundamental — and the only
+place the app measures it is a count of pomodoros. A proper ledger is not a new feature; it finishes
+a promise the design already makes in colour.
+
+Effort is also the only honest axis a task has. A due date is a wish and *done* is a claim; time
+given is evidence, and it is the feedback that tells you what your estimates are worth.
+
+### Rules
+
+**F1 — Every session that happened is recorded.** Interrupted sessions count. What varies is not
+whether time is counted but how it ended: *reached its target · stopped by you · interrupted · lost
+to the process dying*. All of them sum.
+
+**F2 — One exception, and it is about accidents, not brevity.** A session under 60 seconds that did
+not reach a target is discarded as a mis-tap. Anything longer is real, including a deliberate
+three-minute commitment.
+
+**F3 — "Too short to be interesting" is a display rule, never a recording rule.** The history view
+may hide or collapse sessions under a few minutes; the totals still include them. Filtering at write
+time would bake a display decision into a permanent, append-only record — the same category of
+mistake as storing an image as a `content://` URI — and would understate effort in the one direction
+nothing on screen would reveal. The threshold stays movable because it costs nothing to move.
+
+**F4 — A report is a task query plus a time window.** Every dimension worth slicing by is already in
+the filter language the smart lists compile: labels via `HasLabel`, workspace via the derived
+workspace label, task via `node_id`. The only new axis is a window on `started_at`. So a focus report
+is `Filter` (which tasks) + window (which sessions) + `SUM`. **No second query language.** Anything
+expressible as a smart list can be asked "how much time did this get".
+
+**F5 — Time rolls up the task tree, and is never summed across it.** A subtask's `parent_id` is its
+parent task's id, so a parent's total includes its children — a parent reading zero while its
+children read hours would look broken, and lists get subtree totals for free. But the same session
+belongs to every ancestor, so **any aggregate goes back to the session rows and counts each once**.
+A task therefore has two numbers, both meaningful: its own time, and its subtree's.
+
+### What this costs
+
+- `plannedSecs` becomes nullable; absent means open.
+- `completed: Boolean` becomes an outcome, per F1.
+- Aggregation moves out of Kotlin and into SQL as `SUM(actual_secs)`, grouped and windowed. Today
+  `StatsScreen` loads *every session ever* and adds them up in memory, and `completedCounts()`
+  returns a **count** — which is only a proxy for time while every session is the same length. The
+  moment a stopwatch exists, counting is the wrong unit, and `WHERE completed = 1` discards exactly
+  the interrupted sessions F1 says to keep.
+- `Pomodoro` becomes `Focus` in the data layer, which the UI has called it for a while. The technique
+  is a 25/5 protocol; naming the model after it misdescribes what it now holds.
+- The log format is tab-separated and readers skip lines with fewer than seven fields, so a new field
+  is invisible to an older app. This evolves without a migration.
+
+---
+
 ## 3. The shape
 
 ```
@@ -194,14 +264,23 @@ and interposing a domain model would add a layer of translation for an app this 
 Worth saying, because most of it is:
 
 - **The repository boundary holds.** No screen reaches past it; every task is created through one path.
-- **Focus is genuinely a pillar** — sessions are append-only log lines in the workspace (merge-friendly
-  by construction), history survives, and per-task counts appear on the page where the work is.
+- **Focus is stored as a pillar should be** — append-only log lines in the workspace, merge-friendly
+  by construction, history that survives, per-task figures on the page where the work is. What is
+  wrong with focus is the *model above* that storage, not the storage; see §2a.
 - **The write path obeys L1 and L2** end to end, and is now proven by tests that throw the index away
   and rebuild from files.
 - **L3 holds after this session**: writes are immediate, indexing is deferred, commits are batched,
   strokes buffer in the session.
 - **L5 and L6 hold**: one chip, one field, one button; the accent is a closed set that cannot reach
   the priority band.
+
+---
+
+### G. Focus is measured in pomodoros, not time — see §2a
+
+Ranked here rather than in §2a because it is a divergence like the others: the ledger counts fixed
+units and sums nothing, which is correct only while every session is the same length. Settled in
+discussion; not yet built.
 
 ---
 
