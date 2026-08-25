@@ -334,9 +334,46 @@ drawing a pixel is one that grew here. That is the bar.
 
 ---
 
-## 5. Decisions this document is waiting on
+## 5. Decisions taken
 
-1. **Images** — copy into the workspace (agreed direction), but: cap the size? Down-scale on import?
-   What happens to an image that would make the repo huge?
-2. **Archive** — automatic after N days done, manual, or per-list? This shapes the format.
-3. **Share target** — does shared text become a task in the Inbox, or open the triage sheet?
+### Images — the downscale is the truth, the original is a local luxury
+
+The repo carries a downscaled copy: long edge ~2048px, JPEG ~85%, **EXIF location stripped** — a
+photo carries GPS, and committing one to a shared workspace publishes where you were. That copy is
+what every device has and what the page file points at.
+
+The device that picked the image *also* keeps a reference to the original and prefers it when
+drawing. So the picture is sharp on the phone that took it and correct everywhere else, and the repo
+stays small.
+
+**The original's URI must never reach the page file.** A `content://` grant means nothing on another
+device, so putting it in the file would be exactly the L1 violation this replaces. The file holds the
+repo-relative path; the original is device-local state keyed by the block id. The URI the code stores
+today is not wrong — it is the local half, written to the wrong place and missing its other half.
+
+### Archive — finished tasks leave on a threshold, and can come back
+
+A task finished longer ago than the threshold moves out of its page into an archive file beside it.
+Still in git, still findable, out of the index — which is what holds the working set at "a few
+hundred active" while the total grows forever, and what keeps a list like Inbox from carrying every
+task it has ever held.
+
+Two requirements attached to it: the threshold is the user's, not a constant; and **archiving is
+reversible** — a task can be brought back, because finishing something is not the same as being
+finished with it.
+
+### Share target — lands in Inbox, re-filed in one tap
+
+Shared text or a link becomes a task in Inbox immediately, with no screen in the way: capture is
+never blocked (L3). The confirmation carries a single control to change the list, so filing is
+available without ever being required.
+
+Note that a toast cannot hold a button; this needs a brief bar or sheet that dismisses itself. The
+task exists before it appears — the control re-files something already captured, and dismissing it is
+never a way to lose the capture.
+
+## 6. Still open
+
+- The archive threshold's default, and whether it is per-workspace or global.
+- What a shared image does before the image work lands: a task with a note, or refuse it politely.
+- Ink's preset palette still hardcodes a copy of coral that will not follow the accent (§4b).
