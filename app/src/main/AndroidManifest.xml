@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Git-backed workspaces sync over HTTPS. Until now the app had never touched the network:
+         everything it holds is local, and it stayed that way deliberately. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The completion choreography's feel channel: a LOW_TICK when a hold arms, a THUD when the
          bindu lands. Normal permission, no runtime prompt. It carries the whole reward when the

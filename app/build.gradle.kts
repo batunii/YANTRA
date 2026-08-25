@@ -85,6 +85,9 @@ dependencies {
     implementation(libs.glance.material3)
     implementation(libs.work.runtime.ktx)
 
+    // Phase 0 spike: does JGit work on Android at all? See GIT_WORKSPACES_PLAN.md §6.
+    implementation(libs.jgit)
+
     testImplementation(libs.junit)
 
     androidTestImplementation(libs.junit)
