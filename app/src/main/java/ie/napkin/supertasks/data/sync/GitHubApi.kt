@@ -57,15 +57,19 @@ sealed interface RepoCheck {
     data class Failed(val message: String) : RepoCheck
 }
 
-/** What happened when we asked GitHub to make a repository. */
-sealed interface RepoCreate {
-    data class Ok(val ref: RepoRef) : RepoCreate
-    /**
-     * The name is already taken by this account. Not an error worth stopping on: the repository the
-     * user asked for exists, and linking to it is almost certainly what they meant.
-     */
-    data class Taken(val ref: RepoRef) : RepoCreate
-    data class Failed(val message: String) : RepoCreate
+/**
+ * Whether this build's GitHub App is installed for the signed-in user.
+ *
+ * Worth a type of its own rather than a boolean, because the three ways of not being installed need
+ * three different things said. [Absent] is a browser trip. [Unauthorized] is a sign-in. [Failed] is
+ * a network that will probably work in a minute and should not be dressed up as either.
+ */
+sealed interface InstallState {
+    data object Installed : InstallState
+    data object Absent : InstallState
+    /** The token no longer works: revoked, uninstalled, or undecryptable on this device. */
+    data object Unauthorized : InstallState
+    data class Failed(val message: String) : InstallState
 }
 
 /**
@@ -76,7 +80,12 @@ sealed interface RepoCreate {
  * cannot arbitrate deterministically. And discovering you have no push access *after* a week of
  * local commits is a much worse conversation than discovering it while pasting the URL.
  *
- * Uses `HttpURLConnection` on purpose. It is enough for two GET requests, and an HTTP client is a
+ * There is deliberately nothing here that writes. Creating a repository and inviting people both
+ * happen in the browser on GitHub's own pages — creation because a GitHub App cannot do it for a
+ * personal account at all, invites because they need a permission far heavier than the one the App
+ * asks for. So this file only ever asks questions, which is also why every call is a GET.
+ *
+ * Uses `HttpURLConnection` on purpose. It is enough for three GET requests, and an HTTP client is a
  * large dependency to add to an app whose whole transport is otherwise JGit's.
  */
 open class GitHubApi(private val base: String = "https://api.github.com") {
@@ -91,20 +100,15 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
     )
 
     @Serializable
-    private data class NewRepo(
-        val name: String,
-        val description: String,
-        val private: Boolean,
-        @SerialName("auto_init") val autoInit: Boolean = false,
-    )
+    private data class Installations(val installations: List<Installation> = emptyList())
+
+    @Serializable
+    private data class Installation(val id: Long, @SerialName("app_slug") val appSlug: String = "")
 
     @Serializable
     private data class Permissions(val push: Boolean = false, val admin: Boolean = false)
 
-    // encodeDefaults, because the defaults are the point. `auto_init: false` is what keeps a new
-    // repository empty, and leaving it out to be inferred from GitHub's own default would make a
-    // behaviour this design depends on into something GitHub could change without telling anyone.
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json { ignoreUnknownKeys = true }
 
     /**
      * The token's owner, which becomes this device's identity in the workspace.
@@ -145,61 +149,33 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
     }
 
     /**
-     * Makes a repository for the signed-in account.
+     * Whether this build's App is installed for whoever owns [token].
      *
-     * Private by default, and deliberately so — a task list is a diary of what someone has not done
-     * yet, and defaulting that to world-readable is not a mistake the app gets to make on their
-     * behalf. `auto_init` is off: an empty repository is exactly what the task branch wants, since
-     * an initial commit on `main` would be a second root the orphan branch has to step around.
+     * A user token with no installation is the trap this exists to catch: it authenticates perfectly,
+     * `/user` answers, and every repository request comes back empty or 404 — because a user token's
+     * reach is the App's permissions *intersected* with the user's own, and an App installed nowhere
+     * contributes nothing to that intersection. Without this check the app would look signed in and
+     * be unable to explain why nothing worked.
      */
-    fun createRepo(
-        name: String,
-        token: String,
-        private: Boolean = true,
-        description: String = "Tasks, kept by Yantra",
-    ): RepoCreate {
-        val owner = viewer(token) ?: return RepoCreate.Failed("That token was rejected by GitHub")
-        val body = json.encodeToString(
-            NewRepo.serializer(),
-            NewRepo(name = name, description = description, private = private),
-        )
-        val conn = open("$base/user/repos", token, method = "POST", body = body)
+    open fun installState(token: String, appSlug: String): InstallState {
+        val conn = open("$base/user/installations", token)
         return try {
-            when (val code = conn.responseCode) {
-                201 -> RepoCreate.Ok(RepoRef(owner, name))
-                // 422 is the whole family of "we will not make that": already exists, or the name is
-                // not one GitHub accepts. Only the first has a sensible next step.
-                422 -> {
-                    val err = conn.errorStream?.bufferedReader()?.readText().orEmpty()
-                    if (err.contains("already exists")) RepoCreate.Taken(RepoRef(owner, name))
-                    else RepoCreate.Failed("GitHub will not accept the name \"$name\"")
+            when (conn.responseCode) {
+                200 -> {
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val found = runCatching {
+                        json.decodeFromString(Installations.serializer(), body).installations
+                    }.getOrDefault(emptyList())
+                    // Matched by slug, not by count: someone may have other GitHub Apps installed,
+                    // and any of them would otherwise read as ours.
+                    if (found.any { it.appSlug == appSlug }) InstallState.Installed
+                    else InstallState.Absent
                 }
-                401, 403 -> RepoCreate.Failed("This sign-in cannot create repositories")
-                else -> RepoCreate.Failed("GitHub returned $code")
+                401, 403 -> InstallState.Unauthorized
+                else -> InstallState.Failed("GitHub returned ${conn.responseCode}")
             }
         } catch (e: IOException) {
-            RepoCreate.Failed(e.message ?: "could not reach GitHub")
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    /**
-     * Invites someone to a repository with push rights — what makes a workspace shared.
-     *
-     * The invitation is theirs to accept, so a true return means "asked", never "they are in". 201
-     * is a fresh invitation and 204 means they already had access; both are the outcome the caller
-     * wanted, and telling them apart would be a distinction without a difference.
-     */
-    fun addCollaborator(ref: RepoRef, login: String, token: String): Boolean {
-        val conn = open(
-            "$base/repos/${ref.owner}/${ref.name}/collaborators/$login",
-            token, method = "PUT", body = """{"permission":"push"}""",
-        )
-        return try {
-            conn.responseCode == 201 || conn.responseCode == 204
-        } catch (_: IOException) {
-            false
+            InstallState.Failed(e.message ?: "could not reach GitHub")
         } finally {
             conn.disconnect()
         }
@@ -216,23 +192,13 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
         }
     }
 
-    private fun open(
-        url: String,
-        token: String,
-        method: String = "GET",
-        body: String? = null,
-    ): HttpURLConnection =
+    private fun open(url: String, token: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
+            requestMethod = "GET"
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("Authorization", "Bearer $token")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             connectTimeout = 15_000
             readTimeout = 15_000
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                outputStream.use { it.write(body.toByteArray()) }
-            }
         }
 }

@@ -32,7 +32,7 @@ Local data is mock and is not being preserved. No migration path is owed to it.
 | Workspace as a label | **Derived, never written to a file.** Where a page came from is provenance, not content: a file claiming its own workspace would be lying the moment the repo was cloned as a second one, and a hand-edit could move a task between workspaces by deleting a tag. The index synthesises one on import so smart lists can filter by workspace through the machinery that already exists |
 | Pomodoro | Append-only lines in `pomodoro/<yyyy-mm>.log`. Two devices focusing offline produce two different tails and git takes both |
 | Git library | JGit 7.3.0 — **verified on device**, see Phase 0 |
-| Auth | Fine-grained PAT over HTTPS first (fewer failure modes), Ed25519 SSH later |
+| Auth | **GitHub App + device flow.** Nobody is asked to create a token: sign in, approve a short code on github.com. See §4a for why the App cannot create repositories and what that costs. A fine-grained PAT stays as the narrow alternative; Ed25519 SSH later |
 | Source of truth | Files. Room is an index, rebuilt from the working tree |
 | Conflict policy | git merge first; per-file LWW on `modified_at` only on genuine conflict |
 | Delete vs edit | **Edit wins — resurrect the file.** An extra task is a nuisance; a deleted task holding someone's notes is data loss |
@@ -171,6 +171,51 @@ reconcile: diff HEAD against last-indexed commit -> update Room
 
 App foreground (fetch for freshness), app background (flush pending, push), after a debounced
 commit (expedited), WorkManager periodic at 15 min with `NetworkType.CONNECTED`, and manual.
+
+
+## 4a. Auth, and why the browser does two things
+
+**GitHub App, not an OAuth App.** An OAuth App's `repo` scope is the only classic scope that can
+create a private repository, and it reaches every repository the account owns. A GitHub App asks for
+`Contents: read and write` — enough to read and write task files, and nothing that can delete a
+repository or change who can see it.
+
+The price is exact and worth stating: **a GitHub App cannot create a repository in a personal
+account.** There is no permission for it — not for an installation token, and not for a user token
+either; `Contents` covers files, not creation, and the org-level "Repository creation" permission has
+no personal-account equivalent. Verified against the endpoint docs, which list only "OAuth app tokens
+and personal access tokens (classic)".
+
+So creation happens in the browser, on GitHub's own new-repository form, with `?name=&visibility=
+private&description=` filled in. The user presses one button and types nothing. Inviting collaborators
+goes the same way, for the same reason: invites need `Administration: write`, far heavier than what
+the App holds for its daily job.
+
+The principle that falls out of this is worth keeping: **privileged one-offs happen on GitHub's pages;
+the app holds only the permission its everyday work needs.**
+
+Three consequences in the code:
+
+- **No scope in the device flow.** A GitHub App user token does not use scopes at all — its reach is
+  the App's permissions intersected with the user's own access. Sending one would describe the wrong
+  permission model on the consent screen.
+- **The install check is not optional.** A user token with no installation authenticates perfectly and
+  can see nothing, because an App installed nowhere contributes nothing to that intersection. That is
+  the most confusing state the app can be in, so `installState` names it and the screen says "one more
+  step". Installed on **All repositories**, so a repo created later needs no second trip.
+- **No refresh tokens.** The App is registered with user-token expiry off, so nothing lapses on a
+  clock. That removes the *scheduled* failure and not every failure — a revoked authorisation, an
+  uninstalled App, or a Keystore key invalidated by a device restore all still land on one
+  "sign in again" surface.
+
+**Never a WebView.** Both trips go to the real browser. In an embedded WebView there is no URL bar to
+check and no shared session, so the user would be typing their GitHub password inside our app — which
+is indistinguishable from how credential phishing works.
+
+Registering the App: `Contents: read and write`; webhook off; **Enable Device Flow** on; **expire user
+authorization tokens** off; installable on any account. The client id is public and lives in
+`GitHubAuth.CLIENT_ID`.
+
 
 ## 5. Graceful failure
 

@@ -45,6 +45,7 @@ class Credentials(context: Context) {
         private fun tokenKey(ws: String) = "token:$ws"
         private fun ivKey(ws: String) = "iv:$ws"
         private fun loginKey(ws: String) = "login:$ws"
+        private fun viaAppKey(ws: String) = "viaapp:$ws"
     }
 
     /**
@@ -71,13 +72,22 @@ class Credentials(context: Context) {
         }.generateKey()
     }
 
-    fun store(workspaceId: String, token: String, login: String) {
+    /**
+     * [viaApp] records that this came from signing in rather than from a pasted token.
+     *
+     * The two behave differently in one place that matters: a signed-in account needs the GitHub App
+     * installed before it can see any repository, and a pasted token does not. Without knowing which
+     * is which, the app would tell someone who pasted a fine-grained token to go and install an App
+     * they have no use for.
+     */
+    fun store(workspaceId: String, token: String, login: String, viaApp: Boolean = false) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val sealed = cipher.doFinal(token.toByteArray())
         prefs.edit()
             .putString(tokenKey(workspaceId), Base64.encodeToString(sealed, Base64.NO_WRAP))
             .putString(ivKey(workspaceId), Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putString(loginKey(workspaceId), login)
+            .putBoolean(viaAppKey(workspaceId), viaApp)
             // commit, not apply. Setup reports success to the user once this returns, and an
             // asynchronous write means a crash in between could leave a workspace whose git remote
             // is configured and whose token is gone — authentication failing for no visible reason.
@@ -108,6 +118,9 @@ class Credentials(context: Context) {
 
     fun login(workspaceId: String): String? = prefs.getString(loginKey(workspaceId), null)
 
+    /** True when this account was signed in through the GitHub App rather than pasted as a token. */
+    fun viaApp(workspaceId: String): Boolean = prefs.getBoolean(viaAppKey(workspaceId), false)
+
     fun has(workspaceId: String): Boolean = token(workspaceId) != null
 
     /** Forgets a workspace's credentials. The remote is untouched; revoking is done on GitHub. */
@@ -116,6 +129,7 @@ class Credentials(context: Context) {
             .remove(tokenKey(workspaceId))
             .remove(ivKey(workspaceId))
             .remove(loginKey(workspaceId))
+            .remove(viaAppKey(workspaceId))
             .commit()
     }
 

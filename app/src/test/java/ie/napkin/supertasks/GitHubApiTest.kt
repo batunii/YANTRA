@@ -2,7 +2,7 @@ package ie.napkin.supertasks
 
 import ie.napkin.supertasks.data.sync.GitHubApi
 import ie.napkin.supertasks.data.sync.RepoCheck
-import ie.napkin.supertasks.data.sync.RepoCreate
+import ie.napkin.supertasks.data.sync.InstallState
 import ie.napkin.supertasks.data.sync.RepoRef
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,9 +13,9 @@ import org.junit.Test
  * The API slice, against a real HTTP server.
  *
  * Two of these guard decisions that are silent when wrong. Read access reported as push access means
- * a workspace that commits happily for a week and can never push any of it. And a repository name
- * already in use being treated as a failure would stop someone re-running the setup they just half
- * finished, which is exactly when they would re-run it.
+ * a workspace that commits happily for a week and can never push any of it. And a valid token with no
+ * App installation can see nothing at all while looking perfectly signed in — the single most
+ * confusing state this app can be in, and the one the install check exists to name.
  */
 class GitHubApiTest {
 
@@ -87,75 +87,64 @@ class GitHubApiTest {
     }
 
     @Test
-    fun `a created repository is private and not initialised`() {
+    fun `an installed app is found by its slug`() {
         FakeGitHub().use { server ->
-            server.on("/user", 200, """{"login":"batunii"}""")
-            server.on("/user/repos", 201, """{"full_name":"batunii/tasks"}""")
-
-            val made = api(server).createRepo("tasks", "ghp_x") as RepoCreate.Ok
-            assertEquals(RepoRef("batunii", "tasks"), made.ref)
-
-            val post = server.seen.last { it.path == "/user/repos" }
-            assertEquals("POST", post.method)
-            // A task list is a diary of what someone has not done yet. Public by accident is not a
-            // mistake this app gets to make for them.
-            assertTrue(post.body.contains("\"private\":true"))
-            // An initial commit on main would be a second root for the orphan branch to step around.
-            assertTrue(post.body.contains("\"auto_init\":false"))
-        }
-    }
-
-    @Test
-    fun `a name already in use is reported as taken rather than failed`() {
-        FakeGitHub().use { server ->
-            server.on("/user", 200, """{"login":"batunii"}""")
             server.on(
-                "/user/repos", 422,
-                """{"errors":[{"message":"name already exists on this account"}]}""",
+                "/user/installations", 200,
+                """{"total_count":2,"installations":[
+                     {"id":1,"app_slug":"some-other-app"},
+                     {"id":2,"app_slug":"yantra"}]}""",
             )
-            val made = api(server).createRepo("tasks", "ghp_x")
-            assertEquals(RepoCreate.Taken(RepoRef("batunii", "tasks")), made)
+            assertEquals(InstallState.Installed, api(server).installState("t", "yantra"))
         }
     }
 
     @Test
-    fun `a name GitHub will not accept is a failure`() {
+    fun `someone else's apps do not count as ours`() {
         FakeGitHub().use { server ->
-            server.on("/user", 200, """{"login":"batunii"}""")
-            server.on("/user/repos", 422, """{"errors":[{"message":"is too long"}]}""")
-            assertTrue(api(server).createRepo("x".repeat(300), "ghp_x") is RepoCreate.Failed)
+            // Matching on the count rather than the slug would read any installed app as ours, and
+            // then every repository request would come back empty for no stated reason.
+            server.on(
+                "/user/installations", 200,
+                """{"total_count":1,"installations":[{"id":1,"app_slug":"dependabot"}]}""",
+            )
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra"))
         }
     }
 
     @Test
-    fun `creating without a usable token stops before asking`() {
+    fun `no installation at all is absent rather than an error`() {
         FakeGitHub().use { server ->
-            server.on("/user", 401, "{}")
-            assertTrue(api(server).createRepo("tasks", "bad") is RepoCreate.Failed)
-            // Never reached the create endpoint: there would be no owner to name the result with.
-            assertTrue(server.seen.none { it.path == "/user/repos" })
+            // This is the trap the whole check exists for: the token is perfectly valid and can see
+            // nothing, so it must read as "one more step" and never as "something went wrong".
+            server.on("/user/installations", 200, """{"total_count":0,"installations":[]}""")
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra"))
         }
     }
 
     @Test
-    fun `an invitation is asked for whether or not they already have access`() {
-        // 201 is a fresh invitation, 204 means they were already in. Both are what the caller wanted.
-        listOf(201, 204).forEach { code ->
+    fun `a dead token is told apart from a missing installation`() {
+        // These need opposite things said — one is a browser trip, the other is signing in again —
+        // so collapsing them into one "not installed" would send people to fix the wrong thing.
+        listOf(401, 403).forEach { code ->
             FakeGitHub().use { server ->
-                server.on("/repos/batunii/YANTRA/collaborators/alice", code, "")
-                assertTrue("$code read as failure", api(server).addCollaborator(ref, "alice", "t"))
-                val put = server.seen.single()
-                assertEquals("PUT", put.method)
-                assertTrue(put.body.contains("push"))
+                server.on("/user/installations", code, """{"message":"Bad credentials"}""")
+                assertEquals(InstallState.Unauthorized, api(server).installState("t", "yantra"))
             }
         }
     }
 
     @Test
-    fun `an unknown username is not invited`() {
+    fun `an unreachable github is neither absent nor unauthorized`() {
+        val offline = GitHubApi(base = "http://127.0.0.1:1")
+        assertTrue(offline.installState("t", "yantra") is InstallState.Failed)
+    }
+
+    @Test
+    fun `a malformed installation list is absent rather than a crash`() {
         FakeGitHub().use { server ->
-            server.on("/repos/batunii/YANTRA/collaborators/nobody", 404, "{}")
-            assertFalse(api(server).addCollaborator(ref, "nobody", "t"))
+            server.on("/user/installations", 200, "not json at all")
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra"))
         }
     }
 }

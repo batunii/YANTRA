@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,13 +26,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AddResult
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.sync.Credentials
-import ie.napkin.supertasks.data.sync.RepoCreate
+import ie.napkin.supertasks.data.sync.GitHubAuth
+import ie.napkin.supertasks.data.sync.RepoCheck
 import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.NavCircle
@@ -52,35 +56,56 @@ import kotlinx.coroutines.withContext
  * the common case — someone sent you a link, or it is your own project — and creating one is how a
  * shared list starts.
  *
+ * Creating goes out to the browser, as it does on the sign-in screen and for the same reason: the App
+ * asks for `Contents: read and write` and nothing more, which is not enough to make a repository or
+ * to invite anyone to one. Both of those are one-off privileged acts, and they belong on GitHub's own
+ * pages rather than being bought with a permission the app would then hold forever.
+ *
  * What makes this safe to point at a working codebase is the branch. Tasks are committed to
  * `yantra-tasks`, which shares no history with anything else in the repository: the code is never
- * downloaded, never touched, and never appears in a diff beside a checkbox. That is worth saying on
- * the screen, because "let an app into my repo" is a reasonable thing to hesitate over.
+ * downloaded, never touched, and never appears in a diff beside a checkbox.
  */
 @Composable
 fun AddWorkspaceScreen(nav: NavHostController) {
     val container = appContainer()
     val scope = rememberCoroutineScope()
+    val uri = LocalUriHandler.current
     val y = Yantra.colors
 
     val account = remember { container.credentials.login(Credentials.ACCOUNT) }
     var existing by remember { mutableStateOf(true) }
     var url by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
-    var invitees by remember { mutableStateOf("") }
     var ownToken by remember { mutableStateOf(account == null) }
     var token by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf(false) }
-    var added by remember { mutableStateOf(false) }
+    var awaiting by remember { mutableStateOf<String?>(null) }
+    var added by remember { mutableStateOf<String?>(null) }
 
     val effectiveToken = if (ownToken) token.trim() else ""
     val ready = when {
-        busy -> false
+        busy || awaiting != null -> false
         ownToken && effectiveToken.isBlank() -> false
         existing -> RepoRef.parse(url) != null
         else -> name.isNotBlank()
+    }
+
+    // Coming back from creating a repository in the browser. Nothing else tells us it happened.
+    LifecycleResumeEffect(awaiting) {
+        val wanted = awaiting
+        val job = scope.launch {
+            if (wanted == null) return@launch
+            val outcome = joinCreated(container, wanted, effectiveToken)
+            if (outcome != null) {
+                awaiting = null
+                note = outcome.message
+                failed = !outcome.ok
+                if (outcome.ok) added = outcome.slug
+            }
+        }
+        onPauseOrDispose { job.cancel() }
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
@@ -95,11 +120,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 iconSize = 20.dp,
             )
             Spacer(Modifier.width(12.dp))
-            Text(
-                "Add a workspace",
-                style = MaterialTheme.typography.headlineSmall,
-                color = y.textPrimary,
-            )
+            Text("Add a workspace", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
         }
 
         Column(
@@ -126,11 +147,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
             if (existing) {
                 SectionLabel("Repository")
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    "Paste the address, or type owner/name",
-                    color = y.textMuted,
-                    fontSize = 12.5.sp,
-                )
+                Text("Paste the address, or type owner/name", color = y.textMuted, fontSize = 12.5.sp)
                 Spacer(Modifier.height(12.dp))
                 YantraField(url, { url = it; note = null }, "github.com/you/project", mono = true)
                 Spacer(Modifier.height(10.dp))
@@ -146,18 +163,17 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 Text("A new private repository, for tasks only", color = y.textMuted, fontSize = 12.5.sp)
                 Spacer(Modifier.height(12.dp))
                 YantraField(name, { name = it; note = null }, "team-tasks", mono = true)
-
-                Spacer(Modifier.height(20.dp))
-                SectionLabel("Invite")
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    "GitHub usernames, separated by commas. They can add and finish tasks once they "
-                        + "accept.",
-                    color = y.textMuted,
-                    fontSize = 12.5.sp,
+                    if (awaiting != null)
+                        "Waiting for $awaiting to appear. Press Create repository on GitHub, then "
+                            + "come back."
+                    else
+                        "Opens GitHub with the name and Private already filled in — press one button, "
+                            + "then come back here.",
+                    color = y.textDim,
+                    fontSize = 11.5.sp,
                 )
-                Spacer(Modifier.height(12.dp))
-                YantraField(invitees, { invitees = it }, "optional", mono = true)
             }
 
             Spacer(Modifier.height(24.dp))
@@ -169,10 +185,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 Link("Use a different token") { ownToken = true }
             } else {
                 Text(
-                    if (existing)
-                        "A fine-grained token with Contents: read and write on that repository"
-                    else
-                        "A token allowed to create repositories for your account",
+                    "A fine-grained token with Contents: read and write on that repository",
                     color = y.textMuted,
                     fontSize = 12.5.sp,
                 )
@@ -186,21 +199,25 @@ fun AddWorkspaceScreen(nav: NavHostController) {
 
             Spacer(Modifier.height(24.dp))
             YantraButton(
-                label = if (existing) "Add workspace" else "Create and share",
-                busy = busy,
+                label = if (existing) "Add workspace" else "Create on GitHub",
+                icon = if (existing) null else Icons.AutoMirrored.Filled.OpenInNew,
+                busy = busy || awaiting != null,
                 enabled = ready,
                 onClick = {
-                    busy = true
                     note = null
                     failed = false
-                    scope.launch {
-                        val outcome =
-                            if (existing) join(container, url, effectiveToken)
-                            else create(container, name.trim(), invitees, effectiveToken)
-                        busy = false
-                        note = outcome.message
-                        failed = !outcome.ok
-                        added = outcome.ok
+                    if (!existing) {
+                        awaiting = name.trim()
+                        uri.openUri(GitHubAuth.newRepoUrl(name.trim()))
+                    } else {
+                        busy = true
+                        scope.launch {
+                            val outcome = join(container, url, effectiveToken)
+                            busy = false
+                            note = outcome.message
+                            failed = !outcome.ok
+                            if (outcome.ok) added = RepoRef.parse(url)?.slug
+                        }
                     }
                 },
             )
@@ -209,16 +226,17 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 Spacer(Modifier.height(14.dp))
                 Note(it, bad = failed, good = !failed)
             }
-            if (added) {
+            added?.let { slug ->
                 Spacer(Modifier.height(14.dp))
+                // Inviting needs Administration rights, which is far more than reading and writing
+                // task files. So it happens where it belongs: on the repository's own settings page.
+                Link("Invite people to $slug") { uri.openUri(GitHubAuth.accessSettingsUrl(slug)) }
+                Spacer(Modifier.height(10.dp))
                 YantraButton("Done", primary = false, onClick = { nav.popBackStack() })
             }
         }
     }
 }
-
-/** What the screen says back, and whether it should be read as a refusal. */
-private data class Said(val ok: Boolean, val message: String)
 
 /** Joining a repository someone already has. */
 private suspend fun join(container: AppContainer, url: String, ownToken: String): Said =
@@ -235,50 +253,37 @@ private suspend fun join(container: AppContainer, url: String, ownToken: String)
         }
     }
 
+/** What came back after the browser trip, plus where it landed so the invite link can point at it. */
+private data class Created(val ok: Boolean, val message: String, val slug: String?)
+
 /**
- * Making a repository and a workspace in it, then inviting people.
+ * Looks for the repository the user was sent off to create, and makes a workspace in it.
  *
- * The invitations come last and their failure is reported without undoing anything. The workspace is
- * real and working by then, and tearing it down because a username was misspelled would be a far
- * worse answer than saying which name did not work.
+ * Null while it is genuinely not there yet, so someone who opened the form and wandered off finds the
+ * button still waiting rather than an error telling them they failed.
  */
-private suspend fun create(
+private suspend fun joinCreated(
     container: AppContainer,
     name: String,
-    invitees: String,
     ownToken: String,
-): Said = withContext(Dispatchers.IO) {
+): Created? = withContext(Dispatchers.IO) {
     val token = ownToken.ifBlank { container.credentials.token(Credentials.ACCOUNT) }
-        ?: return@withContext Said(false, "No token to use. Sign in, or paste one.")
+        ?: return@withContext Created(false, "No token to use. Sign in, or paste one.", null)
+    val login = container.credentials.login(Credentials.ACCOUNT)
+        ?: return@withContext Created(false, "Sign in again — we do not know who you are", null)
 
-    val ref = when (val made = container.github.createRepo(name, token)) {
-        is RepoCreate.Ok -> made.ref
-        // The repository the user asked for exists. Linking to it is almost certainly what they
-        // meant, and the linker still refuses if it turns out to hold somebody else's tasks.
-        is RepoCreate.Taken -> made.ref
-        is RepoCreate.Failed -> return@withContext Said(false, made.message)
+    val ref = RepoRef(login, name)
+    when (val check = container.github.check(ref, token)) {
+        is RepoCheck.Ok -> {
+            if (!check.canPush) return@withContext Created(false, "${ref.slug} exists but Yantra cannot push to it", null)
+            when (val result = container.addWorkspace(ref.slug, token, name)) {
+                is AddResult.Refused -> Created(false, result.reason, null)
+                is AddResult.Ok -> Created(true, "Created ${ref.slug}. It is yours to fill.", ref.slug)
+            }
+        }
+        // Not there yet, or the App has not been granted it. Either way: keep waiting.
+        RepoCheck.NotFound -> null
+        RepoCheck.Unauthorized -> Created(false, "Yantra was not given access to ${ref.slug}", null)
+        is RepoCheck.Failed -> null
     }
-
-    when (val added = container.addWorkspace(ref.slug, token, name)) {
-        is AddResult.Refused -> return@withContext Said(false, added.reason)
-        is AddResult.Ok -> Unit
-    }
-
-    val names = invitees.split(',', ' ', '\n')
-        .map { it.trim().removePrefix("@") }
-        .filter { it.isNotEmpty() }
-    if (names.isEmpty()) return@withContext Said(true, "Created ${ref.slug}. It is yours to fill.")
-
-    val failed = names.filterNot { container.github.addCollaborator(ref, it, token) }
-    Said(
-        true,
-        when {
-            failed.isEmpty() ->
-                "Created ${ref.slug} and invited ${names.joinToString(", ")}. They appear once they accept."
-            failed.size == names.size ->
-                "Created ${ref.slug}, but none of the invitations went out. Check the usernames."
-            else ->
-                "Created ${ref.slug}. Could not invite ${failed.joinToString(", ")} — check those usernames."
-        },
-    )
 }

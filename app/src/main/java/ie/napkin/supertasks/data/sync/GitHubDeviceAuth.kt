@@ -23,16 +23,39 @@ import java.net.URLEncoder
 object GitHubAuth {
     const val CLIENT_ID = ""
 
-    /**
-     * `repo` is the narrowest scope that can still do what signing in is *for*: create a private
-     * repository and push to it. It is a classic OAuth scope, so it reaches every repository the
-     * account can touch — which is why the paste-a-token path exists beside it, and why the sign-in
-     * screen says out loud what it is asking for. Someone who wants one repo and nothing else should
-     * use a fine-grained token and never come through here.
-     */
-    const val SCOPE = "repo"
+    /** The App's URL slug, for sending someone to its install page. */
+    const val APP_SLUG = "yantra"
 
     val configured: Boolean get() = CLIENT_ID.isNotBlank()
+
+    /**
+     * Where to install the App.
+     *
+     * A user token with no installation is not broken — it authenticates fine and can see nothing at
+     * all, which is the most confusing possible state to leave someone in. So the sign-in screen
+     * checks for an installation and sends them here when there is none.
+     */
+    val installUrl: String get() = "https://github.com/apps/$APP_SLUG/installations/new"
+
+    /**
+     * GitHub's new-repository form, with the name and visibility already filled in.
+     *
+     * This is why the app never asks anyone to create an access token. Repository *creation* has no
+     * GitHub App permission for a personal account — there is no fine-grained equivalent of the old
+     * `repo` scope — so rather than demand a token broad enough to create one, the app opens the form
+     * GitHub already has and lets the user press the button. They type nothing.
+     *
+     * Deliberately the real browser and never a WebView: in an embedded WebView there is no URL bar
+     * to check, and the session is not shared, so the user would be asked for their GitHub password
+     * inside our app — which is indistinguishable from how credential phishing works.
+     */
+    fun newRepoUrl(name: String, description: String = "Tasks, kept by Yantra"): String {
+        fun esc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
+        return "https://github.com/new?name=${esc(name)}&visibility=private&description=${esc(description)}"
+    }
+
+    /** Where someone invites people to a repository. Also the browser, and for the same reason. */
+    fun accessSettingsUrl(slug: String): String = "https://github.com/$slug/settings/access"
 }
 
 /** What GitHub gave us to show the user: a code, and where to type it. */
@@ -91,10 +114,17 @@ class GitHubDeviceAuth(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Asks for a code to show. Null if we could not even get that far. */
-    fun start(scope: String = GitHubAuth.SCOPE): DeviceCode? {
+    /**
+     * Asks for a code to show. Null if we could not even get that far.
+     *
+     * **No scope is sent, and that is not an omission.** A GitHub App's user token does not use
+     * scopes at all: its reach is the App's configured permissions intersected with what the user
+     * themselves can access. So there is nothing to ask for here — the consent screen shows what the
+     * App was registered to want, and sending a scope would be describing the wrong permission model.
+     */
+    fun start(): DeviceCode? {
         if (clientId.isBlank()) return null
-        val body = post("$base/login/device/code", mapOf("client_id" to clientId, "scope" to scope))
+        val body = post("$base/login/device/code", mapOf("client_id" to clientId))
             ?: return null
         return runCatching { json.decodeFromString(CodeResponse.serializer(), body) }.getOrNull()
             ?.let {
@@ -131,6 +161,11 @@ class GitHubDeviceAuth(
         val parsed = runCatching { json.decodeFromString(TokenResponse.serializer(), body) }.getOrNull()
             ?: return DevicePoll.Failed("GitHub sent something we could not read")
 
+        // No refresh handling, because the App is registered with user-token expiry switched off, so
+        // GitHub issues no refresh token and the access token does not lapse. That removes the
+        // *scheduled* failure, not every failure: a revoked authorisation, an uninstalled App, or a
+        // Keystore key invalidated by a device restore all still end in one place — a token that no
+        // longer works and a screen that asks you to sign in again.
         parsed.accessToken?.let { return DevicePoll.Token(it) }
 
         return when (parsed.error) {

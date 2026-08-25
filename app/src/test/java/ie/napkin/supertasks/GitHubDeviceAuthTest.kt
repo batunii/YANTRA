@@ -36,12 +36,13 @@ class GitHubDeviceAuthTest {
             assertEquals("https://github.com/login/device", code.verificationUri)
             assertEquals(5, code.intervalSecs)
 
-            // Form-encoded, with the scope we actually intend to ask for — if this said something
-            // else the consent screen would too, and the user would be approving the wrong thing.
             val sent = server.seen.single()
             assertEquals("POST", sent.method)
             assertTrue(sent.body.contains("client_id=Iv1.testclient"))
-            assertTrue(sent.body.contains("scope=repo"))
+            // No scope, deliberately. A GitHub App's user token does not use scopes at all — its
+            // reach is the App's configured permissions intersected with the user's own access — so
+            // sending one would be describing the wrong permission model on the consent screen.
+            assertTrue("a scope was sent: ${sent.body}", !sent.body.contains("scope"))
         }
     }
 
