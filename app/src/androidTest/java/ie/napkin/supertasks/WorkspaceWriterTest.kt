@@ -11,6 +11,9 @@ import ie.napkin.supertasks.data.workspace.Indexer
 import ie.napkin.supertasks.data.workspace.WorkspaceReconciler
 import ie.napkin.supertasks.data.workspace.WorkspaceStore
 import ie.napkin.supertasks.data.workspace.WorkspaceWriter
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -216,5 +219,40 @@ class WorkspaceWriterTest {
         )
         assertEquals("Buy milk", db.nodeDao().byId(t1)?.title)
         assertEquals(true, db.nodeDao().byId(t2)?.done)
+    }
+
+    @Test
+    fun strokesDrawnAtOnceAllSurvive() = runBlocking {
+        // Reported from a real phone: draw eight strokes quickly and the first one or two vanish.
+        //
+        // Every finished stroke is saved in its own coroutine, so a fast burst means overlapping
+        // read-modify-writes. When the read happened outside the lock they all read the same list,
+        // each wrote that list plus its own stroke, and the last write won — the lost strokes were
+        // not hidden by the UI, they never reached the file. Anything less than all of them here is
+        // that bug returning.
+        val strokes = 24
+        coroutineScope {
+            (1..strokes).map { i ->
+                async { writer.mutateInk("ink-block") { it + byteArrayOf(i.toByte(), 0, 0, 0) } }
+            }.awaitAll()
+        }
+
+        assertEquals(strokes, store.readInk("ink-block").size)
+        // Every one distinct: a lost update can also show up as the same stroke written twice.
+        assertEquals(strokes, store.readInk("ink-block").map { it.first() }.toSet().size)
+    }
+
+    @Test
+    fun anUndoRacingAStrokeLeavesTheFileCoherent() = runBlocking {
+        writer.mutateInk("ink-block") { listOf(byteArrayOf(1), byteArrayOf(2)) }
+        coroutineScope {
+            listOf(
+                async { writer.mutateInk("ink-block") { it + byteArrayOf(3) } },
+                async { writer.mutateInk("ink-block") { it.dropLast(1) } },
+            ).awaitAll()
+        }
+        // Order decides whether one or two remain; what must never happen is a torn list, and the
+        // serialisation is what guarantees the count is one of the two answers rather than neither.
+        assertTrue(store.readInk("ink-block").size in 1..2)
     }
 }

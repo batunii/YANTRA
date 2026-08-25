@@ -3,6 +3,9 @@ package ie.napkin.supertasks.data.sync
 import ie.napkin.supertasks.data.workspace.WorkspaceStore
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.lib.ObjectId
+import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.revwalk.filter.RevFilter
 import org.eclipse.jgit.transport.CredentialsProvider
 import java.io.File
 
@@ -97,11 +100,19 @@ class WorkspaceLinker(
                 if (g.repository.config.getSubsections("remote").isEmpty()) {
                     repo.addRemote(g, ref.httpsUrl)
                 }
-                if (fetchOne(g, creds) != null) {
-                    return LinkResult.Refused(
-                        "${ref.slug} already has Yantra tasks on it. Add it as a separate workspace " +
-                            "so both sets are kept."
-                    )
+                val remote = fetchOne(g, creds)
+                if (remote != null) {
+                    val local = g.repository.resolve("refs/heads/$branch")
+                    // Tasks on the remote are only a problem if they are *someone else's*. Running
+                    // this twice on the same workspace — a second tap, a screen that resumed twice —
+                    // must not be an error, and telling the user to add their own repository as a
+                    // separate workspace would split their tasks in half for no reason.
+                    if (local == null || !related(g, local, remote)) {
+                        return LinkResult.Refused(
+                            "${ref.slug} already has Yantra tasks on it. Add it as a separate " +
+                                "workspace so both sets are kept."
+                        )
+                    }
                 }
                 repo.commitAll(g, "Start a Yantra workspace", "Yantra", "yantra@napkin.ie")
                 repo.push(g, creds)
@@ -162,6 +173,21 @@ class WorkspaceLinker(
         }
         return git.repository.resolve("refs/remotes/origin/$branch")
     }
+
+    /**
+     * Whether two commits share any history at all.
+     *
+     * The question being asked is "are these the same task list, or two different ones?", and a merge
+     * base answers it exactly: our own workspace pushed earlier is an ancestor of what came back,
+     * while somebody else's orphan branch has no common commit with ours by construction.
+     */
+    private fun related(git: Git, a: ObjectId, b: ObjectId): Boolean =
+        RevWalk(git.repository).use { walk ->
+            walk.revFilter = RevFilter.MERGE_BASE
+            walk.markStart(walk.parseCommit(a))
+            walk.markStart(walk.parseCommit(b))
+            walk.next() != null
+        }
 
     /** Someone has been here: take the branch as it stands. */
     private fun adopt(git: Git) {

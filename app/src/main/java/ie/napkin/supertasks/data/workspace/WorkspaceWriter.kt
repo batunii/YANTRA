@@ -372,6 +372,27 @@ class WorkspaceWriter(
         onChange(Change.INK)
     }
 
+    /**
+     * Changes an ink block by reading what is there and writing what should be — **both inside the
+     * lock**.
+     *
+     * Adding a stroke is a read-modify-write, and doing the read outside the lock loses strokes. Each
+     * finished stroke is saved in its own coroutine, so drawing quickly means several of them
+     * overlapping: every one reads the same list, each writes that list plus its own stroke, and the
+     * last write wins. Eight fast strokes and the first two are simply gone — not hidden, gone from
+     * the file, because the file is the truth.
+     *
+     * [transform] also receives what the *sidecar* holds rather than what the index thinks it holds.
+     * The index is rebuilt after each write, so a caller reading it mid-burst sees a list one or two
+     * strokes behind even when nothing overlaps at all.
+     */
+    suspend fun mutateInk(nodeId: String, transform: (List<ByteArray>) -> List<ByteArray>) =
+        mutex.withLock {
+            store.writeInk(nodeId, transform(store.readInk(nodeId)))
+            indexer.rebuild(store)
+            onChange(Change.INK)
+        }
+
     // ---- helpers ----
 
     /** Which page holds this node's line. The index is a fine lookup even though files are truth. */

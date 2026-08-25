@@ -134,6 +134,24 @@ class WorkspaceLinkTest {
     }
 
     @Test
+    fun attachingTwiceIsNotAnError() {
+        // Found the hard way, on a real phone: closing the browser and the app being brought forward
+        // are two resumes, so attach ran twice. The second one saw its own tasks on the remote and
+        // told the user to add their own repository as a separate workspace — a success and a failure
+        // on screen at once, and an instruction that would have split their tasks in half.
+        val at = remote()
+        val d = local("mine", at)
+        val store = workspace(d, "Personal", "feed the cat")
+        val linker = WorkspaceLinker(StubApi())
+
+        assertTrue(linker.attach(store, "batunii/tasks", "tok") is LinkResult.Ok)
+        val again = linker.attach(store, "batunii/tasks", "tok")
+
+        assertTrue("second attach refused: $again", again is LinkResult.Ok)
+        assertTrue(titlesOn(at).any { it.contains("feed the cat") })
+    }
+
+    @Test
     fun attachingRefusesARemoteThatAlreadyHasTasks() {
         val at = remote()
         seedRemote(at, "Theirs", "their task")
@@ -144,6 +162,8 @@ class WorkspaceLinkTest {
 
         // Two real sets of work with no common ancestor. Rebasing one onto the other would
         // interleave them; picking a winner would silently delete the loser.
+        // Disjoint histories: an orphan branch made on another device shares no commit with ours,
+        // which is exactly what tells this case apart from re-attaching our own workspace.
         assertTrue("should have refused: $result", result is LinkResult.Refused)
         assertTrue((result as LinkResult.Refused).reason.contains("separate workspace"))
 

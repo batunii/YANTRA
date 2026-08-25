@@ -21,10 +21,16 @@ import java.net.URLEncoder
  * then the sign-in path is offline and the app says so instead of failing at the network.
  */
 object GitHubAuth {
-    const val CLIENT_ID = ""
+    const val CLIENT_ID = "Iv23lijaR2qLqzo9ALWw"
 
-    /** The App's URL slug, for sending someone to its install page. */
-    const val APP_SLUG = "yantra"
+    /**
+     * The App's URL slug — the last segment of github.com/apps/<slug>, not its display name.
+     *
+     * Must match the registration exactly or the install link 404s, which is a dead end with no
+     * error: the browser opens, says the page does not exist, and the app goes on waiting for an
+     * installation that can never arrive.
+     */
+    const val APP_SLUG = "yantra-tasks"
 
     val configured: Boolean get() = CLIENT_ID.isNotBlank()
 
@@ -67,6 +73,12 @@ data class DeviceCode(
     val expiresInSecs: Int,
 )
 
+/** Asking GitHub for a code to show. */
+sealed interface DeviceStart {
+    data class Ok(val code: DeviceCode) : DeviceStart
+    data class Failed(val reason: String) : DeviceStart
+}
+
 /** One poll of the token endpoint. */
 sealed interface DevicePoll {
     data class Token(val token: String) : DevicePoll
@@ -74,6 +86,16 @@ sealed interface DevicePoll {
     data object Pending : DevicePoll
     /** We polled too fast and GitHub has told us the new floor. */
     data class SlowDown(val intervalSecs: Int) : DevicePoll
+    /**
+     * We could not ask. **Not the same as a refusal** — GitHub has said nothing.
+     *
+     * Kept apart from [Failed] because the flow runs for up to fifteen minutes while the user walks
+     * to another device, and a mobile connection drops in that window as a matter of course. Treating
+     * one missed request as a refusal ends a sign-in that was going perfectly and makes the user
+     * start again with a fresh code.
+     */
+    data class Offline(val reason: String) : DevicePoll
+    /** GitHub answered, and the answer was no. */
     data class Failed(val reason: String) : DevicePoll
 }
 
@@ -122,22 +144,29 @@ class GitHubDeviceAuth(
      * themselves can access. So there is nothing to ask for here — the consent screen shows what the
      * App was registered to want, and sending a scope would be describing the wrong permission model.
      */
-    fun start(): DeviceCode? {
-        if (clientId.isBlank()) return null
-        val body = post("$base/login/device/code", mapOf("client_id" to clientId))
-            ?: return null
-        return runCatching { json.decodeFromString(CodeResponse.serializer(), body) }.getOrNull()
-            ?.let {
-                DeviceCode(
-                    deviceCode = it.deviceCode,
-                    userCode = it.userCode,
-                    verificationUri = it.verificationUri,
-                    // Never poll faster than GitHub asked, even if it says 0 — a tight loop against
-                    // the token endpoint is how an OAuth app gets rate-limited for everyone using it.
-                    intervalSecs = it.interval.coerceAtLeast(1),
-                    expiresInSecs = it.expiresIn,
-                )
-            }
+    fun start(): DeviceStart {
+        if (clientId.isBlank()) return DeviceStart.Failed("This build has no GitHub app registered")
+        return when (val body = post("$base/login/device/code", mapOf("client_id" to clientId))) {
+            is Post.Broken -> DeviceStart.Failed(body.why)
+            is Post.Body ->
+                runCatching { json.decodeFromString(CodeResponse.serializer(), body.text) }
+                    .getOrNull()
+                    ?.let {
+                        DeviceStart.Ok(
+                            DeviceCode(
+                                deviceCode = it.deviceCode,
+                                userCode = it.userCode,
+                                verificationUri = it.verificationUri,
+                                // Never poll faster than GitHub asked, even if it says 0 — a tight
+                                // loop against the token endpoint is how an OAuth app gets
+                                // rate-limited for everyone using it.
+                                intervalSecs = it.interval.coerceAtLeast(1),
+                                expiresInSecs = it.expiresIn,
+                            )
+                        )
+                    }
+                    ?: DeviceStart.Failed("GitHub sent something we could not read")
+        }
     }
 
     /**
@@ -148,15 +177,20 @@ class GitHubDeviceAuth(
      * whatever the status line said, and the *error field* is what decides.
      */
     fun poll(code: DeviceCode): DevicePoll {
-        val body = post(
-            "$base/login/oauth/access_token",
-            mapOf(
-                "client_id" to clientId,
-                "device_code" to code.deviceCode,
-                "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
-            ),
-            readErrorBody = true,
-        ) ?: return DevicePoll.Failed("Could not reach GitHub")
+        val body = when (
+            val result = post(
+                "$base/login/oauth/access_token",
+                mapOf(
+                    "client_id" to clientId,
+                    "device_code" to code.deviceCode,
+                    "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
+                ),
+                readErrorBody = true,
+            )
+        ) {
+            is Post.Broken -> return DevicePoll.Offline(result.why)
+            is Post.Body -> result.text
+        }
 
         val parsed = runCatching { json.decodeFromString(TokenResponse.serializer(), body) }.getOrNull()
             ?: return DevicePoll.Failed("GitHub sent something we could not read")
@@ -183,7 +217,19 @@ class GitHubDeviceAuth(
         }
     }
 
-    private fun post(url: String, form: Map<String, String>, readErrorBody: Boolean = false): String? {
+    /**
+     * The body, or why there is not one.
+     *
+     * Carrying the reason rather than returning null is not tidiness. "Could not reach GitHub" with
+     * nothing after it is unactionable for the user and undiagnosable for us — the exception was
+     * caught and thrown away at exactly the moment it was the only thing worth knowing.
+     */
+    private sealed interface Post {
+        data class Body(val text: String) : Post
+        data class Broken(val why: String) : Post
+    }
+
+    private fun post(url: String, form: Map<String, String>, readErrorBody: Boolean = false): Post {
         val encoded = form.entries.joinToString("&") { (k, v) ->
             "${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}"
         }
@@ -197,11 +243,14 @@ class GitHubDeviceAuth(
         }
         return try {
             conn.outputStream.use { it.write(encoded.toByteArray()) }
-            val stream = if (conn.responseCode in 200..299) conn.inputStream
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream
             else if (readErrorBody) conn.errorStream else null
             stream?.bufferedReader()?.readText()
-        } catch (_: IOException) {
-            null
+                ?.let { Post.Body(it) }
+                ?: Post.Broken("GitHub returned $code with no body")
+        } catch (e: IOException) {
+            Post.Broken(e.message?.take(120) ?: e.javaClass.simpleName)
         } finally {
             conn.disconnect()
         }

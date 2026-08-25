@@ -20,22 +20,33 @@ class InkRepository(private val db: AppDatabase, private val ws: Workspaces) {
     fun strokes(nodeId: String) = dao.strokes(nodeId)
     fun strokesUnder(parentId: String) = dao.strokesUnder(parentId)
 
-    /** Current bytes for this block, in draw order — the index holds them ranked already. */
-    private suspend fun current(nodeId: String): List<ByteArray> =
-        dao.strokes(nodeId).first().map { it.data }
-
+    /**
+     * Everything that changes a block goes through [ie.napkin.supertasks.data.workspace.WorkspaceWriter.mutateInk],
+     * which reads and writes under one lock.
+     *
+     * Reading the current strokes here and passing the new list down would be a read-modify-write
+     * with the read outside the lock — and since every finished stroke is saved in its own coroutine,
+     * drawing quickly loses strokes to whichever write lands last.
+     */
     suspend fun addStroke(nodeId: String, stroke: Stroke, familyName: String) =
-        ws.writerFor(nodeId).writeInk(nodeId, current(nodeId) + StrokeCodec.encode(stroke, familyName))
+        ws.writerFor(nodeId).mutateInk(nodeId) { it + StrokeCodec.encode(stroke, familyName) }
 
     suspend fun undoLast(nodeId: String) =
-        ws.writerFor(nodeId).writeInk(nodeId, current(nodeId).dropLast(1))
+        ws.writerFor(nodeId).mutateInk(nodeId) { it.dropLast(1) }
 
+    /** Nothing to read first: the answer does not depend on what is there. */
     suspend fun clear(nodeId: String) = ws.writerFor(nodeId).writeInk(nodeId, emptyList())
 
     /** The eraser. Stroke ids are positional in the index, so this removes by position. */
     suspend fun deleteStroke(id: String) {
         val row = dao.strokeById(id) ?: return
-        val kept = dao.strokes(row.nodeId).first().filterNot { it.id == id }.map { it.data }
-        ws.writerFor(row.nodeId).writeInk(row.nodeId, kept)
+        val at = dao.strokes(row.nodeId).first().indexOfFirst { it.id == id }
+        if (at < 0) return
+        // Resolved from the index because that is what the user tapped, then applied to the file
+        // under the lock. A stroke added meanwhile lands after this one and leaves the position
+        // alone; the ranks only shift for strokes drawn later.
+        ws.writerFor(row.nodeId).mutateInk(row.nodeId) { blobs ->
+            if (at in blobs.indices) blobs.filterIndexed { i, _ -> i != at } else blobs
+        }
     }
 }

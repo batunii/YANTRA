@@ -1,5 +1,6 @@
 package ie.napkin.supertasks
 
+import ie.napkin.supertasks.data.sync.DeviceStart
 import ie.napkin.supertasks.data.sync.DevicePoll
 import ie.napkin.supertasks.data.sync.GitHubDeviceAuth
 import org.junit.Assert.assertEquals
@@ -25,11 +26,15 @@ class GitHubDeviceAuthTest {
     private fun auth(server: FakeGitHub, clientId: String = "Iv1.testclient") =
         GitHubDeviceAuth(clientId = clientId, base = server.base)
 
+    /** The code, for the tests whose subject is the poll rather than the start. */
+    private fun GitHubDeviceAuth.started(): ie.napkin.supertasks.data.sync.DeviceCode =
+        (start() as DeviceStart.Ok).code
+
     @Test
     fun `a code comes back ready to show`() {
         FakeGitHub().use { server ->
             server.on("/login/device/code", 200, codeJson)
-            val code = auth(server).start()!!
+            val code = (auth(server).start() as DeviceStart.Ok).code
 
             assertEquals("dev-123", code.deviceCode)
             assertEquals("WDJB-MJHT", code.userCode)
@@ -50,7 +55,7 @@ class GitHubDeviceAuthTest {
     fun `an unconfigured build never reaches the network`() {
         FakeGitHub().use { server ->
             server.on("/login/device/code", 200, codeJson)
-            assertNull(auth(server, clientId = "").start())
+            assertTrue(auth(server, clientId = "").start() is DeviceStart.Failed)
             // The point: no request at all, rather than one that fails. A build with no client id
             // should say so on the screen, not produce a network error.
             assertTrue(server.seen.isEmpty())
@@ -66,7 +71,7 @@ class GitHubDeviceAuthTest {
             server.on("/login/oauth/access_token", 400, """{"error":"authorization_pending"}""")
 
             val a = auth(server)
-            assertEquals(DevicePoll.Pending, a.poll(a.start()!!))
+            assertEquals(DevicePoll.Pending, a.poll(a.started()))
         }
     }
 
@@ -80,8 +85,7 @@ class GitHubDeviceAuthTest {
             )
 
             val a = auth(server)
-            val code = a.start()!!
-            assertEquals(DevicePoll.Token("gho_abc123"), a.poll(code))
+            assertEquals(DevicePoll.Token("gho_abc123"), a.poll(a.started()))
 
             // The device code identifies the request; sending the wrong grant type is the mistake
             // that makes GitHub answer unsupported_grant_type forever.
@@ -98,7 +102,7 @@ class GitHubDeviceAuthTest {
             server.on("/login/oauth/access_token", 200, """{"error":"slow_down","interval":10}""")
 
             val a = auth(server)
-            assertEquals(DevicePoll.SlowDown(10), a.poll(a.start()!!))
+            assertEquals(DevicePoll.SlowDown(10), a.poll(a.started()))
         }
     }
 
@@ -109,7 +113,7 @@ class GitHubDeviceAuthTest {
             server.on("/login/oauth/access_token", 200, """{"error":"slow_down"}""")
 
             val a = auth(server)
-            val poll = a.poll(a.start()!!) as DevicePoll.SlowDown
+            val poll = a.poll(a.started()) as DevicePoll.SlowDown
             // Backing off to the same interval would be no backoff at all, and GitHub is entitled to
             // omit the field.
             assertTrue("did not back off: ${poll.intervalSecs}", poll.intervalSecs > 5)
@@ -129,12 +133,23 @@ class GitHubDeviceAuthTest {
                 server.on("/login/oauth/access_token", 200, """{"error":"$error"}""")
 
                 val a = auth(server)
-                val failed = a.poll(a.start()!!) as DevicePoll.Failed
+                val failed = a.poll(a.started()) as DevicePoll.Failed
                 assertTrue(
                     "$error read as: ${failed.reason}",
                     failed.reason.contains(expected, ignoreCase = true),
                 )
             }
+        }
+    }
+
+    @Test
+    fun `a failure says what went wrong rather than just that it did`() {
+        FakeGitHub().use { server ->
+            server.on("/login/device/code", 500, "")
+            val failed = auth(server).start() as DeviceStart.Failed
+            // "Could not reach GitHub" with nothing after it is unactionable for the user and
+            // undiagnosable for us — which is exactly what happened the first time this ran for real.
+            assertTrue("said nothing useful: ${failed.reason}", failed.reason.contains("500"))
         }
     }
 
@@ -145,6 +160,6 @@ class GitHubDeviceAuthTest {
         val a = GitHubDeviceAuth(clientId = "x", base = "http://127.0.0.1:1")
         val code = ie.napkin.supertasks.data.sync.DeviceCode("d", "U-1", "https://x", 5, 900)
         assertTrue(a.poll(code) is DevicePoll.Failed)
-        assertNull(a.start())
+        assertTrue(a.start() is DeviceStart.Failed)
     }
 }

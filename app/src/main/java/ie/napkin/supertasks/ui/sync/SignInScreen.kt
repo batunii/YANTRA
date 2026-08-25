@@ -49,6 +49,7 @@ import ie.napkin.supertasks.AddResult
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.sync.Credentials
 import ie.napkin.supertasks.data.sync.DeviceCode
+import ie.napkin.supertasks.data.sync.DeviceStart
 import ie.napkin.supertasks.data.sync.DevicePoll
 import ie.napkin.supertasks.data.sync.GitHubAuth
 import ie.napkin.supertasks.data.sync.InstallState
@@ -113,6 +114,16 @@ fun SignInScreen(nav: NavHostController) {
     var token by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
+    /** Set while polls are failing, so the wait does not silently pretend to be going well. */
+    var struggling by remember { mutableStateOf<String?>(null) }
+    /**
+     * True while a look-for-the-new-repository attempt is in flight.
+     *
+     * Closing the browser and the app being brought forward are two resumes, so without this the
+     * effect runs twice, both jobs read the same pending name, and the workspace is attached twice —
+     * the second one arriving as a failure on top of a success.
+     */
+    var checking by remember { mutableStateOf(false) }
 
     var install by remember { mutableStateOf<InstallState?>(null) }
     var localSlug by remember { mutableStateOf(container.slugOf("")) }
@@ -143,13 +154,18 @@ fun SignInScreen(nav: NavHostController) {
             }
 
             val wanted = awaiting
-            if (wanted != null && install == InstallState.Installed) {
-                val outcome = linkCreated(container, account!!, wanted, tok)
-                if (outcome != null) {
-                    awaiting = null
-                    note = outcome.message
-                    noteBad = !outcome.ok
-                    localSlug = container.slugOf("")
+            if (wanted != null && install == InstallState.Installed && !checking) {
+                checking = true
+                try {
+                    val outcome = linkCreated(container, account!!, wanted, tok)
+                    if (outcome != null) {
+                        awaiting = null
+                        note = outcome.message
+                        noteBad = !outcome.ok
+                        localSlug = container.slugOf("")
+                    }
+                } finally {
+                    checking = false
                 }
             }
         }
@@ -161,11 +177,13 @@ fun SignInScreen(nav: NavHostController) {
         val waiting = stage as? Stage.Waiting ?: return@LaunchedEffect
         var interval = waiting.code.intervalSecs
         var waited = 0
+        var offline = 0
         while (waited < waiting.code.expiresInSecs) {
             delay(interval * 1000L)
             waited += interval
             when (val poll = withContext(Dispatchers.IO) { container.deviceAuth.poll(waiting.code) }) {
                 is DevicePoll.Token -> {
+                    struggling = null
                     val login = withContext(Dispatchers.IO) { container.github.viewer(poll.token) }
                     if (login == null) {
                         stage = Stage.Failed("GitHub gave us a token it then would not accept")
@@ -181,10 +199,27 @@ fun SignInScreen(nav: NavHostController) {
                     stage = Stage.Failed(poll.reason)
                     return@LaunchedEffect
                 }
+                // A dropped request is not an answer. Keep asking — but say so, because a screen
+                // that reads "waiting for you" while it is actually failing is a lie, and give up
+                // eventually so a genuinely dead network does not look like a hang forever.
+                is DevicePoll.Offline -> {
+                    offline++
+                    if (offline >= MAX_OFFLINE_POLLS) {
+                        stage = Stage.Failed("Cannot reach GitHub — ${poll.reason}")
+                        return@LaunchedEffect
+                    }
+                    struggling = poll.reason
+                }
                 // GitHub sets the floor and we take it. Polling faster than asked is how an OAuth
                 // app gets rate-limited for every install of it, not just this one.
-                is DevicePoll.SlowDown -> interval = poll.intervalSecs
-                DevicePoll.Pending -> Unit
+                is DevicePoll.SlowDown -> {
+                    struggling = null
+                    interval = poll.intervalSecs
+                }
+                DevicePoll.Pending -> {
+                    offline = 0
+                    struggling = null
+                }
             }
         }
         stage = Stage.Failed("The code expired. Start again for a fresh one")
@@ -256,6 +291,7 @@ fun SignInScreen(nav: NavHostController) {
                     is Stage.Waiting -> DeviceCodePanel(
                         code = s.code,
                         copied = copied,
+                        struggling = struggling,
                         onCopy = {
                             ctx.getSystemService(ClipboardManager::class.java)
                                 ?.setPrimaryClip(ClipData.newPlainText("code", s.code.userCode))
@@ -272,9 +308,13 @@ fun SignInScreen(nav: NavHostController) {
                                 stage = Stage.Starting
                                 copied = false
                                 scope.launch {
-                                    val code = withContext(Dispatchers.IO) { container.deviceAuth.start() }
-                                    stage = code?.let { Stage.Waiting(it) }
-                                        ?: Stage.Failed("Could not reach GitHub")
+                                    stage = when (
+                                        val started =
+                                            withContext(Dispatchers.IO) { container.deviceAuth.start() }
+                                    ) {
+                                        is DeviceStart.Ok -> Stage.Waiting(started.code)
+                                        is DeviceStart.Failed -> Stage.Failed(started.reason)
+                                    }
                                 }
                             },
                         )
@@ -492,6 +532,7 @@ internal fun SignedIn(
 private fun DeviceCodePanel(
     code: DeviceCode,
     copied: Boolean,
+    struggling: String?,
     onCopy: () -> Unit,
     onOpen: () -> Unit,
 ) {
@@ -530,11 +571,20 @@ private fun DeviceCodePanel(
     YantraButton(label = "Open GitHub", icon = Icons.AutoMirrored.Filled.OpenInNew, onClick = onOpen)
     Spacer(Modifier.height(12.dp))
     Text(
-        "Waiting for you to approve it. This screen will notice by itself.",
-        color = y.textMuted,
+        if (struggling == null) "Waiting for you to approve it. This screen will notice by itself."
+        else "Having trouble reaching GitHub — still trying. Your code is still good.",
+        color = if (struggling == null) y.textMuted else y.warning,
         fontSize = 12.5.sp,
     )
 }
+
+/**
+ * How many consecutive unanswered polls before giving up.
+ *
+ * Roughly half a minute at GitHub's five-second floor: long enough to ride out a handover between
+ * wifi and mobile, short enough that a genuinely dead network is not mistaken for a hang.
+ */
+private const val MAX_OFFLINE_POLLS = 6
 
 /**
  * Looks for the repository the user was sent off to create, and attaches the local tasks to it.
