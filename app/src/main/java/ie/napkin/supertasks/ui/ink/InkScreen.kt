@@ -71,6 +71,8 @@ import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.ChipSize
 import ie.napkin.supertasks.ui.components.SelectChip
+import ie.napkin.supertasks.ui.components.ButtonTone
+import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -349,6 +351,11 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             },
             update = { canvas ->
                 canvas.darkTheme = dark
+                canvas.surface(
+                    paper = y.inkPaper.toArgb(),
+                    separator = y.inkPageSep.toArgb(),
+                    pageLabel = y.textDim.toArgb(),
+                )
                 canvas.tool = when (tool) {
                     InkTool.SHAPES -> EditorTool.SHAPE
                     InkTool.ERASER -> EditorTool.ERASE
@@ -558,11 +565,11 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).background(current, RoundedCornerShape(10.dp)).border(1.dp, y.tileBorder, RoundedCornerShape(10.dp)))
                 Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier.background(y.accentFill, RoundedCornerShape(10.dp)).border(1.dp, y.accentBorder, RoundedCornerShape(10.dp))
-                        .clickable { onPick(current.toArgb().toLong() and 0xFFFFFFFFL) }
-                        .padding(horizontal = 22.dp, vertical = 10.dp),
-                ) { Text("Use color", fontSize = 14.sp, fontWeight = FontWeight.W800, color = y.accentText) }
+                YantraButton(
+                    label = "Use colour",
+                    tone = ButtonTone.Soft,
+                    onClick = { onPick(current.toArgb().toLong() and 0xFFFFFFFFL) },
+                )
             }
         }
     }

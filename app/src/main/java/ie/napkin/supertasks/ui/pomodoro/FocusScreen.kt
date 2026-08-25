@@ -62,6 +62,8 @@ import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.LocalYantraHaptics
 import ie.napkin.supertasks.ui.components.isReducedMotion
 import androidx.compose.ui.platform.LocalContext
+import ie.napkin.supertasks.ui.components.ButtonTone
+import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -247,17 +249,12 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
             }
         }
         Spacer(Modifier.height(24.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(y.accentFill, RoundedCornerShape(16.dp))
-                .border(1.dp, y.accentBorder, RoundedCornerShape(16.dp))
-                .clickable { onStart(minutes * 60) }
-                .padding(vertical = 16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("Start focus", fontSize = 16.sp, fontWeight = FontWeight.W800, color = y.accentText)
-        }
+        YantraButton(
+            label = "Start focus",
+            modifier = Modifier.fillMaxWidth(),
+            tone = ButtonTone.Soft,
+            onClick = { onStart(minutes * 60) },
+        )
     }
 }
 
@@ -354,8 +351,8 @@ private fun ActiveTimer(
         }
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton("Finish", onComplete, textColor = y.accentText, icon = Icons.Default.Timer)
-            SecondaryButton("Drop", onAbandon, textColor = y.textMuted)
+            YantraButton("Finish", onComplete, tone = ButtonTone.Soft, icon = Icons.Default.Timer)
+            YantraButton("Drop", onAbandon, tone = ButtonTone.Quiet)
         }
         Spacer(Modifier.height(32.dp))
     }
@@ -416,40 +413,14 @@ private fun DoneContent(
                     .padding(vertical = 13.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("Start another", fontSize = 14.sp, fontWeight = FontWeight.W600, color = y.textSecondary) }
-            Box(
-                Modifier
-                    .weight(1f)
-                    .background(y.accentFill, RoundedCornerShape(12.dp))
-                    .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
-                    .clickable(onClick = onDone)
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) { Text("Done", fontSize = 14.sp, fontWeight = FontWeight.W800, color = y.accentText) }
+            YantraButton(
+                label = "Done",
+                modifier = Modifier.weight(1f),
+                tone = ButtonTone.Soft,
+                onClick = onDone,
+            )
         }
         Spacer(Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun SecondaryButton(
-    text: String,
-    onClick: () -> Unit,
-    textColor: Color,
-    icon: ImageVector? = null,
-) {
-    Box(
-        Modifier
-            .background(Yantra.colors.secondaryButton, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 11.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(text, fontSize = 14.sp, fontWeight = FontWeight.W700, color = textColor)
-            if (icon != null) {
-                Icon(icon, contentDescription = null, tint = textColor, modifier = Modifier.size(15.dp))
-            }
-        }
     }
 }
 

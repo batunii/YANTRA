@@ -84,12 +84,29 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
 
     private val pageHeight: Float get() = if (width > 0) width * PAGE_RATIO else 0f
 
+    /**
+     * Which way round the ink reads — genuinely a boolean, because a stroke drawn in near-black has
+     * to be remapped to near-white on dark paper. Distinct from [surface], which is what colour the
+     * paper actually is.
+     */
     var darkTheme: Boolean = false
         set(value) {
             field = value
-            setBackgroundColor(InkTheme.paper(value))
             dryLayer.darkTheme = value
         }
+
+    /**
+     * The paper, its page separators and its page numbers, taken from the app's theme.
+     *
+     * These used to be six constants split across this file and [InkTheme], chosen by a boolean —
+     * which meant the drawing surface was the one part of the app the theme did not reach. It also
+     * meant OLED got ordinary dark grey while `YantraColors.inkPaper` was already computing pure
+     * black for it and going unread. The tokens existed; nothing consumed them.
+     */
+    fun surface(paper: Int, separator: Int, pageLabel: Int) {
+        setBackgroundColor(paper)
+        dryLayer.surface(separator, pageLabel)
+    }
 
     init {
         setBackgroundColor(Color.WHITE)
@@ -344,12 +361,8 @@ private class DocumentStrokesView(context: Context) : View(context) {
     private val renderer = CanvasStrokeRenderer.create()
     private val transform = Matrix()
 
-    private val separatorPaint = Paint().apply {
-        color = 0xFFD8D5CE.toInt()
-        strokeWidth = 2f
-    }
+    private val separatorPaint = Paint().apply { strokeWidth = 2f }
     private val pageLabelPaint = Paint().apply {
-        color = 0xFFB4B0A8.toInt()
         textSize = 28f
         isAntiAlias = true
     }
@@ -363,12 +376,13 @@ private class DocumentStrokesView(context: Context) : View(context) {
     private val previewRect = RectF()
 
     var darkTheme: Boolean = false
-        set(value) {
-            field = value
-            separatorPaint.color = if (value) 0xFF35332F.toInt() else 0xFFD8D5CE.toInt()
-            pageLabelPaint.color = if (value) 0xFF6B6862.toInt() else 0xFFB4B0A8.toInt()
-            invalidate()
-        }
+
+    /** Page furniture, from the theme rather than from a pair of constants per mode. */
+    fun surface(separator: Int, pageLabel: Int) {
+        separatorPaint.color = separator
+        pageLabelPaint.color = pageLabel
+        invalidate()
+    }
 
     var pageHeightPx: Float = 0f
         set(value) {

@@ -284,6 +284,56 @@ discussion; not yet built.
 
 ---
 
+## 4b. Coherence pass — does each feature feel native?
+
+A different question from §4, which asked whether the code breaks the laws. This one asks whether a
+feature looks like it grew here or was fitted afterwards. Both passes find real things; neither finds
+the other's.
+
+### Fixed in this pass
+
+**The primary action was built six ways.** Home filled a box with the accent at 13dp; the focus
+screen used an accent tint at 16dp in one place and 12dp in another; the ink tray used the same tint
+at 10dp; the focus screen and the rule builder each kept a private button; and `YantraButton` — added
+long after `SelectChip` cured exactly this for chips — arrived as a sixth rather than reusing any of
+them. Now one component, three tones (`Solid`, `Soft`, `Quiet`, matching the three voices already in
+use), one radius. Width belongs to the caller, because that genuinely differs.
+
+**The drawing surface did not follow the theme.** `InkCanvas` chose paper, separators and page
+numbers from six constants split between itself and `InkTheme`, selected by a boolean — while
+`YantraColors.inkPaper` and `inkPageSep` computed the same thing correctly, including a pure-black
+branch for OLED, and were **read by nothing**. So the notes surface, on the pillar the product cares
+most about after tasks, was the one place the app's own palette did not reach. The canvas now takes
+the resolved colours; `darkTheme` survives only where it is genuinely a boolean question — which way
+round to remap a stroke.
+
+**The empty state existed and was used once.** `ComposedEmpty` carries the Yantra mark and takes an
+action, and appeared on one screen out of five — not Home, which is the first screen anyone sees. A
+new user met a blank page.
+
+### Left deliberately
+
+**Ink keeps its own six-colour preset palette in raw hex**, including a copy of coral that will not
+move when the accent changes. It is a *drawing* palette rather than a semantic one, so it is not
+governed by the colour law — but the duplicated coral is a small lie and should reference the accent.
+Worth doing; not urgent.
+
+**Dialogs are Material `AlertDialog`.** Suspected as foreign, checked, and they are not: the M3
+scheme is mapped thoroughly enough (`surface`, `surfaceContainer`, `onSurface`, `primary`) that they
+inherit Yantra's palette. Shape and typography differ slightly. Not worth the churn.
+
+**Corner radii drift** — eight distinct values in the card-and-button range. The button work removed
+four of them. The rest are mostly deliberate, and a token set would be a large diff for a small gain.
+
+### The standard to copy
+
+The widget layer is the most coherent thing in the app. `GlanceWidgetTheme` reads the same accent
+prefs the app does, and refuses Material You for a stated reason: *"a wallpaper-tinted bindu would
+say 'your effort' in a hue that means nothing."* A feature that reasons about the colour law before
+drawing a pixel is one that grew here. That is the bar.
+
+---
+
 ## 5. Decisions this document is waiting on
 
 1. **Images** — copy into the workspace (agreed direction), but: cap the size? Down-scale on import?

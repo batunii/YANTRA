@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,14 +22,29 @@ import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
 
 /**
- * The one full-width action.
+ * How loudly a button speaks. Three, because the app already spoke in three.
  *
- * [primary] is the accent fill Home already uses for "Create"; the quiet variant is the raised
- * surface. Only one primary per screen — the accent means "this is the thing you came here to do",
- * and two of them on a page means neither does.
+ * [Solid] is the one thing this screen is for — filled with the accent, at most one per screen.
+ * [Soft] is an affirmative that is not the only way out: accent-tinted, bordered, the voice most of
+ * the app already uses. [Quiet] is the alternative beside it, carrying no accent at all.
+ */
+enum class ButtonTone { Solid, Soft, Quiet }
+
+/**
+ * The one button.
+ *
+ * There were six. Home filled a box with the accent at 13dp; the focus screen used an accent tint at
+ * 16dp in one place and 12dp in another; the ink tray used the same tint at 10dp; two screens each
+ * kept a private `SecondaryButton` and `GhostButton`; and this file — added a fortnight after
+ * [SelectChip] cured exactly this disease for chips — arrived as the sixth rather than reusing any
+ * of them. Same control, four corner radii, three font weights.
+ *
+ * What varies now is only [tone] and whether an icon is present. The caller owns the width, because
+ * that genuinely differs: full width at the foot of a sheet, `weight(1f)` beside a sibling, wrapped
+ * around its label in a tray.
  *
  * [busy] replaces the label rather than sitting beside it, and disables the button while it shows.
- * Every caller of this is a network round trip, and a button that still looks pressable during one
+ * Every network caller of this is a round trip, and a button that still looks pressable during one
  * gets pressed twice — which for "create a repository" means two repositories.
  */
 @Composable
@@ -38,33 +52,39 @@ fun YantraButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    primary: Boolean = true,
+    tone: ButtonTone = ButtonTone.Solid,
     enabled: Boolean = true,
     busy: Boolean = false,
     icon: ImageVector? = null,
 ) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(13.dp)
+    val shape = RoundedCornerShape(RADIUS)
     val live = enabled && !busy
+
     val ink = when {
         !live -> y.textDim
-        primary -> y.onAccent
-        else -> y.textPrimary
+        tone == ButtonTone.Solid -> y.onAccent
+        tone == ButtonTone.Soft -> y.accentText
+        else -> y.textSecondary
     }
+    val fill = when {
+        tone == ButtonTone.Solid && !live -> y.accent.copy(alpha = 0.35f)
+        tone == ButtonTone.Solid -> y.accent
+        tone == ButtonTone.Soft -> y.accentFill
+        else -> y.secondaryButton
+    }
+    val edge = when (tone) {
+        ButtonTone.Solid -> null                 // a filled shape needs no outline
+        ButtonTone.Soft -> y.accentBorder
+        ButtonTone.Quiet -> y.tileBorder
+    }
+
     Row(
         modifier
-            .fillMaxWidth()
-            .background(
-                when {
-                    !live && primary -> y.accent.copy(alpha = 0.35f)
-                    primary -> y.accent
-                    else -> y.secondaryButton
-                },
-                shape,
-            )
-            .then(if (primary) Modifier else Modifier.border(1.dp, y.tileBorder, shape))
+            .background(fill, shape)
+            .then(if (edge != null) Modifier.border(1.dp, edge, shape) else Modifier)
             .clickable(enabled = live, onClick = onClick)
-            .padding(vertical = 13.dp),
+            .padding(horizontal = 20.dp, vertical = 13.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -83,3 +103,11 @@ fun YantraButton(
         }
     }
 }
+
+/**
+ * One radius for every button in the app.
+ *
+ * Sits between the 12dp of a field and the 14dp of a card, which is the order these things should
+ * read in. The previous four values were not decisions, they were four afternoons.
+ */
+private val RADIUS = 13.dp

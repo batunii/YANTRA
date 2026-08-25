@@ -58,6 +58,7 @@ import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.ButtonTone
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.YantraField
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -303,6 +304,7 @@ fun SignInScreen(nav: NavHostController) {
                     else -> {
                         YantraButton(
                             label = "Sign in with GitHub",
+                            modifier = Modifier.fillMaxWidth(),
                             busy = s is Stage.Starting,
                             onClick = {
                                 stage = Stage.Starting
@@ -358,6 +360,7 @@ fun SignInScreen(nav: NavHostController) {
                 Spacer(Modifier.height(10.dp))
                 YantraButton(
                     label = "Connect",
+                    modifier = Modifier.fillMaxWidth(),
                     busy = busy,
                     enabled = token.isNotBlank(),
                     onClick = {
@@ -450,7 +453,12 @@ internal fun SignedIn(
                 fontSize = 12.5.sp,
             )
             Spacer(Modifier.height(12.dp))
-            YantraButton("Grant access on GitHub", icon = Icons.AutoMirrored.Filled.OpenInNew, onClick = onInstall)
+            YantraButton(
+                "Grant access on GitHub",
+                modifier = Modifier.fillMaxWidth(),
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
+                onClick = onInstall,
+            )
             Spacer(Modifier.height(10.dp))
             Text(
                 "This screen notices when you come back.",
@@ -490,6 +498,7 @@ internal fun SignedIn(
                 Spacer(Modifier.height(10.dp))
                 YantraButton(
                     label = "Create a private repository",
+                    modifier = Modifier.fillMaxWidth(),
                     icon = Icons.AutoMirrored.Filled.OpenInNew,
                     busy = awaiting != null,
                     enabled = repoName.isNotBlank(),
@@ -518,7 +527,7 @@ internal fun SignedIn(
     }
 
     Spacer(Modifier.height(26.dp))
-    YantraButton(label = "Sign out", primary = false, onClick = onSignOut)
+    YantraButton(label = "Sign out", tone = ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), onClick = onSignOut)
     Spacer(Modifier.height(8.dp))
     Text(
         "Your workspaces keep syncing. Remove Yantra's access on GitHub to stop them.",
@@ -568,7 +577,12 @@ private fun DeviceCodePanel(
         }
     }
     Spacer(Modifier.height(12.dp))
-    YantraButton(label = "Open GitHub", icon = Icons.AutoMirrored.Filled.OpenInNew, onClick = onOpen)
+    YantraButton(
+        label = "Open GitHub",
+        modifier = Modifier.fillMaxWidth(),
+        icon = Icons.AutoMirrored.Filled.OpenInNew,
+        onClick = onOpen,
+    )
     Spacer(Modifier.height(12.dp))
     Text(
         if (struggling == null) "Waiting for you to approve it. This screen will notice by itself."

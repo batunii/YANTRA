@@ -41,6 +41,7 @@ import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.SelectChip
+import ie.napkin.supertasks.ui.components.ButtonTone
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.YantraField
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -200,6 +201,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
             Spacer(Modifier.height(24.dp))
             YantraButton(
                 label = if (existing) "Add workspace" else "Create on GitHub",
+                modifier = Modifier.fillMaxWidth(),
                 icon = if (existing) null else Icons.AutoMirrored.Filled.OpenInNew,
                 busy = busy || awaiting != null,
                 enabled = ready,
@@ -232,7 +234,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 // task files. So it happens where it belongs: on the repository's own settings page.
                 Link("Invite people to $slug") { uri.openUri(GitHubAuth.accessSettingsUrl(slug)) }
                 Spacer(Modifier.height(10.dp))
-                YantraButton("Done", primary = false, onClick = { nav.popBackStack() })
+                YantraButton("Done", tone = ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), onClick = { nav.popBackStack() })
             }
         }
     }

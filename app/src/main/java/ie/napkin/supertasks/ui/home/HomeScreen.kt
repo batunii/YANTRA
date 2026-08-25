@@ -58,7 +58,9 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
+import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.NavCircleSurface
@@ -187,6 +189,17 @@ fun HomeScreen(nav: NavHostController) {
                     }
                 }
 
+                // The app has an empty state, with its own mark and an action, and until now used it
+                // on one screen out of five — not this one, which is the first screen anyone sees.
+                if (ungroupedSmart.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty()) {
+                    item(key = "empty") {
+                        ComposedEmpty(
+                            "Nothing here yet",
+                            action = "Make a list",
+                            onAction = { showCreate = true },
+                        )
+                    }
+                }
                 if (ungroupedSmart.isNotEmpty()) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
                     items(ungroupedSmart, key = { it.id }) { renderRow(it) }
@@ -472,14 +485,12 @@ private fun CreatePanel(onCreate: (CreateType, String, Boolean) -> Unit) {
             }
         }
         Spacer(Modifier.height(16.dp))
-        Box(
-            Modifier.fillMaxWidth().background(y.accent, RoundedCornerShape(13.dp))
-                .clickable(enabled = valid) { onCreate(type, text.trim(), makeSmart) }
-                .padding(vertical = 13.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(actionLabel, color = y.onAccent, fontFamily = YantraText, fontWeight = FontWeight.W700, fontSize = 15.sp)
-        }
+        YantraButton(
+            label = actionLabel,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = valid,
+            onClick = { onCreate(type, text.trim(), makeSmart) },
+        )
     }
 }
 
