@@ -9,6 +9,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import ie.napkin.supertasks.data.format.Markdown
 
 /**
  * Inline emphasis, rendered from the markers that are stored in the text itself.
@@ -23,38 +24,27 @@ import androidx.compose.ui.text.input.VisualTransformation
  * different lengths, which is where caret drift, wrong-place selection and backspace-eats-the-wrong
  * character all come from.
  */
-private val BOLD = Regex("""\*\*(?=\S)(.+?)(?<=\S)\*\*""")
-private val ITALIC = Regex("""(?<!\*)\*(?=\S)([^*]+?)(?<=\S)\*(?!\*)""")
-private val CODE = Regex("""`(?=\S)([^`]+?)(?<=\S)`""")
-
-/** Emphasis spans for [text], with the markers themselves painted in [markerColor]. */
-fun markdownSpans(text: String, markerColor: Color): List<AnnotatedString.Range<SpanStyle>> {
-    if (text.length < 3) return emptyList()
-    val spans = mutableListOf<AnnotatedString.Range<SpanStyle>>()
-    // Claimed characters, so `*italic*` cannot match the inner asterisks of `**bold**` and code
-    // spans win over anything that looks like emphasis inside them.
-    val claimed = BooleanArray(text.length)
-
-    fun scan(pattern: Regex, markerLength: Int, style: SpanStyle) {
-        for (match in pattern.findAll(text)) {
-            val range = match.range
-            if (range.any { claimed[it] }) continue
-            val innerStart = range.first + markerLength
-            val innerEnd = range.last + 1 - markerLength
-            if (innerEnd <= innerStart) continue
-            range.forEach { claimed[it] = true }
-            spans += AnnotatedString.Range(style, innerStart, innerEnd)
-            spans += AnnotatedString.Range(SpanStyle(color = markerColor), range.first, innerStart)
-            spans += AnnotatedString.Range(SpanStyle(color = markerColor), innerEnd, range.last + 1)
+/**
+ * Emphasis spans for [text], with the markers themselves painted in [markerColor].
+ *
+ * Where the emphasis *is* comes from [Markdown], so a widget stripping markers and a screen dimming
+ * them can never disagree about what counts as bold. Only the styling is decided here.
+ */
+fun markdownSpans(text: String, markerColor: Color): List<AnnotatedString.Range<SpanStyle>> =
+    Markdown.runs(text).flatMap { run ->
+        val style = when (run.kind) {
+            Markdown.Kind.CODE -> SpanStyle(fontFamily = FontFamily.Monospace)
+            Markdown.Kind.BOLD -> SpanStyle(fontWeight = FontWeight.Bold)
+            Markdown.Kind.ITALIC -> SpanStyle(fontStyle = FontStyle.Italic)
+            Markdown.Kind.BOLD_ITALIC ->
+                SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)
         }
+        listOf(
+            AnnotatedString.Range(style, run.inner.first, run.inner.last + 1),
+            AnnotatedString.Range(SpanStyle(color = markerColor), run.outer.first, run.inner.first),
+            AnnotatedString.Range(SpanStyle(color = markerColor), run.inner.last + 1, run.outer.last + 1),
+        )
     }
-
-    // Longest marker first: ** before *, or the italic pattern would eat half a bold pair.
-    scan(CODE, 1, SpanStyle(fontFamily = FontFamily.Monospace))
-    scan(BOLD, 2, SpanStyle(fontWeight = FontWeight.Bold))
-    scan(ITALIC, 1, SpanStyle(fontStyle = FontStyle.Italic))
-    return spans
-}
 
 /** [text] with its emphasis applied — for read-only rows, which render a plain string. */
 fun markdownAnnotated(text: String, markerColor: Color): AnnotatedString =

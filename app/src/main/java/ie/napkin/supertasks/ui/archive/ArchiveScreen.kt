@@ -41,6 +41,7 @@ import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.markdownAnnotated
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
 import kotlinx.coroutines.launch
@@ -142,7 +143,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                task.title.ifBlank { "Untitled task" },
+                markdownAnnotated(task.title.ifBlank { "Untitled task" }, y.textDim),
                 color = y.textSecondary,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W600,
