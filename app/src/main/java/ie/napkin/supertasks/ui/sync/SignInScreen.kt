@@ -189,7 +189,13 @@ fun SignInScreen(nav: NavHostController) {
                     if (login == null) {
                         stage = Stage.Failed("GitHub gave us a token it then would not accept")
                     } else {
-                        container.credentials.store(Credentials.ACCOUNT, poll.token, login, viaApp = true)
+                        container.credentials.store(
+                            Credentials.ACCOUNT, poll.token, login, viaApp = true,
+                            // Kept whether or not GitHub sends them. Both null means the token does
+                            // not lapse; anything else is what TokenRenewal needs to keep it alive.
+                            refreshToken = poll.refreshToken,
+                            expiresAt = poll.expiresInSecs?.let { System.currentTimeMillis() + it * 1000L },
+                        )
                         account = login
                         viaApp = true
                         stage = Stage.Idle

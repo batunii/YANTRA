@@ -2,11 +2,13 @@ package ie.napkin.supertasks.data.sync
 
 import ie.napkin.supertasks.data.workspace.Indexer
 import ie.napkin.supertasks.data.workspace.WorkspaceStore
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.RebaseResult
 import org.eclipse.jgit.transport.CredentialsProvider
 import java.io.File
 
@@ -40,7 +42,14 @@ class SyncEngine(
     private val indexer: Indexer,
     private val repo: GitRepo,
     private val device: String,
-    private val credentials: CredentialsProvider? = null,
+    /**
+     * Resolved once per pass rather than held, and suspending so it can renew first.
+     *
+     * It used to be a provider captured at construction. That made a refreshed — or re-entered —
+     * token invisible until the app was restarted: the engine went on presenting the credential it
+     * was built with, which by then was the one that had stopped working.
+     */
+    private val credentials: suspend () -> CredentialsProvider? = { null },
 ) {
     /**
      * One pass at a time per workspace.
@@ -54,6 +63,8 @@ class SyncEngine(
     companion object {
         /** A push racing another device is ordinary; three rounds of losing it is a problem. */
         const val MAX_ATTEMPTS = 3
+
+        private const val TAG = "YantraSync"
     }
 
     /**
@@ -79,6 +90,9 @@ class SyncEngine(
         var committed = false
         var pulled = false
 
+        // Before the first request, so an expiring token is renewed rather than discovered dead.
+        val creds = runCatching { credentials() }.getOrNull()
+
         try {
             repo.open().use { git ->
                 committed = repo.commitAll(git, commitMessage, "Yantra", "yantra@napkin.ie")
@@ -92,13 +106,17 @@ class SyncEngine(
                 var attempt = 0
                 while (true) {
                     attempt++
-                    repo.fetch(git, credentials)
+                    repo.fetch(git, creds)
                     val before = git.repository.resolve("HEAD")
 
                     val rebase = git.rebase().setUpstream("origin/${branchOf(git)}").call()
                     if (!rebase.status.isSuccessful) {
                         resolutions += resolveAll(git)
-                        val stillStuck = repo.conflicts(git).isNotEmpty()
+                        // Still rebasing counts as stuck, not just still conflicted. A rebase left
+                        // open leaves HEAD detached, and pushing from there is refused by the remote
+                        // — which used to be reported as a clean sync, so the work simply stopped
+                        // leaving the device with nothing on screen to say so.
+                        val stillStuck = repo.conflicts(git).isNotEmpty() || repo.isRebasing(git)
                         if (stillStuck) {
                             repo.abortRebase(git)
                             return SyncResult(
@@ -110,9 +128,21 @@ class SyncEngine(
                     }
                     pulled = before != git.repository.resolve("HEAD")
 
-                    val pushed = runCatching { repo.push(git, credentials); true }.getOrElse { false }
-                    if (pushed || !repo.hasUnpushed(git)) {
+                    val push = repo.push(git, creds)
+                    if (push.accepted || !repo.hasUnpushed(git)) {
                         return SyncResult(committed, true, pulled, resolutions, reindex() + listOfNotNull(unlocked))
+                    }
+                    // Refused for a reason going round again cannot fix — a protected branch, a
+                    // token that no longer carries write access. Retrying would spend the attempts
+                    // and then report losing a race that never happened, so it is reported as what
+                    // it is. This is the case that used to be indistinguishable from success.
+                    if (!push.retryable) {
+                        Log.w(TAG, "push refused: ${push.reason}")
+                        return SyncResult(
+                            committed = committed, pulled = pulled, conflicts = resolutions,
+                            problems = reindex(),
+                            error = "the remote refused the push: ${push.reason}",
+                        )
                     }
                     // Someone else pushed between our fetch and our push. Go round again.
                     if (attempt >= MAX_ATTEMPTS) {
@@ -128,9 +158,30 @@ class SyncEngine(
         } catch (e: Exception) {
             // Offline, auth revoked, a protected branch: all of these leave local work intact and
             // are worth reporting rather than throwing, because none of them should stop editing.
-            SyncResult(committed = committed, pulled = pulled, conflicts = resolutions, error = e.message ?: e.toString())
+            //
+            // Logged as well as returned. The message on screen has to be short enough to read at a
+            // glance, which makes it useless for working out *why* — and a sync that has been
+            // failing for a day is exactly when the underlying cause is worth having somewhere.
+            Log.w(TAG, "sync failed", e)
+            SyncResult(
+                committed = committed, pulled = pulled, conflicts = resolutions,
+                error = readable(e.message ?: e.toString()),
+            )
         }
     }
+
+    /**
+     * Git's wording, turned into something the reader can act on.
+     *
+     * "not authorized" is what JGit says for a token that expired, was revoked, or never had write
+     * access — accurate, and no help at all to someone holding a phone. The remedy is the same in
+     * every case and worth stating.
+     */
+    private fun readable(message: String): String =
+        if (message.contains("not authorized", ignoreCase = true) ||
+            message.contains("Authentication is required", ignoreCase = true)
+        ) "GitHub would not accept the sign-in — sign in again in Settings"
+        else message
 
     private fun hasRemote(git: Git): Boolean =
         git.repository.config.getSubsections("remote").contains("origin")
@@ -149,7 +200,11 @@ class SyncEngine(
     private fun resolveAll(git: Git): List<ConflictResolver.Resolution> {
         val out = ArrayList<ConflictResolver.Resolution>()
         var guard = 0
-        while (repo.conflicts(git).isNotEmpty() && guard++ < 64) {
+        // Driven by whether a rebase is still open, not by whether anything is conflicted. Those
+        // came apart in the case that mattered: resolving a page to exactly what upstream already
+        // had makes the replayed commit empty, so `continue` answers NOTHING_TO_COMMIT with a clean
+        // index. Looping on conflicts alone exited right there and left the rebase open forever.
+        while (repo.isRebasing(git) && guard++ < 64) {
             repo.conflicts(git).forEach { path ->
                 val sides = repo.conflictSides(git.repository, path)
                 val decision =
@@ -166,9 +221,20 @@ class SyncEngine(
                 }
             }
             val res = git.rebase().setOperation(org.eclipse.jgit.api.RebaseCommand.Operation.CONTINUE).call()
-            if (res.status.isSuccessful) break
-            // A rebase replays commits one at a time, so continuing can land straight in the next
-            // one's conflicts. Loop rather than assume a single round settles it.
+            when {
+                res.status.isSuccessful -> break
+                // Our answer matched upstream, so there is nothing left to replay for this commit.
+                // Git wants it skipped; without that the rebase sits here and never finishes.
+                res.status == RebaseResult.Status.NOTHING_TO_COMMIT ->
+                    git.rebase().setOperation(org.eclipse.jgit.api.RebaseCommand.Operation.SKIP).call()
+                // A rebase replays commits one at a time, so continuing can land straight in the
+                // next one's conflicts. Loop rather than assume a single round settles it.
+                repo.conflicts(git).isNotEmpty() -> Unit
+                // Not successful, nothing conflicted, nothing to skip: this is not a state we know
+                // how to drive, and guessing at it would be worse than handing it back. The caller
+                // aborts, and the local commits are untouched.
+                else -> break
+            }
         }
         return out
     }

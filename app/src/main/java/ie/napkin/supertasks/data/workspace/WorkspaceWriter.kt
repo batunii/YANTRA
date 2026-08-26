@@ -276,7 +276,23 @@ class WorkspaceWriter(
      * as a task whose page opens empty.
      */
     suspend fun removeBlock(nodeId: String) {
-        val home = homePageOf(nodeId) ?: return
+        // A top-level node — a list, a smart list, a group — is not a line on anything. It *is* a
+        // page, and its parent is null, which this used to read as "nothing to remove" and return.
+        // The effect was that deleting a top-level list did nothing at all: no line to strike out
+        // was taken to mean no node to delete. Only lists nested inside a group could be deleted,
+        // which is why it looked like it worked at all.
+        //
+        // deletePage already walks the whole subtree and takes the sidecars with it, so the page is
+        // the only thing that has to be named here.
+        val home = homePageOf(nodeId)
+        if (home == null) {
+            mutex.withLock {
+                store.deletePage(nodeId)
+                refreshIndex(Change.STRUCTURAL)
+                onChange(Change.STRUCTURAL)
+            }
+            return
+        }
 
         // Which picture this block owned, resolved while the block still exists. An image block's own
         // id is positional — only tasks and ink blocks carry a generated one — so the file is named

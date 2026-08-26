@@ -408,6 +408,35 @@ class RepositoryFlowTest {
     }
 
     @Test
+    fun deletingATopLevelListActuallyDeletesIt() = runBlocking {
+        // The bug this covers: a top-level node has no parent, and removeBlock read that as "there
+        // is no line to strike out, so there is nothing to do" and returned. Deleting a list did
+        // nothing whatsoever — silently, with a confirmation dialog in front of it.
+        val list = nodes.create(null, NodeType.LIST, "Doomed")
+        val task = nodes.create(list, NodeType.TASK, "Inside it")
+        assertTrue(ws.primaryStore().pageFile(list).exists())
+
+        nodes.delete(list)
+
+        assertNull("the list survived", db.nodeDao().byId(list))
+        assertNull("the task outlived its list", db.nodeDao().byId(task))
+        assertTrue("the page is still on disk", !ws.primaryStore().pageFile(list).exists())
+    }
+
+    @Test
+    fun deletingAListInsideAGroupStillWorks() = runBlocking {
+        // The path that always worked, kept honest now that the other one shares its code.
+        val group = nodes.createGroup("Shelf")
+        val list = nodes.create(null, NodeType.LIST, "Doomed")
+        nodes.moveToGroup(list, group)
+
+        nodes.delete(list)
+
+        assertNull(db.nodeDao().byId(list))
+        assertTrue(ws.primaryStore().pageFile(group).exists())
+    }
+
+    @Test
     fun aNameThatDiffersOnlyBySpacingFindsTheListThatExists() = runBlocking {
         // The whole reason for normalising: typing this one-handed mid-sentence is the point, and
         // making a second "Worktrips" beside "Work trips" would be the worst possible outcome.

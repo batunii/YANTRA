@@ -46,6 +46,17 @@ class Credentials(context: Context) {
         private fun ivKey(ws: String) = "iv:$ws"
         private fun loginKey(ws: String) = "login:$ws"
         private fun viaAppKey(ws: String) = "viaapp:$ws"
+
+        /**
+         * A refresh token, and when the access token beside it stops working.
+         *
+         * Both are absent for a pasted personal token and for a GitHub App registered with user-token
+         * expiry switched off — in either case the access token simply does not lapse, and there is
+         * nothing here to read.
+         */
+        private fun refreshKey(ws: String) = "refresh:$ws"
+        private fun refreshIvKey(ws: String) = "refreshiv:$ws"
+        private fun expiryKey(ws: String) = "expires:$ws"
     }
 
     /**
@@ -80,7 +91,16 @@ class Credentials(context: Context) {
      * is which, the app would tell someone who pasted a fine-grained token to go and install an App
      * they have no use for.
      */
-    fun store(workspaceId: String, token: String, login: String, viaApp: Boolean = false) {
+    fun store(
+        workspaceId: String,
+        token: String,
+        login: String,
+        viaApp: Boolean = false,
+        /** GitHub's refresh token, when it issued one. Null leaves any stored one untouched. */
+        refreshToken: String? = null,
+        /** When [token] stops working, or null when it does not. */
+        expiresAt: Long? = null,
+    ) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val sealed = cipher.doFinal(token.toByteArray())
         prefs.edit()
@@ -88,6 +108,14 @@ class Credentials(context: Context) {
             .putString(ivKey(workspaceId), Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putString(loginKey(workspaceId), login)
             .putBoolean(viaAppKey(workspaceId), viaApp)
+            .apply {
+                if (refreshToken != null) {
+                    val rc = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
+                    putString(refreshKey(workspaceId), Base64.encodeToString(rc.doFinal(refreshToken.toByteArray()), Base64.NO_WRAP))
+                    putString(refreshIvKey(workspaceId), Base64.encodeToString(rc.iv, Base64.NO_WRAP))
+                }
+                if (expiresAt != null) putLong(expiryKey(workspaceId), expiresAt) else remove(expiryKey(workspaceId))
+            }
             // commit, not apply. Setup reports success to the user once this returns, and an
             // asynchronous write means a crash in between could leave a workspace whose git remote
             // is configured and whose token is gone — authentication failing for no visible reason.
@@ -101,9 +129,11 @@ class Credentials(context: Context) {
      * where there was none, can invalidate it. That is a re-authentication prompt, not a crash, so
      * an undecryptable token reads as absent.
      */
-    fun token(workspaceId: String): String? {
-        val sealed = prefs.getString(tokenKey(workspaceId), null) ?: return null
-        val iv = prefs.getString(ivKey(workspaceId), null) ?: return null
+    fun token(workspaceId: String): String? =
+        unseal(prefs.getString(tokenKey(workspaceId), null), prefs.getString(ivKey(workspaceId), null))
+
+    private fun unseal(sealed: String?, iv: String?): String? {
+        if (sealed == null || iv == null) return null
         return runCatching {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
                 init(
@@ -118,10 +148,33 @@ class Credentials(context: Context) {
 
     fun login(workspaceId: String): String? = prefs.getString(loginKey(workspaceId), null)
 
+    /** The refresh token, if GitHub issued one and it still decrypts. */
+    fun refreshToken(workspaceId: String): String? =
+        unseal(prefs.getString(refreshKey(workspaceId), null), prefs.getString(refreshIvKey(workspaceId), null))
+
+    /**
+     * When the access token lapses, or null when it does not lapse at all.
+     *
+     * Zero is "not stored" rather than "the epoch": every token this app has ever held predates
+     * being asked the question, and treating an absent value as long expired would send someone who
+     * pasted a personal token into a refresh that cannot work.
+     */
+    fun expiresAt(workspaceId: String): Long? = prefs.getLong(expiryKey(workspaceId), 0L).takeIf { it > 0L }
+
     /** True when this account was signed in through the GitHub App rather than pasted as a token. */
     fun viaApp(workspaceId: String): Boolean = prefs.getBoolean(viaAppKey(workspaceId), false)
 
     fun has(workspaceId: String): Boolean = token(workspaceId) != null
+
+    /**
+     * Every id that has a token stored, [ACCOUNT] included.
+     *
+     * Needed because a workspace's token is a *copy* of the account's, taken when the workspace was
+     * linked. Refreshing the account therefore has to push the new value down to the copies, or the
+     * account would work and every workspace would go on failing with the token it snapshotted.
+     */
+    fun storedIds(): List<String> =
+        prefs.all.keys.filter { it.startsWith("token:") }.map { it.removePrefix("token:") }
 
     /** Forgets a workspace's credentials. The remote is untouched; revoking is done on GitHub. */
     fun clear(workspaceId: String) {
@@ -130,6 +183,9 @@ class Credentials(context: Context) {
             .remove(ivKey(workspaceId))
             .remove(loginKey(workspaceId))
             .remove(viaAppKey(workspaceId))
+            .remove(refreshKey(workspaceId))
+            .remove(refreshIvKey(workspaceId))
+            .remove(expiryKey(workspaceId))
             .commit()
     }
 

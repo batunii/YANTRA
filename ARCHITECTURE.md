@@ -494,3 +494,31 @@ from. Emphasis in a to-do line was never worth much; a marker that reliably mean
 is a property of the file format — the markers sit in the stored text, stay greppable, and survive
 export and sync. Rendering dims the markers rather than removing them, so the string shown is exactly
 as long as the string stored and the caret cannot drift.
+
+
+### Sync tells the truth about failing
+
+Three bugs, found together because the first one hid the other two.
+
+**A refused push read as a successful sync.** JGit does not throw when a remote rejects a push — it
+returns a status per ref, and that status was discarded. Every refusal (a protected branch, a token
+without write access, a detached HEAD) looked exactly like a push that worked. Local commits piled up
+behind a remote that had never heard of them, with a clean sync reported on screen. It is the worst
+shape a bug can take: the failing thing is the thing that reports failure.
+
+**The rebase was being left open.** Resolution loops while anything is conflicted, but a resolution
+that matches upstream exactly makes the replayed commit empty, and git answers `NOTHING_TO_COMMIT`
+with a clean index. The loop exited there and the rebase stayed open — HEAD detached, and every push
+from that state refused. The loop now runs on *is a rebase still open*, skips the empty commit, and
+the caller treats "still rebasing" as stuck rather than only "still conflicted".
+
+**The GitHub token expired and nothing renewed it.** A GitHub App issues user tokens that lapse after
+a few hours unless the App is registered with expiry off. The code assumed the latter *in a comment*
+and threw away the refresh token and expiry that arrived with every sign-in. Sync worked for an
+afternoon and then failed, permanently, with no way back but signing in again. `TokenRenewal` now
+renews before each pass. The account is the identity and a workspace's token is a copy of it, so
+renewal happens in one place and is pushed down — GitHub rotates the refresh token on every use, and
+two workspaces refreshing independently would spend each other's.
+
+The credentials provider is also resolved per pass instead of captured at construction, which is why
+a fresh sign-in used to need an app restart before sync noticed it.

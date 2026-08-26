@@ -5,6 +5,7 @@ import org.eclipse.jgit.api.RebaseCommand
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.transport.CredentialsProvider
+import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.transport.URIish
 import java.io.File
 
@@ -16,7 +17,7 @@ import java.io.File
  * here is only the parts that are awkward — reading both sides of a conflict out of the index, and
  * the fact that a rebase means the opposite of what you expect by "ours".
  */
-class GitRepo(private val dir: File, private val branch: String) {
+open class GitRepo(private val dir: File, private val branch: String) {
 
     fun open(): Git = Git.open(dir)
 
@@ -93,6 +94,16 @@ class GitRepo(private val dir: File, private val branch: String) {
     fun conflicts(git: Git): Set<String> = git.status().call().conflicting
 
     /**
+     * Whether a rebase is still open.
+     *
+     * Not the same question as "are there conflicts". A rebase can be mid-flight with a perfectly
+     * clean index — when the commit being replayed turned out to be empty, for one — and in that
+     * state HEAD is detached. Anything that pushes without asking this pushes a detached HEAD, which
+     * the remote refuses.
+     */
+    fun isRebasing(git: Git): Boolean = git.repository.repositoryState.isRebasing
+
+    /**
      * Clears a lock file left behind by an operation that never finished.
      *
      * Git takes `.git/index.lock` for the duration of a write and deletes it afterwards. If the
@@ -131,9 +142,53 @@ class GitRepo(private val dir: File, private val branch: String) {
         git.fetch().setRemote("origin").apply { creds?.let { setCredentialsProvider(it) } }.call()
     }
 
-    fun push(git: Git, creds: CredentialsProvider?) {
-        git.push().setRemote("origin").add(branch)
+    /**
+     * Pushes, and reports what the remote actually did with it.
+     *
+     * **JGit does not throw when a push is rejected.** `call()` succeeds and hands back a status per
+     * ref, so a push refused for a protected branch, a revoked token or a stale ref looked exactly
+     * like a push that worked. Sync took that silence for success: it reported a clean sync, and the
+     * local commits piled up behind a remote that had never heard of them — which is the worst shape
+     * this bug could take, because the one signal that something is wrong is the one that was
+     * suppressed.
+     *
+     * A non-fast-forward is different in kind from the rest. It means someone else pushed first,
+     * which is ordinary, expected, and fixed by fetching and rebasing — so it is reported as
+     * retryable rather than as a failure, and the caller goes round again.
+     */
+    open fun push(git: Git, creds: CredentialsProvider?): PushOutcome {
+        val results = git.push().setRemote("origin").add(branch)
             .apply { creds?.let { setCredentialsProvider(it) } }
             .call()
+
+        val updates = results.flatMap { it.remoteUpdates }
+        // No update at all means the remote was never told anything — not a success.
+        if (updates.isEmpty()) return PushOutcome(false, retryable = false, reason = "the remote refused the connection")
+
+        val bad = updates.filter {
+            it.status != RemoteRefUpdate.Status.OK && it.status != RemoteRefUpdate.Status.UP_TO_DATE
+        }
+        if (bad.isEmpty()) return PushOutcome(accepted = true, retryable = false, reason = null)
+
+        val retryable = bad.all { it.status == RemoteRefUpdate.Status.REJECTED_NONFASTFORWARD }
+        val reason = bad.joinToString("; ") { u ->
+            u.message?.takeIf { it.isNotBlank() } ?: describe(u.status)
+        }
+        return PushOutcome(accepted = false, retryable = retryable, reason = reason)
     }
+
+    /** What each rejection means, said the way someone using the app would need to hear it. */
+    private fun describe(status: RemoteRefUpdate.Status): String = when (status) {
+        RemoteRefUpdate.Status.REJECTED_NONFASTFORWARD -> "the remote has work this does not have yet"
+        RemoteRefUpdate.Status.REJECTED_REMOTE_CHANGED -> "the remote moved while pushing"
+        RemoteRefUpdate.Status.REJECTED_NODELETE -> "the remote does not allow deleting that branch"
+        RemoteRefUpdate.Status.REJECTED_OTHER_REASON -> "the remote refused the push"
+        RemoteRefUpdate.Status.NON_EXISTING -> "that branch does not exist on the remote"
+        RemoteRefUpdate.Status.NOT_ATTEMPTED -> "the push was never attempted"
+        RemoteRefUpdate.Status.AWAITING_REPORT -> "the remote never said whether it took the push"
+        else -> status.name
+    }
+
+    /** What the remote did with a push: took it, wants a rebase first, or refused it outright. */
+    data class PushOutcome(val accepted: Boolean, val retryable: Boolean, val reason: String?)
 }

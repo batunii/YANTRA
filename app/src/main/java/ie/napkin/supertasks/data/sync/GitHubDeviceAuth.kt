@@ -81,7 +81,15 @@ sealed interface DeviceStart {
 
 /** One poll of the token endpoint. */
 sealed interface DevicePoll {
-    data class Token(val token: String) : DevicePoll
+    /**
+     * [refreshToken] and [expiresInSecs] are present only when the App issues expiring user tokens.
+     * Both null means the token does not lapse, which is a different thing from not knowing.
+     */
+    data class Token(
+        val token: String,
+        val refreshToken: String? = null,
+        val expiresInSecs: Int? = null,
+    ) : DevicePoll
     /** Nobody has typed the code yet. Keep waiting — this is the normal answer, many times over. */
     data object Pending : DevicePoll
     /** We polled too fast and GitHub has told us the new floor. */
@@ -129,6 +137,8 @@ class GitHubDeviceAuth(
     @Serializable
     private data class TokenResponse(
         @SerialName("access_token") val accessToken: String? = null,
+        @SerialName("refresh_token") val refreshToken: String? = null,
+        @SerialName("expires_in") val expiresIn: Int? = null,
         val error: String? = null,
         @SerialName("error_description") val errorDescription: String? = null,
         val interval: Int? = null,
@@ -195,12 +205,19 @@ class GitHubDeviceAuth(
         val parsed = runCatching { json.decodeFromString(TokenResponse.serializer(), body) }.getOrNull()
             ?: return DevicePoll.Failed("GitHub sent something we could not read")
 
-        // No refresh handling, because the App is registered with user-token expiry switched off, so
-        // GitHub issues no refresh token and the access token does not lapse. That removes the
-        // *scheduled* failure, not every failure: a revoked authorisation, an uninstalled App, or a
-        // Keystore key invalidated by a device restore all still end in one place — a token that no
-        // longer works and a screen that asks you to sign in again.
-        parsed.accessToken?.let { return DevicePoll.Token(it) }
+        // Whatever GitHub sends is kept, rather than assumed.
+        //
+        // This used to state that the App had user-token expiry switched off, so no refresh token
+        // would arrive and the access token would not lapse — and to throw both fields away on that
+        // basis. The assumption was wrong, and wrong in the way an assumption in a comment usually
+        // is: silently, and only visible eight hours later, when sync began failing with "not
+        // authorized" and the only remedy was to sign in again. Then again eight hours after that.
+        //
+        // Reading the fields costs nothing and works either way. If the App really does issue
+        // permanent tokens, both are null and nothing below ever runs.
+        parsed.accessToken?.let {
+            return DevicePoll.Token(it, parsed.refreshToken, parsed.expiresIn)
+        }
 
         return when (parsed.error) {
             "authorization_pending" -> DevicePoll.Pending
@@ -215,6 +232,42 @@ class GitHubDeviceAuth(
                 DevicePoll.Failed("This build's GitHub app is misconfigured")
             else -> DevicePoll.Failed(parsed.errorDescription ?: parsed.error ?: "Sign-in failed")
         }
+    }
+
+    /**
+     * Trades a refresh token for a fresh access token.
+     *
+     * The same endpoint as [poll] with a different grant, and the same parsing, because GitHub
+     * answers in the same shape. GitHub rotates the refresh token on every use, so the one that
+     * comes back has to be stored in place of the one that was sent — keeping the old one means the
+     * next refresh fails and the failure looks exactly like the one this exists to prevent.
+     */
+    fun refresh(refreshToken: String): DevicePoll {
+        if (clientId.isBlank()) return DevicePoll.Failed("This build has no GitHub app registered")
+        val body = when (
+            val result = post(
+                "$base/login/oauth/access_token",
+                mapOf(
+                    "client_id" to clientId,
+                    "grant_type" to "refresh_token",
+                    "refresh_token" to refreshToken,
+                ),
+                readErrorBody = true,
+            )
+        ) {
+            // Offline is not a refusal. A refresh that could not be attempted must leave the stored
+            // credentials alone, or a tunnel would sign the user out.
+            is Post.Broken -> return DevicePoll.Offline(result.why)
+            is Post.Body -> result.text
+        }
+
+        val parsed = runCatching { json.decodeFromString(TokenResponse.serializer(), body) }.getOrNull()
+            ?: return DevicePoll.Failed("GitHub sent something we could not read")
+
+        parsed.accessToken?.let {
+            return DevicePoll.Token(it, parsed.refreshToken, parsed.expiresIn)
+        }
+        return DevicePoll.Failed(parsed.errorDescription ?: parsed.error ?: "Could not refresh the sign-in")
     }
 
     /**

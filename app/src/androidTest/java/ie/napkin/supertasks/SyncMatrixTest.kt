@@ -311,6 +311,43 @@ class SyncMatrixTest {
         assertTrue(res.committed)
     }
 
+    @Test
+    fun aRefusedPushIsNotReportedAsASuccessfulSync() = runBlocking {
+        // The bug: JGit does not throw when a remote refuses a push. call() returns a status per
+        // ref, and the old code discarded it — `runCatching { push(); true }` — so a refusal was
+        // indistinguishable from a push that worked. Sync reported clean while local commits piled
+        // up behind a remote that had never heard of them: the one failure mode where the signal
+        // that something is wrong is the signal being suppressed.
+        //
+        // The refusal is injected rather than provoked. A real one needs a server that refuses —
+        // a protected branch, a token without write access — and JGit's own ReceivePack, which is
+        // what a local remote runs, implements none of those (denyCurrentBranch is a C-git
+        // feature). What is being tested is the engine's reading of the answer, so the answer is
+        // what is substituted.
+        val dev = File(root, "refused")
+        val store = WorkspaceStore(dev, "refused").also { it.scaffold("Refused", 1L) }
+        val refusing = object : GitRepo(dev, branch) {
+            override fun push(git: Git, creds: org.eclipse.jgit.transport.CredentialsProvider?) =
+                PushOutcome(accepted = false, retryable = false, reason = "protected branch")
+        }
+        refusing.init().use { g ->
+            refusing.commitAll(g, "first", "Yantra", "y@napkin.ie")
+            refusing.addRemote(g, origin.toURI().toString())
+        }
+        val engine = SyncEngine(store, Indexer(db), refusing, "refused")
+
+        store.writePage(
+            PageDoc("p", NodeType.LIST, null, "Never lands", null, Instant.ofEpochMilli(2L), "refused", emptyList())
+        )
+        val res = engine.sync()
+
+        assertTrue("a refused push reported a clean sync", !res.ok)
+        assertTrue("the reason was dropped: ${res.error}", res.error!!.contains("protected branch"))
+        // Local work is untouched — the whole reason a refusal is reported rather than thrown.
+        assertTrue(res.committed)
+        assertTrue(store.pageFile("p").exists())
+    }
+
     private fun retitle(page: PageDoc, taskId: String, title: String) = page.copy(
         blocks = page.blocks.map { if (it is TaskRef && it.id == taskId) it.copy(title = title) else it }
     )

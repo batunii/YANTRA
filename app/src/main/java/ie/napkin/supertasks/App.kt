@@ -26,6 +26,7 @@ import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.data.sync.SyncWorker
 import ie.napkin.supertasks.data.sync.GitRepo
 import ie.napkin.supertasks.data.sync.SyncEngine
+import ie.napkin.supertasks.data.sync.TokenRenewal
 import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
@@ -119,6 +120,9 @@ class AppContainer(val app: Application) {
 
     /** Signing in without a client secret — the only flow that fits in an app with no server. */
     val deviceAuth = GitHubDeviceAuth()
+
+    /** Keeps an expiring GitHub App token alive, so sync does not quietly die a few hours in. */
+    val tokenRenewal = TokenRenewal(credentials, deviceAuth)
 
     /**
      * Which workspaces exist, across launches.
@@ -242,7 +246,12 @@ class AppContainer(val app: Application) {
                 // are and an unlinked one falls back to the device name. Both are stable and both
                 // compare the same way on either side, which is all the rule needs.
                 device = credentials.login(store.id) ?: device,
-                credentials = credentials.providerFor(store.id),
+                // Resolved per pass, after renewing: a token refreshed on the last pass — or a
+                // fresh sign-in — has to be picked up without restarting the app.
+                credentials = {
+                    withContext(Dispatchers.IO) { tokenRenewal.renewIfNeeded() }
+                    credentials.providerFor(store.id)
+                },
             ),
         )
     }
