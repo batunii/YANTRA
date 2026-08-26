@@ -13,11 +13,14 @@ import ie.napkin.supertasks.ui.components.YantraInk
  *     crimson / amber = the world   (priority — task-list frames only)
  *     gray            = rest        (break arc)
  *
- * Each hue lives on exactly one layer, and that is why this file no longer contains a hue engine.
- * The palette used to be derived from a hue the user picked, every role rotating together. Under
- * the law that cannot hold: coral does not mean "accent", it means *your effort* — a rotatable
- * accent would let effort be rendered in the same hue as priority, and the layers would stop being
- * readable. So the hues are fixed and only lightness moves with the mode.
+ * Each hue lives on exactly one layer, and that is why this file contains no hue engine. The
+ * palette used to be derived from one hue the user picked, every role rotating together. Under the
+ * law that cannot hold: coral does not mean "accent", it means *your effort* — rotating everything
+ * would let effort be rendered in the priority hue and the layers would stop being readable.
+ *
+ * What the user may choose is which ink owns the effort layer, from the closed set in
+ * [AccentColor] — none of which can enter the priority band. Crimson and amber never move, the
+ * grounds never move, and only lightness follows the mode.
  *
  * What survives from the old engine is [oklch] and the discipline behind it: the grounds and inks
  * are still fixed-lightness OKLCH steps, now on a single warm neutral, so paper reads as paper and
@@ -61,6 +64,14 @@ data class YantraColors(
     // hue layer that the law has no room for, and would disagree with the bindu the glyph draws.
     val success: Color,
     val successChipBg: Color,
+    /**
+     * The wash behind a task you have said you are on.
+     *
+     * Accent, because being on something is your own effort — the same reason the glyph's middle
+     * state is drawn in it. Stronger than the touch wash on an active block (5%), because that one
+     * is transient and this one is a claim you made and can leave standing for days.
+     */
+    val startedWash: Color,
     val secondaryButton: Color,
     val inkPaper: Color,
     val inkPageSep: Color,
@@ -79,9 +90,13 @@ fun ThemeMode.resolve(systemDark: Boolean): ThemeMode =
 private const val PAPER_HUE = 80f
 
 /**
- * Build the palette for a [mode]. No hue parameter: see the note on [YantraColors].
+ * Build the palette for a [mode] and an [accent].
+ *
+ * [accent] moves only the effort layer — crimson and amber stay pinned, and the grounds stay the
+ * one warm neutral. This is not the old hue engine coming back: that rotated every role together,
+ * which is what let effort be painted in the priority hue. See [AccentColor].
  */
-fun yantraColors(mode: ThemeMode): YantraColors {
+fun yantraColors(mode: ThemeMode, accent: AccentColor = AccentColor.CORAL): YantraColors {
     @Suppress("NAME_SHADOWING") val mode = if (mode == ThemeMode.SYSTEM) ThemeMode.DARK else mode
     val light = mode == ThemeMode.LIGHT
     val oled = mode == ThemeMode.OLED
@@ -116,9 +131,10 @@ fun yantraColors(mode: ThemeMode): YantraColors {
     val muted = if (light) oklch(0.545f, 0.010f, PAPER_HUE) else oklch(0.638f, 0.009f, PAPER_HUE)
     val dim = if (light) oklch(0.655f, 0.009f, PAPER_HUE) else oklch(0.510f, 0.010f, PAPER_HUE)
 
-    // Coral, crimson and amber come from the glyph's own inks — one definition, so a drawn glyph and
-    // a themed surface can never disagree about what coral is.
-    val coral = YantraInk.coral(!light)
+    // The effort ink is whichever accent is chosen; crimson and amber come from the glyph's own
+    // inks and are never chosen, because the world does not take requests. One definition each, so
+    // a drawn glyph and a themed surface can never disagree.
+    val coral = accent.ink(!light)
     val crimson = YantraInk.crimson(!light)
     val amber = YantraInk.amber(!light)
     // The frame's neutral, straight from the design language.
@@ -160,6 +176,7 @@ fun yantraColors(mode: ThemeMode): YantraColors {
         warningChipBg = amber.copy(alpha = if (light) 0.13f else 0.16f),
         success = coral,
         successChipBg = coral.copy(alpha = if (light) 0.13f else 0.16f),
+        startedWash = coral.copy(alpha = if (light) 0.09f else 0.12f),
         secondaryButton = surfaceHigh,
         inkPaper = if (light) Color.White else if (oled) Color.Black else oklch(0.152f, 0.005f, PAPER_HUE),
         inkPageSep = ink.copy(alpha = 0.095f),

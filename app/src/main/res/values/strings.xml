@@ -4,6 +4,6 @@
     <string name="widget_description">Show a list\'s tasks on your home screen</string>
     <string name="widget_today_description">Today\'s and overdue tasks at a glance</string>
     <string name="widget_quick_add_description">One-tap task capture into your Inbox</string>
-    <string name="widget_pomodoro_description">Your focus timer, live on the home screen</string>
+    <string name="widget_focus_description">Your focus timer, live on the home screen</string>
     <string name="widget_settings_title">Widget settings</string>
 </resources>

@@ -1,6 +1,5 @@
 package ie.napkin.supertasks.ui.ink
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,6 +59,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.ink.strokes.Stroke
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -69,16 +69,45 @@ import ie.napkin.supertasks.data.ink.ShapeKind
 import ie.napkin.supertasks.data.ink.StrokeCodec
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.ChipSize
+import ie.napkin.supertasks.ui.components.SelectChip
+import ie.napkin.supertasks.ui.components.ButtonTone
+import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.ui.text.TextStyle
 
+/**
+ * A drawing session.
+ *
+ * **The screen owns the strokes while you are drawing, not the database.** It used to be the other
+ * way round: each finished stroke was written to its sidecar, the whole workspace index was rebuilt,
+ * and the canvas re-rendered from whatever Room emitted afterwards. Drawing quickly meant a stroke
+ * leaving the live canvas and not coming back until a full rebuild had run — so it blinked out and
+ * returned, several times over, in the order they were drawn.
+ *
+ * Now a stroke lands in [held] the instant it is finished and is drawn from there. The file is
+ * written after a short pause, once, with the whole list. That removes the flicker, removes the
+ * read-modify-write that was losing strokes outright, and turns eight index rebuilds into one.
+ *
+ * The file is still the truth — it is just not asked a question mid-sentence. What is deliberately
+ * *not* done is waiting for the session to end: a screen that only saves when you leave loses
+ * everything if Android kills the app while you are drawing, and ink is the one thing here that
+ * cannot be retyped.
+ */
 class InkViewModel(
     container: AppContainer,
     val nodeId: String,
@@ -86,26 +115,147 @@ class InkViewModel(
     private val ink = container.ink
     private val nodes = container.nodes
 
+    /** Outlives this view model, so the last stroke survives leaving the screen. */
+    private val appScope = container.appScope
+
+    /** What to draw, and the bytes that would be written for it. */
+    private data class Held(val item: StrokeItem, val data: ByteArray)
+
+    private val held = MutableStateFlow<List<Held>>(emptyList())
+
+    /**
+     * Bumped on every edit and captured across a write.
+     *
+     * Without it a stroke drawn *during* a save would be marked saved by that save finishing, and
+     * the next thing the file said would quietly undraw it.
+     */
+    private var edits = 0
+    private var savedAt = 0
+    private var flush: Job? = null
+    private var live = 0
+
+    /**
+     * Whether anything has been drawn on this screen, ever — and therefore whether the file still
+     * has anything to tell it.
+     *
+     * This used to be [unsaved], which is a different question and the wrong one. `unsaved` goes
+     * false again after every write, so the door it guards reopened between strokes: draw once, let
+     * it save, draw again, and the *first* write's index rebuild could still be in flight. When that
+     * older emission arrived it found a clean flag, was adopted, and quietly undrew the second
+     * stroke. Whether it landed before or after the second save was a matter of milliseconds, which
+     * is why the stroke came back sometimes and not others, and why a cold launch — where the first
+     * rebuild is the slow one — made it far likelier.
+     *
+     * Sticky is also what the rule always said out loud: follow the file only while the screen has
+     * nothing of its own. Once something is drawn here, this screen is the author, and no arrival
+     * from disk can be newer than what is on it.
+     */
+    private var drawnHere = false
+
+    private val unsaved: Boolean get() = edits != savedAt
+
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val strokes: StateFlow<List<StrokeItem>> =
-        ink.strokes(nodeId)
-            .map { rows -> rows.mapNotNull { row -> runCatching { StrokeItem(row.id, StrokeCodec.decode(row.data)) }.getOrNull() } }
-            .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        held.map { list -> list.map { it.item } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun save(stroke: Stroke, family: String) { viewModelScope.launch { ink.addStroke(nodeId, stroke, family) } }
-    fun erase(id: String) { viewModelScope.launch { ink.deleteStroke(id) } }
-    fun undo() { viewModelScope.launch { ink.undoLast(nodeId) } }
-    fun clear() { viewModelScope.launch { ink.clear(nodeId) } }
+    init {
+        // Follow the file, but only until something is drawn here — see [drawnHere]. After that the
+        // screen is the author and every arrival from disk is older than what is on it, including
+        // the ones this screen caused itself.
+        viewModelScope.launch {
+            ink.strokes(nodeId).collect { rows ->
+                if (drawnHere) return@collect
+                held.value = withContext(Dispatchers.Default) {
+                    rows.mapNotNull { row ->
+                        runCatching { Held(StrokeItem(row.id, StrokeCodec.decode(row.data)), row.data) }
+                            .getOrNull()
+                    }
+                }
+            }
+        }
+    }
+
+    fun save(stroke: Stroke, family: String) {
+        val data = StrokeCodec.encode(stroke, family)
+        // A local id, because this stroke has no place in the file yet. The eraser works off the
+        // list the screen is holding, so it never needs the positional id the index would give it.
+        held.update { it + Held(StrokeItem("live-${live++}", stroke), data) }
+        touch()
+    }
+
+    fun erase(id: String) {
+        held.update { list -> list.filterNot { it.item.id == id } }
+        touch()
+    }
+
+    fun undo() {
+        held.update { it.dropLast(1) }
+        touch()
+    }
+
+    fun clear() {
+        held.value = emptyList()
+        touch()
+    }
+
     fun rename(title: String) { viewModelScope.launch { nodes.rename(nodeId, title) } }
+
+    /** Writes now rather than waiting out the pause — the app going to the background. */
+    fun flushNow() {
+        flush?.cancel()
+        if (unsaved) write(appScope)
+    }
+
+    private fun touch() {
+        drawnHere = true
+        edits++
+        flush?.cancel()
+        flush = viewModelScope.launch {
+            delay(QUIET_MS)
+            write(viewModelScope)
+        }
+    }
+
+    private fun write(scope: CoroutineScope) {
+        val at = edits
+        val snapshot = held.value.map { it.data }
+        scope.launch {
+            ink.replace(nodeId, snapshot)
+            // Only clean if nothing was drawn while that was in flight.
+            if (at == edits) savedAt = at
+        }
+    }
+
+    override fun onCleared() {
+        // The view model's scope dies with it, so the last stroke has to leave on a scope that does
+        // not. Backing out of the screen is exactly when an unsaved stroke would be lost.
+        flushNow()
+    }
+
+    private companion object {
+        /**
+         * Long enough to sit inside a burst of strokes, short enough that any real pause persists.
+         * This is not the git commit cadence — that is [ie.napkin.supertasks.data.sync.CommitPolicy],
+         * and it is measured in seconds because a commit is a much bigger thing than a file write.
+         */
+        const val QUIET_MS = 900L
+    }
 }
 
 enum class InkTool { PEN, MARKER, HIGHLIGHTER, SHAPES, ERASER }
 
-private val Presets = listOf(
-    0xFFE06A43L, // coral
+/**
+ * The five drawing colours, which are colours and mean nothing else.
+ *
+ * Coral used to sit at the front of this list. That was a copy of the accent made before the accent
+ * could be changed, and it stayed a copy afterwards: pick Jade and the first swatch went on offering
+ * coral — a hue with no remaining part in the app, presented as though it were the house colour. See
+ * [inkPresets], which puts the live accent there instead.
+ */
+private val DrawingColors = listOf(
     0xFF6FA8E4L, // blue
     0xFF4E9478L, // green
     0xFFE0A83EL, // amber
@@ -113,19 +263,50 @@ private val Presets = listOf(
     0xFF8B6BA8L, // purple
 )
 
+/**
+ * The swatch row: whatever the app currently calls its own ink, then five colours that are only
+ * colours.
+ *
+ * The accent leads because a drawing inside a task belongs to the same document as the task, and
+ * the first thing offered should be the hue the rest of the app is already drawn in.
+ *
+ * It is resolved per theme, so the swatch is the accent as it looks on *this* paper — the light and
+ * dark inks of an accent are not the same value, and offering the other one would hand you a colour
+ * that does not appear anywhere on screen.
+ *
+ * Only the swatch follows the accent. A stroke stores the colour it was drawn with, so changing
+ * accent afterwards repaints nothing: a drawing is a drawing, not a themed surface.
+ *
+ * Nothing is dropped for being close to the accent. A first attempt filtered near-duplicates, and
+ * the arithmetic said coral and amber were the same colour — they are the two warm swatches the
+ * original palette deliberately carried side by side. A wrong heuristic that silently removes a
+ * colour someone wanted is worse than two swatches that happen to be neighbours.
+ */
+private fun inkPresets(accent: Color): List<Long> =
+    listOf(accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InkScreen(nav: NavHostController, nodeId: String) {
     val vm: InkViewModel = viewModel(key = "ink-$nodeId") { InkViewModel(container(), nodeId) }
     val strokes by vm.strokes.collectAsStateWithLifecycle()
     val node by vm.node.collectAsStateWithLifecycle()
+
+    // The pause before writing is short, but "the app went away" should not have to wait it out —
+    // that window is exactly when Android is most likely to kill the process.
+    LifecycleResumeEffect(Unit) {
+        onPauseOrDispose { vm.flushNow() }
+    }
     val y = Yantra.colors
-    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    // See InkPreview: the ink layer follows the app's theme, not the phone's.
+    val dark = y.isDark
     val density = LocalDensity.current
 
     var tool by remember { mutableStateOf(InkTool.PEN) }
     var penColor by remember(dark) { mutableLongStateOf(InkTheme.defaultPen(dark)) }
-    var markerColor by remember { mutableLongStateOf(0xFFE06A43L) }
+    // The accent, not a copy of what the accent used to be. Keyed on it so choosing a new one is
+    // reflected the next time the screen is opened rather than persisting the old house colour.
+    var markerColor by remember(y.accent) { mutableLongStateOf(y.accent.toArgb().toLong() and 0xFFFFFFFFL) }
     var hlColor by remember { mutableLongStateOf(0xFFE0A83EL) }
     var shapeColor by remember(dark) { mutableLongStateOf(InkTheme.defaultPen(dark)) }
     var penSize by remember { mutableFloatStateOf(4f) }
@@ -194,7 +375,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 value = title,
                 onValueChange = { title = it; vm.rename(it) },
                 singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
+                textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
                 cursorBrush = SolidColor(y.accent),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
@@ -221,6 +402,11 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             },
             update = { canvas ->
                 canvas.darkTheme = dark
+                canvas.surface(
+                    paper = y.inkPaper.toArgb(),
+                    separator = y.inkPageSep.toArgb(),
+                    pageLabel = y.textDim.toArgb(),
+                )
                 canvas.tool = when (tool) {
                     InkTool.SHAPES -> EditorTool.SHAPE
                     InkTool.ERASER -> EditorTool.ERASE
@@ -271,7 +457,7 @@ private fun ToolTray(
     onUndo: () -> Unit, onClear: () -> Unit, onNextPage: () -> Unit,
 ) {
     val y = Yantra.colors
-    val trayBg = Color(0xFF161311)
+    val trayBg = y.railBg
     Column(
         Modifier.fillMaxWidth().background(trayBg).navigationBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 22.dp),
@@ -284,7 +470,7 @@ private fun ToolTray(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 InkTool.entries.forEach { t ->
-                    ToolChip(labelFor(t), selected = tool == t) { onTool(t) }
+                    SelectChip(labelFor(t), selected = tool == t, size = ChipSize.Small) { onTool(t) }
                 }
             }
             TrayIconBtn(onUndo) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = y.textSecondary, modifier = Modifier.size(16.dp)) }
@@ -292,7 +478,7 @@ private fun ToolTray(
             TrayIconBtn(onClear) { Icon(Icons.Default.DeleteOutline, "Clear", tint = y.textSecondary, modifier = Modifier.size(16.dp)) }
             Spacer(Modifier.width(6.dp))
             Box(
-                Modifier.background(Color(0xFF211B16), RoundedCornerShape(10.dp)).clickable(enabled = page < pageCount, onClick = onNextPage)
+                Modifier.background(y.tileWarm2, RoundedCornerShape(10.dp)).clickable(enabled = page < pageCount, onClick = onNextPage)
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) { Text("$page/$pageCount", fontSize = 11.sp, fontWeight = FontWeight.W700, color = y.textMuted) }
         }
@@ -300,13 +486,14 @@ private fun ToolTray(
         // contextual settings
         if (tool == InkTool.SHAPES) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                shapeLabels.forEach { (k, label) -> ToolChip(label, selected = shapeKind == k) { onShapeKind(k) } }
+                shapeLabels.forEach { (k, label) -> SelectChip(label, selected = shapeKind == k, size = ChipSize.Small) { onShapeKind(k) } }
             }
         }
         if (tool != InkTool.ERASER) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Presets.forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
-                recents.filter { it !in Presets }.take(2).forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
+                val presets = inkPresets(y.accent)
+                presets.forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
+                recents.filter { it !in presets }.take(2).forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
                 // custom color opener
                 Box(
                     Modifier.size(26.dp).border(1.dp, y.textMuted, CircleShape).clickable(onClick = onCustomColor),
@@ -320,14 +507,14 @@ private fun ToolTray(
             Text(if (tool == InkTool.ERASER) "Eraser" else "Size", fontSize = 11.sp, color = y.textMuted, modifier = Modifier.width(52.dp))
             Slider(
                 value = size, onValueChange = onSize, valueRange = sizeRange,
-                colors = SliderDefaults.colors(thumbColor = y.accent, activeTrackColor = y.accent, inactiveTrackColor = Color(0xFF2A211B)),
+                colors = SliderDefaults.colors(thumbColor = y.accent, activeTrackColor = y.accent, inactiveTrackColor = y.tileWarm),
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
             Text("${size.roundToInt()}", fontSize = 11.sp, color = y.textDim, modifier = Modifier.width(24.dp))
         }
         if (tool == InkTool.PEN || tool == InkTool.MARKER) {
-            ToolChip(if (snap) "Snap to shapes: on" else "Snap to shapes: off", selected = snap) { onSnap(!snap) }
+            SelectChip(if (snap) "Snap to shapes: on" else "Snap to shapes: off", selected = snap, size = ChipSize.Small) { onSnap(!snap) }
         }
     }
 }
@@ -342,20 +529,6 @@ private val shapeLabels = listOf(
     ShapeKind.ELLIPSE to "Oval", ShapeKind.ARROW to "Arrow",
 )
 
-@Composable
-private fun ToolChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(9.dp)
-    Box(
-        Modifier
-            .background(if (selected) y.accent.copy(alpha = 0.16f) else Color(0xFF211B16), shape)
-            .then(if (selected) Modifier.border(1.dp, y.accent, shape) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    ) {
-        Text(label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.W700 else FontWeight.W600, color = if (selected) y.accentText else y.textSecondary)
-    }
-}
 
 @Composable
 private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
@@ -371,8 +544,9 @@ private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun TrayIconBtn(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val y = Yantra.colors
     Box(
-        Modifier.size(32.dp).background(Color(0xFF211B16), RoundedCornerShape(10.dp)).clickable(onClick = onClick),
+        Modifier.size(32.dp).background(y.tileWarm2, RoundedCornerShape(10.dp)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -391,7 +565,7 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
     var value by remember { mutableFloatStateOf(hsv[2]) }
     val current = Color.hsv(hue, sat, value)
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF161311)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.railBg) {
         Column(
             Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -443,11 +617,11 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).background(current, RoundedCornerShape(10.dp)).border(1.dp, y.tileBorder, RoundedCornerShape(10.dp)))
                 Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier.background(y.accentFill, RoundedCornerShape(10.dp)).border(1.dp, y.accentBorder, RoundedCornerShape(10.dp))
-                        .clickable { onPick(current.toArgb().toLong() and 0xFFFFFFFFL) }
-                        .padding(horizontal = 22.dp, vertical = 10.dp),
-                ) { Text("Use color", fontSize = 14.sp, fontWeight = FontWeight.W800, color = y.accentText) }
+                YantraButton(
+                    label = "Use colour",
+                    tone = ButtonTone.Soft,
+                    onClick = { onPick(current.toArgb().toLong() and 0xFFFFFFFFL) },
+                )
             }
         }
     }

@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ie.napkin.supertasks.data.db.NodeType
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmartListViewModel(
@@ -85,7 +86,7 @@ class SmartListViewModel(
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val pomoCounts: StateFlow<Map<String, Int>> =
-        container.pomodoro.completedCounts()
+        container.focus.perNode()
             .map { list -> list.associate { it.nodeId to it.count } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
@@ -97,22 +98,45 @@ class SmartListViewModel(
     fun addTask(title: String) {
         viewModelScope.launch {
             val d = def.value ?: smartLists.defById(nodeId) ?: return@launch
-            smartLists.addTask(d, title)
+            val parsed = ie.napkin.supertasks.data.capture.CaptureParse.parse(title)
+            if (parsed.title.isBlank()) return@launch
+            // The list's own apply-on-create lands first — a task added to Today is due today — and
+            // anything typed on the line then overrides it, because an explicit "friday" must beat
+            // the list's default rather than lose to it.
+            val id = smartLists.addTask(d, parsed.title) ?: return@launch
+            applyCaptured(id, parsed)
+        }
+    }
+
+    private suspend fun applyCaptured(id: String, parsed: ie.napkin.supertasks.data.capture.Captured) {
+        parsed.dueAt()?.let { at ->
+            container.properties.setDue(
+                id,
+                at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                hasTime = parsed.time != null,
+                reminderOffsetMin = null,
+            )
+        }
+        parsed.priority?.let {
+            container.properties.setValue(id, ie.napkin.supertasks.data.db.BuiltIns.PRIORITY_DEF_ID, text = it)
+        }
+        parsed.labels.forEach { name ->
+            container.labels.attach(id, container.labels.getOrCreate(name).id)
         }
     }
 
     // What the rule editor needs to offer choices: the properties you can filter on, the labels you
     // can match, and the lists a new task could land in. Same three inputs the create sheet takes on
     // the home screen, because it is the same sheet.
-    val defs: StateFlow<List<ie.napkin.supertasks.data.db.PropertyDefEntity>> =
+    val defs: StateFlow<List<PropertyDefEntity>> =
         properties.builtInDefs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val labels: StateFlow<List<ie.napkin.supertasks.data.db.LabelEntity>> =
+    val labels: StateFlow<List<LabelEntity>> =
         container.labels.all().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val lists: StateFlow<List<NodeEntity>> =
         nodes.allLists()
-            .map { all -> all.filter { it.type == ie.napkin.supertasks.data.db.NodeType.LIST } }
+            .map { all -> all.filter { it.type == NodeType.LIST } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     suspend fun createLabel(name: String) = container.labels.getOrCreate(name)

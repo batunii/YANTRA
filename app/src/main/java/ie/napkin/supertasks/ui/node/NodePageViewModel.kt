@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class NodePageViewModel(
     private val container: AppContainer,
@@ -84,6 +85,15 @@ class NodePageViewModel(
     val allLabels: StateFlow<List<LabelEntity>> =
         labels.all().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * Every list in the workspace, by name — so `~` in the quick-add bar can name one of them and
+     * be offered the ones that match while it is still being typed.
+     */
+    val listNames: StateFlow<List<String>> =
+        nodes.allLists()
+            .map { all -> all.filter { it.type == NodeType.LIST }.mapNotNull { it.title } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     /** Labels attached to the page node itself — feeds the always-visible label row. */
     val ownLabels: StateFlow<List<LabelEntity>> =
         labelsFor(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -100,8 +110,9 @@ class NodePageViewModel(
             .map { list -> list.associateBy { it.rootId } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    /** Sessions per task, for the little badge on a row. Every session, not only the finished ones. */
     val pomoCounts: StateFlow<Map<String, Int>> =
-        container.pomodoro.completedCounts()
+        container.focus.perNode()
             .map { list -> list.associate { it.nodeId to it.count } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
@@ -115,6 +126,54 @@ class NodePageViewModel(
             }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** The full-size picture this device happens to hold for a block, if any. */
+    private val originals = ie.napkin.supertasks.data.image.LocalOriginals(container.app)
+
+    fun originalFor(blockId: String) = originals.originalFor(blockId)
+
+    /** Where the workspace's copy of an image block lives, once it has one. */
+    suspend fun imageFile(nodeId: String) = nodes.imageFile(nodeId)
+
+    /**
+     * Brings a picked image into the workspace.
+     *
+     * Downscaled and stripped of metadata on the way in — see
+     * [ie.napkin.supertasks.data.image.ImageImport]. The original stays where it was and is
+     * remembered locally, so this device draws the sharp one and every other device draws the copy
+     * that actually travels.
+     */
+    fun addImage(uri: android.net.Uri, afterId: String? = null, onFailed: () -> Unit = {}) {
+        viewModelScope.launch {
+            val bytes: ByteArray? = withContext(Dispatchers.Default) {
+                ie.napkin.supertasks.data.image.ImageImport.downscale(container.app, uri)
+            }
+            if (bytes == null) {
+                onFailed()
+                return@launch
+            }
+            val after = afterId?.let { nodes.byId(it) }
+            val id = nodes.addImage(
+                parentId = after?.parentId ?: nodeId,
+                bytes = bytes,
+                afterId = afterId,
+                indent = after?.indent ?: 0,
+            )
+            originals.remember(id, uri)
+        }
+    }
+
+    /**
+     * A task from a line of typing, with whatever the line said applied.
+     *
+     * Goes through the shared capture path so the quick-add bar agrees with the widget and the share
+     * sheet about what "tomorrow" means.
+     */
+    fun captureTask(text: String) {
+        viewModelScope.launch {
+            nodes.captureTask(nodeId, text, container.labels, container.properties)
+        }
+    }
 
     // ---- block ops ----
 
@@ -262,11 +321,17 @@ class NodePageViewModel(
         viewModelScope.launch { labels.detach(targetId, labelId) }
     }
 
-    fun createAndAttachLabel(targetId: String, name: String) {
+    /** [color] null means "let the palette choose from the name" — never means "no colour". */
+    fun createAndAttachLabel(targetId: String, name: String, color: Long? = null) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val label = labels.getOrCreate(name)
+            val label = labels.getOrCreate(name, color)
             labels.attach(targetId, label.id)
         }
+    }
+
+    /** Recolour a label wherever it appears. Null clears it back to the neutral chip. */
+    fun setLabelColor(labelId: String, color: Long?) {
+        viewModelScope.launch { labels.setColor(labelId, color) }
     }
 }

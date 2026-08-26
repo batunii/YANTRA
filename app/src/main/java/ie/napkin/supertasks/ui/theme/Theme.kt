@@ -1,6 +1,5 @@
 package ie.napkin.supertasks.ui.theme
 
-import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -12,7 +11,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import ie.napkin.supertasks.ui.components.CompletionTempo
 import ie.napkin.supertasks.ui.components.LocalCompletionTempo
@@ -22,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -32,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.R
+import androidx.compose.ui.text.ExperimentalTextApi
 
 /** Reach Yantra's extended palette: `Yantra.colors.accentText`, etc. */
 object Yantra {
@@ -39,11 +37,11 @@ object Yantra {
         @Composable @ReadOnlyComposable get() = LocalYantra.current
 }
 
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+@OptIn(ExperimentalTextApi::class)
 private fun bricolage(w: Int) =
     Font(R.font.bricolage_grotesque, weight = FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w)))
 
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+@OptIn(ExperimentalTextApi::class)
 private fun grotesk(w: Int) =
     Font(R.font.space_grotesk, weight = FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w)))
 
@@ -218,10 +216,11 @@ object YantraMotion {
 @Composable
 fun SuperTasksTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
+    accent: AccentColor = AccentColor.CORAL,
     content: @Composable () -> Unit,
 ) {
     val resolved = mode.resolve(isSystemInDarkTheme())
-    val yantra = remember(resolved) { yantraColors(resolved) }
+    val yantra = remember(resolved, accent) { yantraColors(resolved, accent) }
     // The completion choreography's shared state. Haptics are the feel channel the motion law
     // leans on — when the user has animations off, the thud is what is left of the reward.
     val context = LocalContext.current

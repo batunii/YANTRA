@@ -3,6 +3,7 @@ package ie.napkin.supertasks.data.repo
 import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
 import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.capture.CaptureParse
 import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
@@ -20,8 +21,25 @@ import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
 import ie.napkin.supertasks.data.rank.Rank
+import ie.napkin.supertasks.data.format.Block
+import ie.napkin.supertasks.data.format.Bullet
+import ie.napkin.supertasks.data.format.Heading
+import ie.napkin.supertasks.data.format.ImageRef
+import ie.napkin.supertasks.data.format.InkRef
+import ie.napkin.supertasks.data.format.Numbered
+import ie.napkin.supertasks.data.format.Prose
+import ie.napkin.supertasks.data.format.TaskRef
+import ie.napkin.supertasks.data.format.TaskStatus
+import ie.napkin.supertasks.data.workspace.Workspaces
+import ie.napkin.supertasks.data.sync.Change
+import ie.napkin.supertasks.data.workspace.LabelDef
+import ie.napkin.supertasks.data.workspace.SmartListDef
+import ie.napkin.supertasks.data.format.DueSpec
+import ie.napkin.supertasks.data.format.DueValue
+import ie.napkin.supertasks.data.time.localDateOf
+import ie.napkin.supertasks.data.time.localMidnight
+import ie.napkin.supertasks.data.label.LabelPalette
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
@@ -29,15 +47,21 @@ import java.util.UUID
 private fun now(): Long = System.currentTimeMillis()
 private fun newId(): String = UUID.randomUUID().toString()
 
-/** Floor an instant to the local-midnight instant of its local calendar day. */
-internal fun localMidnight(millis: Long): Long =
-    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-        .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-
 /** Where blocks that were sitting loose on a list get gathered, so nothing is lost. */
 private const val STRAY_NOTES_TASK = "Notes"
 
-class NodeRepository(private val db: AppDatabase) {
+/** Title given to a capture list that has to be created; also the pre-[SystemKey] fallback. */
+private const val INBOX_TITLE = "Inbox"
+
+/**
+ * Reads come from the index; **writes go to the files.**
+ *
+ * That asymmetry is the whole architecture. Room is a fast, queryable picture of what the workspace
+ * says, so observing it is exactly right; but nothing may enter it except by being written to a page
+ * first, or the picture would start containing facts the repo does not — and the next reindex would
+ * erase them with no error anywhere.
+ */
+class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.nodeDao()
 
     fun topLevel() = dao.topLevel()
@@ -46,7 +70,6 @@ class NodeRepository(private val db: AppDatabase) {
     suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
     fun observe(id: String) = dao.observe(id)
     suspend fun byId(id: String) = dao.byId(id)
-    fun topLevelTaskCounts() = dao.topLevelTaskCounts()
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
     fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)
@@ -59,24 +82,42 @@ class NodeRepository(private val db: AppDatabase) {
     suspend fun todaySmartList(): NodeEntity? =
         dao.bySystemKey(SystemKey.TODAY)
             ?: dao.byTypeAndTitle(NodeType.SMART_LIST, "Today")?.also {
-                // Self-heal is best-effort: a pre-fix tombstone may still hold the key
-                // (unique index) — the lookup result is valid either way.
-                runCatching { dao.setSystemKey(it.id, SystemKey.TODAY, now()) }
+                // Self-heal writes the page, not the row: the key lives in frontmatter, and
+                // stamping only the index would come undone at the next reindex.
+                runCatching { ws.writerFor(it.id).setSystemKey(it.id, SystemKey.TODAY) }
             }
 
+    /**
+     * The capture list, by stable identity — the single answer to "where does a quick-add go".
+     *
+     * Unlike [todaySmartList] this always returns something: capture is a gesture that must not
+     * fail or ask, so a missing Inbox is created rather than reported. The order matters — key
+     * first, then title, then create — because it is the fallback that used to be the whole
+     * lookup, and doing it top-level-only is what let a grouped or renamed Inbox be duplicated.
+     * Whatever the title match finds adopts the key, so the ambiguity is resolved once.
+     */
+    suspend fun inboxList(): String {
+        dao.bySystemKey(SystemKey.INBOX)?.let { return it.id }
+        dao.byTypeAndTitle(NodeType.LIST, INBOX_TITLE)?.let {
+            // As in [todaySmartList]: the page carries the key, so the page is what gets written.
+            runCatching { ws.writerFor(it.id).setSystemKey(it.id, SystemKey.INBOX) }
+            return it.id
+        }
+        return ws.primary().createTopLevel(NodeType.LIST, INBOX_TITLE, SystemKey.INBOX)
+    }
+
     /** Create a Home group/banner (organizational container for lists & smart lists). */
-    suspend fun createGroup(title: String): String = create(null, NodeType.GROUP, title)
+    suspend fun createGroup(title: String): String = ws.primary().createTopLevel(NodeType.GROUP, title)
 
     /** Move a list/smart list into a group (or back to top level when [groupId] is null). */
     suspend fun moveToGroup(id: String, groupId: String?) {
-        val rank = if (groupId == null) Rank.after(dao.lastRankTopLevel()) else Rank.after(dao.lastRank(groupId))
-        dao.move(id, groupId, rank, now())
+        ws.writerFor(id).reparent(id, groupId)
     }
 
     /** Delete a group but keep its lists — they return to the top level. */
     suspend fun deleteGroup(id: String) {
-        dao.childrenOnce(id).forEach { dao.move(it.id, null, Rank.after(dao.lastRankTopLevel()), now()) }
-        dao.softDelete(listOf(id), now())
+        dao.childrenOnce(id).forEach { ws.writerFor(it.id).reparent(it.id, null) }
+        ws.writerFor(id).removeBlock(id)
     }
 
     /** Ancestor chain of [id], ordered root → immediate parent (excludes the node itself). */
@@ -92,138 +133,198 @@ class NodeRepository(private val db: AppDatabase) {
         return chain.asReversed()
     }
 
+    /**
+     * A block on a page, or a page of its own when there is no parent.
+     *
+     * `afterId` places the new line directly after that one; without it the line is appended. Order
+     * is line position now, so there is no rank to compute — the index derives one on the way back.
+     */
     suspend fun create(
         parentId: String?,
         type: String,
         title: String?,
         afterId: String? = null,
         indent: Int = 0,
+    ): String =
+        if (parentId == null) ws.primary().createTopLevel(type, title)
+        else ws.writerFor(parentId).addBlock(parentId, type, title, afterId, indent)
+
+
+    /**
+     * Adds a picture to a page.
+     *
+     * The block's payload is the image's own id, not a path and never a `content://` URI — the file
+     * sits beside the page as `<id>.jpg` and travels with the repo. Bytes first, block second, so a
+     * page is never indexed while pointing at a picture that is not there yet.
+     */
+    suspend fun addImage(
+        parentId: String,
+        bytes: ByteArray,
+        afterId: String? = null,
+        indent: Int = 0,
     ): String {
-        val ts = now()
-        val id = newId()
-        val rank = rankFor(parentId, afterId)
-        dao.insert(
-            NodeEntity(
-                id = id, parentId = parentId, type = type, title = title,
-                rank = rank, indent = indent, createdAt = ts, updatedAt = ts,
-            )
-        )
+        val id = java.util.UUID.randomUUID().toString()
+        val writer = ws.writerFor(parentId)
+        writer.writeImage(id, bytes)
+        writer.addBlock(parentId, NodeType.IMAGE, id, afterId, indent)
         return id
     }
 
-    private suspend fun rankFor(parentId: String?, afterId: String?): String {
-        if (afterId != null && parentId != null) {
-            val after = dao.byId(afterId)
-            if (after != null && after.parentId == parentId) {
-                return Rank.between(after.rank, dao.nextRank(parentId, after.rank))
-            }
-        }
-        val last = if (parentId == null) dao.lastRankTopLevel() else dao.lastRank(parentId)
-        return Rank.after(last)
+    /**
+     * Where an image block's picture lives on disk, or null if the block predates the workspace copy
+     * and still names a `content://` URI.
+     */
+    suspend fun imageFile(nodeId: String): java.io.File? {
+        val node = dao.byId(nodeId) ?: return null
+        val name = node.title.orEmpty()
+        if (name.isEmpty() || name.startsWith("content://")) return null
+        return ws.store(node.workspaceId)?.imageFile(name)?.takeIf { it.exists() }
+    }
+
+    /** Re-files a task under a different list. What the share sheet's "change list" does. */
+    suspend fun moveToList(taskId: String, listId: String) {
+        ws.writerFor(taskId).reparent(taskId, listId)
     }
 
     /**
-     * Enforces the one rule a list has: a list holds tasks.
+     * Creates a task from a line of typing, applying whatever the line turned out to say.
      *
-     * Anything else that ends up directly on a list — from an older build, or an import — is moved
-     * onto a task on that same list rather than hidden or deleted. Writing belongs on a task's
-     * page, so that is where it goes, and it stays reachable by opening that task. Idempotent: in
-     * the normal case this is one query that finds nothing.
+     * One path, so every capture surface behaves identically — the quick-add bar, the create sheet,
+     * the widget and the share target should not each have their own idea of what "tomorrow" means.
+     *
+     * Ordering is deliberate: the task exists after the first call, so a failure in any of the
+     * property writes afterwards leaves a task with less on it rather than no task at all. Capture is
+     * the thing that must not be lost; a due date is a nicety by comparison.
      */
-    suspend fun tidyListsToTasksOnly() {
-        for (list in dao.allListsOnce()) {
-            val stray = dao.childrenOnce(list.id).filter { it.type != NodeType.TASK }
-            if (stray.isEmpty()) continue
-            val home = dao.childrenOnce(list.id)
-                .firstOrNull { it.type == NodeType.TASK && it.title == STRAY_NOTES_TASK }
-                ?.id
-                ?: create(list.id, NodeType.TASK, STRAY_NOTES_TASK)
-            stray.forEach { block ->
-                dao.move(block.id, home, Rank.after(dao.lastRank(home)), now())
+    suspend fun captureTask(
+        parentId: String?,
+        text: String,
+        labels: LabelRepository,
+        properties: PropertyRepository,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    ): String? {
+        // The lists this workspace has, so "~ Groceries" can be matched rather than guessed at.
+        val lists = dao.allListsOnce()
+        val parsed = CaptureParse.parse(text, lists = lists.mapNotNull { it.title })
+        if (parsed.title.isBlank()) return null
+
+        // A named list wins over wherever this was typed: saying where it goes is the whole point of
+        // saying it. A name the workspace does not have is made, rather than refused — otherwise
+        // filing into a new list means leaving capture to go and create it first, which is the
+        // interruption this whole path exists to remove. The field offers the lists that already
+        // match before it comes to this, so a typo is visible rather than silently made real.
+        val destination = parsed.list
+            ?.let { name ->
+                lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
+                    ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
             }
+            ?: parentId
+            ?: inboxList()
+
+        val id = create(destination, NodeType.TASK, parsed.title)
+
+        parsed.dueAt()?.let { at ->
+            properties.setDue(
+                id,
+                at.atZone(zone).toInstant().toEpochMilli(),
+                hasTime = parsed.time != null,
+                reminderOffsetMin = null,
+            )
         }
+        parsed.priority?.let { properties.setValue(id, BuiltIns.PRIORITY_DEF_ID, text = it) }
+        parsed.labels.forEach { name -> labels.attach(id, labels.getOrCreate(name).id) }
+        return id
     }
 
-    /** Fast capture: new task into the Inbox (found by name, recreated if missing). */
-    suspend fun quickCaptureToInbox(title: String): String {
-        val inbox = dao.topLevel().first().firstOrNull {
-            it.type == NodeType.LIST && it.title.equals("Inbox", ignoreCase = true)
-        }?.id ?: create(null, NodeType.LIST, "Inbox")
-        return create(inbox, NodeType.TASK, title)
+    /** Fast capture: new task into the Inbox. */
+    suspend fun quickCaptureToInbox(title: String): String =
+        create(inboxList(), NodeType.TASK, title)
+
+    suspend fun rename(id: String, title: String?) =
+        ws.writerFor(id).editBlock(id) { renamed(it, title.orEmpty()) }
+
+    suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id, Change.STRUCTURAL) {
+        // Completion supersedes being started: a finished task is not still being worked on, and
+        // the two were never allowed to be true at once.
+        //
+        // The day is stamped here and cleared on reopening, so a task can never claim to have been
+        // finished on a day it was not — and so the app can finally answer how long something has
+        // been done, which archiving needs and nothing could ask before.
+        it.copy(
+            status = if (done) TaskStatus.DONE else TaskStatus.OPEN,
+            doneAt = if (done) java.time.LocalDate.now() else null,
+        )
     }
 
-    suspend fun rename(id: String, title: String?) = dao.setTitle(id, title, now())
-    suspend fun setDone(id: String, done: Boolean) = dao.setDone(id, done, now())
-    suspend fun setInProgress(id: String, inProgress: Boolean) = dao.setInProgress(id, inProgress, now())
+    suspend fun setInProgress(id: String, inProgress: Boolean) = ws.writerFor(id).editTask(id) {
+        if (it.status == TaskStatus.DONE) it
+        else it.copy(status = if (inProgress) TaskStatus.IN_PROGRESS else TaskStatus.OPEN)
+    }
+
+    /**
+     * Device-local, and therefore the one write that stays in Room.
+     *
+     * Whether a section is folded is about this screen, not about the work. Syncing it would collapse
+     * a list on the laptop because it was collapsed on the phone, so it is deliberately not in the
+     * file — which also means a reindex forgets it, which is the correct amount of memory for it.
+     */
     suspend fun setCollapsed(id: String, collapsed: Boolean) = dao.setCollapsed(id, collapsed, now())
 
-    /**
-     * The one rule indentation has to obey: the first line of a run sits flush left, and no line is
-     * more than one step deeper than the line above it. Anything else cannot be read as structure.
-     *
-     * [indent] is stored rather than derived, so it does not stay true on its own — reordering a
-     * block, or deleting the line above one, can leave an indent with nothing to be indented under.
-     * Every operation that changes a sibling run therefore ends here, and this is the only place
-     * that decides what a legal indent is.
-     */
-    suspend fun normalizeIndents(parentId: String) {
-        var ceiling = 0
-        dao.childrenOnce(parentId).forEach { n ->
-            val fixed = n.indent.coerceIn(0, ceiling)
-            if (fixed != n.indent) dao.setIndent(n.id, fixed, now())
-            ceiling = fixed + 1
-        }
-    }
+    suspend fun normalizeIndents(parentId: String) = ws.writerFor(parentId).normalizeIndents(parentId)
 
     /** Sets a block's visual indentation, then re-clamps the run around it. */
     suspend fun setIndent(node: NodeEntity, indent: Int) {
         val parentId = node.parentId ?: return
-        dao.setIndent(node.id, indent.coerceAtLeast(0), now())
+        ws.writerFor(node.id).editBlock(node.id) { indented(it, indent.coerceAtLeast(0)) }
         normalizeIndents(parentId)
     }
-    suspend fun setType(id: String, type: String) = dao.setType(id, type, now())
-    suspend fun delete(id: String) = dao.softDeleteSubtree(id, now())
 
-    suspend fun moveUp(node: NodeEntity) {
+    suspend fun setType(id: String, type: String) = ws.writerFor(id).convertBlock(id, type)
+
+    suspend fun delete(id: String) = ws.writerFor(id).removeBlock(id)
+
+    suspend fun moveUp(node: NodeEntity) = moveBy(node, -1)
+
+    suspend fun moveDown(node: NodeEntity) = moveBy(node, +1)
+
+    private suspend fun moveBy(node: NodeEntity, delta: Int) {
         val parentId = node.parentId ?: return
         val siblings = dao.childrenOnce(parentId)
-        val idx = siblings.indexOfFirst { it.id == node.id }
-        if (idx <= 0) return
-        val prev = siblings[idx - 1]
-        val prevPrev = siblings.getOrNull(idx - 2)
-        dao.move(node.id, parentId, Rank.between(prevPrev?.rank, prev.rank), now())
+        val at = siblings.indexOfFirst { it.id == node.id }
+        val to = at + delta
+        if (at < 0 || to !in siblings.indices) return
+        ws.writerFor(node.id).moveBlock(node.id, to)
+        normalizeIndents(parentId)
     }
 
-    suspend fun moveDown(node: NodeEntity) {
-        val parentId = node.parentId ?: return
-        val siblings = dao.childrenOnce(parentId)
-        val idx = siblings.indexOfFirst { it.id == node.id }
-        if (idx < 0 || idx >= siblings.size - 1) return
-        val next = siblings[idx + 1]
-        val nextNext = siblings.getOrNull(idx + 2)
-        dao.move(node.id, parentId, Rank.between(next.rank, nextNext?.rank), now())
-    }
-
-    /**
-     * Drops [node] into position [toIndex] among its siblings — the commit half of a drag.
-     *
-     * Indices are of the sibling list *without* [node], so a drag that ends where it started is a
-     * no-op rather than a rank churn. Only the moved node's rank changes; neighbours are never
-     * renumbered, which is the point of fractional ranks.
-     */
+    /** Drops [node] at [toIndex] among its siblings — the commit half of a drag. */
     suspend fun moveToIndex(node: NodeEntity, toIndex: Int) {
         val parentId = node.parentId ?: return
-        val others = dao.childrenOnce(parentId).filter { it.id != node.id }
-        val target = toIndex.coerceIn(0, others.size)
-        val before = others.getOrNull(target - 1)
-        val after = others.getOrNull(target)
-        if (before?.id == node.id || after?.id == node.id) return
-        dao.move(node.id, parentId, Rank.between(before?.rank, after?.rank), now())
-        // A block dragged to the top of a run, or above the line it was indented under, has to be
-        // brought back to a legal depth.
+        ws.writerFor(node.id).moveBlock(node.id, toIndex)
+        // A block dragged above the line it was indented under has to come back to a legal depth.
         normalizeIndents(parentId)
     }
 
+}
+
+private fun renamed(b: Block, text: String): Block = when (b) {
+    is TaskRef -> b.copy(title = text)
+    is Heading -> b.copy(text = text)
+    is Bullet -> b.copy(text = text)
+    is Numbered -> b.copy(text = text)
+    is Prose -> b.copy(text = text)
+    is ImageRef -> b.copy(uri = text)
+    is InkRef -> b
+}
+
+private fun indented(b: Block, indent: Int): Block = when (b) {
+    is TaskRef -> b.copy(indent = indent)
+    is Heading -> b.copy(indent = indent)
+    is Bullet -> b.copy(indent = indent)
+    is Numbered -> b.copy(indent = indent)
+    is Prose -> b.copy(indent = indent)
+    is ImageRef -> b.copy(indent = indent)
+    is InkRef -> b.copy(indent = indent)
 }
 
 @Serializable
@@ -232,7 +333,11 @@ data class SelectOption(val name: String, val color: Long? = null)
 @Serializable
 data class SelectConfig(val options: List<SelectOption> = emptyList())
 
-class PropertyRepository(private val db: AppDatabase) {
+/**
+ * Property values live on the task's line, so setting one rewrites the page that holds it. The
+ * defs themselves are the workspace registry and are read-only from here.
+ */
+class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.propertyDao()
 
     fun defs() = dao.defs()
@@ -242,18 +347,10 @@ class PropertyRepository(private val db: AppDatabase) {
     fun valuesForNode(nodeId: String) = dao.valuesForNode(nodeId)
     fun valuesUnder(parentId: String) = dao.valuesUnder(parentId)
 
-    suspend fun createDef(name: String, kind: String, config: String? = null): String {
-        val ts = now()
-        val id = newId()
-        dao.upsertDef(
-            PropertyDefEntity(id = id, name = name, kind = kind, config = config, createdAt = ts, updatedAt = ts)
-        )
-        return id
-    }
 
     /**
-     * Generic whole-row write (REPLACE — omitted columns become NULL). Never use for
-     * Due/Deadline: their multi-column encodings go through [setDue]/[setDeadline].
+     * Sets one built-in on a task. Which field it becomes is decided by the def, not by the caller,
+     * because the line has a slot per meaning rather than a row per column.
      */
     suspend fun setValue(
         nodeId: String,
@@ -262,56 +359,55 @@ class PropertyRepository(private val db: AppDatabase) {
         number: Double? = null,
         date: Long? = null,
         bool: Boolean? = null,
-    ) {
-        dao.upsertValue(
-            PropertyValueEntity(
-                nodeId = nodeId, defId = defId,
-                vText = text, vNumber = number, vDate = date, vBool = bool,
-                updatedAt = now(),
-            )
-        )
+    ) = ws.writerFor(nodeId).editTask(nodeId) { t ->
+        when (defId) {
+            BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = text)
+            BuiltIns.ASSIGNEE_DEF_ID -> t.copy(assignee = text)
+            BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = date?.let { localDateOf(it) })
+            BuiltIns.DUE_DEF_ID -> t.copy(due = date?.let { dueSpec(it, bool == true, number?.toInt()) })
+            else -> t
+        }
     }
 
     suspend fun dueDef(): PropertyDefEntity? =
         dao.builtInDefsOnce().firstOrNull { it.name.equals(BuiltIns.DUE_NAME, ignoreCase = true) }
 
     /**
-     * Whole-row Due write (encoding documented on [BuiltIns]). [dateMillis]: exact instant
-     * when [hasTime], else any instant on the intended LOCAL day (floored to local midnight
-     * here — callers must already have converted the M3 picker's UTC-midnight value).
-     * [reminderOffsetMin]: minutes before the due instant; null = no reminder.
+     * Due, in the encoding [BuiltIns] documents: an exact instant when [hasTime], otherwise the
+     * calendar day. The file distinguishes the two natively — a date has no `T` in it — so the
+     * hasTime flag stops being a separate column and becomes a property of the value itself.
      */
-    suspend fun setDue(nodeId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) {
-        val def = dueDef() ?: return
-        dao.upsertValue(
-            PropertyValueEntity(
-                nodeId = nodeId, defId = def.id,
-                vNumber = reminderOffsetMin?.toDouble(),
-                vDate = if (hasTime) dateMillis else localMidnight(dateMillis),
-                vBool = hasTime,
-                updatedAt = now(),
-            )
-        )
+    suspend fun setDue(nodeId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) =
+        ws.writerFor(nodeId).editTask(nodeId) {
+            it.copy(due = dueSpec(dateMillis, hasTime, reminderOffsetMin))
+        }
+
+    suspend fun setDeadline(nodeId: String, dateMillis: Long) =
+        ws.writerFor(nodeId).editTask(nodeId) { it.copy(deadline = localDateOf(dateMillis)) }
+
+    suspend fun clearValue(nodeId: String, defId: String) = ws.writerFor(nodeId).editTask(nodeId) { t ->
+        when (defId) {
+            BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = null)
+            BuiltIns.ASSIGNEE_DEF_ID -> t.copy(assignee = null)
+            BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = null)
+            BuiltIns.DUE_DEF_ID -> t.copy(due = null)
+            else -> t
+        }
     }
 
-    suspend fun setDeadline(nodeId: String, dateMillis: Long) {
-        dao.upsertValue(
-            PropertyValueEntity(
-                nodeId = nodeId, defId = BuiltIns.DEADLINE_DEF_ID,
-                vDate = localMidnight(dateMillis),
-                updatedAt = now(),
-            )
-        )
-    }
+    private fun dueSpec(millis: Long, hasTime: Boolean, reminderMin: Int?) = DueSpec(
+        if (hasTime) DueValue.At(java.time.Instant.ofEpochMilli(millis))
+        else DueValue.AllDay(localDateOf(millis)),
+        reminderMin,
+    )
 
-    suspend fun clearValue(nodeId: String, defId: String) = dao.deleteValue(nodeId, defId)
-
-    fun parseSelectConfig(def: PropertyDefEntity): SelectConfig =
-        def.config?.let { runCatching { FilterJson.decodeFromString(SelectConfig.serializer(), it) }.getOrNull() }
-            ?: SelectConfig()
 }
 
-class LabelRepository(private val db: AppDatabase) {
+/**
+ * A label is a name on a task's line and a colour in the workspace registry — two files, two
+ * different reasons. Attaching writes the line; recolouring writes the registry.
+ */
+class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.labelDao()
 
     fun all() = dao.all()
@@ -320,26 +416,45 @@ class LabelRepository(private val db: AppDatabase) {
     fun forChildrenOf(parentId: String) = dao.forChildrenOf(parentId)
     fun allNodeLabels() = dao.allNodeLabels()
 
-    /** Reuses an existing label by name (case-insensitive) or creates a new one. */
+    /**
+     * Reuses an existing label by name, or registers a new one.
+     *
+     * Matching is case-insensitive because people type tags casually, but the registry's spelling
+     * wins — `#Sync` and `#sync` are one tag, spelled the way it was first written.
+     */
     suspend fun getOrCreate(name: String, color: Long? = null): LabelEntity {
         val trimmed = name.trim()
         dao.byName(trimmed)?.let { return it }
-        val ts = now()
-        val label = LabelEntity(id = newId(), name = trimmed, color = color, createdAt = ts, updatedAt = ts)
-        dao.upsert(label)
-        return dao.byName(trimmed) ?: label
+        val store = ws.primaryStore()
+        val id = "${store.id}:label:${trimmed.lowercase()}"
+        ws.primary().upsertLabel(
+            LabelDef(id = id, name = trimmed, color = color ?: LabelPalette.defaultFor(trimmed))
+        )
+        return dao.byName(trimmed)
+            ?: LabelEntity(id, store.id, trimmed, color, now(), now())
     }
 
-    suspend fun attach(nodeId: String, labelId: String) =
-        dao.attach(NodeLabelEntity(nodeId = nodeId, labelId = labelId, createdAt = now()))
+    suspend fun attach(nodeId: String, labelId: String) {
+        val name = dao.allOnce().firstOrNull { it.id == labelId }?.name ?: return
+        ws.writerFor(nodeId).editTask(nodeId) {
+            if (name in it.labels) it else it.copy(labels = it.labels + name)
+        }
+    }
 
-    suspend fun detach(nodeId: String, labelId: String) = dao.detach(nodeId, labelId)
+    suspend fun detach(nodeId: String, labelId: String) {
+        val name = dao.allOnce().firstOrNull { it.id == labelId }?.name ?: return
+        ws.writerFor(nodeId).editTask(nodeId) { it.copy(labels = it.labels - name) }
+    }
 
-    /** Real delete — detaches this label from every task it was on (node_label cascades). */
-    suspend fun deleteLabel(labelId: String) = dao.delete(labelId)
+    /** Recolour a label. Null clears it back to the neutral chip. */
+    suspend fun setColor(labelId: String, color: Long?) {
+        val existing = dao.allOnce().firstOrNull { it.id == labelId } ?: return
+        ws.primary().upsertLabel(LabelDef(id = labelId, name = existing.name, color = color))
+    }
+
 }
 
-class SmartListRepository(private val db: AppDatabase) {
+class SmartListRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.smartListDao()
     private val nodeDao = db.nodeDao()
     private val propertyDao = db.propertyDao()
@@ -353,7 +468,7 @@ class SmartListRepository(private val db: AppDatabase) {
         val sort = def.sortJson
             ?.let { FilterJson.decodeFromString(ListSerializer(SortSpec.serializer()), it) }
             ?: emptyList()
-        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort)
+        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort, workspaceId = def.workspaceId)
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 
@@ -368,7 +483,7 @@ class SmartListRepository(private val db: AppDatabase) {
     fun queryCompleted(def: SmartListDefEntity): Flow<List<NodeEntity>>? {
         val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
         val flipped = completedVariant(filter) ?: return null
-        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList())
+        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList(), workspaceId = def.workspaceId)
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 
@@ -378,18 +493,7 @@ class SmartListRepository(private val db: AppDatabase) {
         filter: Filter,
         sort: List<SortSpec>,
         homeParentId: String?,
-    ): String = db.withTransaction {
-        val ts = now()
-        val id = newId()
-        nodeDao.insert(
-            NodeEntity(
-                id = id, parentId = null, type = NodeType.SMART_LIST, title = title,
-                rank = Rank.after(nodeDao.lastRankTopLevel()), createdAt = ts, updatedAt = ts,
-            )
-        )
-        dao.upsert(defFor(id, scopeRootId, filter, sort, homeParentId))
-        id
-    }
+    ): String = ws.primary().createSmartList(defFor("", scopeRootId, filter, sort, homeParentId), title)
 
     suspend fun updateSmartList(
         nodeId: String,
@@ -397,9 +501,7 @@ class SmartListRepository(private val db: AppDatabase) {
         filter: Filter,
         sort: List<SortSpec>,
         homeParentId: String?,
-    ) {
-        dao.upsert(defFor(nodeId, scopeRootId, filter, sort, homeParentId))
-    }
+    ) = ws.writerFor(nodeId).updateSmartList(defFor(nodeId, scopeRootId, filter, sort, homeParentId))
 
     private fun defFor(
         nodeId: String,
@@ -407,9 +509,9 @@ class SmartListRepository(private val db: AppDatabase) {
         filter: Filter,
         sort: List<SortSpec>,
         homeParentId: String?,
-    ): SmartListDefEntity {
+    ): SmartListDef {
         val applyOnCreate = deriveApplyOnCreate(filter)
-        return SmartListDefEntity(
+        return SmartListDef(
             nodeId = nodeId,
             scopeRootId = scopeRootId,
             filterJson = FilterJson.encodeToString(Filter.serializer(), filter),
@@ -422,36 +524,29 @@ class SmartListRepository(private val db: AppDatabase) {
     }
 
     /**
-     * Write side: the new task physically lives in home_parent_id, then apply_on_create
-     * property values make it satisfy the filter (for equality filters).
+     * Write side: the task is added to `home_parent_id`, then the rule's own equality clauses are
+     * stamped onto it so it satisfies the filter it was added through.
      */
     suspend fun addTask(def: SmartListDefEntity, title: String): String? {
         val homeId = def.homeParentId ?: def.scopeRootId ?: return null
-        return db.withTransaction {
-            val ts = now()
-            val id = newId()
-            nodeDao.insert(
-                NodeEntity(
-                    id = id, parentId = homeId, type = NodeType.TASK, title = title,
-                    rank = Rank.after(nodeDao.lastRank(homeId)), createdAt = ts, updatedAt = ts,
-                )
-            )
-            def.applyOnCreateJson
-                ?.let { FilterJson.decodeFromString(ListSerializer(ApplyOnCreate.serializer()), it) }
-                ?.forEach { p ->
-                    // dateRel defers resolution to insert time: a "due today" list stamps
-                    // the actual today (local midnight), not the day the list was defined.
-                    val date = if (p.dateRel != null) localMidnight(ts) else p.date
-                    propertyDao.upsertValue(
-                        PropertyValueEntity(
-                            nodeId = id, defId = p.defId,
-                            vText = p.text, vNumber = p.number, vDate = date,
-                            vBool = p.bool?.let { it },
-                            updatedAt = ts,
+        val writer = ws.writerFor(homeId)
+        val id = writer.addBlock(homeId, NodeType.TASK, title)
+        def.applyOnCreateJson
+            ?.let { FilterJson.decodeFromString(ListSerializer(ApplyOnCreate.serializer()), it) }
+            ?.forEach { p ->
+                // dateRel defers resolution to insert time: a "due today" list stamps the actual
+                // today, not the day the rule was written.
+                writer.editTask(id) { t ->
+                    when (p.defId) {
+                        BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = p.text)
+                        BuiltIns.DUE_DEF_ID -> t.copy(
+                            due = DueSpec(DueValue.AllDay(java.time.LocalDate.now()))
                         )
-                    )
+                        BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = java.time.LocalDate.now())
+                        else -> t
+                    }
                 }
-            id
-        }
+            }
+        return id
     }
 }

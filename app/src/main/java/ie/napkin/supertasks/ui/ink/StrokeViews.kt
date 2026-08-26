@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.view.View
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -12,6 +11,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.ink.strokes.Stroke
 import ie.napkin.supertasks.data.ink.StrokeCodec
+import ie.napkin.supertasks.ui.theme.Yantra
 import kotlin.math.min
 
 /**
@@ -123,7 +123,10 @@ const val INK_CONTENT_PAD = 24f
  */
 @Composable
 fun InkPreview(strokes: List<Stroke>, modifier: Modifier = Modifier) {
-    val dark = isSystemInDarkTheme()
+    // The app's own resolved mode, never the system night mode: the two disagree whenever
+    // the user has pinned Light or Dark, and a preview keyed off the phone would draw black
+    // ink onto a dark page (the default install is DARK, so that is the common case).
+    val dark = Yantra.colors.isDark
     val display = remember(strokes, dark) { InkTheme.displayStrokes(strokes, dark) }
     AndroidView(
         modifier = modifier,

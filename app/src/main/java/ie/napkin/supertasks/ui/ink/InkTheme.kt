@@ -20,10 +20,7 @@ object InkTheme {
     const val BLACK_INK = 0xFF23211CL   // graphite ink (light paper)
     const val WHITE_INK = 0xFFF1EEE7L   // chalk ink (night paper)
 
-    const val PAPER_LIGHT = 0xFFFFFDFA.toInt()
-    const val PAPER_DARK = 0xFF16140F.toInt()
 
-    fun paper(dark: Boolean): Int = if (dark) PAPER_DARK else PAPER_LIGHT
 
     fun defaultPen(dark: Boolean): Long = if (dark) WHITE_INK else BLACK_INK
 

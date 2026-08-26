@@ -76,6 +76,19 @@ interface NodeDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(node: NodeEntity)
 
+    // ---- index rebuild. The rows are derived from files, so replacing them wholesale is not
+    // destructive; it is the only way to be sure the index says exactly what the workspace says.
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(nodes: List<NodeEntity>)
+
+    @Query("DELETE FROM node WHERE workspace_id = :ws")
+    suspend fun clearNodes(ws: String)
+
+    /** How many rows the index actually holds — see [ie.napkin.supertasks.data.workspace.Indexer]. */
+    @Query("SELECT COUNT(*) FROM node WHERE workspace_id = :ws")
+    suspend fun countNodes(ws: String): Int
+
     @Update
     suspend fun update(node: NodeEntity)
 
@@ -129,37 +142,6 @@ interface NodeDao {
         softDelete(subtreeIds(rootId), now)
     }
 
-    @Query("SELECT COUNT(*) FROM node WHERE parent_id = :parentId AND deleted_at IS NULL")
-    suspend fun childCount(parentId: String): Int
-
-    @Query(
-        """
-        SELECT EXISTS(
-            SELECT 1 FROM node WHERE parent_id = :parentId AND deleted_at IS NULL LIMIT 1
-        )
-        """
-    )
-    fun hasChildren(parentId: String): Flow<Boolean>
-
-    /** Task totals per top-level node, counting the entire subtree of each. */
-    @Query(
-        """
-        WITH RECURSIVE sub(rootId, id) AS (
-            SELECT id, id FROM node WHERE parent_id IS NULL AND deleted_at IS NULL
-          UNION ALL
-            SELECT s.rootId, n.id FROM node n JOIN sub s ON n.parent_id = s.id
-             WHERE n.deleted_at IS NULL
-        )
-        SELECT s.rootId AS rootId,
-               COUNT(*) AS total,
-               COALESCE(SUM(n.done), 0) AS doneCount
-          FROM sub s JOIN node n ON n.id = s.id
-         WHERE n.type = 'task'
-         GROUP BY s.rootId
-        """
-    )
-    fun topLevelTaskCounts(): Flow<List<SubtreeTaskCount>>
-
     /** Task totals per list node (rooted at every list, so grouped lists count too). */
     @Query(
         """
@@ -179,8 +161,7 @@ interface NodeDao {
     )
     fun listTaskCounts(): Flow<List<SubtreeTaskCount>>
 
-    /**
- How many live (direct) children each child of :parentId has — for chevrons/badges. */
+    /** How many live (direct) children each child of :parentId has — for chevrons/badges. */
     @Query(
         """
         SELECT n.parent_id AS rootId,
@@ -231,9 +212,6 @@ interface PropertyDao {
 
     @Query("SELECT * FROM property_def WHERE deleted_at IS NULL AND is_built_in = 1 ORDER BY name COLLATE NOCASE")
     suspend fun builtInDefsOnce(): List<PropertyDefEntity>
-
-    @Query("SELECT * FROM property_def WHERE id = :id")
-    suspend fun defById(id: String): PropertyDefEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDef(def: PropertyDefEntity)
@@ -296,43 +274,138 @@ interface PropertyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertValue(value: PropertyValueEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertValues(values: List<PropertyValueEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDefs(defs: List<PropertyDefEntity>)
+
+    @Query("DELETE FROM property_value WHERE workspace_id = :ws")
+    suspend fun clearValues(ws: String)
+
     @Query("DELETE FROM property_value WHERE node_id = :nodeId AND def_id = :defId")
     suspend fun deleteValue(nodeId: String, defId: String)
 }
 
 @Dao
-interface PomodoroDao {
+interface FocusDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insert(session: PomodoroSessionEntity)
+    suspend fun insert(session: FocusSessionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(sessions: List<FocusSessionEntity>)
+
+    @Query("DELETE FROM focus_session WHERE workspace_id = :ws")
+    suspend fun clearSessions(ws: String)
 
     @Update
-    suspend fun update(session: PomodoroSessionEntity)
+    suspend fun update(session: FocusSessionEntity)
 
-    @Query("SELECT * FROM pomodoro_session WHERE id = :id")
-    suspend fun byId(id: String): PomodoroSessionEntity?
+    @Query("SELECT * FROM focus_session WHERE id = :id")
+    suspend fun byId(id: String): FocusSessionEntity?
 
-    @Query("SELECT * FROM pomodoro_session WHERE node_id = :nodeId ORDER BY started_at DESC")
-    fun forNode(nodeId: String): Flow<List<PomodoroSessionEntity>>
+    /** A task's sessions, newest first. Mis-taps are not history and are left out. */
+    @Query(
+        "SELECT * FROM focus_session WHERE node_id = :nodeId AND outcome <> 'discarded' " +
+            "ORDER BY started_at DESC"
+    )
+    fun forNode(nodeId: String): Flow<List<FocusSessionEntity>>
 
-    @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC")
-    fun all(): Flow<List<PomodoroSessionEntity>>
+    @Query("SELECT * FROM focus_session ORDER BY started_at DESC")
+    fun all(): Flow<List<FocusSessionEntity>>
 
     /** The one in-flight session, if any — ground truth for timer restore after process death. */
-    @Query("SELECT * FROM pomodoro_session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
-    suspend fun openSession(): PomodoroSessionEntity?
+    @Query("SELECT * FROM focus_session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
+    suspend fun openSession(): FocusSessionEntity?
 
-    @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC LIMIT 1")
-    suspend fun lastSession(): PomodoroSessionEntity?
+    @Query("SELECT * FROM focus_session ORDER BY started_at DESC LIMIT 1")
+    suspend fun lastSession(): FocusSessionEntity?
 
-    /** Completed-session counts per node — the little tomato badges on task rows. */
+    /**
+     * Time and sessions per node — what a task row shows.
+     *
+     * Every session counts, which is the change. `WHERE completed = 1` was correct only while every
+     * session was the same length: it discarded the interrupted ones, and once a stopwatch exists a
+     * *count* is not a measure of anything — three four-minute sessions would outrank one deliberate
+     * ninety-minute block.
+     */
     @Query(
         """
         SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
-          FROM pomodoro_session WHERE completed = 1 GROUP BY node_id
+          FROM focus_session WHERE outcome <> 'discarded' GROUP BY node_id
         """
     )
-    fun completedCounts(): Flow<List<NodePomoCount>>
+    fun perNode(): Flow<List<NodePomoCount>>
+
+    /**
+     * Everything given to one task, **including its subtasks**.
+     *
+     * A subtask's `parent_id` is its parent task's id, so this walks down the tree from [nodeId] and
+     * sums what it finds. A parent reading zero while its children read hours would look broken.
+     *
+     * Never add these across tasks: the same session belongs to every ancestor, so a total built by
+     * summing rollups counts most of its minutes several times. Totals go to [totalBetween].
+     */
+    @Query(
+        """
+        WITH RECURSIVE subtree(id) AS (
+            SELECT :nodeId
+            UNION
+            SELECT n.id FROM node n JOIN subtree s ON n.parent_id = s.id
+        )
+        SELECT COALESCE(SUM(p.actual_secs), 0) FROM focus_session p
+         WHERE p.node_id IN (SELECT id FROM subtree) AND p.outcome <> 'discarded'
+        """
+    )
+    fun secondsOnSubtree(nodeId: String): Flow<Int>
+
+    /** Everything given in a window, counted once — the honest total. */
+    @Query(
+        """
+        SELECT COALESCE(SUM(actual_secs), 0) FROM focus_session
+         WHERE started_at >= :from AND started_at < :to AND outcome <> 'discarded'
+        """
+    )
+    fun totalBetween(from: Long, to: Long): Flow<Int>
+
+    /** The same, for one workspace. */
+    @Query(
+        """
+        SELECT COALESCE(SUM(actual_secs), 0) FROM focus_session
+         WHERE workspace_id = :ws AND started_at >= :from AND started_at < :to
+           AND outcome <> 'discarded'
+        """
+    )
+    fun totalBetweenIn(ws: String, from: Long, to: Long): Flow<Int>
+
+    /**
+     * Time in a window, per task, for a set of tasks the caller has already chosen.
+     *
+     * The set comes from the filter language the smart lists compile — labels, workspace, priority,
+     * anything expressible as a smart list — so a focus report is a task query plus a window plus a
+     * sum, and there is no second query language to learn or maintain.
+     */
+    @Query(
+        """
+        SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
+          FROM focus_session
+         WHERE node_id IN (:nodeIds) AND started_at >= :from AND started_at < :to
+           AND outcome <> 'discarded'
+         GROUP BY node_id
+        """
+    )
+    fun perNodeBetween(nodeIds: List<String>, from: Long, to: Long): Flow<List<NodePomoCount>>
+
+    /** Sessions in a window, newest first — the history view. */
+    @Query(
+        """
+        SELECT * FROM focus_session
+         WHERE started_at >= :from AND started_at < :to AND outcome <> 'discarded'
+         ORDER BY started_at DESC
+        """
+    )
+    fun between(from: Long, to: Long): Flow<List<FocusSessionEntity>>
 }
 
 @Dao
@@ -349,6 +422,12 @@ interface SmartListDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(def: SmartListDefEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(defs: List<SmartListDefEntity>)
+
+    @Query("DELETE FROM smart_list_def WHERE workspace_id = :ws")
+    suspend fun clearSmartLists(ws: String)
 }
 
 @Dao
@@ -368,10 +447,6 @@ interface LabelDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun upsert(label: LabelEntity)
 
-    /** A real delete — node_label rows cascade away with it. */
-    @Query("DELETE FROM label WHERE id = :id")
-    suspend fun delete(id: String)
-
     @Query("SELECT * FROM node_label WHERE node_id = :nodeId")
     fun forNode(nodeId: String): Flow<List<NodeLabelEntity>>
 
@@ -390,8 +465,24 @@ interface LabelDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun attach(nodeLabel: NodeLabelEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(labels: List<LabelEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun attachAll(links: List<NodeLabelEntity>)
+
+    @Query("DELETE FROM label WHERE workspace_id = :ws")
+    suspend fun clearLabels(ws: String)
+
+    @Query("DELETE FROM node_label WHERE workspace_id = :ws")
+    suspend fun clearNodeLabels(ws: String)
+
     @Query("DELETE FROM node_label WHERE node_id = :nodeId AND label_id = :labelId")
     suspend fun detach(nodeId: String, labelId: String)
+
+    /** Recolour a label everywhere at once — the colour belongs to the tag, not to an attachment. */
+    @Query("UPDATE label SET color = :color, updated_at = :now WHERE id = :id")
+    suspend fun setColor(id: String, color: Long?, now: Long)
 }
 
 @Dao
@@ -400,8 +491,7 @@ interface InkDao {
     @Query("SELECT * FROM ink_stroke WHERE node_id = :nodeId AND deleted_at IS NULL ORDER BY rank")
     fun strokes(nodeId: String): Flow<List<InkStrokeEntity>>
 
-    /**
- Strokes for every ink block that is a direct child of :parentId — page previews. */
+    /** Strokes for every ink block that is a direct child of :parentId — page previews. */
     @Query(
         """
         SELECT s.* FROM ink_stroke s
@@ -412,11 +502,20 @@ interface InkDao {
     )
     fun strokesUnder(parentId: String): Flow<List<InkStrokeEntity>>
 
+    @Query("SELECT * FROM ink_stroke WHERE id = :id")
+    suspend fun strokeById(id: String): InkStrokeEntity?
+
     @Query("SELECT MAX(rank) FROM ink_stroke WHERE node_id = :nodeId AND deleted_at IS NULL")
     suspend fun lastRank(nodeId: String): String?
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(stroke: InkStrokeEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(strokes: List<InkStrokeEntity>)
+
+    @Query("DELETE FROM ink_stroke WHERE workspace_id = :ws")
+    suspend fun clearStrokes(ws: String)
 
     @Query(
         """

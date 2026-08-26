@@ -6,9 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,6 +55,8 @@ import ie.napkin.supertasks.ui.theme.loadThemeController
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.PaddingValues
 
 /**
  * Settings for one placed widget, opened from the widget's own overflow button.
@@ -117,7 +116,7 @@ class WidgetSettingsActivity : ComponentActivity() {
                 var loaded by remember { mutableStateOf(false) }
 
                 // Seed the controls from what the widget is actually showing.
-                androidx.compose.runtime.LaunchedEffect(Unit) {
+                LaunchedEffect(Unit) {
                     runCatching {
                         val gid = GlanceAppWidgetManager(applicationContext).getGlanceIdBy(widgetId)
                         val prefs = getAppWidgetState(
@@ -200,7 +199,7 @@ private fun SettingsScreen(
 
         LazyColumn(
             Modifier.fillMaxWidth().navigationBarsPadding(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            contentPadding = PaddingValues(
                 start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp),

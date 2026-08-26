@@ -1,6 +1,8 @@
 package ie.napkin.supertasks.data.filter
 
-import java.util.Calendar
+import ie.napkin.supertasks.data.time.localDateOf
+import ie.napkin.supertasks.data.time.endOfDay
+import ie.napkin.supertasks.data.time.startOfDay
 
 /** A compiled SELECT over node + property_value, ready for a Room @RawQuery. */
 data class CompiledQuery(val sql: String, val args: List<Any>)
@@ -17,6 +19,12 @@ object FilterCompiler {
         filter: Filter?,
         sort: List<SortSpec> = emptyList(),
         nowMillis: Long = System.currentTimeMillis(),
+        /**
+         * Which workspace this rule may see. Null spans all of them, which is what a unified Today
+         * wants and what nothing else should ask for — one database holds every repo, so an
+         * unscoped rule written in a work workspace quietly matches personal tasks too.
+         */
+        workspaceId: String? = null,
     ): CompiledQuery {
         val args = mutableListOf<Any>()
         val sb = StringBuilder()
@@ -40,6 +48,10 @@ object FilterCompiler {
         }
 
         sb.append("\nWHERE n.deleted_at IS NULL")
+        if (workspaceId != null) {
+            sb.append(" AND n.workspace_id = ?")
+            args += workspaceId
+        }
         if (filter != null) {
             sb.append(" AND ")
             appendClause(sb, args, filter, nowMillis)
@@ -146,16 +158,10 @@ object FilterCompiler {
     }
 
     private fun resolveDateRel(rel: DateRel, now: Long): Long {
-        val cal = Calendar.getInstance().apply {
-            timeInMillis = now
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
+        val today = localDateOf(now)
         return when (rel) {
-            DateRel.TODAY_START -> cal.timeInMillis
-            DateRel.TODAY_END -> cal.timeInMillis + 24L * 60 * 60 * 1000 - 1
+            DateRel.TODAY_START -> startOfDay(today)
+            DateRel.TODAY_END -> endOfDay(today)
         }
     }
 

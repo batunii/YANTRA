@@ -1,38 +1,29 @@
 package ie.napkin.supertasks.data.repo
 
-import androidx.ink.strokes.Stroke
 import ie.napkin.supertasks.data.db.AppDatabase
-import ie.napkin.supertasks.data.db.InkStrokeEntity
-import ie.napkin.supertasks.data.ink.StrokeCodec
-import ie.napkin.supertasks.data.rank.Rank
-import java.util.UUID
+import ie.napkin.supertasks.data.workspace.Workspaces
 
-class InkRepository(private val db: AppDatabase) {
+/**
+ * Strokes live in a sidecar beside the page, as the exact bytes the stroke codec produces.
+ *
+ * The sidecar is rewritten whole on every change, because a stroke set has no line structure for
+ * git to merge and pretending otherwise would corrupt drawings rather than reconcile them. That is
+ * also why ink is the one thing the plan settles by last-writer-wins without trying anything
+ * cleverer first.
+ */
+class InkRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.inkDao()
 
     fun strokes(nodeId: String) = dao.strokes(nodeId)
     fun strokesUnder(parentId: String) = dao.strokesUnder(parentId)
 
-    suspend fun addStroke(nodeId: String, stroke: Stroke, familyName: String) {
-        val ts = System.currentTimeMillis()
-        val bbox = StrokeCodec.bbox(stroke.inputs)
-        dao.insert(
-            InkStrokeEntity(
-                id = UUID.randomUUID().toString(),
-                nodeId = nodeId,
-                data = StrokeCodec.encode(stroke, familyName),
-                bboxX = bbox?.get(0)?.toDouble(),
-                bboxY = bbox?.get(1)?.toDouble(),
-                bboxW = bbox?.get(2)?.toDouble(),
-                bboxH = bbox?.get(3)?.toDouble(),
-                rank = Rank.after(dao.lastRank(nodeId)),
-                createdAt = ts,
-                updatedAt = ts,
-            )
-        )
-    }
-
-    suspend fun undoLast(nodeId: String) = dao.softDeleteLast(nodeId, System.currentTimeMillis())
-    suspend fun clear(nodeId: String) = dao.softDeleteAll(nodeId, System.currentTimeMillis())
-    suspend fun deleteStroke(id: String) = dao.softDeleteById(id, System.currentTimeMillis())
+    /**
+     * Replaces a block's strokes with exactly this list.
+     *
+     * The only mutation there is. The drawing screen holds the session and hands over the whole set,
+     * so nothing here reads-then-writes — which is what used to lose strokes when several finished
+     * at once, each having read the same list before any of them wrote.
+     */
+    suspend fun replace(nodeId: String, strokes: List<ByteArray>) =
+        ws.writerFor(nodeId).writeInk(nodeId, strokes)
 }

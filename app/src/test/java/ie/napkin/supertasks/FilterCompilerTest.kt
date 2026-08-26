@@ -167,6 +167,23 @@ class FilterCompilerTest {
     }
 
     @Test
+    fun `in_progress compiles like any other node column`() {
+        // The one Filter variant with no compile coverage — it was storable and drawable long
+        // before it was askable, so the query path is the newest and least exercised.
+        val q = FilterCompiler.compile(null, Filter.InProgress(true))
+        assertTrue(q.sql.contains("n.in_progress = ?"))
+        assertEquals(listOf<Any>(1L), q.args)
+    }
+
+    @Test
+    fun `started tasks are ordered ahead of the list's own sort`() {
+        // A task you said you were on has to move up the page, or the marker is decoration.
+        val q = FilterCompiler.compile(null, filter, sort = listOf(SortSpec(by = SortBy.TITLE)))
+        val orderBy = q.sql.substringAfter("ORDER BY")
+        assertTrue(orderBy.indexOf("n.in_progress DESC") < orderBy.indexOf("n.title"))
+    }
+
+    @Test
     fun `sort nulls last emits IS NULL guard first`() {
         val q = FilterCompiler.compile(
             null, null,

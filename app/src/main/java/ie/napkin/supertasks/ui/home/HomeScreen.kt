@@ -49,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,14 +59,20 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.ComposedEmpty
+import ie.napkin.supertasks.ui.components.PullToSync
+import androidx.compose.ui.text.input.VisualTransformation
+import ie.napkin.supertasks.ui.components.ListSuggestions
+import ie.napkin.supertasks.ui.components.rememberCaptureHighlight
+import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.NavCircleSurface
 import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoBanner
-import androidx.compose.foundation.layout.offset
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
@@ -73,6 +80,24 @@ import ie.napkin.supertasks.ui.theme.YantraText
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import ie.napkin.supertasks.ui.smart.SmartListBuilderSheet
+import ie.napkin.supertasks.ui.components.GearMark
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.material3.Switch
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Size
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 
 private enum class CreateType(val label: String, val placeholder: String, val action: String) {
     TASK("Task", "New task", "Create task"),
@@ -144,50 +169,63 @@ fun HomeScreen(nav: NavHostController) {
             )
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp),
-        ) {
-            item(key = "greet") {
-                Greeting(
-                    openCount = openCount,
-                    listCount = listCount,
-                    onSettings = { nav.navigate(Routes.SETTINGS) },
-                )
-            }
-
-            if (timer != null) {
-                item(key = "timer") {
-                    ActiveTimerCard(
-                        title = timer!!.nodeTitle,
-                        remainingSecs = timer!!.remainingSecs,
-                        plannedSecs = timer!!.plannedSecs,
-                        onClick = { nav.navigate(Routes.FOCUS_CURRENT) },
+        PullToSync(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 18.dp),
+            ) {
+                item(key = "greet") {
+                    Greeting(
+                        openCount = openCount,
+                        listCount = listCount,
+                        onSettings = { nav.navigate(Routes.SETTINGS) },
                     )
                 }
-            }
 
-            if (ungroupedSmart.isNotEmpty()) {
-                item(key = "smart-header") { SectionHeader("Pinned") }
-                items(ungroupedSmart, key = { it.id }) { renderRow(it) }
-            }
-            if (ungroupedLists.isNotEmpty()) {
-                item(key = "lists-header") { SectionHeader("Lists") }
-                items(ungroupedLists, key = { it.id }) { renderRow(it) }
-            }
-            groups.forEach { group ->
-                item(key = "g-${group.id}") {
-                    GroupBanner(
-                        title = group.title.orEmpty().ifBlank { "Untitled group" },
-                        count = byGroup[group.id]?.size ?: 0,
-                        onRename = { renaming = group },
-                        onDelete = { deleting = group },
-                    )
+                if (timer != null) {
+                    item(key = "timer") {
+                        ActiveTimerCard(
+                            title = timer!!.nodeTitle,
+                            remainingSecs = timer!!.remainingSecs,
+                            plannedSecs = timer!!.plannedSecs,
+                            onClick = { nav.navigate(Routes.FOCUS_CURRENT) },
+                        )
+                    }
                 }
-                items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
-            }
 
-            item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
+                // The app has an empty state, with its own mark and an action, and until now used it
+                // on one screen out of five — not this one, which is the first screen anyone sees.
+                if (ungroupedSmart.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty()) {
+                    item(key = "empty") {
+                        ComposedEmpty(
+                            "Nothing here yet",
+                            action = "Make a list",
+                            onAction = { showCreate = true },
+                        )
+                    }
+                }
+                if (ungroupedSmart.isNotEmpty()) {
+                    item(key = "smart-header") { SectionHeader("Pinned") }
+                    items(ungroupedSmart, key = { it.id }) { renderRow(it) }
+                }
+                if (ungroupedLists.isNotEmpty()) {
+                    item(key = "lists-header") { SectionHeader("Lists") }
+                    items(ungroupedLists, key = { it.id }) { renderRow(it) }
+                }
+                groups.forEach { group ->
+                    item(key = "g-${group.id}") {
+                        GroupBanner(
+                            title = group.title.orEmpty().ifBlank { "Untitled group" },
+                            count = byGroup[group.id]?.size ?: 0,
+                            onRename = { renaming = group },
+                            onDelete = { deleting = group },
+                        )
+                    }
+                    items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                }
+
+                item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
+            }
         }
     }
 
@@ -199,6 +237,8 @@ fun HomeScreen(nav: NavHostController) {
             containerColor = y.cardBg,
         ) {
             CreatePanel(
+                allLabels = labels,
+                listNames = allRegularLists.mapNotNull { it.title },
                 onCreate = { type, name, makeSmart ->
                     when (type) {
                         CreateType.TASK -> vm.quickAddTask(name) { id -> nav.navigate(Routes.node(id)) }
@@ -215,7 +255,7 @@ fun HomeScreen(nav: NavHostController) {
     }
 
     customSmartName?.let { seedName ->
-        ie.napkin.supertasks.ui.smart.SmartListBuilderSheet(
+        SmartListBuilderSheet(
             initialName = seedName,
             defs = defs,
             labels = labels,
@@ -330,7 +370,7 @@ private fun HomeRow(
         ) {
             Box(
                 Modifier.size(34.dp).background(
-                    if (smart) androidx.compose.ui.graphics.Color.Transparent else y.accent.copy(alpha = 0.12f),
+                    if (smart) Color.Transparent else y.accent.copy(alpha = 0.12f),
                     RoundedCornerShape(10.dp),
                 ),
                 contentAlignment = Alignment.Center,
@@ -401,15 +441,19 @@ private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelet
 }
 
 @Composable
-private fun CreatePanel(onCreate: (CreateType, String, Boolean) -> Unit) {
+private fun CreatePanel(
+    allLabels: List<ie.napkin.supertasks.data.db.LabelEntity>,
+    listNames: List<String>,
+    onCreate: (CreateType, String, Boolean) -> Unit,
+) {
     val y = Yantra.colors
     var type by remember { mutableStateOf(CreateType.TASK) }
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(TextFieldValue()) }
     var makeSmart by remember { mutableStateOf(false) }
-    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    val valid = text.isNotBlank()
+    val valid = text.text.isNotBlank()
     val actionLabel = if (type == CreateType.LIST && makeSmart) "Continue" else type.action
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
@@ -419,20 +463,38 @@ private fun CreatePanel(onCreate: (CreateType, String, Boolean) -> Unit) {
             textStyle = MaterialTheme.typography.headlineSmall.copy(color = y.textPrimary),
             cursorBrush = SolidColor(y.accent),
             singleLine = true,
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
-                if (valid) onCreate(type, text.trim(), makeSmart)
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                if (valid) onCreate(type, text.text.trim(), makeSmart)
             }),
+            // Only for a task. A list or a group is named literally — its title is whatever you
+            // typed — so tinting part of it would promise a reading that is never applied.
+            visualTransformation = if (type == CreateType.TASK) {
+                rememberCaptureHighlight(labels = allLabels, lists = listNames)
+            } else {
+                VisualTransformation.None
+            },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).focusRequester(focus),
             decorationBox = { inner ->
-                if (text.isEmpty()) Text(type.placeholder, style = MaterialTheme.typography.headlineSmall, color = y.textMuted.copy(alpha = 0.7f))
+                if (text.text.isEmpty()) Text(type.placeholder, style = MaterialTheme.typography.headlineSmall, color = y.textMuted.copy(alpha = 0.7f))
                 inner()
             },
         )
+        // Only while a `~` is being typed, and only for a task — a list is named literally, so
+        // there is no destination to offer it.
+        if (type == CreateType.TASK) {
+            ListSuggestions(
+                text = text.text,
+                caret = text.selection.start,
+                lists = listNames,
+                modifier = Modifier.padding(top = 4.dp),
+                onPick = { text = it },
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             CreateType.entries.forEach { t ->
-                TypeChip(t.label, selected = t == type, modifier = Modifier.weight(1f)) { type = t }
+                SelectChip(t.label, selected = t == type, onClick = { type = t }, modifier = Modifier.weight(1f))
             }
         }
         if (type == CreateType.LIST) {
@@ -447,34 +509,19 @@ private fun CreatePanel(onCreate: (CreateType, String, Boolean) -> Unit) {
                     Text("Make this a smart list", color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W600, fontSize = 14.sp)
                     Text("Auto-updates from conditions you set, instead of a fixed set of tasks", color = y.textMuted, fontSize = 11.5.sp)
                 }
-                androidx.compose.material3.Switch(checked = makeSmart, onCheckedChange = { makeSmart = it })
+                Switch(checked = makeSmart, onCheckedChange = { makeSmart = it })
             }
         }
         Spacer(Modifier.height(16.dp))
-        Box(
-            Modifier.fillMaxWidth().background(y.accent, RoundedCornerShape(13.dp))
-                .clickable(enabled = valid) { onCreate(type, text.trim(), makeSmart) }
-                .padding(vertical = 13.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(actionLabel, color = y.onAccent, fontFamily = YantraText, fontWeight = FontWeight.W700, fontSize = 15.sp)
-        }
+        YantraButton(
+            label = actionLabel,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = valid,
+            onClick = { onCreate(type, text.text.trim(), makeSmart) },
+        )
     }
 }
 
-@Composable
-private fun TypeChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(11.dp)
-    Box(
-        modifier.background(if (selected) y.accentFill else y.neutralChipBg, shape)
-            .border(1.dp, if (selected) y.accentBorder else androidx.compose.ui.graphics.Color.Transparent, shape)
-            .clickable(onClick = onClick).padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, color = if (selected) y.accentText else y.textSecondary, fontFamily = YantraText, fontWeight = FontWeight.W700, fontSize = 12.5.sp)
-    }
-}
 
 @Composable
 private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit) {
@@ -493,7 +540,7 @@ private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit) {
                 .border(1.dp, y.accentBorder, RoundedCornerShape(17.dp))
                 .clickable(onClick = onCog),
             contentAlignment = Alignment.Center,
-        ) { ie.napkin.supertasks.ui.components.GearMark(Modifier.size(30.dp), tint = y.accent) }
+        ) { GearMark(Modifier.size(30.dp), tint = y.accent) }
         Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) { StatsGlyph() }
     }
 }
@@ -502,13 +549,13 @@ private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit) {
 private fun HomeGlyph(active: Boolean) {
     val y = Yantra.colors
     val tint = if (active) y.textPrimary else y.textDim
-    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+    Canvas(Modifier.size(22.dp)) {
         val w = size.width
-        val p = androidx.compose.ui.graphics.Path().apply {
+        val p = Path().apply {
             moveTo(w * 0.16f, w * 0.44f); lineTo(w * 0.5f, w * 0.16f); lineTo(w * 0.84f, w * 0.44f)
             lineTo(w * 0.84f, w * 0.84f); lineTo(w * 0.16f, w * 0.84f); close()
         }
-        drawPath(p, color = tint, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.08f, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        drawPath(p, color = tint, style = Stroke(width = w * 0.08f, join = StrokeJoin.Round))
     }
 }
 
@@ -516,11 +563,11 @@ private fun HomeGlyph(active: Boolean) {
 private fun SettingsGlyph() {
     val y = Yantra.colors
     // three sliders — a settings mark distinct from the create cog
-    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+    Canvas(Modifier.size(18.dp)) {
         val w = size.width
-        fun line(cy: Float) = drawLine(y.textSecondary, androidx.compose.ui.geometry.Offset(0f, cy), androidx.compose.ui.geometry.Offset(w, cy), strokeWidth = w * 0.09f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        fun line(cy: Float) = drawLine(y.textSecondary, Offset(0f, cy), Offset(w, cy), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
         line(w * 0.22f); line(w * 0.5f); line(w * 0.78f)
-        fun knob(cx: Float, cy: Float) { drawCircle(y.page, radius = w * 0.13f, center = androidx.compose.ui.geometry.Offset(cx, cy)); drawCircle(y.accent, radius = w * 0.11f, center = androidx.compose.ui.geometry.Offset(cx, cy)) }
+        fun knob(cx: Float, cy: Float) { drawCircle(y.page, radius = w * 0.13f, center = Offset(cx, cy)); drawCircle(y.accent, radius = w * 0.11f, center = Offset(cx, cy)) }
         knob(w * 0.68f, w * 0.22f); knob(w * 0.34f, w * 0.5f); knob(w * 0.72f, w * 0.78f)
     }
 }
@@ -528,15 +575,15 @@ private fun SettingsGlyph() {
 @Composable
 private fun StatsGlyph() {
     val y = Yantra.colors
-    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+    Canvas(Modifier.size(20.dp)) {
         val w = 3.6f / 20f * size.width
         val unit = size.height / 18f
-        fun bar(x: Float, h: Float, c: androidx.compose.ui.graphics.Color) {
+        fun bar(x: Float, h: Float, c: Color) {
             drawRoundRect(
                 color = c,
-                topLeft = androidx.compose.ui.geometry.Offset(x / 20f * size.width, size.height - h * unit),
-                size = androidx.compose.ui.geometry.Size(w, h * unit),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.2f * unit, 1.2f * unit),
+                topLeft = Offset(x / 20f * size.width, size.height - h * unit),
+                size = Size(w, h * unit),
+                cornerRadius = CornerRadius(1.2f * unit, 1.2f * unit),
             )
         }
         bar(2f, 8f, y.textDim); bar(8.2f, 12f, y.textDim); bar(14.4f, 16f, y.accent)
@@ -552,7 +599,7 @@ private fun MoveToGroupDialog(
     onNewGroup: () -> Unit,
 ) {
     val y = Yantra.colors
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Move to group") },
         text = {
@@ -573,7 +620,7 @@ private fun MoveToGroupDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
@@ -586,7 +633,7 @@ private fun MoveRow(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Box(
             Modifier.size(18.dp).background(
-                if (selected) y.accent else androidx.compose.ui.graphics.Color.Transparent,
+                if (selected) y.accent else Color.Transparent,
                 RoundedCornerShape(5.dp),
             ).border(2.dp, if (selected) y.accent else y.checkOutline, RoundedCornerShape(5.dp)),
             contentAlignment = Alignment.Center,

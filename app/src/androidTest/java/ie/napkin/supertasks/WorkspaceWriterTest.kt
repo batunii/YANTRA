@@ -1,0 +1,426 @@
+package ie.napkin.supertasks
+
+import androidx.room.Room
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import ie.napkin.supertasks.data.db.AppDatabase
+import ie.napkin.supertasks.data.db.NodeType
+import ie.napkin.supertasks.data.format.PageCodec
+import ie.napkin.supertasks.data.format.TaskStatus
+import ie.napkin.supertasks.data.workspace.Indexer
+import ie.napkin.supertasks.data.workspace.WorkspaceReconciler
+import ie.napkin.supertasks.data.workspace.WorkspaceStore
+import ie.napkin.supertasks.data.workspace.WorkspaceWriter
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
+
+/**
+ * The write path, inverted.
+ *
+ * Every test here asserts the same two things about a mutation: that it reached the **file**, and
+ * that the index Room ends up holding is the index a cold read of those files produces. The second
+ * is what stops the index quietly becoming a place where things live — if a write reached Room but
+ * not disk, a reindex would erase it, and the only way to notice is to check.
+ */
+@RunWith(AndroidJUnit4::class)
+class WorkspaceWriterTest {
+
+    private lateinit var root: File
+    private lateinit var db: AppDatabase
+    private lateinit var store: WorkspaceStore
+    private lateinit var writer: WorkspaceWriter
+
+    private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Before
+    fun setUp(): Unit = runBlocking {
+        root = File(ctx.cacheDir, "writer-${System.nanoTime()}").apply { mkdirs() }
+        db = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java).build()
+        store = WorkspaceStore(root).also { it.scaffold("test", 1_787_000_000_000L) }
+        writer = WorkspaceWriter(store, db, Indexer(db), device = "test-device")
+        writer.reindex()
+    }
+
+    @After
+    fun tearDown() = db.close()
+
+    /** What a cold read of the files says, which is what the index must agree with. */
+    private fun onDisk() = WorkspaceReconciler.read(store, 0L)
+
+    private fun pageText(id: String) = store.pageFile(id).readText()
+
+    // ---- creating ----
+
+    @Test
+    fun aTopLevelListBecomesItsOwnFile() = runBlocking {
+        val id = writer.createTopLevel(NodeType.LIST, "Groceries")
+        assertTrue(store.pageFile(id).exists())
+        assertTrue(pageText(id).contains("title: Groceries"))
+        assertEquals("Groceries", db.nodeDao().byId(id)?.title)
+    }
+
+    @Test
+    fun aTaskBecomesALineOnItsParentAndNotAFileOfItsOwn() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "Groceries")
+        val task = writer.addBlock(list, NodeType.TASK, "Buy milk")
+
+        assertTrue("the line is missing", pageText(list).contains("- [ ] Buy milk ^$task"))
+        // A task holding nothing does not earn a document; empty files in every clone for nothing.
+        assertTrue("an empty page was written", !store.pageFile(task).exists())
+        assertEquals("Buy milk", db.nodeDao().byId(task)?.title)
+    }
+
+    @Test
+    fun blocksLandWhereTheyWereAskedFor() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        val a = writer.addBlock(list, NodeType.TASK, "first")
+        val c = writer.addBlock(list, NodeType.TASK, "third")
+        writer.addBlock(list, NodeType.TASK, "second", afterId = a)
+
+        val order = PageCodec.decode(pageText(list)).blocks
+            .filterIsInstance<ie.napkin.supertasks.data.format.TaskRef>().map { it.title }
+        assertEquals(listOf("first", "second", "third"), order)
+        assertTrue(c.isNotEmpty())
+    }
+
+    // ---- editing a line ----
+
+    @Test
+    fun completingATaskRewritesTheLineNotTheDatabase() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        val task = writer.addBlock(list, NodeType.TASK, "Buy milk")
+
+        writer.editTask(task) { it.copy(status = TaskStatus.DONE) }
+
+        assertTrue("the file still says open", pageText(list).contains("- [x] Buy milk ^$task"))
+        assertEquals(true, db.nodeDao().byId(task)?.done)
+        // And a cold read agrees, so the index holds nothing the repo does not.
+        assertEquals(true, onDisk().nodes.single { it.id == task }.done)
+    }
+
+    @Test
+    fun renamingRewritesTheLine() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        val task = writer.addBlock(list, NodeType.TASK, "old name")
+        writer.editTask(task) { it.copy(title = "new name") }
+
+        assertTrue(pageText(list).contains("- [ ] new name ^$task"))
+        assertEquals("new name", db.nodeDao().byId(task)?.title)
+    }
+
+    @Test
+    fun indentIsWrittenAsIndentAndStaysAChildOfThePage() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        writer.addBlock(list, NodeType.TASK, "parent line")
+        val child = writer.addBlock(list, NodeType.TASK, "under it")
+        writer.editTask(child) { it.copy(indent = 1) }
+
+        assertTrue(pageText(list).contains("${PageCodec.INDENT} - [ ] under it"))
+        val row = db.nodeDao().byId(child)!!
+        assertEquals(1, row.indent)
+        assertEquals("indent moved it in the tree", list, row.parentId)
+    }
+
+    @Test
+    fun aPropertyOnALineSurvivesAReindex() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        val task = writer.addBlock(list, NodeType.TASK, "with a due date")
+        writer.editTask(task) {
+            it.copy(
+                due = ie.napkin.supertasks.data.format.DueSpec(
+                    ie.napkin.supertasks.data.format.DueValue.AllDay(java.time.LocalDate.of(2026, 9, 1))
+                ),
+                priority = "high",
+                labels = listOf("shop"),
+            )
+        }
+        assertTrue(pageText(list).contains("due:2026-09-01"))
+
+        // The real question: does it come back after the index is thrown away and rebuilt?
+        writer.reindex()
+        val values = onDisk().values.filter { it.nodeId == task }
+        assertEquals(2, values.size)
+        assertTrue(onDisk().labels.any { it.name == "shop" })
+    }
+
+    // ---- moving and removing ----
+
+    @Test
+    fun reorderingRewritesLineOrder() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        writer.addBlock(list, NodeType.TASK, "a")
+        val b = writer.addBlock(list, NodeType.TASK, "b")
+        writer.addBlock(list, NodeType.TASK, "c")
+
+        writer.moveBlock(b, 0)
+
+        val titles = PageCodec.decode(pageText(list)).blocks
+            .filterIsInstance<ie.napkin.supertasks.data.format.TaskRef>().map { it.title }
+        assertEquals(listOf("b", "a", "c"), titles)
+        // Ranks are regenerated from line order, so the index agrees without being told separately.
+        val rows = onDisk().nodes.filter { it.parentId == list }.sortedBy { it.rank }
+        assertEquals(listOf("b", "a", "c"), rows.map { it.title })
+    }
+
+    @Test
+    fun removingATaskTakesItsLineItsPageAndItsInk() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        val task = writer.addBlock(list, NodeType.TASK, "doomed")
+        val ink = writer.addBlock(list, NodeType.INK, null)
+        writer.writeInk(ink, listOf(byteArrayOf(1, 2, 3)))
+
+        writer.removeBlock(task)
+        assertTrue("the line survived", !pageText(list).contains("^$task"))
+        assertEquals(null, db.nodeDao().byId(task))
+
+        writer.removeBlock(ink)
+        assertTrue("the sidecar outlived the block", !store.inkFile(ink).exists())
+    }
+
+    @Test
+    fun inkBytesGoToASidecarAndComeBackUnchanged() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "L")
+        val ink = writer.addBlock(list, NodeType.INK, null)
+        writer.writeInk(ink, listOf(byteArrayOf(4, 5, 6), byteArrayOf(7)))
+
+        assertTrue(store.inkFile(ink).exists())
+        val strokes = onDisk().ink.filter { it.nodeId == ink }
+        assertEquals(2, strokes.size)
+        assertEquals(listOf<Byte>(4, 5, 6), strokes[0].data.toList())
+    }
+
+    // ---- the property that matters ----
+
+    @Test
+    fun throwingTheIndexAwayLosesNothing() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "Groceries")
+        val t1 = writer.addBlock(list, NodeType.TASK, "Buy milk")
+        val t2 = writer.addBlock(list, NodeType.TASK, "Buy bread")
+        writer.editTask(t2) { it.copy(status = TaskStatus.DONE, priority = "high") }
+        writer.addBlock(list, NodeType.HEADING, "A heading")
+
+        val before = onDisk()
+        db.clearAllTables()
+        writer.reindex()
+
+        val after = onDisk()
+        assertEquals(
+            before.nodes.sortedBy { it.id }.map { "${it.id}|${it.title}|${it.done}|${it.type}" },
+            after.nodes.sortedBy { it.id }.map { "${it.id}|${it.title}|${it.done}|${it.type}" },
+        )
+        assertEquals("Buy milk", db.nodeDao().byId(t1)?.title)
+        assertEquals(true, db.nodeDao().byId(t2)?.done)
+    }
+
+    @Test
+    fun concurrentWholeListWritesLeaveOneOfThemIntact() = runBlocking {
+        // Whole-list writes cannot lose a stroke the way an append could, but they can still tear if
+        // they are not serialised — a file holding half of one drawing and half of another. The
+        // guarantee is that whichever write lands last, the file is exactly what that caller passed.
+        val a = (1..12).map { byteArrayOf(1, it.toByte()) }
+        val b = (1..7).map { byteArrayOf(2, it.toByte()) }
+        coroutineScope {
+            listOf(
+                async { writer.writeInk("ink-block", a) },
+                async { writer.writeInk("ink-block", b) },
+            ).awaitAll()
+        }
+
+        val onDisk = store.readInk("ink-block")
+        assertTrue("torn: ${onDisk.size} strokes", onDisk.size == a.size || onDisk.size == b.size)
+        assertEquals(1, onDisk.map { it.first() }.toSet().size)
+    }
+
+
+    @Test
+    fun removingAnImageBlockTakesItsPictureWithIt() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "Trip")
+        val id = "img-1"
+        writer.writeImage(id, ByteArray(2048) { 7 })
+        val block = writer.addBlock(list, NodeType.IMAGE, id)
+        assertTrue(store.hasImage(id))
+
+        writer.removeBlock(block)
+
+        // A picture nothing refers to is a megabyte committed to the repo forever, invisible in the
+        // app and present in every clone. The same trap the ink sidecars were fixed for.
+        assertTrue("the picture outlived its block", !store.hasImage(id))
+    }
+
+    // ---- archive ----
+
+    private suspend fun finishedTask(list: String, title: String, doneDaysAgo: Long): String {
+        val id = writer.addBlock(list, NodeType.TASK, title)
+        writer.editTask(id) {
+            it.copy(
+                status = TaskStatus.DONE,
+                doneAt = java.time.LocalDate.now().minusDays(doneDaysAgo),
+            )
+        }
+        return id
+    }
+
+    @Test
+    fun oldFinishedTasksLeaveThePageAndRecentOnesStay() = runBlocking {
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        finishedTask(list, "Done last year", doneDaysAgo = 400)
+        finishedTask(list, "Done yesterday", doneDaysAgo = 1)
+        writer.addBlock(list, NodeType.TASK, "Still open")
+
+        val moved = writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        assertEquals(1, moved)
+        val page = store.pageFile(list).readText()
+        assertTrue("the old one stayed", !page.contains("Done last year"))
+        assertTrue("a recent one was taken", page.contains("Done yesterday"))
+        assertTrue("an open one was taken", page.contains("Still open"))
+
+        // Not deleted — moved. Archived is a place, and it is still in the repo, in the same format.
+        assertTrue(store.readArchivedLines(list).any { it.contains("Done last year") })
+    }
+
+    @Test
+    fun archivedTasksLeaveTheIndex() = runBlocking {
+        // The entire point: "a few hundred active" has to stay true while the total grows forever.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val old = finishedTask(list, "Ancient", doneDaysAgo = 400)
+        assertTrue(db.nodeDao().byId(old) != null)
+
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+        writer.reindex()
+
+        assertEquals(null, db.nodeDao().byId(old))
+    }
+
+    @Test
+    fun anArchivedTaskComesBackWhole() = runBlocking {
+        // Finishing something is not the same as being finished with it. An archive you cannot come
+        // back from is a delete with a longer name.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val id = finishedTask(list, "Shipped the thing", doneDaysAgo = 400)
+        writer.editTask(id) { it.copy(priority = "High", labels = listOf("release")) }
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        val restored = writer.restoreArchived(list, setOf(id))
+
+        assertEquals(1, restored)
+        val page = store.pageFile(list).readText()
+        assertTrue("the title did not come back", page.contains("Shipped the thing"))
+        // Everything the line carried, not just its text.
+        assertTrue("priority was lost", page.contains("!High"))
+        assertTrue("a label was lost", page.contains("#release"))
+        assertTrue("the archive still holds it", store.readArchivedLines(list).isEmpty())
+    }
+
+    @Test
+    fun aFinishedTaskWithUnfinishedSubtasksStaysPut() = runBlocking {
+        // Archiving it would take its children out of the working set with it, and unfinished work
+        // must never leave by accident.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val parent = finishedTask(list, "Parent looks done", doneDaysAgo = 400)
+        writer.addBlock(parent, NodeType.TASK, "But this is not")
+        writer.reindex()
+
+        assertEquals(0, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
+        assertTrue(store.pageFile(list).readText().contains("Parent looks done"))
+    }
+
+    @Test
+    fun aTaskWithNoCompletionDateIsNeverArchived() = runBlocking {
+        // Lines written before `done:` existed. Unknown age is not the same as old, and guessing
+        // would archive things a user finished this morning.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val id = writer.addBlock(list, NodeType.TASK, "Finished, date unknown")
+        writer.editTask(id) { it.copy(status = TaskStatus.DONE, doneAt = null) }
+
+        assertEquals(0, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
+    }
+
+    @Test
+    fun theThresholdLivesInTheManifestAndSurvivesAReadBack() = runBlocking {
+        // A property of the workspace, not the device: archiving moves files that sync, so a phone
+        // and a tablet disagreeing about it would mean the shorter setting silently winning.
+        assertEquals(0, store.readManifest()?.archiveAfterDays)
+
+        store.readManifest()!!.let { store.writeManifest(it.copy(archiveAfterDays = 30)) }
+
+        assertEquals(30, WorkspaceStore(root, store.id).readManifest()?.archiveAfterDays)
+    }
+
+    @Test
+    fun bringingEverythingBackRestoresEveryPage() = runBlocking {
+        // The escape hatch. Archiving can be offered before there is a screen for browsing it only
+        // because one action undoes the whole thing, from every page at once.
+        val a = writer.createTopLevel(NodeType.LIST, "One")
+        val b = writer.createTopLevel(NodeType.LIST, "Two")
+        finishedTask(a, "Old one", doneDaysAgo = 400)
+        finishedTask(a, "Old two", doneDaysAgo = 400)
+        finishedTask(b, "Old three", doneDaysAgo = 400)
+
+        assertEquals(3, writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30)))
+        assertEquals(3, writer.archivedCount())
+
+        assertEquals(3, writer.restoreAllArchived())
+
+        assertEquals(0, writer.archivedCount())
+        assertTrue(store.pageFile(a).readText().contains("Old one"))
+        assertTrue(store.pageFile(a).readText().contains("Old two"))
+        assertTrue(store.pageFile(b).readText().contains("Old three"))
+    }
+
+    @Test
+    fun aWorkspaceThatNeverArchivesIsLeftAlone() = runBlocking {
+        // Zero means never, and never has to mean never rather than "archive everything at once",
+        // which is what a threshold of zero days would do if it were read as a duration.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        finishedTask(list, "Ancient", doneDaysAgo = 4000)
+
+        val manifest = store.readManifest()!!
+        assertEquals(0, manifest.archiveAfterDays)
+        // The container skips the sweep entirely at zero; nothing here should ever be asked to run.
+        assertEquals(0, writer.archivedCount())
+        assertTrue(store.pageFile(list).readText().contains("Ancient"))
+    }
+
+    @Test
+    fun oneTaskCanComeBackWithoutTheRest() = runBlocking {
+        // What the archive screen does. Restoring a single thing must not require understanding the
+        // archive as a whole, which is all "bring everything back" could ever offer.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        val keep = finishedTask(list, "Stay archived", doneDaysAgo = 400)
+        val back = finishedTask(list, "Come back", doneDaysAgo = 400)
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        assertEquals(1, writer.restoreArchived(list, setOf(back)))
+
+        val page = store.pageFile(list).readText()
+        assertTrue("the restored task did not return", page.contains("Come back"))
+        assertTrue("an untouched task came back too", !page.contains("Stay archived"))
+        assertEquals(1, writer.archivedCount())
+        assertTrue(store.readArchivedLines(list).single().contains("Stay archived"))
+        assertTrue("ids should be stable across the move", keep.isNotEmpty())
+    }
+
+    @Test
+    fun anArchivedTaskKnowsWhenItWasFinished() = runBlocking {
+        // The archive screen reads the files, not the index, so the completion date has to survive
+        // the move — it is the only thing on the row that says how long ago this was.
+        val list = writer.createTopLevel(NodeType.LIST, "Inbox")
+        finishedTask(list, "Long done", doneDaysAgo = 400)
+        writer.archiveFinished(before = java.time.LocalDate.now().minusDays(30))
+
+        val line = store.readArchivedLines(list).single()
+        val block = PageCodec.decodeBlock(line) as ie.napkin.supertasks.data.format.TaskRef
+        assertEquals(java.time.LocalDate.now().minusDays(400), block.doneAt)
+        assertEquals("Long done", block.title)
+    }
+}

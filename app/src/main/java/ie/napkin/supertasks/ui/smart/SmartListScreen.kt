@@ -2,7 +2,6 @@ package ie.napkin.supertasks.ui.smart
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,12 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,12 +43,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PullToSync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.HeaderFold
 import ie.napkin.supertasks.ui.components.ComposedEmpty
+import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.NavCircle
@@ -58,8 +58,9 @@ import ie.napkin.supertasks.ui.node.TextualBlockRow
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val vm: SmartListViewModel = viewModel(key = "smart-$nodeId") { SmartListViewModel(container(), nodeId) }
@@ -184,115 +185,82 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         // it reads as the fold between two sheets rather than as an underline.
         HeaderFold()
 
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        ) {
-            if (tasks.isEmpty() && completed.isEmpty()) {
-                item(key = "empty") {
-                    ComposedEmpty("Nothing matches right now")
-                }
-            } else if (tasks.isEmpty()) {
-                // Everything this view asked for is finished. Saying so beats "nothing matches",
-                // which would be true of the rule and wrong about the day.
-                item(key = "all-done") {
-                    ComposedEmpty("All done here")
-                }
-            }
-            // One card, hairline-divided: two elevation layers instead of rows floating on the
-            // page. Corners are rounded only where the group actually ends.
-            // Open first, then what you finished. Two cards rather than one run of rows: the done
-            // half is not part of the rule's ordering — it is there because you did it today, not
-            // because it still matches — and giving it its own surface says so.
-            itemsIndexed(tasks, key = { _, t -> t.id }) { index, task ->
-                ListGroupRow {
-                    // The SAME row a list page draws. Not a look-alike: this screen used to carry
-                    // its own read-only copy, which is how tap-to-edit ended up working on Inbox
-                    // and not here. A task is a task wherever it is shown; the only thing a screen
-                    // decides is which tasks to put in front of it.
-                    Box(Modifier.padding(horizontal = 14.dp)) {
-                        TextualBlockRow(
-                            child = task,
-                            active = activeId == task.id,
-                            onActivate = { activeId = task.id },
-                            onFocusChange = { if (it) activeId = task.id },
-                            // Caret hand-off belongs to a document, where blocks split and merge.
-                            claimCaret = false,
-                            onCaretClaimed = {},
-                            // Nothing types here, so there is no Enter to split on and no
-                            // Backspace to merge back with.
-                            onSplit = { _, _ -> },
-                            onMergeBack = {},
-                            chips = chips[task.id].orEmpty(),
-                            childCount = childCounts[task.id] ?: 0,
-                            ordinal = 0,
-                            pomoCount = pomoCounts[task.id] ?: 0,
-                            autoFocus = false,
-                            onAutoFocusConsumed = {},
-                            onRename = {},
-                            onToggleDone = { vm.setDone(task.id, it) },
-                            onToggleInProgress = { vm.setInProgress(task.id, it) },
-                            // Only tasks are gathered here, so there is no type to convert to.
-                            onBecome = {},
-                            onOpen = { nav.navigate(Routes.node(task.id)) },
-                            // A smart list is a list: the row opens the task, it does not become a
-                            // text field. Typing happens on the task's own page.
-                            editable = false,
-                        )
-                    }
-                }
-            }
-
-            if (completed.isNotEmpty()) {
-                item(key = "done-header") {
-                    SectionLabel(
-                        "DONE · ${completed.size}",
-                        modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+        // The SAME row a list page draws. Not a look-alike: this screen used to carry its own
+        // read-only copy, which is how tap-to-edit ended up working on Inbox and not here. A task
+        // is a task wherever it is shown; the only thing a screen decides is which tasks to put in
+        // front of it — and the open half and the done half are not two different kinds of task,
+        // which is why they are not two different blocks of code any more.
+        @Composable
+        fun SmartTaskRow(task: NodeEntity) {
+            ListGroupRow(started = task.inProgress) {
+                Box(Modifier.padding(horizontal = 14.dp)) {
+                    TextualBlockRow(
+                        child = task,
+                        active = activeId == task.id,
+                        onActivate = { activeId = task.id },
+                        onFocusChange = { if (it) activeId = task.id },
+                        // Caret hand-off belongs to a document, where blocks split and merge.
+                        claimCaret = false,
+                        onCaretClaimed = {},
+                        // Nothing types here, so there is no Enter to split on and no Backspace
+                        // to merge back with.
+                        onSplit = { _, _ -> },
+                        onMergeBack = {},
+                        chips = chips[task.id].orEmpty(),
+                        childCount = childCounts[task.id] ?: 0,
+                        ordinal = 0,
+                        pomoCount = pomoCounts[task.id] ?: 0,
+                        autoFocus = false,
+                        onAutoFocusConsumed = {},
+                        onRename = {},
+                        onToggleDone = { vm.setDone(task.id, it) },
+                        onToggleInProgress = { vm.setInProgress(task.id, it) },
+                        // Only tasks are gathered here, so there is no type to convert to.
+                        onBecome = {},
+                        onOpen = { nav.navigate(Routes.node(task.id)) },
+                        // A smart list is a list: the row opens the task, it does not become a
+                        // text field. Typing happens on the task's own page.
+                        editable = false,
                     )
                 }
-                itemsIndexed(completed, key = { _, t -> "done-" + t.id }) { index, task ->
-                ListGroupRow {
-                    // The SAME row a list page draws. Not a look-alike: this screen used to carry
-                    // its own read-only copy, which is how tap-to-edit ended up working on Inbox
-                    // and not here. A task is a task wherever it is shown; the only thing a screen
-                    // decides is which tasks to put in front of it.
-                    Box(Modifier.padding(horizontal = 14.dp)) {
-                        TextualBlockRow(
-                            child = task,
-                            active = activeId == task.id,
-                            onActivate = { activeId = task.id },
-                            onFocusChange = { if (it) activeId = task.id },
-                            // Caret hand-off belongs to a document, where blocks split and merge.
-                            claimCaret = false,
-                            onCaretClaimed = {},
-                            // Nothing types here, so there is no Enter to split on and no
-                            // Backspace to merge back with.
-                            onSplit = { _, _ -> },
-                            onMergeBack = {},
-                            chips = chips[task.id].orEmpty(),
-                            childCount = childCounts[task.id] ?: 0,
-                            ordinal = 0,
-                            pomoCount = pomoCounts[task.id] ?: 0,
-                            autoFocus = false,
-                            onAutoFocusConsumed = {},
-                            onRename = {},
-                            onToggleDone = { vm.setDone(task.id, it) },
-                            onToggleInProgress = { vm.setInProgress(task.id, it) },
-                            // Only tasks are gathered here, so there is no type to convert to.
-                            onBecome = {},
-                            onOpen = { nav.navigate(Routes.node(task.id)) },
-                            // A smart list is a list: the row opens the task, it does not become a
-                            // text field. Typing happens on the task's own page.
-                            editable = false,
-                        )
+            }
+        }
+
+        PullToSync(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                if (tasks.isEmpty() && completed.isEmpty()) {
+                    item(key = "empty") {
+                        ComposedEmpty("Nothing matches right now")
+                    }
+                } else if (tasks.isEmpty()) {
+                    // Everything this view asked for is finished. Saying so beats "nothing matches",
+                    // which would be true of the rule and wrong about the day.
+                    item(key = "all-done") {
+                        ComposedEmpty("All done here")
                     }
                 }
-                }
-            }
+                // One card, hairline-divided: two elevation layers instead of rows floating on the
+                // page. Corners are rounded only where the group actually ends.
+                // Open first, then what you finished. Two cards rather than one run of rows: the done
+                // half is not part of the rule's ordering — it is there because you did it today, not
+                // because it still matches — and giving it its own surface says so.
+                items(tasks, key = { it.id }) { task -> SmartTaskRow(task) }
 
-            item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
+                if (completed.isNotEmpty()) {
+                    item(key = "done-header") {
+                        SectionLabel(
+                            "DONE · ${completed.size}",
+                            modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+                        )
+                    }
+                    items(completed, key = { "done-" + it.id }) { task -> SmartTaskRow(task) }
+                }
+
+                item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
+            }
         }
 
         if (def?.homeParentId != null || def?.scopeRootId != null) {
@@ -300,6 +268,8 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 modifier = Modifier
                     .navigationBarsPadding()
                     .imePadding(),
+                labels = labels,
+                lists = lists.mapNotNull { it.title },
                 onAdd = vm::addTask,
             )
         }

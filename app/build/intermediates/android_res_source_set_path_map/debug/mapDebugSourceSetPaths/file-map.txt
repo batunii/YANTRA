@@ -1,9 +1,0 @@
-ie.napkin.supertasks.app-pngs-0 C:\Users\syson\Documents\Code\SuperTasks\app\build\generated\res\pngs\debug
-ie.napkin.supertasks.app-resValues-1 C:\Users\syson\Documents\Code\SuperTasks\app\build\generated\res\resValues\debug
-ie.napkin.supertasks.app-updated_navigation_xml-2 C:\Users\syson\Documents\Code\SuperTasks\app\build\generated\updated_navigation_xml\debug
-ie.napkin.supertasks.app-packageDebugResources-3 C:\Users\syson\Documents\Code\SuperTasks\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
-ie.napkin.supertasks.app-packageDebugResources-4 C:\Users\syson\Documents\Code\SuperTasks\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
-ie.napkin.supertasks.app-debug-5 C:\Users\syson\Documents\Code\SuperTasks\app\build\intermediates\merged_res\debug\mergeDebugResources
-ie.napkin.supertasks.app-debug-6 C:\Users\syson\Documents\Code\SuperTasks\app\src\debug\res
-ie.napkin.supertasks.app-main-7 C:\Users\syson\Documents\Code\SuperTasks\app\src\main\res
-gradleHome-0 C:\Users\syson\.gradle

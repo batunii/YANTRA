@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,9 +26,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraColors
 
 /**
  * One task, one card.
@@ -48,14 +49,21 @@ import ie.napkin.supertasks.ui.theme.Yantra
 @Composable
 fun ListGroupRow(
     modifier: Modifier = Modifier,
+    /** Lit in the accent while you are on this task — see [YantraColors.startedWash]. */
+    started: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val y = Yantra.colors
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
-            .background(y.cardBg, RoundedCornerShape(16.dp)),
+            .background(y.cardBg, shape)
+            // A second layer rather than a blended colour: the wash has to sit *over* the card so
+            // it reads the same on the card as it does on a bare block, where there is no card
+            // underneath it to blend with.
+            .then(if (started) Modifier.background(y.startedWash, shape) else Modifier),
     ) {
         content()
     }
@@ -70,62 +78,82 @@ fun ListGroupRow(
 fun QuickAddBar(
     modifier: Modifier = Modifier,
     placeholder: String = "Add a task…",
+    /** The workspace's labels, so a typed `#tag` is tinted the colour it is about to become. */
+    labels: List<ie.napkin.supertasks.data.db.LabelEntity> = emptyList(),
+    /** The workspace's lists, so `~` can name one — and offer the ones that match while you type. */
+    lists: List<String> = emptyList(),
     onAdd: (String) -> Unit,
 ) {
     val y = Yantra.colors
-    var text by remember { mutableStateOf("") }
+    // TextFieldValue rather than String, because tapping a suggestion has to place the caret as
+    // well as the text. With a plain String the field keeps the old offset, so completing a name
+    // left the caret in the middle of what it had just written and the next keystroke landed inside
+    // the list's name.
+    var text by remember { mutableStateOf(TextFieldValue()) }
     val send = {
-        if (text.isNotBlank()) {
-            onAdd(text.trim())
-            text = ""
+        if (text.text.isNotBlank()) {
+            onAdd(text.text.trim())
+            text = TextFieldValue()
         }
     }
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(y.page)
-            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    // The strip belongs above the bar: growing the bar itself would move the send button
+    // under the thumb that was reaching for it.
+    Column(modifier.fillMaxWidth().background(y.page)) {
+        ListSuggestions(
+        text = text.text,
+        caret = text.selection.start,
+        lists = lists,
+        onPick = { text = it },
+    )
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(y.cardBg, RoundedCornerShape(18.dp))
-                .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
-                .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
-                cursorBrush = SolidColor(y.accent),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (text.isEmpty()) {
-                            Text(placeholder, color = y.textDim, fontSize = 14.sp)
-                        }
-                        inner()
-                    }
-                },
-            )
-            Spacer(Modifier.width(8.dp))
-            Box(
+            Row(
                 Modifier
-                    .size(40.dp)
-                    .background(y.accentFill, RoundedCornerShape(12.dp))
-                    .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
-                    .clickable(onClick = send),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .background(y.cardBg, RoundedCornerShape(18.dp))
+                    .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
+                    .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Add task",
-                    tint = y.accent,
-                    modifier = Modifier.size(18.dp),
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
+                    cursorBrush = SolidColor(y.accent),
+                    // Typing "buy milk tomorrow #home" tints what it understood as you write it, so a
+                    // word that is about to leave the title says so first.
+                    visualTransformation = rememberCaptureHighlight(labels, lists),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (text.text.isEmpty()) {
+                                Text(placeholder, color = y.textDim, fontSize = 14.sp)
+                            }
+                            inner()
+                        }
+                    },
                 )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .background(y.accentFill, RoundedCornerShape(12.dp))
+                        .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
+                        .clickable(onClick = send),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Add task",
+                        tint = y.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }

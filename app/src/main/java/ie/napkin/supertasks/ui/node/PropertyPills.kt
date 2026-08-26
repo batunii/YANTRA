@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +58,7 @@ import ie.napkin.supertasks.data.db.PropertyKind
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.ui.components.DueSheet
 import ie.napkin.supertasks.ui.components.chipFor
+import ie.napkin.supertasks.data.label.LabelPalette
 import ie.napkin.supertasks.ui.components.chipStyleFor
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.selectConfig
@@ -90,7 +93,8 @@ fun PropertyRow(
     onClear: (defId: String) -> Unit,
     onAttachLabel: (LabelEntity) -> Unit,
     onDetachLabel: (LabelEntity) -> Unit,
-    onCreateAndAttachLabel: (String) -> Unit,
+    onCreateAndAttachLabel: (String, Long?) -> Unit,
+    onRecolourLabel: (LabelEntity, Long?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var picking by remember { mutableStateOf(false) }
@@ -117,7 +121,11 @@ fun PropertyRow(
             )
         }
         attachedLabels.forEach { label ->
-            LabelChip(label = label, onClick = { onDetachLabel(label) })
+            LabelChip(
+                label = label,
+                onClick = { onDetachLabel(label) },
+                onRecolour = { colour -> onRecolourLabel(label, colour) },
+            )
         }
         GhostPill(label = "+ Label", dashed = true, onClick = { picking = true })
         Spacer(Modifier.width(12.dp))
@@ -129,7 +137,7 @@ fun PropertyRow(
             attachedIds = attachedLabels.map { it.id }.toSet(),
             onDismiss = { picking = false },
             onPick = { label -> onAttachLabel(label); picking = false },
-            onCreate = { name -> onCreateAndAttachLabel(name); picking = false },
+            onCreate = { name, colour -> onCreateAndAttachLabel(name, colour); picking = false },
         )
     }
 }
@@ -145,7 +153,8 @@ fun LabelChipsRow(
     attached: List<LabelEntity>,
     onDetach: (LabelEntity) -> Unit,
     onAttach: (LabelEntity) -> Unit,
-    onCreateAndAttach: (String) -> Unit,
+    onCreateAndAttach: (String, Long?) -> Unit,
+    onRecolour: (LabelEntity, Long?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var picking by remember { mutableStateOf(false) }
@@ -155,7 +164,11 @@ fun LabelChipsRow(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         attached.forEach { label ->
-            LabelChip(label = label, onClick = { onDetach(label) })
+            LabelChip(
+                label = label,
+                onClick = { onDetach(label) },
+                onRecolour = { colour -> onRecolour(label, colour) },
+            )
         }
         GhostPill(label = "+ Label", dashed = true, onClick = { picking = true })
     }
@@ -166,24 +179,91 @@ fun LabelChipsRow(
             attachedIds = attached.map { it.id }.toSet(),
             onDismiss = { picking = false },
             onPick = { label -> onAttach(label); picking = false },
-            onCreate = { name -> onCreateAndAttach(name); picking = false },
+            onCreate = { name, colour -> onCreateAndAttach(name, colour); picking = false },
         )
     }
 }
 
+/**
+ * The five palette colours, plus the neutral that means "no colour".
+ *
+ * A closed strip, not a colour wheel: the palette is curated so labels stay legible on warm paper
+ * and out of the hues the colour law has already spoken for. Tapping one commits immediately —
+ * there is nothing to confirm about a colour you can see.
+ */
 @Composable
-private fun LabelChip(label: LabelEntity, onClick: () -> Unit) {
+private fun SwatchStrip(
+    selected: Long?,
+    onPick: (Long?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val y = Yantra.colors
+    Row(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LabelPalette.swatches.forEach { sw ->
+            val shown = Color(LabelPalette.display(sw.light, y.isDark))
+            Swatch(color = shown, selected = selected == sw.light) { onPick(sw.light) }
+        }
+        Swatch(color = y.textDim, selected = selected == null) { onPick(null) }
+    }
+}
+
+/** One colour dot. Selection is a ring around it, so the colour itself is never obscured. */
+@Composable
+private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
+    val y = Yantra.colors
+    Box(
+        // clickable before the insets, so the target is the whole swatch and not the drawn circle.
+        Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .then(if (selected) Modifier.border(2.dp, y.textPrimary, CircleShape) else Modifier)
+            .padding(if (selected) 6.dp else 4.dp)
+            .background(color, CircleShape),
+    )
+}
+
+/**
+ * An attached label. Tap detaches it; long-press recolours it.
+ *
+ * Long-press is what this app already means by "act on the thing you are touching" — it is how a
+ * task is marked in progress and how a block earns its handles — so recolouring lives there rather
+ * than behind a settings screen the app does not have.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long?) -> Unit = {}) {
     val s = chipStyleFor(label.color?.let { Color(it) })
+    var recolouring by remember { mutableStateOf(false) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .background(s.bg, RoundedCornerShape(5.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = { recolouring = true })
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null, tint = s.dot, modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(6.dp))
         Text(label.name, fontSize = 11.5.sp, fontWeight = FontWeight.W600, color = s.text)
+    }
+
+    if (recolouring) {
+        AlertDialog(
+            onDismissRequest = { recolouring = false },
+            title = { Text(label.name) },
+            text = {
+                SwatchStrip(
+                    selected = label.color,
+                    onPick = { onRecolour(it); recolouring = false },
+                )
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { recolouring = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -195,9 +275,13 @@ private fun LabelPickerDialog(
     attachedIds: Set<String>,
     onDismiss: () -> Unit,
     onPick: (LabelEntity) -> Unit,
-    onCreate: (String) -> Unit,
+    onCreate: (String, Long?) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    // Seeded from the name so a new tag is never colourless and two new tags rarely collide;
+    // touching a swatch pins it, after which typing on does not move it back.
+    var picked by remember { mutableStateOf<Long?>(null) }
+    var pinned by remember { mutableStateOf(false) }
     val matches = remember(query, allLabels, attachedIds) {
         allLabels.filter { it.id !in attachedIds && it.name.contains(query, ignoreCase = true) }
     }
@@ -218,21 +302,35 @@ private fun LabelPickerDialog(
                 )
                 Column(Modifier.padding(top = 6.dp)) {
                     matches.forEach { label ->
-                        Text(
-                            label.name,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onPick(label) }
                                 .padding(vertical = 10.dp),
-                        )
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(10.dp)
+                                    .background(chipStyleFor(label.color?.let { Color(it) }).dot, CircleShape)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(label.name)
+                        }
                     }
                     if (query.isNotBlank() && !exactMatch) {
+                        val colour = if (pinned) picked else LabelPalette.defaultFor(query.trim())
+                        SwatchStrip(
+                            selected = colour,
+                            onPick = { picked = it; pinned = true },
+                            modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
+                        )
                         Text(
                             "Create \"${query.trim()}\"",
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onCreate(query.trim()) }
+                                .clickable { onCreate(query.trim(), colour) }
                                 .padding(vertical = 10.dp),
                         )
                     }

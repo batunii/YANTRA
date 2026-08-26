@@ -1,24 +1,14 @@
 package ie.napkin.supertasks.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -33,16 +23,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
-import ie.napkin.supertasks.ui.theme.YantraMotion
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -50,14 +38,15 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import ie.napkin.supertasks.data.label.LabelPalette
+import ie.napkin.supertasks.ui.theme.YantraText
+import androidx.compose.ui.geometry.Size
 
 /**
  * What a chip *means*, over and above what it says. Kept out of [ChipData.color] because the
@@ -76,6 +65,9 @@ data class ChipData(
     val isPriority: Boolean = false,
 )
 
+/** The packed-ARGB Long a label stores, opaque — the form [LabelPalette] speaks in. */
+internal fun Color.toStoredValue(): Long = copy(alpha = 1f).toArgb().toLong() and 0xFFFFFFFFL
+
 /** Resolved chip surface/dot/text for a (possibly null) identity color. */
 data class ChipStyle(val bg: Color, val dot: Color, val text: Color)
 
@@ -93,8 +85,12 @@ fun chipStyleFor(chip: ChipData): ChipStyle {
 }
 
 @Composable
-fun chipStyleFor(base: Color?): ChipStyle {
+fun chipStyleFor(rawBase: Color?): ChipStyle {
     val y = Yantra.colors
+    // A label stores one colour and wears two: the palette swaps in the twin for this theme, so a
+    // tag named on light paper still reads at night. Anything not from the palette — a select
+    // option's colour, something from an older build — comes back untouched.
+    val base = rawBase?.let { Color(LabelPalette.display(it.toStoredValue(), y.isDark)) }
     return if (base == null) {
         ChipStyle(bg = y.neutralChipBg, dot = y.textDim, text = y.textSecondary)
     } else {
@@ -133,9 +129,9 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
     }
 }
 
-/** Timer glyph + count, shown on task rows that have logged pomodoros. */
+/** Timer glyph + count, shown on task rows that have logged focus sessions. */
 @Composable
-fun PomodoroCount(count: Int, modifier: Modifier = Modifier) {
+fun FocusCount(count: Int, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -162,7 +158,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yan
     Text(
         text.uppercase(),
         modifier = modifier,
-        fontFamily = ie.napkin.supertasks.ui.theme.YantraText,
+        fontFamily = YantraText,
         fontSize = 11.sp,
         fontWeight = FontWeight.W700,
         letterSpacing = 1.4.sp,
@@ -192,7 +188,7 @@ fun Compass(fraction: Float, modifier: Modifier = Modifier, size: Dp = 30.dp) {
             drawArc(
                 color = acc, startAngle = -90f, sweepAngle = 360f * f, useCenter = false,
                 topLeft = Offset(c.x - r, c.y - r),
-                size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+                size = Size(r * 2f, r * 2f),
                 style = Stroke(width = sw, cap = StrokeCap.Round),
             )
         }
@@ -247,6 +243,8 @@ fun ConfirmDialog(
     title: String,
     body: String,
     confirmLabel: String = "Delete",
+    /** What backing out is called. "Cancel" is wrong wherever the choice is not destroy-or-abort. */
+    dismissLabel: String = "Cancel",
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -260,7 +258,7 @@ fun ConfirmDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(dismissLabel) }
         },
     )
 }
