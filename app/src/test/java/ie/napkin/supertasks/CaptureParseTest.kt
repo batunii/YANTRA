@@ -326,13 +326,22 @@ class CaptureParseTest {
     }
 
     @Test
-    fun `a closing mark ends an existing list name too`() {
-        // The same rule either way — a grammar that closed only the names it did not recognise
-        // would be one someone has to know the workspace's contents to use.
-        val c = toList("book flights ~Work trips~ and pack")
+    fun `an existing list needs no closing mark, because it ends itself`() {
+        // The asymmetry is the point, and it is not arbitrary: a name that exists is matched
+        // against the names there are, so the parser knows where it stops. Only a new name has
+        // nothing to be matched against and therefore nothing to end it.
+        val c = toList("book flights ~Work trips and pack")
         assertEquals("book flights and pack", c.title)
         assertEquals("Work trips", c.list)
         assertTrue(!c.listIsNew)
+    }
+
+    @Test
+    fun `a closing mark on an existing list is harmless`() {
+        // Nobody should have to remember which names need one. Typing it anyway costs nothing.
+        val c = toList("book flights ~Work trips~ and pack")
+        assertEquals("book flights and pack", c.title)
+        assertEquals("Work trips", c.list)
     }
 
     @Test
