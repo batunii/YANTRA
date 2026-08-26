@@ -7,7 +7,7 @@ import ie.napkin.supertasks.data.db.AppDatabase
 import ie.napkin.supertasks.data.repo.InkRepository
 import ie.napkin.supertasks.data.repo.LabelRepository
 import ie.napkin.supertasks.data.repo.NodeRepository
-import ie.napkin.supertasks.data.repo.PomodoroRepository
+import ie.napkin.supertasks.data.repo.FocusRepository
 import ie.napkin.supertasks.data.repo.PropertyRepository
 import ie.napkin.supertasks.data.repo.SmartListRepository
 import ie.napkin.supertasks.data.seed.WorkspaceSeeder
@@ -26,14 +26,14 @@ import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.data.sync.SyncWorker
 import ie.napkin.supertasks.data.sync.GitRepo
 import ie.napkin.supertasks.data.sync.SyncEngine
-import ie.napkin.supertasks.domain.PomodoroTimer
+import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
 import ie.napkin.supertasks.reminders.Reminders
 import ie.napkin.supertasks.ui.theme.LauncherIcon
 import ie.napkin.supertasks.ui.theme.loadThemeController
-import ie.napkin.supertasks.widget.PomodoroFinalizeWorker
-import ie.napkin.supertasks.widget.PomodoroWidget
+import ie.napkin.supertasks.widget.FocusFinalizeWorker
+import ie.napkin.supertasks.widget.FocusWidget
 import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -186,9 +186,9 @@ class AppContainer(val app: Application) {
     val properties = PropertyRepository(db, workspaces)
     val labels = LabelRepository(db, workspaces)
     val smartLists = SmartListRepository(db, workspaces)
-    val pomodoro = PomodoroRepository(db, workspaces)
+    val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
-    val timer = PomodoroTimer(pomodoro, appScope)
+    val timer = FocusTimer(focus, appScope)
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
@@ -422,7 +422,7 @@ class AppContainer(val app: Application) {
     init {
         // Any process wake (widget tap, worker, activity) revives a live focus session.
         appScope.launch { timer.restoreIfNeeded() }
-        // Pomodoro widget re-renders on state *transitions* only — never per tick (the widget's
+        // Focus widget re-renders on state *transitions* only — never per tick (the widget's
         // Chronometer handles the live countdown). Also (de)schedules the dead-process finalizer.
         appScope.launch {
             timer.state
@@ -431,11 +431,11 @@ class AppContainer(val app: Application) {
                 .collect {
                     val s = timer.state.value
                     if (s != null && s.isRunning && !s.isFinished) {
-                        PomodoroFinalizeWorker.schedule(app, s.remainingSecs)
+                        FocusFinalizeWorker.schedule(app, s.remainingSecs)
                     } else if (s == null || s.isFinished) {
-                        PomodoroFinalizeWorker.cancel(app)
+                        FocusFinalizeWorker.cancel(app)
                     }
-                    PomodoroWidget().updateAll(app)
+                    FocusWidget().updateAll(app)
                 }
         }
     }

@@ -1,6 +1,7 @@
 package ie.napkin.supertasks.data.sync
 
 import ie.napkin.supertasks.data.format.PageCodec
+import ie.napkin.supertasks.data.workspace.WorkspaceStore
 
 /**
  * What to do when git cannot decide — GIT_WORKSPACES_PLAN.md §4.
@@ -173,7 +174,10 @@ object ConflictResolver {
     private fun decode(bytes: ByteArray) =
         runCatching { PageCodec.decode(bytes.decodeToString()) }.getOrNull()
 
-    private fun isLog(path: String) = path.startsWith("pomodoro/") && path.endsWith(".log")
+    // Both directory names: a device still on the older app pushes to "pomodoro/", and those lines
+    // have to merge by union like any other focus log rather than be resolved as an ordinary file.
+    private fun isLog(path: String) = path.endsWith(".log") &&
+        (path.startsWith("${WorkspaceStore.FOCUS_DIR}/") || path.startsWith("${WorkspaceStore.LEGACY_FOCUS_DIR}/"))
 
     private fun modifiedAt(bytes: ByteArray): Long =
         runCatching { PageCodec.decode(bytes.decodeToString()).modifiedAt.toEpochMilli() }

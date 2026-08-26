@@ -227,15 +227,15 @@ class SyncMatrixTest {
         val a = Device("a").also { it.clone() }
         val b = Device("b").also { it.clone() }
 
-        a.store.appendPomodoro("s-a\tt1\t1000\t2000\t1500\t1500\t1", "2026-08")
+        a.store.appendFocus("s-a\tt1\t1000\t2000\t1500\t1500\t1", "2026-08")
         assertTrue(a.engine.sync().ok)
 
-        b.store.appendPomodoro("s-b\tt1\t1100\t2100\t1500\t1500\t1", "2026-08")
+        b.store.appendFocus("s-b\tt1\t1100\t2100\t1500\t1500\t1", "2026-08")
         assertTrue(b.engine.sync().ok)
         a.engine.sync()
 
         listOf(a, b).forEach { d ->
-            val ids = d.store.readPomodoro().map { it.substringBefore('\t') }.toSet()
+            val ids = d.store.readFocus().map { it.substringBefore('\t') }.toSet()
             assertTrue("${d.name} lost a session: $ids", ids.containsAll(setOf("s-a", "s-b")))
         }
     }

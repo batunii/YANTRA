@@ -405,9 +405,25 @@ The archive screen is the reason the sweep can exist at all: it reads the archiv
 archived tasks are deliberately not indexed, which is the point of moving them — groups what it finds
 by the list each task came from, and puts any single one back where it was.
 
-**`Pomodoro` is still the name in the data layer** while the UI has said `Focus` for a long time
-(§2a). Nineteen files, a table, a directory in the file format and four widget classes — worth doing,
-and worth doing when it is the only thing in flight rather than alongside behaviour changes.
+**~~`Pomodoro` is still the name in the data layer~~ · DONE.** The table is `focus_session` (v11), the
+workspace directory is `focus/`, and the classes are `FocusRepository`, `FocusTimer`, `FocusWidget`,
+`FocusAction`, `FocusFinalizeWorker`.
+
+Two things did not simply get renamed, and both are worth knowing about:
+
+- **`PomodoroWidgetReceiver` keeps its name, on purpose.** A launcher binds each placed widget to the
+  provider's `ComponentName`. Renaming the class changes that name, so every widget already on a home
+  screen stops resolving — it does not move, it breaks and has to be placed again. The class name is
+  invisible; the widget vanishing is not. It is the one deliberate inconsistency left, and it is
+  commented as such in both the manifest and `FocusWidget.kt`.
+- **The `pomodoro/` directory is migrated, not renamed.** It is in the user's repository, so the old
+  name would otherwise sit in their history contradicting every screen. `readFocus` reads *both*
+  names, because a repo is shared and a device still on the older app keeps appending to the old one;
+  `ConflictResolver` treats both as append-only logs for the same reason. The move merges by
+  appending rather than replacing, since the same month can exist under both names at once.
+
+Historical migrations kept the name the table actually had at their version — a blind sweep rewrote
+them to `focus_session`, which would have made every one of them fail against a real v9 database.
 
 **Ink's preset palette** still hardcodes a copy of coral that will not follow the accent (§4b).
 

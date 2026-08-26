@@ -14,6 +14,6 @@ object WidgetRefresh {
     /** Everything except QuickAdd (static). Called when the app leaves the foreground. */
     suspend fun refreshAll(context: Context) {
         refreshListWidgets(context)
-        PomodoroWidget().updateAll(context)
+        FocusWidget().updateAll(context)
     }
 }

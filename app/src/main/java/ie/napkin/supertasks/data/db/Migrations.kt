@@ -386,3 +386,29 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `idx_node_label_label` ON `node_label` (`label_id`)")
     }
 }
+
+/**
+ * `pomodoro_session` becomes `focus_session`.
+ *
+ * The last place in the app that still called it a pomodoro. The feature stopped being a pomodoro
+ * timer when it grew a stopwatch and an outcome — it measures time given, not tomatoes completed —
+ * and a table named after the discarded idea is how the next person reading this concludes the
+ * schema and the screens are describing two different features.
+ *
+ * `ALTER TABLE ... RENAME TO` rather than a rebuild, because unlike v10 there is nothing wrong with
+ * the table's shape. The index has to be dropped and recreated by hand: SQLite carries an index
+ * across a table rename but keeps its old name, and Room compares index names as strictly as it
+ * compares columns.
+ *
+ * The rows are index data — every session is a line in `focus/<yyyy-MM>.log`, and the workspace
+ * directory is migrated separately by `WorkspaceStore.migrateLegacyFocusDir` — so carrying them
+ * across is belt and braces rather than the point. It costs one statement and means the history is
+ * not briefly empty on the first launch after updating.
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP INDEX IF EXISTS idx_pomo_node")
+        db.execSQL("ALTER TABLE pomodoro_session RENAME TO focus_session")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_focus_node` ON `focus_session` (`node_id`, `started_at`)")
+    }
+}

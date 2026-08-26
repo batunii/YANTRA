@@ -133,7 +133,7 @@ import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.NeutralChip
 import ie.napkin.supertasks.ui.components.SelectChip
-import ie.napkin.supertasks.ui.components.PomodoroCount
+import ie.napkin.supertasks.ui.components.FocusCount
 import ie.napkin.supertasks.ui.components.PropertyChip
 import ie.napkin.supertasks.ui.components.INK_STRIKE_MS
 import ie.napkin.supertasks.ui.components.InkStrike
@@ -1493,7 +1493,7 @@ internal fun TextualBlockRow(
                 modifier = Modifier.padding(start = 35.dp, top = 6.dp),
             ) {
                 chips.forEach { PropertyChip(it) }
-                if (pomoCount > 0) PomodoroCount(pomoCount)
+                if (pomoCount > 0) FocusCount(pomoCount)
             }
         }
     }

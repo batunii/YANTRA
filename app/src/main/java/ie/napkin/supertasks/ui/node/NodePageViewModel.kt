@@ -103,7 +103,7 @@ class NodePageViewModel(
 
     /** Sessions per task, for the little badge on a row. Every session, not only the finished ones. */
     val pomoCounts: StateFlow<Map<String, Int>> =
-        container.pomodoro.perNode()
+        container.focus.perNode()
             .map { list -> list.associate { it.nodeId to it.count } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 

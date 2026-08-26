@@ -288,39 +288,39 @@ interface PropertyDao {
 }
 
 @Dao
-interface PomodoroDao {
+interface FocusDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insert(session: PomodoroSessionEntity)
+    suspend fun insert(session: FocusSessionEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(sessions: List<PomodoroSessionEntity>)
+    suspend fun insertAll(sessions: List<FocusSessionEntity>)
 
-    @Query("DELETE FROM pomodoro_session WHERE workspace_id = :ws")
+    @Query("DELETE FROM focus_session WHERE workspace_id = :ws")
     suspend fun clearSessions(ws: String)
 
     @Update
-    suspend fun update(session: PomodoroSessionEntity)
+    suspend fun update(session: FocusSessionEntity)
 
-    @Query("SELECT * FROM pomodoro_session WHERE id = :id")
-    suspend fun byId(id: String): PomodoroSessionEntity?
+    @Query("SELECT * FROM focus_session WHERE id = :id")
+    suspend fun byId(id: String): FocusSessionEntity?
 
     /** A task's sessions, newest first. Mis-taps are not history and are left out. */
     @Query(
-        "SELECT * FROM pomodoro_session WHERE node_id = :nodeId AND outcome <> 'discarded' " +
+        "SELECT * FROM focus_session WHERE node_id = :nodeId AND outcome <> 'discarded' " +
             "ORDER BY started_at DESC"
     )
-    fun forNode(nodeId: String): Flow<List<PomodoroSessionEntity>>
+    fun forNode(nodeId: String): Flow<List<FocusSessionEntity>>
 
-    @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC")
-    fun all(): Flow<List<PomodoroSessionEntity>>
+    @Query("SELECT * FROM focus_session ORDER BY started_at DESC")
+    fun all(): Flow<List<FocusSessionEntity>>
 
     /** The one in-flight session, if any — ground truth for timer restore after process death. */
-    @Query("SELECT * FROM pomodoro_session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
-    suspend fun openSession(): PomodoroSessionEntity?
+    @Query("SELECT * FROM focus_session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
+    suspend fun openSession(): FocusSessionEntity?
 
-    @Query("SELECT * FROM pomodoro_session ORDER BY started_at DESC LIMIT 1")
-    suspend fun lastSession(): PomodoroSessionEntity?
+    @Query("SELECT * FROM focus_session ORDER BY started_at DESC LIMIT 1")
+    suspend fun lastSession(): FocusSessionEntity?
 
     /**
      * Time and sessions per node — what a task row shows.
@@ -333,7 +333,7 @@ interface PomodoroDao {
     @Query(
         """
         SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
-          FROM pomodoro_session WHERE outcome <> 'discarded' GROUP BY node_id
+          FROM focus_session WHERE outcome <> 'discarded' GROUP BY node_id
         """
     )
     fun perNode(): Flow<List<NodePomoCount>>
@@ -354,7 +354,7 @@ interface PomodoroDao {
             UNION
             SELECT n.id FROM node n JOIN subtree s ON n.parent_id = s.id
         )
-        SELECT COALESCE(SUM(p.actual_secs), 0) FROM pomodoro_session p
+        SELECT COALESCE(SUM(p.actual_secs), 0) FROM focus_session p
          WHERE p.node_id IN (SELECT id FROM subtree) AND p.outcome <> 'discarded'
         """
     )
@@ -363,7 +363,7 @@ interface PomodoroDao {
     /** Everything given in a window, counted once — the honest total. */
     @Query(
         """
-        SELECT COALESCE(SUM(actual_secs), 0) FROM pomodoro_session
+        SELECT COALESCE(SUM(actual_secs), 0) FROM focus_session
          WHERE started_at >= :from AND started_at < :to AND outcome <> 'discarded'
         """
     )
@@ -372,7 +372,7 @@ interface PomodoroDao {
     /** The same, for one workspace. */
     @Query(
         """
-        SELECT COALESCE(SUM(actual_secs), 0) FROM pomodoro_session
+        SELECT COALESCE(SUM(actual_secs), 0) FROM focus_session
          WHERE workspace_id = :ws AND started_at >= :from AND started_at < :to
            AND outcome <> 'discarded'
         """
@@ -389,7 +389,7 @@ interface PomodoroDao {
     @Query(
         """
         SELECT node_id AS nodeId, COUNT(*) AS count, COALESCE(SUM(actual_secs), 0) AS totalSecs
-          FROM pomodoro_session
+          FROM focus_session
          WHERE node_id IN (:nodeIds) AND started_at >= :from AND started_at < :to
            AND outcome <> 'discarded'
          GROUP BY node_id
@@ -400,12 +400,12 @@ interface PomodoroDao {
     /** Sessions in a window, newest first — the history view. */
     @Query(
         """
-        SELECT * FROM pomodoro_session
+        SELECT * FROM focus_session
          WHERE started_at >= :from AND started_at < :to AND outcome <> 'discarded'
          ORDER BY started_at DESC
         """
     )
-    fun between(from: Long, to: Long): Flow<List<PomodoroSessionEntity>>
+    fun between(from: Long, to: Long): Flow<List<FocusSessionEntity>>
 }
 
 @Dao

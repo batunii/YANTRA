@@ -1,7 +1,7 @@
 package ie.napkin.supertasks.domain
 
 import ie.napkin.supertasks.data.db.FocusOutcome
-import ie.napkin.supertasks.data.repo.PomodoroRepository
+import ie.napkin.supertasks.data.repo.FocusRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,8 +22,8 @@ import kotlinx.coroutines.sync.withLock
  * A session is persisted the moment it starts, which is what lets it survive process death: the
  * in-flight row is on disk, so a reindex cannot forget it and [restoreIfNeeded] can find it again.
  */
-class PomodoroTimer(
-    private val repo: PomodoroRepository,
+class FocusTimer(
+    private val repo: FocusRepository,
     private val scope: CoroutineScope,
 ) {
     data class State(

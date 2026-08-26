@@ -1,4 +1,4 @@
-package ie.napkin.supertasks.ui.pomodoro
+package ie.napkin.supertasks.ui.focus
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -54,7 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.NodeEntity
-import ie.napkin.supertasks.data.db.PomodoroSessionEntity
+import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
 import ie.napkin.supertasks.ui.container
@@ -80,7 +80,7 @@ import java.time.format.DateTimeFormatter
 import ie.napkin.supertasks.ui.components.YantraMark
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
-import ie.napkin.supertasks.domain.PomodoroTimer
+import ie.napkin.supertasks.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
 
 class FocusViewModel(
@@ -95,8 +95,8 @@ class FocusViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun sessionsFor(nodeId: String) = timerSessions(nodeId)
-    private val pomodoro = container.pomodoro
-    private fun timerSessions(nodeId: String) = pomodoro.forNode(nodeId)
+    private val focus = container.focus
+    private fun timerSessions(nodeId: String) = focus.forNode(nodeId)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -194,7 +194,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
 }
 
 @Composable
-private fun IdleScroll(sessions: List<PomodoroSessionEntity>, top: @Composable () -> Unit) {
+private fun IdleScroll(sessions: List<FocusSessionEntity>, top: @Composable () -> Unit) {
     val y = Yantra.colors
     Column(
         Modifier
@@ -340,7 +340,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
 
 @Composable
 private fun ActiveTimer(
-    state: PomodoroTimer.State,
+    state: FocusTimer.State,
     dayCounts: List<Int>,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -474,7 +474,7 @@ private fun ActiveTimer(
 
 @Composable
 private fun DoneContent(
-    state: PomodoroTimer.State,
+    state: FocusTimer.State,
     onStartAnother: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -545,7 +545,7 @@ private fun DoneContent(
 private val sessionTimeFmt = DateTimeFormatter.ofPattern("MMM d, HH:mm")
 
 @Composable
-private fun SessionRow(s: PomodoroSessionEntity) {
+private fun SessionRow(s: FocusSessionEntity) {
     val y = Yantra.colors
     Row(
         Modifier

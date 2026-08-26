@@ -62,7 +62,7 @@ object WorkspaceSeeder {
                             )
                         ),
                     ),
-                    TaskRef(id = started, title = "Start a pomodoro on any task", priority = "Medium"),
+                    TaskRef(id = started, title = "Start a focus on any task", priority = "Medium"),
                     TaskRef(id = id(), title = "Add an ink block and scribble on it ✏️"),
                 ),
             )

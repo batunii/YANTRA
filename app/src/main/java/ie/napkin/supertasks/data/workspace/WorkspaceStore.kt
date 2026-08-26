@@ -75,6 +75,10 @@ class WorkspaceStore(
         private const val META = ".yantra"
         private const val PAGES = "pages"
         private const val ARCHIVE = "archive"
+        const val FOCUS_DIR = "focus"
+
+        /** The name the focus log had while the feature was called Pomodoro. Read, never written. */
+        const val LEGACY_FOCUS_DIR = "pomodoro"
 
         /** Strokes for one ink block: `[count][len][bytes]…`, each blob exactly what StrokeCodec wrote. */
         fun encodeInk(strokes: List<ByteArray>): ByteArray {
@@ -338,7 +342,7 @@ class WorkspaceStore(
 
     fun hasImage(id: String): Boolean = imageFile(id).exists()
 
-    // ---- pomodoro ----
+    // ---- focus ----
 
     /**
      * Focus sessions, one line per session, appended and never rewritten.
@@ -351,18 +355,56 @@ class WorkspaceStore(
      * Tab-separated with a trailing field count that never shrinks, so an older app reading a newer
      * log can ignore what it does not recognise instead of failing on the line.
      */
-    private val pomodoroDir get() = File(root, "pomodoro")
+    private val focusDir get() = File(root, FOCUS_DIR)
 
-    fun appendPomodoro(line: String, month: String) {
-        val f = File(pomodoroDir, "$month.log")
+    /** Where these lived when the feature was called Pomodoro. See [migrateLegacyFocusDir]. */
+    private val legacyFocusDir get() = File(root, LEGACY_FOCUS_DIR)
+
+    fun appendFocus(line: String, month: String) {
+        migrateLegacyFocusDir()
+        val f = File(focusDir, "$month.log")
         f.parentFile?.mkdirs()
         f.appendText(line.trimEnd('\n') + "\n")
     }
 
-    fun readPomodoro(): List<String> =
-        pomodoroDir.listFiles { f -> f.name.endsWith(".log") }.orEmpty().sortedBy { it.name }
+    /**
+     * Both directories, because a repository is shared and not every device renames at once.
+     *
+     * A phone still running the older app keeps appending to `pomodoro/`, and its lines are as real
+     * as any other. Reading only the new name would make someone's afternoon vanish from the ledger
+     * the moment a second device fell behind — the one thing a history must never do.
+     */
+    fun readFocus(): List<String> =
+        listOf(focusDir, legacyFocusDir)
+            .flatMap { it.listFiles { f -> f.name.endsWith(".log") }.orEmpty().asIterable() }
+            .sortedBy { it.name }
             .flatMap { it.readLines() }
             .filter { it.isNotBlank() }
+
+    /**
+     * Moves `pomodoro/` to `focus/` once, in place.
+     *
+     * The directory is in the user's repository, so this is a visible rename in their history rather
+     * than an internal detail — which is the argument for doing it rather than leaving the old name
+     * to sit there contradicting every screen that says Focus.
+     *
+     * A month's log can exist under both names at once, if an older device appended after this ran
+     * somewhere else. That is why the contents are appended rather than the file moved: the union of
+     * two append-only tails is the same merge git would have performed, and losing either half is
+     * losing recorded time.
+     */
+    fun migrateLegacyFocusDir() {
+        val legacy = legacyFocusDir
+        if (!legacy.isDirectory) return
+        legacy.listFiles { f -> f.name.endsWith(".log") }.orEmpty().forEach { old ->
+            val dest = File(focusDir, old.name)
+            dest.parentFile?.mkdirs()
+            if (dest.exists()) dest.appendText(old.readText()) else old.copyTo(dest, overwrite = true)
+            old.delete()
+        }
+        // Only if it emptied: anything unexpected in there is left alone rather than discarded.
+        legacy.listFiles()?.takeIf { it.isEmpty() }?.let { legacy.delete() }
+    }
 
     // ---- registries ----
 

@@ -2,7 +2,7 @@ package ie.napkin.supertasks.data.repo
 
 import ie.napkin.supertasks.data.db.AppDatabase
 import ie.napkin.supertasks.data.db.FocusOutcome
-import ie.napkin.supertasks.data.db.PomodoroSessionEntity
+import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.data.workspace.WorkspaceReconciler
 import ie.napkin.supertasks.data.workspace.Workspaces
 import java.time.Instant
@@ -21,8 +21,8 @@ import java.util.UUID
  * Writing on start rather than only on completion is what lets the timer survive process death: the
  * in-flight session is on disk, so a reindex cannot forget it and [openSession] can find it again.
  */
-class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces) {
-    private val dao = db.pomodoroDao()
+class FocusRepository(private val db: AppDatabase, private val ws: Workspaces) {
+    private val dao = db.focusDao()
 
     fun forNode(nodeId: String) = dao.forNode(nodeId)
     fun all() = dao.all()
@@ -42,7 +42,7 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
 
     private val month = DateTimeFormatter.ofPattern("yyyy-MM")
 
-    private suspend fun append(s: PomodoroSessionEntity) = ws.writerFor(s.nodeId).appendPomodoro(
+    private suspend fun append(s: FocusSessionEntity) = ws.writerFor(s.nodeId).appendFocus(
         WorkspaceReconciler.sessionLine(s),
         month.format(Instant.ofEpochMilli(s.startedAt).atZone(ZoneId.systemDefault())),
     )
@@ -51,7 +51,7 @@ class PomodoroRepository(private val db: AppDatabase, private val ws: Workspaces
         val ts = System.currentTimeMillis()
         val id = UUID.randomUUID().toString()
         append(
-            PomodoroSessionEntity(
+            FocusSessionEntity(
                 id = id, nodeId = nodeId, startedAt = ts, plannedSecs = plannedSecs,
                 createdAt = ts, updatedAt = ts,
             )

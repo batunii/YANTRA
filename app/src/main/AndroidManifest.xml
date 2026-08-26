@@ -166,6 +166,10 @@
                 android:resource="@xml/quick_add_widget_info" />
         </receiver>
 
+        <!--
+            Named Pomodoro on purpose: a launcher binds each placed widget to this exact component
+            name, so renaming it breaks every widget already on a home screen. See FocusWidget.kt.
+        -->
         <receiver
             android:name=".widget.PomodoroWidgetReceiver"
             android:exported="true">
@@ -174,7 +178,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/pomodoro_widget_info" />
+                android:resource="@xml/focus_widget_info" />
         </receiver>
 
         <!--

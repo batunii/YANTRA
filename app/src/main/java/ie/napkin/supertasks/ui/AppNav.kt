@@ -22,8 +22,8 @@ import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.ui.home.HomeScreen
 import ie.napkin.supertasks.ui.ink.InkScreen
 import ie.napkin.supertasks.ui.node.NodePageScreen
-import ie.napkin.supertasks.ui.pomodoro.FocusScreen
-import ie.napkin.supertasks.ui.pomodoro.StatsScreen
+import ie.napkin.supertasks.ui.focus.FocusScreen
+import ie.napkin.supertasks.ui.focus.StatsScreen
 import ie.napkin.supertasks.ui.smart.SmartListScreen
 import ie.napkin.supertasks.ui.settings.SettingsScreen
 import ie.napkin.supertasks.ui.archive.ArchiveScreen

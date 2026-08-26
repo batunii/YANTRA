@@ -444,8 +444,8 @@ class WorkspaceWriter(
     }
 
     /** One line, appended. Never rewritten — that is what keeps two offline devices from colliding. */
-    suspend fun appendPomodoro(line: String, month: String) = mutex.withLock {
-        store.appendPomodoro(line, month)
+    suspend fun appendFocus(line: String, month: String) = mutex.withLock {
+        store.appendFocus(line, month)
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
     }

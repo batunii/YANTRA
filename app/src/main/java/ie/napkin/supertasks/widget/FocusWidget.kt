@@ -40,8 +40,8 @@ import androidx.glance.text.TextStyle
 import ie.napkin.supertasks.App
 import ie.napkin.supertasks.MainActivity
 import ie.napkin.supertasks.R
-import ie.napkin.supertasks.domain.PomodoroTimer
-import ie.napkin.supertasks.widget.actions.PomodoroAction
+import ie.napkin.supertasks.domain.FocusTimer
+import ie.napkin.supertasks.widget.actions.FocusAction
 
 /**
  * Focus-timer widget. The running countdown is a RemoteViews Chronometer (count-down mode)
@@ -50,36 +50,44 @@ import ie.napkin.supertasks.widget.actions.PomodoroAction
  * transitions (AppContainer collector) and let a WorkManager job finalize a session whose end
  * passes while the process is dead. Pause is process-bound (accepted caveat).
  */
-class PomodoroWidget : GlanceAppWidget() {
+class FocusWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val container = (context.applicationContext as App).container
         container.timer.restoreIfNeeded()
-        val initialLast = container.pomodoro.lastSession()
-            ?.let { it.nodeId to (container.pomodoro.nodeTitle(it.nodeId) ?: "") }
+        val initialLast = container.focus.lastSession()
+            ?.let { it.nodeId to (container.focus.nodeTitle(it.nodeId) ?: "") }
         provideContent {
             // Observed, not snapshotted: a live Glance session ignores update() re-renders, so
             // pause/dismiss taps must recompose via the StateFlow (also closes the start race).
             val state by container.timer.state.collectAsState()
             val last by produceState(initialValue = initialLast, state) {
                 if (state == null) {
-                    value = container.pomodoro.lastSession()
-                        ?.let { it.nodeId to (container.pomodoro.nodeTitle(it.nodeId) ?: "") }
+                    value = container.focus.lastSession()
+                        ?.let { it.nodeId to (container.focus.nodeTitle(it.nodeId) ?: "") }
                 }
             }
             val custom = yantraGlanceColors(context)
-            if (custom != null) GlanceTheme(colors = custom) { PomodoroContent(state, if (state == null) last else null) }
-            else GlanceTheme { PomodoroContent(state, if (state == null) last else null) }
+            if (custom != null) GlanceTheme(colors = custom) { FocusContent(state, if (state == null) last else null) }
+            else GlanceTheme { FocusContent(state, if (state == null) last else null) }
         }
     }
 }
 
+/**
+ * Deliberately still named Pomodoro, and the only thing in the app that is.
+ *
+ * A launcher stores the `ComponentName` of the provider each placed widget belongs to. Renaming this
+ * class changes that name, and every widget already on a home screen stops resolving — it does not
+ * move, it breaks, and it has to be placed again. The class name is invisible to the user; the
+ * widget disappearing is not. So this one keeps the old name, and the manifest entry with it.
+ */
 class PomodoroWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = PomodoroWidget()
+    override val glanceAppWidget: GlanceAppWidget = FocusWidget()
 }
 
 @Composable
-private fun PomodoroContent(state: PomodoroTimer.State?, last: Pair<String, String>?) {
+private fun FocusContent(state: FocusTimer.State?, last: Pair<String, String>?) {
     val context = LocalContext.current
     val openFocus = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -130,8 +138,8 @@ private fun ActionChip(label: String, command: String) {
         modifier = GlanceModifier
             .padding(horizontal = 10.dp, vertical = 6.dp)
             .clickable(
-                actionRunCallback<PomodoroAction>(
-                    actionParametersOf(PomodoroAction.Command to command)
+                actionRunCallback<FocusAction>(
+                    actionParametersOf(FocusAction.Command to command)
                 )
             ),
     )
@@ -145,18 +153,18 @@ private fun IdleContent(last: Pair<String, String>?) {
     Spacer(GlanceModifier.height(8.dp))
     if (last != null) {
         Row(modifier = GlanceModifier.fillMaxWidth()) {
-            ActionChip("Start 25m", PomodoroAction.START_LAST)
+            ActionChip("Start 25m", FocusAction.START_LAST)
         }
     }
 }
 
 @Composable
-private fun RunningContent(state: PomodoroTimer.State) {
+private fun RunningContent(state: FocusTimer.State) {
     HeaderText("FOCUSING")
     Spacer(GlanceModifier.height(2.dp))
     TitleText(state.nodeTitle)
     // Launcher-rendered live countdown; no process needed while it ticks.
-    val rv = RemoteViews(LocalContext.current.packageName, R.layout.widget_pomodoro_chrono).apply {
+    val rv = RemoteViews(LocalContext.current.packageName, R.layout.widget_focus_chrono).apply {
         setChronometerCountDown(R.id.pomo_chrono, true)
         setChronometer(
             R.id.pomo_chrono,
@@ -168,14 +176,14 @@ private fun RunningContent(state: PomodoroTimer.State) {
     AndroidRemoteViews(rv, modifier = GlanceModifier.fillMaxWidth().height(34.dp))
     Spacer(GlanceModifier.height(8.dp))
     Row(modifier = GlanceModifier.fillMaxWidth()) {
-        ActionChip("Pause", PomodoroAction.PAUSE)
+        ActionChip("Pause", FocusAction.PAUSE)
         Spacer(GlanceModifier.width(8.dp))
-        ActionChip("Stop", PomodoroAction.STOP)
+        ActionChip("Stop", FocusAction.STOP)
     }
 }
 
 @Composable
-private fun PausedContent(state: PomodoroTimer.State) {
+private fun PausedContent(state: FocusTimer.State) {
     HeaderText("PAUSED")
     Spacer(GlanceModifier.height(2.dp))
     TitleText(state.nodeTitle)
@@ -187,14 +195,14 @@ private fun PausedContent(state: PomodoroTimer.State) {
     )
     Spacer(GlanceModifier.height(8.dp))
     Row(modifier = GlanceModifier.fillMaxWidth()) {
-        ActionChip("Resume", PomodoroAction.RESUME)
+        ActionChip("Resume", FocusAction.RESUME)
         Spacer(GlanceModifier.width(8.dp))
-        ActionChip("Stop", PomodoroAction.STOP)
+        ActionChip("Stop", FocusAction.STOP)
     }
 }
 
 @Composable
-private fun FinishedContent(state: PomodoroTimer.State) {
+private fun FinishedContent(state: FocusTimer.State) {
     HeaderText("DONE")
     Spacer(GlanceModifier.height(2.dp))
     TitleText(state.nodeTitle)
@@ -204,6 +212,6 @@ private fun FinishedContent(state: PomodoroTimer.State) {
     )
     Spacer(GlanceModifier.height(8.dp))
     Row(modifier = GlanceModifier.fillMaxWidth()) {
-        ActionChip("Dismiss", PomodoroAction.DISMISS)
+        ActionChip("Dismiss", FocusAction.DISMISS)
     }
 }

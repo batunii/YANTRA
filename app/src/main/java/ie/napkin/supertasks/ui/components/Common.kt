@@ -129,9 +129,9 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
     }
 }
 
-/** Timer glyph + count, shown on task rows that have logged pomodoros. */
+/** Timer glyph + count, shown on task rows that have logged focus sessions. */
 @Composable
-fun PomodoroCount(count: Int, modifier: Modifier = Modifier) {
+fun FocusCount(count: Int, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,

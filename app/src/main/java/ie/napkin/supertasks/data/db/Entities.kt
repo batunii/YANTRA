@@ -208,16 +208,16 @@ object FocusOutcome {
 }
 
 @Entity(
-    tableName = "pomodoro_session",
+    tableName = "focus_session",
     foreignKeys = [
         ForeignKey(entity = NodeEntity::class, parentColumns = ["id"], childColumns = ["node_id"])
     ],
-    indices = [Index(value = ["node_id", "started_at"], name = "idx_pomo_node")]
+    indices = [Index(value = ["node_id", "started_at"], name = "idx_focus_node")]
 )
-data class PomodoroSessionEntity(
+data class FocusSessionEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
-    @ColumnInfo(name = "node_id") val nodeId: String,        // pomodoro is always attached to a node
+    @ColumnInfo(name = "node_id") val nodeId: String,        // focus is always attached to a node
     @ColumnInfo(name = "started_at") val startedAt: Long,
     @ColumnInfo(name = "ended_at") val endedAt: Long? = null,
     /** What was committed to in advance. **Zero means open** — a stopwatch, with nothing promised. */

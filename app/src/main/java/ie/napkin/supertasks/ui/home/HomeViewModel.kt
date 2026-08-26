@@ -9,7 +9,7 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.SubtreeTaskCount
 import ie.napkin.supertasks.data.filter.Filter
 import ie.napkin.supertasks.data.filter.SortSpec
-import ie.napkin.supertasks.domain.PomodoroTimer
+import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.data.db.SmartListDefEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -70,7 +70,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    val timerState: StateFlow<PomodoroTimer.State?> = container.timer.state
+    val timerState: StateFlow<FocusTimer.State?> = container.timer.state
 
     /** Built-in property definitions (Priority, Due), for the smart-list filter builder. */
     val defs: StateFlow<List<PropertyDefEntity>> =

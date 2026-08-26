@@ -14,6 +14,7 @@ import ie.napkin.supertasks.data.db.MIGRATION_5_6
 import ie.napkin.supertasks.data.db.MIGRATION_6_7
 import ie.napkin.supertasks.data.db.MIGRATION_7_8
 import ie.napkin.supertasks.data.db.MIGRATION_8_9
+import ie.napkin.supertasks.data.db.MIGRATION_10_11
 import ie.napkin.supertasks.data.db.MIGRATION_9_10
 import ie.napkin.supertasks.data.label.LabelPalette
 import ie.napkin.supertasks.data.db.SystemKey
@@ -41,7 +42,7 @@ class MigrationTest {
 
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
+        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
     )
 
     @get:Rule
@@ -54,7 +55,7 @@ class MigrationTest {
 
     private companion object {
         const val DB = "migration-test.db"
-        const val LATEST = 10
+        const val LATEST = 11
     }
 
     private fun SupportSQLiteDatabase.scalar(sql: String): String? =
@@ -386,6 +387,31 @@ class MigrationTest {
             db.query("SELECT outcome FROM pomodoro_session").use { c ->
                 assertEquals(0, c.count)
             }
+        }
+    }
+
+    @Test
+    fun v11RenamesTheTableAndKeepsTheSessionsInIt() {
+        helper.createDatabase(DB, 10).use { db ->
+            db.execSQL("INSERT INTO node (id, type, rank, done, in_progress, indent, collapsed, created_at, updated_at, workspace_id) VALUES ('n1','task','a',0,0,0,0,1,1,'')")
+            db.execSQL(
+                "INSERT INTO pomodoro_session (id, node_id, started_at, ended_at, planned_secs, actual_secs, outcome, created_at, updated_at, workspace_id) " +
+                    "VALUES ('s1','n1',1000,2000,1500,1500,'ran_out',1000,2000,'')"
+            )
+        }
+
+        helper.runMigrationsAndValidate(DB, 11, true, MIGRATION_10_11).use { db ->
+            // A rename, not a rebuild: unlike v10 there was nothing wrong with the shape, so the
+            // rows come across. Losing them would be survivable — they rebuild from the logs — but
+            // it would leave the history visibly empty on the first launch after updating.
+            assertEquals("s1", db.scalar("SELECT id FROM focus_session"))
+            assertEquals("ran_out", db.scalar("SELECT outcome FROM focus_session"))
+            // Room compares index names as strictly as columns, and SQLite carries the old one
+            // across a rename. This is the assertion that catches forgetting to recreate it.
+            assertEquals(
+                "idx_focus_node",
+                db.scalar("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='focus_session' AND name NOT LIKE 'sqlite_%'"),
+            )
         }
     }
 }

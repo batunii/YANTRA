@@ -57,8 +57,8 @@ class Indexer(private val db: AppDatabase) {
         // other repos rather than refresh this one.
         //
         // Order matters on the way out as much as on the way in: node_label, property_value,
-        // ink_stroke and pomodoro_session all point at node, so they go first and come back last.
-        // Pomodoro is included for exactly that reason — a scoped node wipe fails on its foreign
+        // ink_stroke and focus_session all point at node, so they go first and come back last.
+        // Focus is included for exactly that reason — a scoped node wipe fails on its foreign
         // key otherwise, which is why sessions had to become part of the workspace rather than
         // something the index alone remembered.
         // Trust the memory only if the database still agrees with it. Room's `clearAllTables` — and
@@ -74,7 +74,7 @@ class Indexer(private val db: AppDatabase) {
         val defsChanged = was?.defs != index.defs
         val smartChanged = was?.smartLists != index.smartLists
         val inkChanged = !sameInk(was?.ink, index.ink)
-        val pomodoroChanged = was?.pomodoro != index.pomodoro
+        val focusChanged = was?.focus != index.focus
 
         // Everything above points at node, so its rows can only be replaced once the dependents are
         // out of the way. When a dependent table is *not* being rewritten its rows stay put while
@@ -82,7 +82,7 @@ class Indexer(private val db: AppDatabase) {
         // constraint is deferred to the end of the transaction, by which point the same node ids are
         // back and it holds again.
         val leavingDependents = nodesChanged &&
-            !(valuesChanged && linksChanged && inkChanged && pomodoroChanged)
+            !(valuesChanged && linksChanged && inkChanged && focusChanged)
         if (leavingDependents) {
             db.openHelper.writableDatabase.execSQL("PRAGMA defer_foreign_keys = TRUE")
         }
@@ -92,7 +92,7 @@ class Indexer(private val db: AppDatabase) {
         if (valuesChanged) props.clearValues(workspaceId)
         if (smartChanged) smart.clearSmartLists(workspaceId)
         if (inkChanged) ink.clearStrokes(workspaceId)
-        if (pomodoroChanged) db.pomodoroDao().clearSessions(workspaceId)
+        if (focusChanged) db.focusDao().clearSessions(workspaceId)
         if (nodesChanged) nodes.clearNodes(workspaceId)
 
         // Upserted, never wiped. The property registry is the one table with no workspace column —
@@ -109,7 +109,7 @@ class Indexer(private val db: AppDatabase) {
         if (linksChanged) labels.attachAll(index.nodeLabels)
         if (smartChanged) smart.insertAll(index.smartLists)
         if (inkChanged) ink.insertAll(index.ink)
-        if (pomodoroChanged) db.pomodoroDao().insertAll(index.pomodoro)
+        if (focusChanged) db.focusDao().insertAll(index.focus)
 
         last[workspaceId] = index
     }

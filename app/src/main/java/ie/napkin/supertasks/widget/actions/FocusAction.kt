@@ -6,14 +6,14 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.updateAll
 import ie.napkin.supertasks.App
-import ie.napkin.supertasks.widget.PomodoroWidget
+import ie.napkin.supertasks.widget.FocusWidget
 
 /**
- * Pomodoro widget buttons. The AppContainer state collector re-renders the widget on every
+ * Focus widget buttons. The AppContainer state collector re-renders the widget on every
  * timer transition; the trailing updateAll here is a defensive refresh for commands that
  * don't change the StateFlow (e.g. a stale tap).
  */
-class PomodoroAction : ActionCallback {
+class FocusAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val container = (context.applicationContext as App).container
         val timer = container.timer
@@ -23,15 +23,15 @@ class PomodoroAction : ActionCallback {
             RESUME -> timer.resume()
             STOP -> timer.abandon()
             DISMISS -> timer.dismissFinished()
-            START_LAST -> container.pomodoro.lastSession()?.let { lastSession ->
+            START_LAST -> container.focus.lastSession()?.let { lastSession ->
                 timer.start(
                     lastSession.nodeId,
-                    container.pomodoro.nodeTitle(lastSession.nodeId).orEmpty(),
+                    container.focus.nodeTitle(lastSession.nodeId).orEmpty(),
                     25 * 60,
                 )
             }
         }
-        PomodoroWidget().updateAll(context)
+        FocusWidget().updateAll(context)
     }
 
     companion object {

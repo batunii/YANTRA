@@ -44,7 +44,7 @@ class RepositoryFlowTest {
     private lateinit var props: PropertyRepository
     private lateinit var labels: LabelRepository
     private lateinit var ink: InkRepository
-    private lateinit var pomodoro: ie.napkin.supertasks.data.repo.PomodoroRepository
+    private lateinit var focus: ie.napkin.supertasks.data.repo.FocusRepository
     private lateinit var root: File
 
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -62,7 +62,7 @@ class RepositoryFlowTest {
         props = PropertyRepository(db, ws)
         labels = LabelRepository(db, ws)
         ink = InkRepository(db, ws)
-        pomodoro = ie.napkin.supertasks.data.repo.PomodoroRepository(db, ws)
+        focus = ie.napkin.supertasks.data.repo.FocusRepository(db, ws)
     }
 
     @After
@@ -325,26 +325,26 @@ class RepositoryFlowTest {
         val list = nodes.create(null, NodeType.LIST, "Work")
         val task = nodes.create(list, NodeType.TASK, "Write the thing")
 
-        val id = pomodoro.startSession(task, plannedSecs = 1500)
-        assertNotNull("the session was never opened", pomodoro.openSession())
+        val id = focus.startSession(task, plannedSecs = 1500)
+        assertNotNull("the session was never opened", focus.openSession())
 
-        pomodoro.endSession(id, actualSecs = FocusOutcome.MIN_KEPT_SECS - 1, outcome = FocusOutcome.STOPPED)
+        focus.endSession(id, actualSecs = FocusOutcome.MIN_KEPT_SECS - 1, outcome = FocusOutcome.STOPPED)
 
-        assertNull("a stopped session is still running", pomodoro.openSession())
+        assertNull("a stopped session is still running", focus.openSession())
     }
 
     @Test
     fun aMisTapIsClosedButCountsNowhere() = runBlocking {
         val list = nodes.create(null, NodeType.LIST, "Work")
         val task = nodes.create(list, NodeType.TASK, "Thing")
-        val id = pomodoro.startSession(task, plannedSecs = 1500)
-        pomodoro.endSession(id, actualSecs = FocusOutcome.MIN_KEPT_SECS - 1, outcome = FocusOutcome.STOPPED)
+        val id = focus.startSession(task, plannedSecs = 1500)
+        focus.endSession(id, actualSecs = FocusOutcome.MIN_KEPT_SECS - 1, outcome = FocusOutcome.STOPPED)
 
         // Closed, so nothing thinks it is running — and absent from history and totals, because it
         // did not happen in any sense the user would recognise.
-        assertNull(pomodoro.openSession())
-        assertTrue(pomodoro.forNode(task).first().isEmpty())
-        assertEquals(0, pomodoro.secondsOnSubtree(task).first())
+        assertNull(focus.openSession())
+        assertTrue(focus.forNode(task).first().isEmpty())
+        assertEquals(0, focus.secondsOnSubtree(task).first())
     }
 
     @Test
@@ -353,15 +353,15 @@ class RepositoryFlowTest {
         // gave, not whether you obeyed yourself.
         val list = nodes.create(null, NodeType.LIST, "Work")
         val task = nodes.create(list, NodeType.TASK, "Thing")
-        val id = pomodoro.startSession(task, plannedSecs = 1500)
+        val id = focus.startSession(task, plannedSecs = 1500)
 
         val gave = FocusOutcome.MIN_KEPT_SECS * 40
-        pomodoro.endSession(id, actualSecs = gave, outcome = FocusOutcome.STOPPED)
+        focus.endSession(id, actualSecs = gave, outcome = FocusOutcome.STOPPED)
 
-        assertNull(pomodoro.openSession())
-        assertEquals(1, pomodoro.forNode(task).first().size)
-        assertEquals(gave, pomodoro.secondsOnSubtree(task).first())
-        assertEquals(FocusOutcome.STOPPED, pomodoro.forNode(task).first().single().outcome)
+        assertNull(focus.openSession())
+        assertEquals(1, focus.forNode(task).first().size)
+        assertEquals(gave, focus.secondsOnSubtree(task).first())
+        assertEquals(FocusOutcome.STOPPED, focus.forNode(task).first().single().outcome)
     }
 
     @Test
@@ -371,11 +371,11 @@ class RepositoryFlowTest {
         val list = nodes.create(null, NodeType.LIST, "Work")
         val task = nodes.create(list, NodeType.TASK, "Thing")
 
-        val first = pomodoro.startSession(task, plannedSecs = 1500)
-        pomodoro.endSession(first, actualSecs = FocusOutcome.MIN_KEPT_SECS - 1, outcome = FocusOutcome.INTERRUPTED)
-        val second = pomodoro.startSession(task, plannedSecs = 1500)
+        val first = focus.startSession(task, plannedSecs = 1500)
+        focus.endSession(first, actualSecs = FocusOutcome.MIN_KEPT_SECS - 1, outcome = FocusOutcome.INTERRUPTED)
+        val second = focus.startSession(task, plannedSecs = 1500)
 
-        assertEquals("the wrong session is open", second, pomodoro.openSession()?.id)
+        assertEquals("the wrong session is open", second, focus.openSession()?.id)
     }
 
     @Test

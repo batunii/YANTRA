@@ -1,7 +1,7 @@
-package ie.napkin.supertasks.ui.pomodoro
+package ie.napkin.supertasks.ui.focus
 
 /**
- * YantraFocus — the pomodoro feature's rendering layer.
+ * YantraFocus — the focus feature's rendering layer.
  *
  * Separate from the task checkbox by design: the checkbox owns task state
  * (open / in progress / done); this file owns focus time. They share only

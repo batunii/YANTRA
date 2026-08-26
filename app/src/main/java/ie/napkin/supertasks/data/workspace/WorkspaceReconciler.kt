@@ -5,7 +5,7 @@ import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeLabelEntity
 import ie.napkin.supertasks.data.db.FocusOutcome
-import ie.napkin.supertasks.data.db.PomodoroSessionEntity
+import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.db.SmartListDefEntity
@@ -31,7 +31,7 @@ data class WorkspaceIndex(
     val defs: List<PropertyDefEntity> = emptyList(),
     val smartLists: List<SmartListDefEntity> = emptyList(),
     val ink: List<InkStrokeEntity> = emptyList(),
-    val pomodoro: List<PomodoroSessionEntity> = emptyList(),
+    val focus: List<FocusSessionEntity> = emptyList(),
     val problems: List<String> = emptyList(),
 )
 
@@ -156,7 +156,7 @@ object WorkspaceReconciler {
             // against page ids therefore threw away the sessions of every plain task: appended to the
             // log, dropped by the very next rebuild, and reported as naming a task the workspace does
             // not have. The foreign key is on `node`, which is exactly this set.
-            pomodoro = readSessions(store, nodes.mapTo(HashSet()) { it.id }, ws, problems),
+            focus = readSessions(store, nodes.mapTo(HashSet()) { it.id }, ws, problems),
             problems = problems,
         )
     }
@@ -171,16 +171,20 @@ object WorkspaceReconciler {
         knownNodes: Set<String>,
         ws: String,
         problems: MutableList<String>,
-    ): List<PomodoroSessionEntity> = store.readPomodoro().mapNotNull { line ->
+    ): List<FocusSessionEntity> = store.also {
+        // Here rather than only on append, so a device that reads a workspace without ever focusing
+        // in it still moves the old directory rather than leaving it to sit under the wrong name.
+        it.migrateLegacyFocusDir()
+    }.readFocus().mapNotNull { line ->
         val f = line.split('\t')
-        if (f.size < 7) { problems += "unreadable pomodoro line: $line"; return@mapNotNull null }
+        if (f.size < 7) { problems += "unreadable focus line: $line"; return@mapNotNull null }
         val nodeId = f[1]
         if (nodeId !in knownNodes) {
-            problems += "pomodoro session ${f[0]} names a task ($nodeId) this workspace does not have"
+            problems += "focus session ${f[0]} names a task ($nodeId) this workspace does not have"
             return@mapNotNull null
         }
         val started = f[2].toLongOrNull() ?: return@mapNotNull null
-        PomodoroSessionEntity(
+        FocusSessionEntity(
             id = f[0], workspaceId = ws, nodeId = nodeId, startedAt = started,
             endedAt = f[3].toLongOrNull(), plannedSecs = f[4].toIntOrNull() ?: 0,
             actualSecs = f[5].toIntOrNull(),
@@ -197,7 +201,7 @@ object WorkspaceReconciler {
         .associateBy { it.id }.values.toList()
 
     /** The inverse of [readSessions]; the writer appends whatever this returns. */
-    fun sessionLine(s: PomodoroSessionEntity): String = listOf(
+    fun sessionLine(s: FocusSessionEntity): String = listOf(
         s.id, s.nodeId, s.startedAt, s.endedAt ?: "", s.plannedSecs,
         s.actualSecs ?: "",
         // The old boolean, still written, so a build from before the outcome existed keeps reading

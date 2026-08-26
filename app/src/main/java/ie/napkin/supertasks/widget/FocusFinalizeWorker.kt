@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
  * finalizes the past-end session row, then the widget flips to its finished/idle state.
  * WorkManager's few-seconds slack is fine here — exactness only matters for reminders.
  */
-class PomodoroFinalizeWorker(
+class FocusFinalizeWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
@@ -27,13 +27,13 @@ class PomodoroFinalizeWorker(
     }
 
     companion object {
-        private const val WORK_NAME = "pomodoro-finalize"
+        private const val WORK_NAME = "focus-finalize"
 
         fun schedule(context: Context, remainingSecs: Int) {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME,
                 ExistingWorkPolicy.REPLACE,
-                OneTimeWorkRequestBuilder<PomodoroFinalizeWorker>()
+                OneTimeWorkRequestBuilder<FocusFinalizeWorker>()
                     .setInitialDelay(remainingSecs.toLong() + 2, TimeUnit.SECONDS)
                     .build(),
             )

@@ -1,4 +1,4 @@
-package ie.napkin.supertasks.ui.pomodoro
+package ie.napkin.supertasks.ui.focus
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
-import ie.napkin.supertasks.data.db.PomodoroSessionEntity
+import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
@@ -65,15 +65,15 @@ data class Stats(
 
 class StatsViewModel(private val container: AppContainer) : ViewModel() {
 
-    /** History screens = plain queries over pomodoro_session (per-task, per-day, totals). */
-    val stats: StateFlow<Stats> = container.pomodoro.all()
+    /** History screens = plain queries over focus_session (per-task, per-day, totals). */
+    val stats: StateFlow<Stats> = container.focus.all()
         .map { sessions -> build(sessions.filter { it.endedAt != null }) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Stats())
 
-    private suspend fun build(sessions: List<PomodoroSessionEntity>): Stats {
+    private suspend fun build(sessions: List<FocusSessionEntity>): Stats {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now()
-        fun dayOf(s: PomodoroSessionEntity): LocalDate =
+        fun dayOf(s: FocusSessionEntity): LocalDate =
             Instant.ofEpochMilli(s.startedAt).atZone(zone).toLocalDate()
 
         // Every session that produced time, whatever it was called at the end. Filtering on
