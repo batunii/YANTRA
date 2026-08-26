@@ -35,11 +35,13 @@ import ie.napkin.supertasks.ui.theme.Yantra
 class CaptureHighlight(
     private val dateColor: Color,
     private val priorityColor: Color,
+    private val listColor: Color,
+    private val lists: List<String>,
     private val labelColor: (String) -> Color,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
-        val parsed = CaptureParse.parse(text.text)
+        val parsed = CaptureParse.parse(text.text, lists = lists)
         // Nothing recognised, or everything was — a title that is only a token stays a title, and
         // tinting the whole thing would promise a modifier that was not applied.
         if (!parsed.hasAnything || parsed.spans.isEmpty()) {
@@ -56,6 +58,8 @@ class CaptureHighlight(
                 val colour = when (span.kind) {
                     Captured.Kind.DATE, Captured.Kind.TIME -> dateColor
                     Captured.Kind.PRIORITY -> priorityColor
+                    // Structure's own ink: a list is where a task goes, not something about it.
+                    Captured.Kind.LIST -> listColor
                     Captured.Kind.LABEL -> labelColor(written.removePrefix("#"))
                 }
                 AnnotatedString.Range(
@@ -80,7 +84,10 @@ class CaptureHighlight(
  * `LabelRepository.getOrCreate` does when deciding whether `#Home` is a new tag or the old one.
  */
 @Composable
-fun rememberCaptureHighlight(labels: List<LabelEntity>): CaptureHighlight {
+fun rememberCaptureHighlight(
+    labels: List<LabelEntity>,
+    lists: List<String> = emptyList(),
+): CaptureHighlight {
     val y = Yantra.colors
     val byName = remember(labels) { labels.associateBy { it.name.lowercase() } }
 
@@ -96,10 +103,12 @@ fun rememberCaptureHighlight(labels: List<LabelEntity>): CaptureHighlight {
     // and doing only the first by hand is how the preview drifted from the chip.
     val bySwatch = LabelPalette.swatches.associate { it.light to chipStyleFor(Color(it.light)).text }
 
-    return remember(existing, neutral, bySwatch, y.due, y.overdue) {
+    return remember(existing, neutral, bySwatch, lists, y.due, y.overdue, y.accentText) {
         CaptureHighlight(
             dateColor = y.due,
             priorityColor = y.overdue,
+            listColor = y.accentText,
+            lists = lists,
             labelColor = { name ->
                 // An existing tag keeps its own colour — including a deliberately neutral one, which
                 // must not be overridden by the name-derived default it would have had.

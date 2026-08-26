@@ -377,4 +377,29 @@ class RepositoryFlowTest {
 
         assertEquals("the wrong session is open", second, pomodoro.openSession()?.id)
     }
+
+    @Test
+    fun aTypedLineCanSayWhichListItGoesTo() = runBlocking {
+        // The end of the round trip: the parser finds the name, and the task actually lands there
+        // rather than wherever the typing happened.
+        val groceries = nodes.create(null, NodeType.LIST, "Groceries")
+        val elsewhere = nodes.create(null, NodeType.LIST, "Work")
+
+        val id = nodes.captureTask(elsewhere, "buy milk > Groceries", labels, props)!!
+
+        assertEquals(groceries, db.nodeDao().byId(id)?.parentId)
+        assertEquals("buy milk", db.nodeDao().byId(id)?.title)
+        // And it is a routing instruction, not a field: nothing of it survives on the line.
+        assertTrue(!ws.primaryStore().pageFile(groceries).readText().contains(">"))
+    }
+
+    @Test
+    fun anUnknownListLeavesTheTaskWhereItWasTyped() = runBlocking {
+        val here = nodes.create(null, NodeType.LIST, "Work")
+        val id = nodes.captureTask(here, "buy milk > Nowhere", labels, props)!!
+
+        assertEquals(here, db.nodeDao().byId(id)?.parentId)
+        // The text is untouched, which is what makes the mistake visible rather than silent.
+        assertEquals("buy milk > Nowhere", db.nodeDao().byId(id)?.title)
+    }
 }

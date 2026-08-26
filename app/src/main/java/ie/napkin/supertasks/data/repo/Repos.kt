@@ -203,10 +203,20 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         properties: PropertyRepository,
         zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
     ): String? {
-        val parsed = CaptureParse.parse(text)
+        // The lists this workspace has, so "> Groceries" can be matched rather than guessed at.
+        val lists = dao.allListsOnce()
+        val parsed = CaptureParse.parse(text, lists = lists.mapNotNull { it.title })
         if (parsed.title.isBlank()) return null
 
-        val id = create(parentId ?: inboxList(), NodeType.TASK, parsed.title)
+        // A named list wins over wherever this was typed: saying where it goes is the whole point of
+        // saying it. An unrecognised name never reaches here — the parser leaves it in the title
+        // rather than inventing a list.
+        val destination = parsed.list
+            ?.let { name -> lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id }
+            ?: parentId
+            ?: inboxList()
+
+        val id = create(destination, NodeType.TASK, parsed.title)
 
         parsed.dueAt()?.let { at ->
             properties.setDue(

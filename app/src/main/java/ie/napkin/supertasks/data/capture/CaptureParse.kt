@@ -21,14 +21,23 @@ data class Captured(
     val time: LocalTime? = null,
     val labels: List<String> = emptyList(),
     val priority: String? = null,
+    /**
+     * Which list this should go to, if the line named one.
+     *
+     * Unlike everything else here, this is **not** written to the file. A task's list is the page it
+     * sits on, so naming one is a routing instruction that is spent at the moment of capture — there
+     * is nowhere on the line for it to live afterwards, and nothing would read it if there were.
+     */
+    val list: String? = null,
     val spans: List<Span> = emptyList(),
 ) {
     /** A recognised run of characters in the input, and what it turned into. */
     data class Span(val range: IntRange, val kind: Kind)
 
-    enum class Kind { DATE, TIME, LABEL, PRIORITY }
+    enum class Kind { DATE, TIME, LABEL, PRIORITY, LIST }
 
-    val hasAnything: Boolean get() = date != null || time != null || labels.isNotEmpty() || priority != null
+    val hasAnything: Boolean
+        get() = date != null || time != null || labels.isNotEmpty() || priority != null || list != null
 
     /** Due as a single moment when a time was given, otherwise just the day. */
     fun dueAt(): LocalDateTime? = date?.let { LocalDateTime.of(it, time ?: LocalTime.MIDNIGHT) }
@@ -64,6 +73,14 @@ object CaptureParse {
     private val PRIORITIES = listOf("High", "Medium", "Low")
 
     private val LABEL = Regex("""(?<=^|\s)#([\p{L}\p{N}_-]{1,40})""")
+
+    /**
+     * `> Groceries` — where it goes.
+     *
+     * `>` rather than `@`, which the file format already spends on the assignee, and that is the
+     * field shared workspaces were built for. A list is a place, and `>` reads as going to one.
+     */
+    private const val LIST_MARK = '>' 
     private val PRIORITY = Regex("""(?<=^|\s)!([\p{L}]{1,10})""", RegexOption.IGNORE_CASE)
 
     /** `6pm`, `6:30pm`, `18:30`, `9 am`. Bare `18` is not a time — it is far more often a number. */
@@ -92,12 +109,33 @@ object CaptureParse {
     private val NEXT_WEEKDAY = Regex("""(?<=^|\s)next\s+([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
     private val WEEKDAY = Regex("""(?<=^|\s)([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
 
-    fun parse(input: String, today: LocalDate = LocalDate.now()): Captured {
+    /**
+     * [lists] are the names this workspace actually has. A list is matched against them rather than
+     * taken as whatever follows the mark, for two reasons: names contain spaces, so there is no way
+     * to know where one ends without knowing what exists; and a typo must leave the text alone rather
+     * than conjure a new list, which is the one mistake here that would be tedious to undo.
+     */
+    fun parse(
+        input: String,
+        today: LocalDate = LocalDate.now(),
+        lists: List<String> = emptyList(),
+    ): Captured {
         val spans = ArrayList<Captured.Span>()
         var date: LocalDate? = null
         var time: LocalTime? = null
         var priority: String? = null
         val labels = ArrayList<String>()
+
+        var list: String? = null
+        // Longest first, so "Work" cannot claim a line that named "Work trips".
+        lists.sortedByDescending { it.length }.forEach { name ->
+            if (list != null || name.isBlank()) return@forEach
+            val at = indexOfList(input, name)
+            if (at != null) {
+                list = name
+                spans += Captured.Span(at, Captured.Kind.LIST)
+            }
+        }
 
         LABEL.findAll(input).forEach { m ->
             labels += m.groupValues[1]
@@ -132,7 +170,26 @@ object CaptureParse {
         // Everything was a modifier and nothing was a task. Then it was never a modifier.
         if (title.isBlank()) return Captured(title = input.trim())
 
-        return Captured(title, date, time, labels, priority, spans.sortedBy { it.range.first })
+        return Captured(title, date, time, labels, priority, list, spans.sortedBy { it.range.first })
+    }
+
+    /** Where `> name` sits in [input], mark included, or null if it is not there. */
+    private fun indexOfList(input: String, name: String): IntRange? {
+        var from = 0
+        while (true) {
+            val mark = input.indexOf(LIST_MARK, from)
+            if (mark < 0) return null
+            var i = mark + 1
+            while (i < input.length && input[i] == ' ') i++
+            val end = i + name.length
+            if (end <= input.length &&
+                input.regionMatches(i, name, 0, name.length, ignoreCase = true) &&
+                (end == input.length || input[end].isWhitespace())
+            ) {
+                return mark..(end - 1)
+            }
+            from = mark + 1
+        }
     }
 
     private fun shorthandPriority(word: String): String? = when (word.lowercase()) {

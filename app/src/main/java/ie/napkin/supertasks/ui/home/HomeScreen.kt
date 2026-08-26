@@ -60,6 +60,8 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
+import androidx.compose.ui.text.input.VisualTransformation
+import ie.napkin.supertasks.ui.components.rememberCaptureHighlight
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.Compass
 import ie.napkin.supertasks.ui.components.ConfirmDialog
@@ -233,6 +235,8 @@ fun HomeScreen(nav: NavHostController) {
             containerColor = y.cardBg,
         ) {
             CreatePanel(
+                allLabels = labels,
+                listNames = allRegularLists.mapNotNull { it.title },
                 onCreate = { type, name, makeSmart ->
                     when (type) {
                         CreateType.TASK -> vm.quickAddTask(name) { id -> nav.navigate(Routes.node(id)) }
@@ -435,7 +439,11 @@ private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelet
 }
 
 @Composable
-private fun CreatePanel(onCreate: (CreateType, String, Boolean) -> Unit) {
+private fun CreatePanel(
+    allLabels: List<ie.napkin.supertasks.data.db.LabelEntity>,
+    listNames: List<String>,
+    onCreate: (CreateType, String, Boolean) -> Unit,
+) {
     val y = Yantra.colors
     var type by remember { mutableStateOf(CreateType.TASK) }
     var text by remember { mutableStateOf("") }
@@ -457,6 +465,13 @@ private fun CreatePanel(onCreate: (CreateType, String, Boolean) -> Unit) {
             keyboardActions = KeyboardActions(onDone = {
                 if (valid) onCreate(type, text.trim(), makeSmart)
             }),
+            // Only for a task. A list or a group is named literally — its title is whatever you
+            // typed — so tinting part of it would promise a reading that is never applied.
+            visualTransformation = if (type == CreateType.TASK) {
+                rememberCaptureHighlight(labels = allLabels, lists = listNames)
+            } else {
+                VisualTransformation.None
+            },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).focusRequester(focus),
             decorationBox = { inner ->
                 if (text.isEmpty()) Text(type.placeholder, style = MaterialTheme.typography.headlineSmall, color = y.textMuted.copy(alpha = 0.7f))

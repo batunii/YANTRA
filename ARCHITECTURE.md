@@ -432,6 +432,11 @@ Three rules keep it honest, and they are the interesting part:
 - **A token is never the whole title.** "Today" is a task called Today, not an empty task due today.
 - **`#label` and `!priority` are the file format's own syntax** for those fields, so what you type is
   what the file says.
+- **`> List` says where it goes.** `>` rather than `@`, which the format already spends on the
+  assignee — the field shared workspaces were built for. It is the one token that is *not* written to
+  the file: a task's list is the page it sits on, so naming one is a routing instruction spent at
+  capture, with nowhere on the line to live afterwards. Names are matched against the lists that
+  exist, because names contain spaces and a typo must leave the text alone rather than invent a list.
 
 One path — `captureTask` — so the quick-add bar, the create sheet, smart lists and the widget cannot
 disagree about what "tomorrow" means. The share target deliberately does *not* parse: what arrives
