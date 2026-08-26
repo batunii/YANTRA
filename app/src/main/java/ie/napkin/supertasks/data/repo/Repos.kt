@@ -209,10 +209,15 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         if (parsed.title.isBlank()) return null
 
         // A named list wins over wherever this was typed: saying where it goes is the whole point of
-        // saying it. An unrecognised name never reaches here — the parser leaves it in the title
-        // rather than inventing a list.
+        // saying it. A name the workspace does not have is made, rather than refused — otherwise
+        // filing into a new list means leaving capture to go and create it first, which is the
+        // interruption this whole path exists to remove. The field offers the lists that already
+        // match before it comes to this, so a typo is visible rather than silently made real.
         val destination = parsed.list
-            ?.let { name -> lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id }
+            ?.let { name ->
+                lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
+                    ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
+            }
             ?: parentId
             ?: inboxList()
 

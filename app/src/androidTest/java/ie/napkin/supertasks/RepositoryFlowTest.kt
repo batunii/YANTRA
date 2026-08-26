@@ -394,12 +394,33 @@ class RepositoryFlowTest {
     }
 
     @Test
-    fun anUnknownListLeavesTheTaskWhereItWasTyped() = runBlocking {
+    fun anUnknownListIsMadeAndTheTaskLandsInIt() = runBlocking {
         val here = nodes.create(null, NodeType.LIST, "Work")
-        val id = nodes.captureTask(here, "buy milk ~ Nowhere", labels, props)!!
+        val id = nodes.captureTask(here, "buy tent ~ Camping", labels, props)!!
 
-        assertEquals(here, db.nodeDao().byId(id)?.parentId)
-        // The text is untouched, which is what makes the mistake visible rather than silent.
-        assertEquals("buy milk ~ Nowhere", db.nodeDao().byId(id)?.title)
+        val parent = db.nodeDao().byId(id)?.parentId
+        assertTrue("the task stayed where it was typed", parent != here)
+        assertEquals("Camping", db.nodeDao().byId(parent!!)?.title)
+        assertEquals(NodeType.LIST, db.nodeDao().byId(parent)?.type)
+        assertEquals("buy tent", db.nodeDao().byId(id)?.title)
+        // A real list, on disk, not a row someone has to reconcile later.
+        assertTrue(ws.primaryStore().pageFile(parent).exists())
+    }
+
+    @Test
+    fun aNameThatDiffersOnlyBySpacingFindsTheListThatExists() = runBlocking {
+        // The whole reason for normalising: typing this one-handed mid-sentence is the point, and
+        // making a second "Worktrips" beside "Work trips" would be the worst possible outcome.
+        val trips = nodes.create(null, NodeType.LIST, "Work trips")
+        val here = nodes.create(null, NodeType.LIST, "Work")
+        val before = db.nodeDao().allListsOnce().size
+
+        val id = nodes.captureTask(here, "book flights ~worktrips", labels, props)!!
+
+        assertEquals(trips, db.nodeDao().byId(id)?.parentId)
+        assertEquals("book flights", db.nodeDao().byId(id)?.title)
+        // The count, not a fixed number — the fixture seeds lists of its own. What matters is that
+        // matching an existing list made nothing.
+        assertEquals("a duplicate list was created", before, db.nodeDao().allListsOnce().size)
     }
 }

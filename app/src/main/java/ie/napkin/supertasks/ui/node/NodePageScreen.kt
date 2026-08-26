@@ -172,6 +172,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
     val allLabels by vm.allLabels.collectAsStateWithLifecycle()
+    val listNames by vm.listNames.collectAsStateWithLifecycle()
     val ownLabels by vm.ownLabels.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
@@ -644,6 +645,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             QuickAddBar(
                 modifier = Modifier.navigationBarsPadding().imePadding(),
                 labels = allLabels,
+                lists = listNames,
                 onAdd = { title -> vm.captureTask(title) },
             )
         }

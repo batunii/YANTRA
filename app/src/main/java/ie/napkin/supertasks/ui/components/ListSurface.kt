@@ -79,6 +79,8 @@ fun QuickAddBar(
     placeholder: String = "Add a task…",
     /** The workspace's labels, so a typed `#tag` is tinted the colour it is about to become. */
     labels: List<ie.napkin.supertasks.data.db.LabelEntity> = emptyList(),
+    /** The workspace's lists, so `~` can name one — and offer the ones that match while you type. */
+    lists: List<String> = emptyList(),
     onAdd: (String) -> Unit,
 ) {
     val y = Yantra.colors
@@ -89,55 +91,59 @@ fun QuickAddBar(
             text = ""
         }
     }
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(y.page)
-            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    // The strip belongs above the bar: growing the bar itself would move the send button
+    // under the thumb that was reaching for it.
+    Column(modifier.fillMaxWidth().background(y.page)) {
+        ListSuggestions(text = text, lists = lists, onPick = { text = it })
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(y.cardBg, RoundedCornerShape(18.dp))
-                .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
-                .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
-                cursorBrush = SolidColor(y.accent),
-                // Typing "buy milk tomorrow #home" tints what it understood as you write it, so a
-                // word that is about to leave the title says so first.
-                visualTransformation = rememberCaptureHighlight(labels),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (text.isEmpty()) {
-                            Text(placeholder, color = y.textDim, fontSize = 14.sp)
-                        }
-                        inner()
-                    }
-                },
-            )
-            Spacer(Modifier.width(8.dp))
-            Box(
+            Row(
                 Modifier
-                    .size(40.dp)
-                    .background(y.accentFill, RoundedCornerShape(12.dp))
-                    .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
-                    .clickable(onClick = send),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .background(y.cardBg, RoundedCornerShape(18.dp))
+                    .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
+                    .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Add task",
-                    tint = y.accent,
-                    modifier = Modifier.size(18.dp),
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = y.textPrimary),
+                    cursorBrush = SolidColor(y.accent),
+                    // Typing "buy milk tomorrow #home" tints what it understood as you write it, so a
+                    // word that is about to leave the title says so first.
+                    visualTransformation = rememberCaptureHighlight(labels, lists),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (text.isEmpty()) {
+                                Text(placeholder, color = y.textDim, fontSize = 14.sp)
+                            }
+                            inner()
+                        }
+                    },
                 )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .background(y.accentFill, RoundedCornerShape(12.dp))
+                        .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
+                        .clickable(onClick = send),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Add task",
+                        tint = y.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }

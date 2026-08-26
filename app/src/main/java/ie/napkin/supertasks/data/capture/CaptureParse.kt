@@ -29,6 +29,14 @@ data class Captured(
      * is nowhere on the line for it to live afterwards, and nothing would read it if there were.
      */
     val list: String? = null,
+    /**
+     * True when [list] names something this workspace does not have yet, so capture has to make it.
+     *
+     * Kept apart from [list] rather than folded into it because the two are answered by different
+     * people: the parser knows what was typed, and only the caller can decide whether creating a
+     * list is a thing it is allowed to do.
+     */
+    val listIsNew: Boolean = false,
     val spans: List<Span> = emptyList(),
 ) {
     /** A recognised run of characters in the input, and what it turned into. */
@@ -81,7 +89,7 @@ object CaptureParse {
      * workspaces were built for. `~` because a task title is plain text — it renders no markdown,
      * deliberately — so the character is not spoken for by anything else a title can mean.
      */
-    private const val LIST_MARK = '~'
+    const val LIST_MARK = '~'
     private val PRIORITY = Regex("""(?<=^|\s)!([\p{L}]{1,10})""", RegexOption.IGNORE_CASE)
 
     /** `6pm`, `6:30pm`, `18:30`, `9 am`. Bare `18` is not a time — it is far more often a number. */
@@ -128,14 +136,10 @@ object CaptureParse {
         val labels = ArrayList<String>()
 
         var list: String? = null
-        // Longest first, so "Work" cannot claim a line that named "Work trips".
-        lists.sortedByDescending { it.length }.forEach { name ->
-            if (list != null || name.isBlank()) return@forEach
-            val at = indexOfList(input, name)
-            if (at != null) {
-                list = name
-                spans += Captured.Span(at, Captured.Kind.LIST)
-            }
+        var listIsNew = false
+        matchKnownList(input, lists)?.let { (name, at) ->
+            list = name
+            spans += Captured.Span(at, Captured.Kind.LIST)
         }
 
         LABEL.findAll(input).forEach { m ->
@@ -167,30 +171,156 @@ object CaptureParse {
             date = if (time!! > LocalTime.now()) today else today.plusDays(1)
         }
 
+        // Only now, once the other tokens have claimed their characters. A list that does not exist
+        // yet has no known name to match, so its extent has to be read off the line — and the one
+        // honest way to bound it is "the rest, minus whatever else was understood". Doing this
+        // before the date pass would have made `~ Errands tomorrow` a list called "Errands
+        // tomorrow"; doing it after leaves the date a date.
+        if (list == null) {
+            newListAt(input, spans.map { it.range })?.let { (name, at) ->
+                list = name
+                listIsNew = true
+                spans += Captured.Span(at, Captured.Kind.LIST)
+            }
+        }
+
         val title = strip(input, spans)
         // Everything was a modifier and nothing was a task. Then it was never a modifier.
         if (title.isBlank()) return Captured(title = input.trim())
 
-        return Captured(title, date, time, labels, priority, list, spans.sortedBy { it.range.first })
+        return Captured(title, date, time, labels, priority, list, listIsNew, spans.sortedBy { it.range.first })
     }
 
-    /** Where `~ name` sits in [input], mark included, or null if it is not there. */
-    private fun indexOfList(input: String, name: String): IntRange? {
-        var from = 0
-        while (true) {
-            val mark = input.indexOf(LIST_MARK, from)
-            if (mark < 0) return null
-            var i = mark + 1
-            while (i < input.length && input[i] == ' ') i++
-            val end = i + name.length
-            if (end <= input.length &&
-                input.regionMatches(i, name, 0, name.length, ignoreCase = true) &&
-                (end == input.length || input[end].isWhitespace())
-            ) {
-                return mark..(end - 1)
+    /**
+     * A name with its spacing and case thrown away, which is how two names are compared here.
+     *
+     * "Work trips", "work trips" and "worktrips" are one list as far as anyone typing is concerned.
+     * Requiring the spaces back would make the shortcut useless exactly where it is most wanted —
+     * mid-sentence, one-handed, on a phone keyboard that capitalises whatever it likes.
+     */
+    private fun normalise(name: String): String =
+        name.lowercase(Locale.ROOT).filterNot { it.isWhitespace() }
+
+    /**
+     * The longest known list this line names, and where it sits — mark included.
+     *
+     * Longest wins so "Work" cannot claim a line that named "Work trips". Beyond the match the next
+     * character has to be a space or the end of the line, or "Work" would claim "Workshop".
+     */
+    private fun matchKnownList(input: String, lists: List<String>): Pair<String, IntRange>? {
+        val known = lists.filter { it.isNotBlank() }
+            .map { it to normalise(it) }
+            .sortedByDescending { it.second.length }
+        if (known.isEmpty()) return null
+
+        eachMark(input) { mark, from ->
+            known.forEach { (name, norm) ->
+                val end = matchFrom(input, from, norm)
+                if (end != null) return name to mark..(end - 1)
             }
-            from = mark + 1
         }
+        return null
+    }
+
+    /**
+     * How far [norm] reaches into [input] from [from], or null if it does not match.
+     *
+     * Whitespace in the input is skipped rather than compared, which is what makes `~worktrips` and
+     * `~Work trips` the same instruction.
+     */
+    private fun matchFrom(input: String, from: Int, norm: String): Int? {
+        var p = from
+        var k = 0
+        while (p < input.length && k < norm.length) {
+            val ch = input[p]
+            if (ch.isWhitespace()) { p++; continue }
+            if (ch.lowercaseChar() != norm[k]) return null
+            p++; k++
+        }
+        if (k != norm.length) return null
+        return if (p == input.length || input[p].isWhitespace()) p else null
+    }
+
+    /**
+     * A list this workspace does not have yet: the mark, and everything after it that nothing else
+     * claimed.
+     *
+     * This reverses an earlier rule. An unrecognised name used to be left in the title on the
+     * grounds that a typo must not conjure a list — which was right about the risk and wrong about
+     * the remedy, because it also meant the only way to file something into a new list was to go and
+     * make the list first, which is precisely the interruption capture exists to avoid. The remedy
+     * is that nothing here is silent: the name is tinted while you type it, and the field offers the
+     * lists you already have before you commit to a new one.
+     *
+     * Two things are deliberately not lists. A mark has to follow a space, so `foo~bar` is a word.
+     * And the name has to begin with a letter, so `~5 mins` stays the ordinary way of writing
+     * "about five minutes" rather than becoming a list called "5 mins".
+     */
+    private fun newListAt(input: String, claimed: List<IntRange>): Pair<String, IntRange>? {
+        eachMark(input) { mark, from ->
+            // The rest of the line, stopping where another token has already been understood.
+            var end = input.length
+            claimed.forEach { r -> if (r.first >= from && r.first < end) end = r.first }
+            // No leading whitespace to worry about — eachMark already stepped past it — so the
+            // span is the mark plus exactly the name, and never the gap that followed it.
+            val name = input.substring(from, end).trimEnd()
+            if (name.isNotEmpty() && name[0].isLetter()) return name to mark..(from + name.length - 1)
+        }
+        return null
+    }
+
+    /**
+     * Every list mark in [input], as (mark, first character after it).
+     *
+     * A mark counts only at the start of the line or after a space — inside a word a tilde is a
+     * tilde. Any run of spaces after it is skipped, so `~Groceries` and `~ Groceries` are one thing.
+     */
+    private inline fun eachMark(input: String, body: (mark: Int, from: Int) -> Unit) {
+        var at = 0
+        while (true) {
+            val mark = input.indexOf(LIST_MARK, at)
+            if (mark < 0) return
+            at = mark + 1
+            if (mark > 0 && !input[mark - 1].isWhitespace()) continue
+            var from = mark + 1
+            while (from < input.length && input[from].isWhitespace()) from++
+            if (from < input.length) body(mark, from)
+        }
+    }
+
+    /**
+     * The `~…` currently being typed, for a field that wants to offer the lists that match it.
+     *
+     * The last mark on the line rather than the one under the caret: a plain text field does not
+     * report a caret, and the token being typed is the last one in every case that matters. Returns
+     * the span to replace and the partial name, which may be empty when the mark was just typed —
+     * that is when showing every list is most useful.
+     */
+    fun listDraft(input: String): Pair<IntRange, String>? {
+        var found: Pair<IntRange, String>? = null
+        var at = 0
+        while (true) {
+            val mark = input.indexOf(LIST_MARK, at)
+            if (mark < 0) return found
+            at = mark + 1
+            if (mark > 0 && !input[mark - 1].isWhitespace()) continue
+            found = (mark..input.lastIndex) to input.substring(mark + 1).trimStart()
+        }
+    }
+
+    /**
+     * The lists worth offering for a partial name, best first, or every list when nothing is typed.
+     *
+     * Matched on the same [normalise] the parser uses, so what the field offers and what the line
+     * resolves to cannot disagree. A name that starts with what was typed comes before one that
+     * merely contains it — "Work" before "Homework" for "wor".
+     */
+    fun listSuggestions(draft: String, lists: List<String>): List<String> {
+        val d = normalise(draft)
+        if (d.isEmpty()) return lists
+        val starts = lists.filter { normalise(it).startsWith(d) }
+        val contains = lists.filter { normalise(it).contains(d) && it !in starts }
+        return starts + contains
     }
 
     private fun shorthandPriority(word: String): String? = when (word.lowercase()) {

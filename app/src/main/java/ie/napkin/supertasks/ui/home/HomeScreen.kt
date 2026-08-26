@@ -61,6 +61,7 @@ import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
 import androidx.compose.ui.text.input.VisualTransformation
+import ie.napkin.supertasks.ui.components.ListSuggestions
 import ie.napkin.supertasks.ui.components.rememberCaptureHighlight
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.Compass
@@ -478,6 +479,16 @@ private fun CreatePanel(
                 inner()
             },
         )
+        // Only while a `~` is being typed, and only for a task — a list is named literally, so
+        // there is no destination to offer it.
+        if (type == CreateType.TASK) {
+            ListSuggestions(
+                text = text,
+                lists = listNames,
+                modifier = Modifier.padding(top = 4.dp),
+                onPick = { text = it },
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             CreateType.entries.forEach { t ->

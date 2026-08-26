@@ -452,8 +452,22 @@ Three rules keep it honest, and they are the interesting part:
   field shared workspaces were built for — and not `>`, which is a blockquote. `~` is free because a
   task title renders no markdown (see below). It is the one token that is *not* written to
   the file: a task's list is the page it sits on, so naming one is a routing instruction spent at
-  capture, with nowhere on the line to live afterwards. Names are matched against the lists that
-  exist, because names contain spaces and a typo must leave the text alone rather than invent a list.
+  capture, with nowhere on the line to live afterwards.
+
+  **Matching ignores case and spacing.** `~worktrips`, `~Work trips` and `~WORK TRIPS` are one
+  instruction, because the shortcut earns its keep mid-sentence and one-handed, on a keyboard that
+  capitalises what it likes. Longest known name wins, and a name matches only whole — `~Workshop`
+  does not become `Work`, since filing into the wrong list you have is worse than making the right
+  one you do not.
+
+  **A name that matches nothing is created.** This reverses the original rule, which left an
+  unrecognised name in the title so a typo could not conjure a list. That was right about the risk
+  and wrong about the remedy: it also meant filing into a new list required stopping to make the
+  list first — the interruption this whole path exists to remove. The remedy is that nothing is
+  silent. The name is tinted while it is typed, and the field offers the lists that already match
+  before it comes to creating one, so `~Grocries` shows you `Groceries` to tap. Two shapes are
+  deliberately not lists: a tilde inside a word (`foo~bar`), and a tilde before a digit, because
+  `~5 mins` is how people write "about five minutes".
 
 One path — `captureTask` — so the quick-add bar, the create sheet, smart lists and the widget cannot
 disagree about what "tomorrow" means. The share target deliberately does *not* parse: what arrives

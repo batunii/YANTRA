@@ -85,6 +85,15 @@ class NodePageViewModel(
     val allLabels: StateFlow<List<LabelEntity>> =
         labels.all().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * Every list in the workspace, by name — so `~` in the quick-add bar can name one of them and
+     * be offered the ones that match while it is still being typed.
+     */
+    val listNames: StateFlow<List<String>> =
+        nodes.allLists()
+            .map { all -> all.filter { it.type == NodeType.LIST }.mapNotNull { it.title } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     /** Labels attached to the page node itself — feeds the always-visible label row. */
     val ownLabels: StateFlow<List<LabelEntity>> =
         labelsFor(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

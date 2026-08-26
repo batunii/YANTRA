@@ -239,6 +239,7 @@ class CaptureParseTest {
         val c = toList("buy milk ~ Groceries")
         assertEquals("buy milk", c.title)
         assertEquals("Groceries", c.list)
+        assertTrue("an existing list was reported as new", !c.listIsNew)
     }
 
     @Test
@@ -249,12 +250,15 @@ class CaptureParseTest {
     }
 
     @Test
-    fun `a list name with spaces is matched whole`() {
-        // The reason names are matched against the ones that exist rather than read off the line:
-        // there is no way to know where "Work trips" ends without knowing it is a list.
-        val c = toList("book flights ~ Work trips")
-        assertEquals("book flights", c.title)
-        assertEquals("Work trips", c.list)
+    fun `spacing inside the name does not have to match`() {
+        // The point of the shortcut is typing it mid-sentence one-handed, and a phone keyboard is
+        // not reliable about either spaces or capitals.
+        listOf("book flights ~ Work trips", "book flights ~worktrips", "book flights ~ WorkTrips")
+            .forEach {
+                assertEquals("failed on: $it", "Work trips", toList(it).list)
+                assertEquals("failed on: $it", "book flights", toList(it).title)
+                assertTrue("failed on: $it", !toList(it).listIsNew)
+            }
     }
 
     @Test
@@ -265,18 +269,69 @@ class CaptureParseTest {
     }
 
     @Test
-    fun `an unknown list is left in the title rather than invented`() {
-        // A typo must not conjure a list. Leaving the text alone is visible and costs nothing; the
-        // alternative is a new list named "Grocries" that someone has to find and delete.
-        val c = toList("buy milk ~ Grocries")
-        assertEquals("buy milk ~ Grocries", c.title)
+    fun `a name only matches whole`() {
+        // "Work" must not claim "Workshop" — that is a list this workspace does not have, and
+        // filing into the wrong existing list is worse than making the right new one.
+        val c = toList("build a bench ~ Workshop")
+        assertEquals("Workshop", c.list)
+        assertTrue("Workshop was matched onto Work", c.listIsNew)
+    }
+
+    @Test
+    fun `a name the workspace does not have becomes a new list`() {
+        // This reverses the original rule. Leaving an unknown name in the title meant the only way
+        // to file into a new list was to stop and make it first — the interruption capture exists
+        // to remove. The safeguard is that nothing is silent: the name is tinted as it is typed.
+        val c = toList("buy milk ~ Camping")
+        assertEquals("buy milk", c.title)
+        assertEquals("Camping", c.list)
+        assertTrue(c.listIsNew)
+    }
+
+    @Test
+    fun `a new list name may have spaces in it`() {
+        // An existing name is matched against the ones that exist, so its extent is known. A new one
+        // has no such help: it runs to the end of the line, because that is the only bound that does
+        // not need to guess.
+        val c = toList("plan the trip ~ Summer holiday")
+        assertEquals("plan the trip", c.title)
+        assertEquals("Summer holiday", c.list)
+        assertTrue(c.listIsNew)
+    }
+
+    @Test
+    fun `a new list stops where another token starts`() {
+        // The reason the new-list name is resolved last: everything else has already staked its
+        // claim, so "tomorrow" is still a date and the list is only what is left.
+        val c = toList("pack ~ Camping tomorrow #gear !high")
+        assertEquals("pack", c.title)
+        assertEquals("Camping", c.list)
+        assertTrue(c.listIsNew)
+        assertEquals(today.plusDays(1), c.date)
+        assertEquals(listOf("gear"), c.labels)
+        assertEquals("High", c.priority)
+    }
+
+    @Test
+    fun `a tilde inside a word is not a mark`() {
+        val c = toList("rename foo~bar")
+        assertEquals("rename foo~bar", c.title)
         assertNull(c.list)
     }
 
     @Test
-    fun `a bare mark is not a list`() {
-        val c = toList("ship it ~ done")
-        assertEquals("ship it ~ done", c.title)
+    fun `a tilde before a number is an approximation, not a list`() {
+        // "~5 mins" is how people write "about five minutes", and it must not quietly become a list
+        // called "5 mins" — the one shape where the mark is far more likely to be ordinary text.
+        val c = toList("call the plumber ~5 mins")
+        assertEquals("call the plumber ~5 mins", c.title)
+        assertNull(c.list)
+    }
+
+    @Test
+    fun `a mark with nothing after it is not a list`() {
+        val c = toList("ship it ~")
+        assertEquals("ship it ~", c.title)
         assertNull(c.list)
     }
 
@@ -291,10 +346,58 @@ class CaptureParseTest {
     }
 
     @Test
-    fun `no lists known means no list can be named`() {
-        // Every other surface passes the workspace's lists; one that forgets should degrade to
-        // leaving the text alone rather than to matching something arbitrary.
-        assertNull(parse("buy milk ~ Groceries").list)
-        assertEquals("buy milk ~ Groceries", parse("buy milk ~ Groceries").title)
+    fun `the whole line being a list name leaves it as a title`() {
+        // The same rule as every other token: naming a destination and nothing else is a task
+        // called that, not an empty task filed somewhere.
+        val c = toList("~ Groceries")
+        assertEquals("~ Groceries", c.title)
+    }
+
+    @Test
+    fun `with no lists known every name is a new one`() {
+        val c = parse("buy milk ~ Groceries")
+        assertEquals("buy milk", c.title)
+        assertEquals("Groceries", c.list)
+        assertTrue(c.listIsNew)
+    }
+
+    // ---- offering the lists that match what is being typed ----
+
+    @Test
+    fun `the draft is the last mark on the line and what follows it`() {
+        val (span, draft) = CaptureParse.listDraft("buy milk ~ Groc")!!
+        assertEquals("Groc", draft)
+        assertEquals("~ Groc", "buy milk ~ Groc".substring(span.first, span.last + 1))
+    }
+
+    @Test
+    fun `a bare mark drafts nothing, which is when every list is worth offering`() {
+        assertEquals("", CaptureParse.listDraft("buy milk ~")!!.second)
+        assertEquals(lists, CaptureParse.listSuggestions("", lists))
+    }
+
+    @Test
+    fun `suggestions match on the same rule the parser matches on`() {
+        // Whatever the field offers has to be something the line would actually resolve to, so both
+        // ignore case and spacing.
+        assertEquals(listOf("Work", "Work trips"), CaptureParse.listSuggestions("wor", lists))
+        assertEquals(listOf("Work trips"), CaptureParse.listSuggestions("worktr", lists))
+        assertEquals(listOf("Groceries"), CaptureParse.listSuggestions("GROC", lists))
+    }
+
+    @Test
+    fun `a name that starts with the draft comes before one that merely contains it`() {
+        val out = CaptureParse.listSuggestions("started", listOf("Getting started", "Started work"))
+        assertEquals(listOf("Started work", "Getting started"), out)
+    }
+
+    @Test
+    fun `nothing matching is how the field knows to offer a new list`() {
+        assertEquals(emptyList<String>(), CaptureParse.listSuggestions("Camping", lists))
+    }
+
+    @Test
+    fun `no mark means no draft`() {
+        assertNull(CaptureParse.listDraft("buy milk tomorrow"))
     }
 }

@@ -269,6 +269,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                     .navigationBarsPadding()
                     .imePadding(),
                 labels = labels,
+                lists = lists.mapNotNull { it.title },
                 onAdd = vm::addTask,
             )
         }
