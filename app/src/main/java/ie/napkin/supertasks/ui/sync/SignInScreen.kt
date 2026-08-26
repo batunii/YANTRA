@@ -127,6 +127,7 @@ fun SignInScreen(nav: NavHostController) {
     var checking by remember { mutableStateOf(false) }
 
     var install by remember { mutableStateOf<InstallState?>(null) }
+    var accountId by remember { mutableStateOf(container.credentials.accountId(Credentials.ACCOUNT)) }
     var localSlug by remember { mutableStateOf(container.slugOf("")) }
     var repoName by remember { mutableStateOf("yantra-tasks") }
     var awaiting by remember { mutableStateOf<String?>(null) }
@@ -152,6 +153,14 @@ fun SignInScreen(nav: NavHostController) {
             install = if (!viaApp) InstallState.Installed
             else withContext(Dispatchers.IO) {
                 container.github.installState(tok, GitHubAuth.APP_SLUG)
+            }
+
+            // An account signed in before the id was being stored still deserves the direct link.
+            // Only when there is something to install, and only once — the answer never changes.
+            if (install == InstallState.Absent && container.credentials.accountId(Credentials.ACCOUNT) == null) {
+                withContext(Dispatchers.IO) { container.github.account(tok) }
+                    ?.let { container.credentials.rememberAccountId(Credentials.ACCOUNT, it.id) }
+                accountId = container.credentials.accountId(Credentials.ACCOUNT)
             }
 
             val wanted = awaiting
@@ -185,7 +194,8 @@ fun SignInScreen(nav: NavHostController) {
             when (val poll = withContext(Dispatchers.IO) { container.deviceAuth.poll(waiting.code) }) {
                 is DevicePoll.Token -> {
                     struggling = null
-                    val login = withContext(Dispatchers.IO) { container.github.viewer(poll.token) }
+                    val who = withContext(Dispatchers.IO) { container.github.account(poll.token) }
+                    val login = who?.login
                     if (login == null) {
                         stage = Stage.Failed("GitHub gave us a token it then would not accept")
                     } else {
@@ -195,8 +205,13 @@ fun SignInScreen(nav: NavHostController) {
                             // not lapse; anything else is what TokenRenewal needs to keep it alive.
                             refreshToken = poll.refreshToken,
                             expiresAt = poll.expiresInSecs?.let { System.currentTimeMillis() + it * 1000L },
+                            // Kept now so the install link can be aimed at this account rather than
+                            // landing on a chooser. It costs nothing here and is a request we would
+                            // otherwise have to make later, at the one moment someone is waiting.
+                            accountId = who.id,
                         )
                         account = login
+                        accountId = who.id
                         viaApp = true
                         stage = Stage.Idle
                     }
@@ -264,7 +279,7 @@ fun SignInScreen(nav: NavHostController) {
                     note = note,
                     noteBad = noteBad,
                     onRepoName = { repoName = it; note = null },
-                    onInstall = { uri.openUri(GitHubAuth.installUrl) },
+                    onInstall = { uri.openUri(GitHubAuth.installUrl(accountId)) },
                     onCreate = {
                         note = null
                         awaiting = repoName.trim()
@@ -276,6 +291,7 @@ fun SignInScreen(nav: NavHostController) {
                         // workspaces that already sync — which is what signing out actually means.
                         container.credentials.clear(Credentials.ACCOUNT)
                         account = null
+                        accountId = null
                         viaApp = false
                         install = null
                         awaiting = null

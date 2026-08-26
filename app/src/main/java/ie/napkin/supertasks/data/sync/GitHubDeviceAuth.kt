@@ -41,7 +41,14 @@ object GitHubAuth {
      * all, which is the most confusing possible state to leave someone in. So the sign-in screen
      * checks for an installation and sends them here when there is none.
      */
-    val installUrl: String get() = "https://github.com/apps/$APP_SLUG/installations/new"
+    fun installUrl(targetId: Long? = null): String {
+        val base = "https://github.com/apps/$APP_SLUG/installations"
+        // Aimed at the account that just signed in. Without the id GitHub shows a chooser first —
+        // one page whose only real answer is the account already in the address bar — and installing
+        // costs two taps in a browser instead of one.
+        return if (targetId != null) "$base/new/permissions?suggested_target_id=$targetId"
+        else "$base/new"
+    }
 
     /**
      * GitHub's new-repository form, with the name and visibility already filled in.

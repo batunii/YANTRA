@@ -91,7 +91,7 @@ sealed interface InstallState {
 open class GitHubApi(private val base: String = "https://api.github.com") {
 
     @Serializable
-    private data class User(val login: String)
+    private data class User(val login: String, val id: Long = 0)
 
     @Serializable
     private data class Repo(
@@ -117,10 +117,20 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
      * them is real git against a real repository; these two are the only calls that need GitHub to
      * exist, and stubbing them is what lets the link and attach paths be tested at all.
      */
-    open fun viewer(token: String): String? =
-        get("$base/user", token)?.let {
-            runCatching { json.decodeFromString(User.serializer(), it).login }.getOrNull()
-        }
+    open fun viewer(token: String): String? = account(token)?.login
+
+    /**
+     * The token's owner, with the numeric id GitHub needs to aim an installation link at them.
+     *
+     * The id is not cosmetic. `apps/<slug>/installations/new` lands on a chooser — "which account
+     * are you installing this on?" — even when the answer can only be the one account that just
+     * signed in. `suggested_target_id` skips it, which is the difference between two taps in a
+     * browser and one.
+     */
+    open fun account(token: String): GitHubAccount? =
+        get("$base/user", token)?.let { body ->
+            runCatching { json.decodeFromString(User.serializer(), body) }.getOrNull()
+        }?.takeIf { it.id > 0 }?.let { GitHubAccount(it.login, it.id) }
 
     open fun check(ref: RepoRef, token: String): RepoCheck {
         val conn = open("$base/repos/${ref.owner}/${ref.name}", token)
@@ -202,3 +212,6 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
             readTimeout = 15_000
         }
 }
+
+/** Who a token belongs to. The id is what aims an installation link at one account. */
+data class GitHubAccount(val login: String, val id: Long)

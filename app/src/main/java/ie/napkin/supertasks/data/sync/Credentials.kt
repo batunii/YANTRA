@@ -45,6 +45,9 @@ class Credentials(context: Context) {
         private fun tokenKey(ws: String) = "token:$ws"
         private fun ivKey(ws: String) = "iv:$ws"
         private fun loginKey(ws: String) = "login:$ws"
+
+        /** GitHub's numeric id for the account. Public information, and stored as such. */
+        private fun accountIdKey(ws: String) = "ghid:$ws"
         private fun viaAppKey(ws: String) = "viaapp:$ws"
 
         /**
@@ -100,6 +103,8 @@ class Credentials(context: Context) {
         refreshToken: String? = null,
         /** When [token] stops working, or null when it does not. */
         expiresAt: Long? = null,
+        /** GitHub's numeric id for [login]. Null leaves any stored one alone. */
+        accountId: Long? = null,
     ) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val sealed = cipher.doFinal(token.toByteArray())
@@ -115,6 +120,7 @@ class Credentials(context: Context) {
                     putString(refreshIvKey(workspaceId), Base64.encodeToString(rc.iv, Base64.NO_WRAP))
                 }
                 if (expiresAt != null) putLong(expiryKey(workspaceId), expiresAt) else remove(expiryKey(workspaceId))
+                if (accountId != null) putLong(accountIdKey(workspaceId), accountId)
             }
             // commit, not apply. Setup reports success to the user once this returns, and an
             // asynchronous write means a crash in between could leave a workspace whose git remote
@@ -147,6 +153,15 @@ class Credentials(context: Context) {
     }
 
     fun login(workspaceId: String): String? = prefs.getString(loginKey(workspaceId), null)
+
+    /** GitHub's numeric id for the stored account, when it is known. */
+    fun accountId(workspaceId: String): Long? =
+        prefs.getLong(accountIdKey(workspaceId), 0L).takeIf { it > 0L }
+
+    /** Remembers the id for an account signed in before it was being recorded. */
+    fun rememberAccountId(workspaceId: String, id: Long) {
+        prefs.edit().putLong(accountIdKey(workspaceId), id).apply()
+    }
 
     /** The refresh token, if GitHub issued one and it still decrypts. */
     fun refreshToken(workspaceId: String): String? =
@@ -186,6 +201,7 @@ class Credentials(context: Context) {
             .remove(refreshKey(workspaceId))
             .remove(refreshIvKey(workspaceId))
             .remove(expiryKey(workspaceId))
+            .remove(accountIdKey(workspaceId))
             .commit()
     }
 
