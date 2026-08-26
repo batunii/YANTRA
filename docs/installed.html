@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yantra — access granted</title>
+<!--
+  GitHub's Setup URL, which is where it sends someone once they have installed the App.
+
+  This page exists because that field will not take a custom scheme: it wants http(s), and the app
+  answers to yantra://installed. So this is the smallest possible thing that can stand between the
+  two — an https address GitHub will accept, whose only job is to hand over to the app.
+
+  It tries immediately, because nobody wants to read a page here. The button is for the browsers
+  that refuse a scheme change without a tap to point at, which is most of them some of the time.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #0d0d0d; color: #f2efe9;
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  main { max-width: 22rem; text-align: center; }
+  h1 { font-size: 1.35rem; margin: 0 0 .5rem; letter-spacing: -0.01em; }
+  p { margin: 0 0 1.5rem; color: #9d9891; font-size: .93rem; }
+  a.open {
+    display: block; padding: .85rem 1rem; border-radius: 13px;
+    background: #e08a68; color: #1a1310; font-weight: 650; text-decoration: none;
+  }
+  small { display: block; margin-top: 1.25rem; color: #6b6660; font-size: .78rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Access granted</h1>
+  <p>Yantra can reach your repositories now. This page is only a doorway back to the app.</p>
+  <a class="open" id="open" href="yantra://installed">Open Yantra</a>
+  <small>If nothing happens, switch back to Yantra yourself — it notices on its own.</small>
+</main>
+<script>
+  // Straight through, before the page has really been seen.
+  location.replace("yantra://installed");
+</script>
+</body>
+</html>
