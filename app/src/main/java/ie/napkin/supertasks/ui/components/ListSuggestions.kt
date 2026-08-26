@@ -66,10 +66,9 @@ fun ListSuggestions(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (matches.isEmpty()) {
-            // Not a button. There is nothing to choose — carrying on typing is already the way to
-            // make this list, and a control that only restates what will happen anyway is a second
-            // control for one idea.
-            NewListPill(typed)
+            // Said, not offered. There is nothing here to choose: carrying on typing is already how
+            // this list gets made, and the only honest thing left to do is name it back.
+            NewListCaption(typed)
         } else {
             matches.forEach { name ->
                 SelectChip(
@@ -86,34 +85,42 @@ fun ListSuggestions(
 /**
  * What is about to be made, stated rather than offered.
  *
- * Deliberately not a button: carrying on typing already makes this list, so a control here would be
- * a second way to do one thing. It is a label, and its whole job is that the name is read once
- * before it exists.
+ * **Deliberately not a chip.** It was one — same fill, same border, same corner radius as the
+ * suggestions beside it — and it was tapped, because that is what a pill in a row of tappable pills
+ * means. Nothing happened, because there was nothing for it to do. A control that looks like a
+ * control has promised something, and "it is only a label" is not a defence the person tapping it
+ * can hear.
+ *
+ * So it is typeset as a caption instead: no fill, no border, dimmed, sitting beside the field rather
+ * than in front of it. And it says where the name ends, because that is the one thing that is not
+ * obvious — everything after the mark belongs to the name, so the list has to be the last thing on
+ * the line, and there is no way to see that from the tinting alone.
  */
 @Composable
-private fun NewListPill(name: String) {
+private fun NewListCaption(name: String) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(8.dp)
     Row(
-        Modifier
-            .background(y.tileWarm2, shape)
-            .border(1.dp, y.tileBorder, shape)
-            .padding(horizontal = 9.dp, vertical = 5.dp),
+        Modifier.padding(start = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             Icons.Default.Add,
             contentDescription = null,
-            tint = y.textSecondary,
+            tint = y.textDim,
             modifier = Modifier.size(12.dp),
         )
         Text(
             "New list \u201C$name\u201D",
-            color = y.textSecondary,
+            color = y.textMuted,
             fontFamily = YantraText,
             fontWeight = FontWeight.W600,
             fontSize = 12.sp,
+        )
+        Text(
+            "— the name runs to the end of the line",
+            color = y.textDim,
+            fontSize = 11.sp,
         )
     }
 }
