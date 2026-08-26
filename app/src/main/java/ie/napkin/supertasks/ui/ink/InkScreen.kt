@@ -227,14 +227,43 @@ class InkViewModel(
 
 enum class InkTool { PEN, MARKER, HIGHLIGHTER, SHAPES, ERASER }
 
-private val Presets = listOf(
-    0xFFE06A43L, // coral
+/**
+ * The five drawing colours, which are colours and mean nothing else.
+ *
+ * Coral used to sit at the front of this list. That was a copy of the accent made before the accent
+ * could be changed, and it stayed a copy afterwards: pick Jade and the first swatch went on offering
+ * coral — a hue with no remaining part in the app, presented as though it were the house colour. See
+ * [inkPresets], which puts the live accent there instead.
+ */
+private val DrawingColors = listOf(
     0xFF6FA8E4L, // blue
     0xFF4E9478L, // green
     0xFFE0A83EL, // amber
     0xFFC56A94L, // pink
     0xFF8B6BA8L, // purple
 )
+
+/**
+ * The swatch row: whatever the app currently calls its own ink, then five colours that are only
+ * colours.
+ *
+ * The accent leads because a drawing inside a task belongs to the same document as the task, and
+ * the first thing offered should be the hue the rest of the app is already drawn in.
+ *
+ * It is resolved per theme, so the swatch is the accent as it looks on *this* paper — the light and
+ * dark inks of an accent are not the same value, and offering the other one would hand you a colour
+ * that does not appear anywhere on screen.
+ *
+ * Only the swatch follows the accent. A stroke stores the colour it was drawn with, so changing
+ * accent afterwards repaints nothing: a drawing is a drawing, not a themed surface.
+ *
+ * Nothing is dropped for being close to the accent. A first attempt filtered near-duplicates, and
+ * the arithmetic said coral and amber were the same colour — they are the two warm swatches the
+ * original palette deliberately carried side by side. A wrong heuristic that silently removes a
+ * colour someone wanted is worse than two swatches that happen to be neighbours.
+ */
+private fun inkPresets(accent: Color): List<Long> =
+    listOf(accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -255,7 +284,9 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
 
     var tool by remember { mutableStateOf(InkTool.PEN) }
     var penColor by remember(dark) { mutableLongStateOf(InkTheme.defaultPen(dark)) }
-    var markerColor by remember { mutableLongStateOf(0xFFE06A43L) }
+    // The accent, not a copy of what the accent used to be. Keyed on it so choosing a new one is
+    // reflected the next time the screen is opened rather than persisting the old house colour.
+    var markerColor by remember(y.accent) { mutableLongStateOf(y.accent.toArgb().toLong() and 0xFFFFFFFFL) }
     var hlColor by remember { mutableLongStateOf(0xFFE0A83EL) }
     var shapeColor by remember(dark) { mutableLongStateOf(InkTheme.defaultPen(dark)) }
     var penSize by remember { mutableFloatStateOf(4f) }
@@ -440,8 +471,9 @@ private fun ToolTray(
         }
         if (tool != InkTool.ERASER) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Presets.forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
-                recents.filter { it !in Presets }.take(2).forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
+                val presets = inkPresets(y.accent)
+                presets.forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
+                recents.filter { it !in presets }.take(2).forEach { c -> Swatch(Color(c), selected = color == c) { onColor(c) } }
                 // custom color opener
                 Box(
                     Modifier.size(26.dp).border(1.dp, y.textMuted, CircleShape).clickable(onClick = onCustomColor),

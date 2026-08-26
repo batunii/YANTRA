@@ -425,7 +425,19 @@ Two things did not simply get renamed, and both are worth knowing about:
 Historical migrations kept the name the table actually had at their version — a blind sweep rewrote
 them to `focus_session`, which would have made every one of them fail against a real v9 database.
 
-**Ink's preset palette** still hardcodes a copy of coral that will not follow the accent (§4b).
+**~~Ink's preset palette hardcodes a copy of coral~~ · DONE.** The first swatch is the live accent,
+resolved for the current theme, and the marker defaults to it. The other five are drawing colours
+that mean nothing else and stay fixed.
+
+The distinction worth keeping: only the *swatch* follows the accent. A stroke stores the colour it
+was drawn with, so changing accent afterwards repaints nothing — a drawing is a drawing, not a themed
+surface. That is also why the accent is resolved per theme: the light and dark inks of an accent are
+different values, and offering the other one would hand you a colour that appears nowhere on screen.
+
+A first attempt also filtered swatches too close to the accent. Its arithmetic decided coral and
+amber were the same colour — the two warm swatches the original palette deliberately carried side by
+side. Removed: a wrong heuristic that silently drops a colour someone wanted is worse than two
+neighbours.
 
 ## 7. Added since, and not from the audit
 
