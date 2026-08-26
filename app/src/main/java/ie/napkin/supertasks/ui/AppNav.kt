@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -38,7 +39,13 @@ fun appContainer(): AppContainer =
     (LocalContext.current.applicationContext as App).container
 
 /** A launch deep-link: a node to open (widget/notification tap), or the focus screen. */
-data class OpenTarget(val nodeId: String?, val isSmart: Boolean, val focus: Boolean = false)
+data class OpenTarget(
+    val nodeId: String?,
+    val isSmart: Boolean,
+    val focus: Boolean = false,
+    /** GitHub sent them back here after installing the App — see [Routes.GITHUB]. */
+    val github: Boolean = false,
+)
 
 object Routes {
     const val SPLASH = "splash"
@@ -61,10 +68,22 @@ fun AppNav(
     onOpenConsumed: () -> Unit = {},
     navController: NavHostController = rememberNavController(),
 ) {
+    /**
+     * Fixed at the first composition, and deliberately not derived from [openTarget] afterwards.
+     *
+     * It used to read `if (openTarget != null) HOME else SPLASH` inline. Changing a NavHost's start
+     * destination rebuilds its graph and throws the back stack away — so the moment [onOpenConsumed]
+     * set the target back to null, one frame after arriving somewhere, the whole navigation was
+     * undone and the previous screen came back from saved state. The destination *was* reached; it
+     * just did not survive being told the intent had been handled.
+     */
+    val startDestination = remember { if (openTarget != null) Routes.HOME else Routes.SPLASH }
+
     // A widget tap skips the splash and jumps straight to the tapped list/task.
     LaunchedEffect(openTarget) {
         val target = openTarget ?: return@LaunchedEffect
         val route = when {
+            target.github -> Routes.GITHUB
             target.focus -> Routes.FOCUS_CURRENT
             target.nodeId == null -> return@LaunchedEffect
             target.isSmart -> Routes.smart(target.nodeId)
@@ -81,7 +100,7 @@ fun AppNav(
     val effectsFade = tween<Float>(220)
     NavHost(
         navController = navController,
-        startDestination = if (openTarget != null) Routes.HOME else Routes.SPLASH,
+        startDestination = startDestination,
         enterTransition = { slideInHorizontally(spatialSlide) { it / 6 } + fadeIn(effectsFade) },
         exitTransition = { fadeOut(effectsFade) },
         popEnterTransition = { fadeIn(effectsFade) },

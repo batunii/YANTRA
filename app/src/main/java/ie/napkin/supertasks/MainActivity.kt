@@ -26,6 +26,18 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private var openTarget by mutableStateOf<OpenTarget?>(null)
 
+    /**
+     * Both shapes the Setup URL can take, because which one GitHub accepts is its call, not ours.
+     *
+     * `yantra://installed` is the ordinary mobile answer and needs nothing hosted. An `https` link
+     * to the same path is the fallback if that field refuses a custom scheme; it is declared without
+     * `autoVerify`, so Android offers the app rather than guaranteeing it — good enough for a link
+     * the user has just asked to follow, and it needs no assetlinks.json on a domain we do not own.
+     */
+    private fun isInstallReturn(uri: android.net.Uri): Boolean =
+        (uri.scheme == "yantra" && uri.host == "installed") ||
+            (uri.scheme == "https" && uri.host == "yantra.napkin.ie" && uri.path == "/installed")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -73,6 +85,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun targetFrom(intent: Intent?): OpenTarget? {
+        // GitHub's Setup URL, which it opens once the App has been installed. Landing back inside
+        // the app *is* the last step: the sign-in screen re-asks whether the App is installed every
+        // time it resumes, so arriving here is enough to finish. Without it the browser simply sits
+        // on GitHub's "all set" page and the user has to find their way back and tap again.
+        if (intent?.action == Intent.ACTION_VIEW && intent.data?.let(::isInstallReturn) == true) {
+            return OpenTarget(nodeId = null, isSmart = false, github = true)
+        }
         if (intent?.getBooleanExtra(WidgetIntents.EXTRA_OPEN_FOCUS, false) == true) {
             return OpenTarget(nodeId = null, isSmart = false, focus = true)
         }

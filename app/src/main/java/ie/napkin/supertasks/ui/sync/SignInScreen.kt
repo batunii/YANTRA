@@ -2,6 +2,7 @@ package ie.napkin.supertasks.ui.sync
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,6 +70,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Where the sign-in has got to. */
+/**
+ * A dead end, said on screen and written down.
+ *
+ * The message a user can read has to be one line; the reason it happened rarely fits in one. Sync
+ * learned this the hard way — a failure with nothing behind it is undiagnosable the moment the
+ * screen is dismissed, and sign-in is the one flow where being stuck is the whole experience.
+ */
+private fun failed(reason: String): Stage {
+    Log.w("YantraSignIn", "sign-in failed: $reason")
+    return Stage.Failed(reason)
+}
+
 private sealed interface Stage {
     data object Idle : Stage
     data object Starting : Stage
@@ -107,7 +120,7 @@ fun SignInScreen(nav: NavHostController) {
 
     var account by remember { mutableStateOf(container.credentials.login(Credentials.ACCOUNT)) }
     var viaApp by remember { mutableStateOf(container.credentials.viaApp(Credentials.ACCOUNT)) }
-    var stage by remember { mutableStateOf<Stage>(Stage.Idle) }
+    var stage: Stage by remember { mutableStateOf<Stage>(Stage.Idle) }
     // Open already when there is no App registered to sign into. Otherwise this screen says
     // "signing in is unavailable" and hides the only thing that works behind a link, which reads as
     // a dead end. Once a client id is set this state never occurs.
@@ -197,7 +210,7 @@ fun SignInScreen(nav: NavHostController) {
                     val who = withContext(Dispatchers.IO) { container.github.account(poll.token) }
                     val login = who?.login
                     if (login == null) {
-                        stage = Stage.Failed("GitHub gave us a token it then would not accept")
+                        stage = failed("GitHub gave us a token it then would not accept")
                     } else {
                         container.credentials.store(
                             Credentials.ACCOUNT, poll.token, login, viaApp = true,
@@ -218,7 +231,7 @@ fun SignInScreen(nav: NavHostController) {
                     return@LaunchedEffect
                 }
                 is DevicePoll.Failed -> {
-                    stage = Stage.Failed(poll.reason)
+                    stage = failed(poll.reason)
                     return@LaunchedEffect
                 }
                 // A dropped request is not an answer. Keep asking — but say so, because a screen
@@ -227,7 +240,7 @@ fun SignInScreen(nav: NavHostController) {
                 is DevicePoll.Offline -> {
                     offline++
                     if (offline >= MAX_OFFLINE_POLLS) {
-                        stage = Stage.Failed("Cannot reach GitHub — ${poll.reason}")
+                        stage = failed("Cannot reach GitHub — ${poll.reason}")
                         return@LaunchedEffect
                     }
                     struggling = poll.reason
@@ -244,7 +257,7 @@ fun SignInScreen(nav: NavHostController) {
                 }
             }
         }
-        stage = Stage.Failed("The code expired. Start again for a fresh one")
+        stage = failed("The code expired. Start again for a fresh one")
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
@@ -337,7 +350,7 @@ fun SignInScreen(nav: NavHostController) {
                                             withContext(Dispatchers.IO) { container.deviceAuth.start() }
                                     ) {
                                         is DeviceStart.Ok -> Stage.Waiting(started.code)
-                                        is DeviceStart.Failed -> Stage.Failed(started.reason)
+                                        is DeviceStart.Failed -> failed(started.reason)
                                     }
                                 }
                             },
@@ -394,7 +407,7 @@ fun SignInScreen(nav: NavHostController) {
                             }
                             busy = false
                             if (login == null) {
-                                stage = Stage.Failed("GitHub rejected that token")
+                                stage = failed("GitHub rejected that token")
                             } else {
                                 container.credentials.store(Credentials.ACCOUNT, token.trim(), login)
                                 account = login

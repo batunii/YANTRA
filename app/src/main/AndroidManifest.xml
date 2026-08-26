@@ -44,7 +44,40 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize">
+            <!--
+              Where GitHub sends someone once they have installed the App — its Setup URL.
+
+              Installing used to end on GitHub's own "all set" page, with the last step being for the
+              user to work out that they should go back to Yantra. This closes it: GitHub redirects,
+              Android opens the app, and the sign-in screen re-checks the installation the moment it
+              resumes, which it already did. Nothing to tap.
+
+              Two schemes because which one that field accepts is GitHub's decision. The custom
+              scheme is the ordinary mobile answer and needs nothing hosted; the https form is the
+              fallback, deliberately without autoVerify so it works with no assetlinks.json on a
+              domain this app does not control — Android offers the app rather than guaranteeing it,
+              which is fine for a link the user just chose to follow.
+
+              singleTop above matters here: the redirect arrives at the running app through
+              onNewIntent rather than starting a second copy over the one they signed in on.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="yantra" android:host="installed" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="yantra.napkin.ie"
+                    android:path="/installed" />
+            </intent-filter>
+        </activity>
 
         <activity-alias
             android:name=".LaunchCoral"
