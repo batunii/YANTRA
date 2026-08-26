@@ -227,6 +227,26 @@ fun SignInScreen(nav: NavHostController) {
                         accountId = who.id
                         viaApp = true
                         stage = Stage.Idle
+
+                        // Straight on to the second half, without coming back here to be told to.
+                        //
+                        // Signing in and granting access are two errands on GitHub, and only the
+                        // first one ends by itself. The second used to wait behind a button on this
+                        // screen — so the reward for finishing sign-in was a screen saying there was
+                        // one more step, and a token that could see nothing until it was taken.
+                        // Chaining them makes it one trip: enter the code, choose All repositories,
+                        // and the Setup URL brings you back finished.
+                        //
+                        // Only here, never on resume. The resume handler also knows when the App is
+                        // not installed, and opening the browser from *there* would send someone
+                        // who backed out of the page straight back into it, forever.
+                        val installed = withContext(Dispatchers.IO) {
+                            container.github.installState(poll.token, GitHubAuth.APP_SLUG)
+                        }
+                        install = installed
+                        if (installed == InstallState.Absent) {
+                            uri.openUri(GitHubAuth.installUrl(who.id))
+                        }
                     }
                     return@LaunchedEffect
                 }

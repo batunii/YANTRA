@@ -27,16 +27,13 @@ class MainActivity : ComponentActivity() {
     private var openTarget by mutableStateOf<OpenTarget?>(null)
 
     /**
-     * Both shapes the Setup URL can take, because which one GitHub accepts is its call, not ours.
+     * GitHub's Setup URL, coming back the other way.
      *
-     * `yantra://installed` is the ordinary mobile answer and needs nothing hosted. An `https` link
-     * to the same path is the fallback if that field refuses a custom scheme; it is declared without
-     * `autoVerify`, so Android offers the app rather than guaranteeing it — good enough for a link
-     * the user has just asked to follow, and it needs no assetlinks.json on a domain we do not own.
+     * A custom scheme because this app hosts nothing: an https link would need a domain that exists
+     * and an assetlinks.json on it, and there is neither.
      */
     private fun isInstallReturn(uri: android.net.Uri): Boolean =
-        (uri.scheme == "yantra" && uri.host == "installed") ||
-            (uri.scheme == "https" && uri.host == "yantra.napkin.ie" && uri.path == "/installed")
+        uri.scheme == "yantra" && uri.host == "installed"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()

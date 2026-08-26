@@ -53,11 +53,8 @@
               Android opens the app, and the sign-in screen re-checks the installation the moment it
               resumes, which it already did. Nothing to tap.
 
-              Two schemes because which one that field accepts is GitHub's decision. The custom
-              scheme is the ordinary mobile answer and needs nothing hosted; the https form is the
-              fallback, deliberately without autoVerify so it works with no assetlinks.json on a
-              domain this app does not control — Android offers the app rather than guaranteeing it,
-              which is fine for a link the user just chose to follow.
+              A custom scheme rather than an https link, because nothing is hosted anywhere for
+              this app and an https filter for a domain that does not exist could only ever fail.
 
               singleTop above matters here: the redirect arrives at the running app through
               onNewIntent rather than starting a second copy over the one they signed in on.
@@ -67,15 +64,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="yantra" android:host="installed" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="yantra.napkin.ie"
-                    android:path="/installed" />
             </intent-filter>
         </activity>
 
