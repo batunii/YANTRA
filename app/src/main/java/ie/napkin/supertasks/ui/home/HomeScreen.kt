@@ -49,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -447,12 +448,12 @@ private fun CreatePanel(
 ) {
     val y = Yantra.colors
     var type by remember { mutableStateOf(CreateType.TASK) }
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(TextFieldValue()) }
     var makeSmart by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    val valid = text.isNotBlank()
+    val valid = text.text.isNotBlank()
     val actionLabel = if (type == CreateType.LIST && makeSmart) "Continue" else type.action
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
@@ -464,7 +465,7 @@ private fun CreatePanel(
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = {
-                if (valid) onCreate(type, text.trim(), makeSmart)
+                if (valid) onCreate(type, text.text.trim(), makeSmart)
             }),
             // Only for a task. A list or a group is named literally — its title is whatever you
             // typed — so tinting part of it would promise a reading that is never applied.
@@ -475,7 +476,7 @@ private fun CreatePanel(
             },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).focusRequester(focus),
             decorationBox = { inner ->
-                if (text.isEmpty()) Text(type.placeholder, style = MaterialTheme.typography.headlineSmall, color = y.textMuted.copy(alpha = 0.7f))
+                if (text.text.isEmpty()) Text(type.placeholder, style = MaterialTheme.typography.headlineSmall, color = y.textMuted.copy(alpha = 0.7f))
                 inner()
             },
         )
@@ -483,7 +484,8 @@ private fun CreatePanel(
         // there is no destination to offer it.
         if (type == CreateType.TASK) {
             ListSuggestions(
-                text = text,
+                text = text.text,
+                caret = text.selection.start,
                 lists = listNames,
                 modifier = Modifier.padding(top = 4.dp),
                 onPick = { text = it },
@@ -515,7 +517,7 @@ private fun CreatePanel(
             label = actionLabel,
             modifier = Modifier.fillMaxWidth(),
             enabled = valid,
-            onClick = { onCreate(type, text.trim(), makeSmart) },
+            onClick = { onCreate(type, text.text.trim(), makeSmart) },
         )
     }
 }

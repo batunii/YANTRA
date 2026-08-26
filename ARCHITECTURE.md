@@ -460,6 +460,16 @@ Three rules keep it honest, and they are the interesting part:
   does not become `Work`, since filing into the wrong list you have is worse than making the right
   one you do not.
 
+  **Tapping settles the destination and hands the caret back to the task.** No closing mark is
+  written. A name that exists ends itself; a new one ends by being *last*, so the token is left
+  where it is and the caret moves in front of it. Whatever is typed next lands in the task and the
+  line reads as though it had been typed in that order. This is also why the capture fields hold a
+  `TextFieldValue` rather than a `String` — a plain String keeps the old caret offset, so completing
+  a name left the caret inside what it had just written.
+
+  The strip is shown only while the caret is in the name. That is what "settled" means here, and
+  why no mark is needed to record it: once nobody is typing the name, it is finished.
+
   **Only a new name needs ending, and tapping ends it.** A name that exists is matched against the
   names there are, so the parser already knows where it stops — `~Work trips and pack` files into
   Work trips and leaves "and pack" in the title, with nothing to close. A *new* name has nothing to

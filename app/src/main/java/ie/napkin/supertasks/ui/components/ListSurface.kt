@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -84,17 +85,26 @@ fun QuickAddBar(
     onAdd: (String) -> Unit,
 ) {
     val y = Yantra.colors
-    var text by remember { mutableStateOf("") }
+    // TextFieldValue rather than String, because tapping a suggestion has to place the caret as
+    // well as the text. With a plain String the field keeps the old offset, so completing a name
+    // left the caret in the middle of what it had just written and the next keystroke landed inside
+    // the list's name.
+    var text by remember { mutableStateOf(TextFieldValue()) }
     val send = {
-        if (text.isNotBlank()) {
-            onAdd(text.trim())
-            text = ""
+        if (text.text.isNotBlank()) {
+            onAdd(text.text.trim())
+            text = TextFieldValue()
         }
     }
     // The strip belongs above the bar: growing the bar itself would move the send button
     // under the thumb that was reaching for it.
     Column(modifier.fillMaxWidth().background(y.page)) {
-        ListSuggestions(text = text, lists = lists, onPick = { text = it })
+        ListSuggestions(
+        text = text.text,
+        caret = text.selection.start,
+        lists = lists,
+        onPick = { text = it },
+    )
         Row(
             Modifier
                 .fillMaxWidth()
@@ -121,7 +131,7 @@ fun QuickAddBar(
                     modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.CenterStart) {
-                            if (text.isEmpty()) {
+                            if (text.text.isEmpty()) {
                                 Text(placeholder, color = y.textDim, fontSize = 14.sp)
                             }
                             inner()
