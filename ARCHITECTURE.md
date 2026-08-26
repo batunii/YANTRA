@@ -460,6 +460,12 @@ Three rules keep it honest, and they are the interesting part:
   does not become `Work`, since filing into the wrong list you have is worse than making the right
   one you do not.
 
+  **A second `~` closes the name.** Without one the name runs to the end of the line, which made a
+  new list the last thing you could say — there was no way to name one and then keep typing. `~` is
+  a pair now, like a quote: `pack ~Camping~ tomorrow` is a task called "pack", in Camping, due
+  tomorrow. Tapping a suggestion inserts the closing mark along with the name, because tapping it is
+  exactly the moment the destination stops being something you are still typing.
+
   **A name that matches nothing is created.** This reverses the original rule, which left an
   unrecognised name in the title so a typo could not conjure a list. That was right about the risk
   and wrong about the remedy: it also meant filing into a new list required stopping to make the

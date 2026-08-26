@@ -3,6 +3,7 @@ package ie.napkin.supertasks
 import ie.napkin.supertasks.data.capture.CaptureParse
 import ie.napkin.supertasks.data.capture.Captured
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -310,6 +311,56 @@ class CaptureParseTest {
         assertEquals(today.plusDays(1), c.date)
         assertEquals(listOf("gear"), c.labels)
         assertEquals("High", c.priority)
+    }
+
+    // ---- closing the name ----
+
+    @Test
+    fun `a closing mark ends a new list name and hands the rest back`() {
+        // Without one the name runs to the end of the line, so a new list could only ever be the
+        // last thing said. This is the way to say anything after it.
+        val c = toList("~Summer holiday~ book the ferry")
+        assertEquals("book the ferry", c.title)
+        assertEquals("Summer holiday", c.list)
+        assertTrue(c.listIsNew)
+    }
+
+    @Test
+    fun `a closing mark ends an existing list name too`() {
+        // The same rule either way — a grammar that closed only the names it did not recognise
+        // would be one someone has to know the workspace's contents to use.
+        val c = toList("book flights ~Work trips~ and pack")
+        assertEquals("book flights and pack", c.title)
+        assertEquals("Work trips", c.list)
+        assertTrue(!c.listIsNew)
+    }
+
+    @Test
+    fun `the closing mark is consumed, not left in the title`() {
+        listOf("buy milk ~Groceries~", "buy milk ~Camping~").forEach {
+            assertEquals("failed on: $it", "buy milk", toList(it).title)
+        }
+    }
+
+    @Test
+    fun `closing early wins over swallowing the line`() {
+        // "tomorrow" is a date because the name stopped before it, not because the date pass got
+        // there first — the same line unclosed makes a list called "Camping tomorrow trip".
+        val closed = toList("pack ~Camping~ tomorrow")
+        assertEquals("Camping", closed.list)
+        assertEquals(today.plusDays(1), closed.date)
+        assertEquals("pack", closed.title)
+
+        val open = toList("pack ~Camping trip")
+        assertEquals("Camping trip", open.list)
+    }
+
+    @Test
+    fun `a closed name is settled, so nothing more is offered for it`() {
+        // The suggestion strip would otherwise go on proposing alternatives to a decision the user
+        // has already made and typed past.
+        assertNull(CaptureParse.listDraft("buy milk ~Groceries~ today"))
+        assertNotNull(CaptureParse.listDraft("buy milk ~Groc"))
     }
 
     @Test

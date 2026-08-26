@@ -75,7 +75,14 @@ fun ListSuggestions(
                     label = name,
                     selected = false,
                     size = ChipSize.Small,
-                    onClick = { onPick(text.substring(0, span.first) + CaptureParse.LIST_MARK + name) },
+                    // Closed, not just completed. Tapping a suggestion is the moment the
+                    // destination stops being something you are still typing, so the mark that
+                    // says so goes in with it — and whatever is typed next belongs to the task
+                    // again rather than joining the list's name.
+                    onClick = {
+                        val mark = CaptureParse.LIST_MARK
+                        onPick(text.substring(0, span.first) + mark + name + mark + " ")
+                    },
                 )
             }
         }
@@ -118,7 +125,7 @@ private fun NewListCaption(name: String) {
             fontSize = 12.sp,
         )
         Text(
-            "— the name runs to the end of the line",
+            "— close with ~ to keep typing",
             color = y.textDim,
             fontSize = 11.sp,
         )

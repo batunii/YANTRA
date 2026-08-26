@@ -216,7 +216,11 @@ object CaptureParse {
         eachMark(input) { mark, from ->
             known.forEach { (name, norm) ->
                 val end = matchFrom(input, from, norm)
-                if (end != null) return name to mark..(end - 1)
+                // A closing mark belongs to the token, not to the title after it.
+                if (end != null) {
+                    val closed = end < input.length && input[end] == LIST_MARK
+                    return name to mark..(if (closed) end else end - 1)
+                }
             }
         }
         return null
@@ -238,7 +242,9 @@ object CaptureParse {
             p++; k++
         }
         if (k != norm.length) return null
-        return if (p == input.length || input[p].isWhitespace()) p else null
+        // End of line, a space, or the closing mark — anything else means the name was longer than
+        // this one and matching it here would claim half a word.
+        return if (p == input.length || input[p].isWhitespace() || input[p] == LIST_MARK) p else null
     }
 
     /**
@@ -261,10 +267,18 @@ object CaptureParse {
             // The rest of the line, stopping where another token has already been understood.
             var end = input.length
             claimed.forEach { r -> if (r.first >= from && r.first < end) end = r.first }
-            // No leading whitespace to worry about — eachMark already stepped past it — so the
-            // span is the mark plus exactly the name, and never the gap that followed it.
-            val name = input.substring(from, end).trimEnd()
-            if (name.isNotEmpty() && name[0].isLetter()) return name to mark..(from + name.length - 1)
+
+            // Or, before any of that, at a closing mark. Without one the name has no end but the
+            // end of the line, so a new list can only ever be the last thing said — which is fine
+            // until you want to say anything after it.
+            val close = input.indexOf(LIST_MARK, from).takeIf { it in from until end }
+            val name = input.substring(from, close ?: end).trimEnd()
+            if (name.isEmpty() || !name[0].isLetter()) return@eachMark
+
+            // No leading whitespace to worry about — eachMark already stepped past it — so the span
+            // is the mark plus exactly the name, plus the closing mark when there is one.
+            val last = if (close != null) close else from + name.length - 1
+            return name to mark..last
         }
         return null
     }
@@ -304,7 +318,11 @@ object CaptureParse {
             if (mark < 0) return found
             at = mark + 1
             if (mark > 0 && !input[mark - 1].isWhitespace()) continue
-            found = (mark..input.lastIndex) to input.substring(mark + 1).trimStart()
+            val rest = input.substring(mark + 1)
+            // A closed name is settled. Going on offering alternatives for it would be offering to
+            // undo a decision the user has already made and moved past.
+            found = if (rest.contains(LIST_MARK)) null
+            else (mark..input.lastIndex) to rest.trimStart()
         }
     }
 
