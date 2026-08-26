@@ -3,16 +3,19 @@ package ie.napkin.supertasks.data.format
 /**
  * Where the app agrees with itself about what `**bold**` means.
  *
- * Emphasis lives in the stored text — a title has always been an arbitrary string, so the markers
- * simply sit in it, stay greppable, survive export and sync, and are what you typed. That makes
- * *reading* them a property of the format rather than of any one screen, which is why the rules are
- * here and not beside a `SpanStyle`.
+ * Emphasis lives in the stored text — a block is an arbitrary string, so the markers simply sit in
+ * it, stay greppable, survive export and sync, and are what you typed. That makes *reading* them a
+ * property of the format rather than of any one screen, which is why the rules are here and not
+ * beside a `SpanStyle`.
  *
- * Two consumers need different things from the same rule. A screen that can style text keeps the
- * markers and dims them, so the string it renders is exactly as long as the string it stores and the
- * caret cannot drift. A widget, a notification or anywhere else that cannot style at all needs them
- * gone, because `**ship it**` with visible asterisks is worse than either alternative. Both come
- * from [runs], so the two can never disagree about where the emphasis is.
+ * **Prose only.** A note, a heading, a bullet — things written to be read. A task title is not prose
+ * but a name, and it is deliberately literal: it appears on surfaces that cannot style anything at
+ * all (a widget, a notification, the archive, the focus screen), where emphasis could only be
+ * dropped or shown raw. Rather than have a title mean one thing on a page and another in a widget,
+ * it means exactly the characters it contains, everywhere.
+ *
+ * Rendering keeps the markers and merely dims them, so the string shown is exactly as long as the
+ * string stored and the caret cannot drift.
  */
 object Markdown {
 
@@ -25,8 +28,7 @@ object Markdown {
      * `***both***` needs its own pattern and has to be tried first.
      *
      * The bold pattern would otherwise match `***both**` — two markers at the front, two at the back
-     * — and leave a stray asterisk behind, which is precisely the punctuation stripping exists to
-     * remove.
+     * — leaving a stray asterisk undimmed and the closing pair unmatched.
      */
     private val BOLD_ITALIC = Regex("""\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*""")
     private val BOLD = Regex("""\*\*(?=\S)(.+?)(?<=\S)\*\*""")
@@ -36,9 +38,8 @@ object Markdown {
     /**
      * Every emphasis run in [text], nested ones included, in the order they start.
      *
-     * Nesting matters more for stripping than for styling. `**a *b* c**` styles acceptably either
-     * way, but a stripper that only saw the outer run would leave the inner asterisks behind — the
-     * exact punctuation it exists to remove.
+     * Nesting is why this recurses: `**a *b* c**` has an italic run inside a bold one, and seeing
+     * only the outer run would leave the inner markers undimmed and the inner words unitalicised.
      *
      * Code is the one thing not recursed into: inside backticks an asterisk is content, and
      * `` `2 * 3` `` must survive intact.
@@ -81,26 +82,4 @@ object Markdown {
         scan(ITALIC, 1, Kind.ITALIC)
         return found
     }
-
-    /**
-     * [text] with the markers removed and the words kept.
-     *
-     * For everywhere that cannot render emphasis at all. Losing the styling is a fair trade; showing
-     * the asterisks is not, because they are punctuation the reader never wrote for the reader.
-     */
-    fun strip(text: String): String {
-        val runs = runs(text)
-        if (runs.isEmpty()) return text
-        // Marker positions rather than run boundaries: with nesting the runs overlap, and copying
-        // "everything outside a run" would drop the inner text of every nested pair.
-        val marker = BooleanArray(text.length)
-        runs.forEach { run ->
-            for (i in run.outer.first until run.inner.first) marker[i] = true
-            for (i in run.inner.last + 1..run.outer.last) marker[i] = true
-        }
-        val sb = StringBuilder(text.length)
-        text.forEachIndexed { i, ch -> if (!marker[i]) sb.append(ch) }
-        return sb.toString()
-    }
-
 }

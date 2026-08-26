@@ -23,7 +23,6 @@ import ie.napkin.supertasks.ui.theme.resolve
 import ie.napkin.supertasks.widget.ListWidgetProvider
 import ie.napkin.supertasks.widget.WidgetRefresh
 import kotlinx.coroutines.launch
-import ie.napkin.supertasks.data.format.Markdown
 
 /** Fires reminder notifications and handles their "Mark done" action. */
 class ReminderReceiver : BroadcastReceiver() {
@@ -85,7 +84,7 @@ class ReminderReceiver : BroadcastReceiver() {
             .setSmallIcon(R.drawable.ic_notif_reminder)
             .setColor(accent.toArgb())
             .setColorized(false)
-            .setContentTitle(Markdown.strip(node.title.orEmpty()).ifBlank { "Reminder" })
+            .setContentTitle(node.title.orEmpty().ifBlank { "Reminder" })
             .setContentText("Reminder")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)

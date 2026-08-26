@@ -203,7 +203,7 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         properties: PropertyRepository,
         zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
     ): String? {
-        // The lists this workspace has, so "> Groceries" can be matched rather than guessed at.
+        // The lists this workspace has, so "~ Groceries" can be matched rather than guessed at.
         val lists = dao.allListsOnce()
         val parsed = CaptureParse.parse(text, lists = lists.mapNotNull { it.title })
         if (parsed.title.isBlank()) return null

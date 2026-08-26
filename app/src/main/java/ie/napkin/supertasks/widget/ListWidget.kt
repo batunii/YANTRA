@@ -82,7 +82,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import ie.napkin.supertasks.ui.theme.YantraColors
-import ie.napkin.supertasks.data.format.Markdown
 
 /**
  * Glance-state keys for the configured binding and per-widget settings — see [YantraListWidget]
@@ -204,7 +203,7 @@ internal fun buildRows(
         val prio = byNode[n.id]?.firstOrNull { it.defId == priority }?.vText
         WidgetRow(
             id = n.id,
-            title = Markdown.strip(n.title.orEmpty()).ifBlank { "Untitled" },
+            title = n.title.orEmpty().ifBlank { "Untitled" },
             done = n.done,
             inProgress = n.inProgress,
             dueLabel = dueRow?.vDate
@@ -381,7 +380,7 @@ open class YantraListWidget : GlanceAppWidget() {
                         defIds.priority, priorityColors, parentTitles, hideTodayDue = true,
                     )
                     WidgetData(
-                        title = Markdown.strip(node?.title.orEmpty()).ifBlank { if (forceToday) "Today" else "List" },
+                        title = node?.title.orEmpty().ifBlank { if (forceToday) "Today" else "List" },
                         summary = if (forceToday && doneTasks.isNotEmpty()) {
                             "${rows.size} of ${rows.size + doneTasks.size}"
                         } else summary,

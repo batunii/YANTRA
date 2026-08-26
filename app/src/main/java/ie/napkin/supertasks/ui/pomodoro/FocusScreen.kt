@@ -65,7 +65,6 @@ import ie.napkin.supertasks.ui.components.isReducedMotion
 import androidx.compose.ui.platform.LocalContext
 import ie.napkin.supertasks.data.db.FocusOutcome
 import ie.napkin.supertasks.ui.components.ButtonTone
-import ie.napkin.supertasks.ui.components.markdownAnnotated
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import androidx.compose.ui.text.input.KeyboardType
 import ie.napkin.supertasks.ui.components.YantraField
@@ -252,7 +251,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Focus on")
         Text(
-            markdownAnnotated(node.title.orEmpty().ifBlank { "Untitled task" }, y.textDim),
+            node.title.orEmpty().ifBlank { "Untitled task" },
             fontFamily = YantraDisplay,
             fontSize = 32.sp,
             lineHeight = 39.sp,

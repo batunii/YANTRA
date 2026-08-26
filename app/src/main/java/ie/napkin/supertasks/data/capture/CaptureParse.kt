@@ -75,12 +75,13 @@ object CaptureParse {
     private val LABEL = Regex("""(?<=^|\s)#([\p{L}\p{N}_-]{1,40})""")
 
     /**
-     * `> Groceries` — where it goes.
+     * `~ Groceries` — where it goes.
      *
-     * `>` rather than `@`, which the file format already spends on the assignee, and that is the
-     * field shared workspaces were built for. A list is a place, and `>` reads as going to one.
+     * Not `@`, which the file format already spends on the assignee, and that is the field shared
+     * workspaces were built for. `~` because a task title is plain text — it renders no markdown,
+     * deliberately — so the character is not spoken for by anything else a title can mean.
      */
-    private const val LIST_MARK = '>' 
+    private const val LIST_MARK = '~'
     private val PRIORITY = Regex("""(?<=^|\s)!([\p{L}]{1,10})""", RegexOption.IGNORE_CASE)
 
     /** `6pm`, `6:30pm`, `18:30`, `9 am`. Bare `18` is not a time — it is far more often a number. */
@@ -173,7 +174,7 @@ object CaptureParse {
         return Captured(title, date, time, labels, priority, list, spans.sortedBy { it.range.first })
     }
 
-    /** Where `> name` sits in [input], mark included, or null if it is not there. */
+    /** Where `~ name` sits in [input], mark included, or null if it is not there. */
     private fun indexOfList(input: String, name: String): IntRange? {
         var from = 0
         while (true) {

@@ -432,8 +432,9 @@ Three rules keep it honest, and they are the interesting part:
 - **A token is never the whole title.** "Today" is a task called Today, not an empty task due today.
 - **`#label` and `!priority` are the file format's own syntax** for those fields, so what you type is
   what the file says.
-- **`> List` says where it goes.** `>` rather than `@`, which the format already spends on the
-  assignee — the field shared workspaces were built for. It is the one token that is *not* written to
+- **`~ List` says where it goes.** Not `@`, which the format already spends on the assignee — the
+  field shared workspaces were built for — and not `>`, which is a blockquote. `~` is free because a
+  task title renders no markdown (see below). It is the one token that is *not* written to
   the file: a task's list is the page it sits on, so naming one is a routing instruction spent at
   capture, with nowhere on the line to live afterwards. Names are matched against the lists that
   exist, because names contain spaces and a typo must leave the text alone rather than invent a list.
@@ -442,3 +443,24 @@ One path — `captureTask` — so the quick-add bar, the create sheet, smart lis
 disagree about what "tomorrow" means. The share target deliberately does *not* parse: what arrives
 there was written by a web page, and a headline like "10 things to do today" must not lose its last
 word and acquire a due date. Parsing is for what a person typed.
+
+### Emphasis is for prose. A task title is a name.
+
+`**bold**`, `*italic*` and `` `code` `` render in notes, headings and bullets — the things written to
+be read, and the half of the app that has to stand next to a real notes app. They do **not** render
+in a task title, which stays exactly the characters it contains.
+
+The reason is that a title is not shown in one place. It is shown in a widget, a notification, the
+archive, the focus screen, the share acknowledgement — none of which can style anything at all. Every
+answer there is a bad one: show the asterisks and the title reads as a typo; strip them and the same
+task is one string on its page and a different string in a widget. Both were true in the code at
+once, on different surfaces, which is how this was noticed.
+
+So a title is literal, everywhere, and there is nothing left to disagree about. What that buys, on
+top of the consistency: the punctuation in a title is unclaimed, which is where capture's `~` comes
+from. Emphasis in a to-do line was never worth much; a marker that reliably means "this list" is.
+
+`Markdown` lives in `data/format` rather than beside a `SpanStyle`, because what counts as emphasis
+is a property of the file format — the markers sit in the stored text, stay greppable, and survive
+export and sync. Rendering dims the markers rather than removing them, so the string shown is exactly
+as long as the string stored and the caret cannot drift.

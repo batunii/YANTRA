@@ -106,6 +106,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -1395,7 +1397,8 @@ internal fun TextualBlockRow(
                     Text(placeholder, style = style, color = y.textMuted.copy(alpha = 0.5f), modifier = textMod)
                 } else {
                     Text(
-                        markdownAnnotated(shown, y.textDim),
+                        // A task title is a name and stays literal; prose is prose. See below.
+                        if (isTask) AnnotatedString(shown) else markdownAnnotated(shown, y.textDim),
                         style = style,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1411,9 +1414,17 @@ internal fun TextualBlockRow(
                 },
                 textStyle = style,
                 cursorBrush = SolidColor(y.accent),
-                // **bold**, *italic* and `code` render as you type. The markers stay put and stay
-                // visible, only dimmed — see MarkdownEmphasis for why that matters.
-                visualTransformation = remember(y.textDim) { MarkdownEmphasis(y.textDim) },
+                // Prose only. **bold**, *italic* and `code` render as you type, markers staying
+                // put and merely dimmed — see MarkdownEmphasis for why that matters.
+                //
+                // A task title is deliberately not prose. It is a name, and it is shown in places
+                // that cannot style anything at all: a widget, a notification, the archive, the
+                // focus screen. Emphasis there could only ever be dropped or shown raw, so the
+                // honest answer is that a title means exactly the characters it contains. That
+                // also leaves the punctuation free for capture to spend — `~` names a list.
+                visualTransformation =
+                    if (isTask) VisualTransformation.None
+                    else remember(y.textDim) { MarkdownEmphasis(y.textDim) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 1.dp)

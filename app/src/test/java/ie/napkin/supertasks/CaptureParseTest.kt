@@ -236,14 +236,14 @@ class CaptureParseTest {
 
     @Test
     fun `a named list is understood and taken out of the title`() {
-        val c = toList("buy milk > Groceries")
+        val c = toList("buy milk ~ Groceries")
         assertEquals("buy milk", c.title)
         assertEquals("Groceries", c.list)
     }
 
     @Test
     fun `the mark works with or without a space, and ignores case`() {
-        listOf("buy milk >Groceries", "buy milk > groceries", "buy milk >  GROCERIES").forEach {
+        listOf("buy milk ~Groceries", "buy milk ~ groceries", "buy milk ~  GROCERIES").forEach {
             assertEquals("failed on: $it", "Groceries", toList(it).list)
         }
     }
@@ -252,7 +252,7 @@ class CaptureParseTest {
     fun `a list name with spaces is matched whole`() {
         // The reason names are matched against the ones that exist rather than read off the line:
         // there is no way to know where "Work trips" ends without knowing it is a list.
-        val c = toList("book flights > Work trips")
+        val c = toList("book flights ~ Work trips")
         assertEquals("book flights", c.title)
         assertEquals("Work trips", c.list)
     }
@@ -260,29 +260,29 @@ class CaptureParseTest {
     @Test
     fun `the longest matching name wins`() {
         // "Work" is a prefix of "Work trips" and must not claim a line that named the longer one.
-        assertEquals("Work trips", toList("thing > Work trips").list)
-        assertEquals("Work", toList("thing > Work").list)
+        assertEquals("Work trips", toList("thing ~ Work trips").list)
+        assertEquals("Work", toList("thing ~ Work").list)
     }
 
     @Test
     fun `an unknown list is left in the title rather than invented`() {
         // A typo must not conjure a list. Leaving the text alone is visible and costs nothing; the
         // alternative is a new list named "Grocries" that someone has to find and delete.
-        val c = toList("buy milk > Grocries")
-        assertEquals("buy milk > Grocries", c.title)
+        val c = toList("buy milk ~ Grocries")
+        assertEquals("buy milk ~ Grocries", c.title)
         assertNull(c.list)
     }
 
     @Test
-    fun `a bare arrow is not a list`() {
-        val c = toList("ship it > done")
-        assertEquals("ship it > done", c.title)
+    fun `a bare mark is not a list`() {
+        val c = toList("ship it ~ done")
+        assertEquals("ship it ~ done", c.title)
         assertNull(c.list)
     }
 
     @Test
     fun `a list combines with everything else`() {
-        val c = toList("buy milk > Groceries tomorrow #home !high")
+        val c = toList("buy milk ~ Groceries tomorrow #home !high")
         assertEquals("buy milk", c.title)
         assertEquals("Groceries", c.list)
         assertEquals(today.plusDays(1), c.date)
@@ -294,7 +294,7 @@ class CaptureParseTest {
     fun `no lists known means no list can be named`() {
         // Every other surface passes the workspace's lists; one that forgets should degrade to
         // leaving the text alone rather than to matching something arbitrary.
-        assertNull(parse("buy milk > Groceries").list)
-        assertEquals("buy milk > Groceries", parse("buy milk > Groceries").title)
+        assertNull(parse("buy milk ~ Groceries").list)
+        assertEquals("buy milk ~ Groceries", parse("buy milk ~ Groceries").title)
     }
 }
