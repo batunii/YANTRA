@@ -134,6 +134,24 @@ class InkViewModel(
     private var flush: Job? = null
     private var live = 0
 
+    /**
+     * Whether anything has been drawn on this screen, ever — and therefore whether the file still
+     * has anything to tell it.
+     *
+     * This used to be [unsaved], which is a different question and the wrong one. `unsaved` goes
+     * false again after every write, so the door it guards reopened between strokes: draw once, let
+     * it save, draw again, and the *first* write's index rebuild could still be in flight. When that
+     * older emission arrived it found a clean flag, was adopted, and quietly undrew the second
+     * stroke. Whether it landed before or after the second save was a matter of milliseconds, which
+     * is why the stroke came back sometimes and not others, and why a cold launch — where the first
+     * rebuild is the slow one — made it far likelier.
+     *
+     * Sticky is also what the rule always said out loud: follow the file only while the screen has
+     * nothing of its own. Once something is drawn here, this screen is the author, and no arrival
+     * from disk can be newer than what is on it.
+     */
+    private var drawnHere = false
+
     private val unsaved: Boolean get() = edits != savedAt
 
     val node: StateFlow<NodeEntity?> =
@@ -144,11 +162,12 @@ class InkViewModel(
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
-        // Follow the file, but only while the screen has nothing of its own. Once something is drawn
-        // the screen is ahead of disk, and adopting disk would rub it out.
+        // Follow the file, but only until something is drawn here — see [drawnHere]. After that the
+        // screen is the author and every arrival from disk is older than what is on it, including
+        // the ones this screen caused itself.
         viewModelScope.launch {
             ink.strokes(nodeId).collect { rows ->
-                if (unsaved) return@collect
+                if (drawnHere) return@collect
                 held.value = withContext(Dispatchers.Default) {
                     rows.mapNotNull { row ->
                         runCatching { Held(StrokeItem(row.id, StrokeCodec.decode(row.data)), row.data) }
@@ -191,6 +210,7 @@ class InkViewModel(
     }
 
     private fun touch() {
+        drawnHere = true
         edits++
         flush?.cancel()
         flush = viewModelScope.launch {
