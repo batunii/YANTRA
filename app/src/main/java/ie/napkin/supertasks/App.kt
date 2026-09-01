@@ -3,6 +3,7 @@ package ie.napkin.supertasks
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.util.Log
 import ie.napkin.supertasks.data.db.AppDatabase
 import ie.napkin.supertasks.data.repo.InkRepository
 import ie.napkin.supertasks.data.repo.LabelRepository
@@ -203,6 +204,23 @@ class AppContainer(val app: Application) {
      * the index is empty on every device that clones an existing workspace, and gating the other way
      * would give each machine that joins its own second Inbox and its own second Today.
      */
+    /**
+     * Says out loud what a rebuild could not make sense of.
+     *
+     * Every caller of `reindexAll` and `reindex` has always been handed this list and every one of
+     * them has always dropped it, which made a reported problem and a swallowed one the same thing.
+     * That is tolerable for a stale focus-log line and not at all tolerable for the reasons a
+     * workspace failed to index — those used to be a crash, and a fix that turns a crash into
+     * silence has moved the bug rather than found it.
+     *
+     * Logcat rather than the UI on purpose: what to *show* someone about a half-read workspace is a
+     * design question worth answering properly, and nothing here should pretend to have answered it.
+     * This only ensures the answer can be worked out from a bug report.
+     */
+    private fun report(problems: List<String>) {
+        problems.forEach { Log.w("Yantra.index", it) }
+    }
+
     val seeding: Job = appScope.launch {
         val fresh = workspaces.open(id = "", root = registry.dirFor(""), name = "Personal")
         if (fresh) WorkspaceSeeder.seed(workspaces.primaryStore())
@@ -212,7 +230,7 @@ class AppContainer(val app: Application) {
         registry.entries().filter { it.id.isNotEmpty() }.forEach { entry ->
             workspaces.open(entry.id, registry.dirFor(entry.id), entry.name)
         }
-        workspaces.reindexAll()
+        report(workspaces.reindexAll())
         workspaces.all.forEach { attach(it) }
 
         // Also on launch, not only on the daily worker. Android is free to decide a periodic job can

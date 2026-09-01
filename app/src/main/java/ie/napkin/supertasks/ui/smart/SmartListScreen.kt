@@ -77,6 +77,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     var menu by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    val absentWorkspaces by vm.absentWorkspaces.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val labels by vm.labels.collectAsStateWithLifecycle()
     val lists by vm.lists.collectAsStateWithLifecycle()
@@ -216,7 +217,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         onToggleDone = { vm.setDone(task.id, it) },
                         onToggleInProgress = { vm.setInProgress(task.id, it) },
                         // Only tasks are gathered here, so there is no type to convert to.
-                        onBecome = {},
+                        onBecome = { _, _ -> },
                         onOpen = { nav.navigate(Routes.node(task.id)) },
                         // A smart list is a list: the row opens the task, it does not become a
                         // text field. Typing happens on the task's own page.
@@ -231,6 +232,13 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
             ) {
+                // Before the results, because it is about whether to believe them. A rule may name
+                // a workspace this device has not added — after a reinstall, most likely, since the
+                // registry that lists them is device-local — and then it can only answer for the
+                // repos present. Saying nothing would make a half-answer look like a whole one.
+                if (absentWorkspaces.isNotEmpty()) {
+                    item(key = "absent-workspaces") { AbsentWorkspaces(absentWorkspaces) }
+                }
                 if (tasks.isEmpty() && completed.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty("Nothing matches right now")
@@ -285,6 +293,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 defs = defs,
                 labels = labels,
                 lists = lists,
+                workspaces = vm.workspaces,
                 onCreateLabel = vm::createLabel,
                 onDismiss = { editingRule = false },
                 onCreate = { newName, filter, sort, homeId ->
@@ -307,4 +316,30 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             onConfirm = { vm.renameList(it); renaming = false },
         )
     }
+}
+
+/**
+ * What this view cannot see.
+ *
+ * Deliberately not an error: nothing is broken and nothing is lost — the workspace is simply not on
+ * this device, and adding it back is the whole fix. So it reads as a fact about the view's reach
+ * rather than a failure, and it names the workspaces so the fix is obvious.
+ */
+@Composable
+private fun AbsentWorkspaces(names: List<String>) {
+    val y = Yantra.colors
+    val what = when (names.size) {
+        1 -> "${names.single()} isn't on this device"
+        else -> names.joinToString(", ").let { "$it aren't on this device" }
+    }
+    Text(
+        "$what — tasks from ${if (names.size == 1) "it" else "them"} aren't shown here.",
+        fontSize = 12.sp,
+        color = y.textSecondary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+            .background(y.warningChipBg, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+    )
 }

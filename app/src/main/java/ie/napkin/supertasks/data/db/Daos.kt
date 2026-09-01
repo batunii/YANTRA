@@ -12,8 +12,18 @@ import kotlinx.coroutines.flow.Flow
 
 data class SubtreeTaskCount(
     val rootId: String,
+    /** Everything under [rootId] — blocks included. What "is there anything in here" asks. */
     val total: Int,
     val doneCount: Int,
+    /**
+     * Tasks only, done or not.
+     *
+     * Separate from [total] because the two questions are genuinely different and were being
+     * answered by the same number: a chevron badge that counted *blocks* told you a task had 20
+     * things in it when it had none, and twenty lines of a note. The editor still needs [total] —
+     * a block with anything under it is not one Backspace can take away.
+     */
+    val taskCount: Int = 0,
 )
 
 data class NodePomoCount(
@@ -153,7 +163,8 @@ interface NodeDao {
         )
         SELECT s.rootId AS rootId,
                COUNT(*) AS total,
-               COALESCE(SUM(n.done), 0) AS doneCount
+               COALESCE(SUM(n.done), 0) AS doneCount,
+               COUNT(*) AS taskCount
           FROM sub s JOIN node n ON n.id = s.id
          WHERE n.type = 'task'
          GROUP BY s.rootId
@@ -166,7 +177,8 @@ interface NodeDao {
         """
         SELECT n.parent_id AS rootId,
                COUNT(*) AS total,
-               COALESCE(SUM(CASE WHEN n.type = 'task' AND n.done = 1 THEN 1 ELSE 0 END), 0) AS doneCount
+               COALESCE(SUM(CASE WHEN n.type = 'task' AND n.done = 1 THEN 1 ELSE 0 END), 0) AS doneCount,
+               COALESCE(SUM(CASE WHEN n.type = 'task' THEN 1 ELSE 0 END), 0) AS taskCount
           FROM node n
          WHERE n.deleted_at IS NULL
            AND n.parent_id IN (SELECT id FROM node WHERE parent_id = :parentId AND deleted_at IS NULL)
@@ -184,7 +196,8 @@ interface NodeDao {
         """
         SELECT n.parent_id AS rootId,
                COUNT(*) AS total,
-               COALESCE(SUM(CASE WHEN n.type = 'task' AND n.done = 1 THEN 1 ELSE 0 END), 0) AS doneCount
+               COALESCE(SUM(CASE WHEN n.type = 'task' AND n.done = 1 THEN 1 ELSE 0 END), 0) AS doneCount,
+               COALESCE(SUM(CASE WHEN n.type = 'task' THEN 1 ELSE 0 END), 0) AS taskCount
           FROM node n
          WHERE n.deleted_at IS NULL
            AND n.parent_id IN (:parentIds)

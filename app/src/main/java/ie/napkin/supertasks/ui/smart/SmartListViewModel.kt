@@ -3,6 +3,7 @@ package ie.napkin.supertasks.ui.smart
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.napkin.supertasks.AppContainer
+import ie.napkin.supertasks.data.workspace.WorkspaceEntry
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.filter.SortSpec
 import ie.napkin.supertasks.data.db.NodeEntity
@@ -35,11 +36,35 @@ class SmartListViewModel(
     private val nodes = container.nodes
     private val properties = container.properties
 
+    /**
+     * The workspaces the builder may offer as a rule's reach.
+     *
+     * Registry order, filtered to what is actually open — a repo listed but not opened cannot be
+     * searched, and offering it would let someone write a rule that silently matches nothing.
+     */
+    val workspaces: List<WorkspaceEntry> =
+        container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val def: StateFlow<SmartListDefEntity?> =
         smartLists.observeDef(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * Workspaces this view asks about that are not on this device, by name.
+     *
+     * Shown rather than swallowed. A rule spanning repos can only answer for the ones present, and
+     * a Today quietly missing half your tasks is worse than no Today — the absence has to be on the
+     * screen, where it also tells you the fix (add the workspace back).
+     */
+    val absentWorkspaces: StateFlow<List<String>> =
+        def.map { d ->
+            if (d == null) emptyList() else {
+                val names = container.registry.entries().associate { it.id to it.name }
+                smartLists.absentWorkspaces(d).map { names[it] ?: "an unknown workspace" }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Read side: children are computed, not stored. */
     val tasks: StateFlow<List<NodeEntity>> =
@@ -82,7 +107,12 @@ class SmartListViewModel(
             .flatMapLatest { list ->
                 if (list.isEmpty()) flowOf(emptyMap())
                 else nodes.childCountsFor(list.map { it.id })
-                    .map { rows -> rows.associate { it.rootId to it.total } }
+                    // Open subtasks — the same thing the badge means on a task's own page.
+                    .map { rows ->
+                        rows.associate {
+                            it.rootId to (it.taskCount - it.doneCount).coerceAtLeast(0)
+                        }
+                    }
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val pomoCounts: StateFlow<Map<String, Int>> =
@@ -174,9 +204,12 @@ class SmartListViewModel(
         if (d == null) return ""
         val defById = defs.associateBy { it.id }
         val labelById = labels.associateBy { it.id }
+        // Named from the registry, not the index: a rule may name a workspace this device has since
+        // forgotten, and "from 93c907a5-…" is worse than nothing on a one-line pill.
+        val wsById = container.registry.entries().associate { it.id to it.name }
         val parts = mutableListOf<String>()
         val filter = runCatching { FilterJson.decodeFromString(Filter.serializer(), d.filterJson) }.getOrNull()
-        collectParts(filter, defById, labelById, parts)
+        collectParts(filter, defById, labelById, wsById, parts)
         val home = d.homeParentId?.let { nodes.byId(it)?.title }
         if (home != null) parts += "lands in $home"
         // This renders as a filter pill next to the title, not a sentence under it — keep it to
@@ -188,11 +221,12 @@ class SmartListViewModel(
         f: Filter?,
         defs: Map<String, PropertyDefEntity>,
         labels: Map<String, LabelEntity>,
+        workspaces: Map<String, String>,
         out: MutableList<String>,
     ) {
         when (f) {
             null -> Unit
-            is Filter.All -> f.filters.forEach { collectParts(it, defs, labels, out) }
+            is Filter.All -> f.filters.forEach { collectParts(it, defs, labels, workspaces, out) }
             is Filter.AnyOf -> out += "${f.filters.size} rules"
             is Filter.Not -> out += "1 exclusion"
             // "open tasks" is the default reading of a task list — only the unusual case is worth
@@ -201,6 +235,7 @@ class SmartListViewModel(
             is Filter.InProgress -> out += if (f.value) "started" else "not started"
             is Filter.Type -> Unit
             is Filter.HasLabel -> out += "label: ${labels[f.labelId]?.name ?: "?"}"
+            is Filter.InWorkspace -> out += "from ${workspaces[f.workspaceId] ?: "another workspace"}"
             is Filter.Prop -> {
                 val name = defs[f.defId]?.name ?: "property"
                 val op = when (f.op) {

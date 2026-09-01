@@ -101,7 +101,12 @@ fun PropertyRow(
     val scroll = rememberScrollState()
     // Only dissolve the edge when there is genuinely something past it, or the last pill of a
     // row that fits would fade for no reason.
-    val overflows = scroll.maxValue > 0
+    //
+    // `canScrollForward`, not `maxValue`: the latter is the row's total overflow and says nothing
+    // about where you currently are in it, so the edge went on dissolving after you had scrolled
+    // to the end — and, read before the row had been measured, could be wrong in both directions.
+    // A cut-off chip with no fade behind it is just a chip that looks broken.
+    val overflows = scroll.canScrollForward
     val (set, unset) = defs.partition { values[it.id] != null }
     Row(
         modifier = modifier

@@ -2,6 +2,8 @@ package ie.napkin.supertasks.ui.components
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -49,6 +51,35 @@ fun markdownSpans(text: String, markerColor: Color): List<AnnotatedString.Range<
 /** [text] with its emphasis applied — for read-only rows, which render a plain string. */
 fun markdownAnnotated(text: String, markerColor: Color): AnnotatedString =
     AnnotatedString(text, markdownSpans(text, markerColor))
+
+/**
+ * [text] with its emphasis applied and the markers taken out.
+ *
+ * For rows that cannot be typed into. Keeping the markers visible is a property of the *editor*,
+ * where hiding them would mean mapping offsets between two strings of different lengths and where
+ * caret drift is the price of getting it wrong. A row you can only read has no caret to protect, so
+ * the markers have nothing left to justify them and simply read as the app failing to render.
+ *
+ * Only the outermost run of each nesting is unwrapped: emphasis inside emphasis keeps its inner
+ * markers rather than risking an offset this function cannot verify.
+ */
+fun markdownStripped(text: String): AnnotatedString = buildAnnotatedString {
+    var at = 0
+    Markdown.runs(text).forEach { run ->
+        if (run.outer.first < at) return@forEach   // nested inside one already unwrapped
+        append(text.substring(at, run.outer.first))
+        val style = when (run.kind) {
+            Markdown.Kind.CODE -> SpanStyle(fontFamily = FontFamily.Monospace)
+            Markdown.Kind.BOLD -> SpanStyle(fontWeight = FontWeight.Bold)
+            Markdown.Kind.ITALIC -> SpanStyle(fontStyle = FontStyle.Italic)
+            Markdown.Kind.BOLD_ITALIC ->
+                SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic)
+        }
+        withStyle(style) { append(text.substring(run.inner.first, run.inner.last + 1)) }
+        at = run.outer.last + 1
+    }
+    append(text.substring(at))
+}
 
 /** The same emphasis, applied inside an editable field. */
 class MarkdownEmphasis(private val markerColor: Color) : VisualTransformation {

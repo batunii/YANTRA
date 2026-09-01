@@ -245,8 +245,29 @@ class NodePageViewModel(
         viewModelScope.launch { nodes.moveToIndex(node, toIndex) }
     }
 
-    fun convert(node: NodeEntity, type: String) {
-        viewModelScope.launch { nodes.setType(node.id, type) }
+    /**
+     * Changes a block's kind, reporting the id it ends up with.
+     *
+     * Converting to a task mints a real id for the line (a derived, positional one is not a name —
+     * see WorkspaceWriter.convertBlock), so the row the caret was in is about to be a *different*
+     * row. Anything following the caret has to be told where it went.
+     */
+    fun convert(node: NodeEntity, type: String, onConverted: (String) -> Unit = {}) {
+        viewModelScope.launch { onConverted(nodes.setType(node.id, type)) }
+    }
+
+    /**
+     * What typing a markdown marker does: the line loses the marker and becomes the kind it named.
+     *
+     * One coroutine, in order, deliberately. The text and the type used to be two independent
+     * launches, and the conversion reads the line's text back off the page — so whether the marker
+     * survived into the converted block depended on which write happened to land first.
+     */
+    fun becomeBlock(node: NodeEntity, type: String, text: String, onConverted: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            nodes.rename(node.id, text)
+            onConverted(nodes.setType(node.id, type))
+        }
     }
 
     /**
@@ -282,13 +303,24 @@ class NodePageViewModel(
         // the first delete and left the rest of the blanks on the page.
         container.appScope.launch {
             val blocks = this@NodePageViewModel.blocks.value
-            val disposable = blocks.reversed().takeWhile { b ->
-                b.title.isNullOrBlank() &&
-                    b.type in NodeType.TEXTUAL &&
-                    !b.done &&
-                    (childCounts[b.id] ?: 0) == 0
+            fun spent(b: NodeEntity) =
+                b.title.isNullOrBlank() && !b.done && (childCounts[b.id] ?: 0) == 0
+            val trailingFrom = blocks.indexOfLast { !(it.type in NodeType.TEXTUAL && spent(it)) } + 1
+            // An untouched task is litter wherever it sits, not only at the end.
+            //
+            // A blank *prose* line in the middle of a page is a spacer somebody made on purpose, so
+            // the trailing-only rule is right for it. A blank task is not: nothing about a page ever
+            // wants an unnamed checkbox in the middle of it, and one made by tapping Task and then
+            // walking away used to survive — with nothing to click, nothing to read, and a checkbox
+            // in the margin of a document. It also stopped being reachable by the trailing rule the
+            // moment anything was typed below it.
+            val disposable = blocks.withIndex().filter { (i, b) ->
+                i >= trailingFrom || (b.type == NodeType.TASK && spent(b))
             }
-            disposable.forEach { nodes.delete(it.id) }
+            // Bottom-up. A block the format does not name is identified by its line number, so
+            // deleting one renumbers everything below it — and a top-down pass would have every id
+            // after the first deletion point at the wrong line.
+            disposable.sortedByDescending { it.index }.forEach { nodes.delete(it.value.id) }
             if (disposable.isNotEmpty()) nodes.normalizeIndents(nodeId)
         }
     }

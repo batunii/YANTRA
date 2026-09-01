@@ -65,6 +65,7 @@ import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.launch
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraColors
+import ie.napkin.supertasks.data.workspace.WorkspaceEntry
 import ie.napkin.supertasks.ui.components.SectionLabel
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -160,6 +161,11 @@ fun SmartListBuilderSheet(
     defs: List<PropertyDefEntity>,
     labels: List<LabelEntity>,
     lists: List<NodeEntity>,
+    /**
+     * Every workspace on this device. Empty or single means the control is not drawn at all — reach
+     * is not a question worth asking someone who has one repo.
+     */
+    workspaces: List<WorkspaceEntry>,
     onCreateLabel: suspend (String) -> LabelEntity,
     onDismiss: () -> Unit,
     onCreate: (String, Filter, List<SortSpec>, String?) -> Unit,
@@ -184,6 +190,8 @@ fun SmartListBuilderSheet(
     // *opening* the sheet must preserve them (see Decoded), but "Start from" is an explicit request
     // to begin again, and silently keeping a clause the form cannot show would be worse.
     var extras by remember(editing?.nodeId) { mutableStateOf(decoded?.extras.orEmpty()) }
+    // Empty means everywhere, which is the absence of a clause rather than a clause naming none.
+    var reach by remember(editing?.nodeId) { mutableStateOf(decoded?.workspaces.orEmpty().toSet()) }
     var homeId by remember { mutableStateOf(editing?.homeParentId ?: lists.firstOrNull()?.id) }
     var addMenu by remember { mutableStateOf(false) }
     var pickingLabelsForIndex by remember { mutableStateOf<Int?>(null) }
@@ -247,6 +255,25 @@ fun SmartListBuilderSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ShowMode.entries.forEach { m -> SelectChip(m.label, show == m) { show = m } }
+                }
+            }
+
+            // Reach. Only worth asking with more than one repo — and the default is everywhere,
+            // because a smart list is a view over what you have, not a thing inside one workspace.
+            if (workspaces.size > 1) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Label("Look in", y)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SelectChip("Everywhere", reach.isEmpty()) { reach = emptySet() }
+                        workspaces.forEach { w ->
+                            SelectChip(w.name.ifBlank { "Untitled" }, w.id in reach) {
+                                reach = if (w.id in reach) reach - w.id else reach + w.id
+                            }
+                        }
+                    }
                 }
             }
 
@@ -342,7 +369,7 @@ fun SmartListBuilderSheet(
                     .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(14.dp))
                     .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(14.dp)) else Modifier)
                     .clickable(enabled = valid) {
-                        onCreate(name.trim(), buildFilter(show, conds, extras), buildSort(conds), homeId)
+                        onCreate(name.trim(), buildFilter(show, conds, extras, reach), buildSort(conds), homeId)
                     }
                     .padding(vertical = 15.dp),
                 contentAlignment = Alignment.Center,
@@ -392,6 +419,8 @@ private data class Decoded(
     val show: ShowMode,
     val conds: List<Cond>,
     val extras: List<Filter>,
+    /** Workspaces the rule names. Empty is "everywhere", not "nowhere". */
+    val workspaces: List<String> = emptyList(),
 )
 
 private fun decodeFilter(filter: Filter): Decoded {
@@ -400,10 +429,15 @@ private fun decodeFilter(filter: Filter): Decoded {
     var started = false
     val conds = mutableListOf<Cond>()
     val extras = mutableListOf<Filter>()
+    val workspaces = mutableListOf<String>()
     parts.forEach { f ->
         when {
             // Every smart list is tasks-only; the builder never offers to change that.
             f is Filter.Type -> Unit
+            f is Filter.InWorkspace -> workspaces += f.workspaceId
+            // Several workspaces are an OR, which is what buildFilter writes for more than one.
+            f is Filter.AnyOf && f.filters.isNotEmpty() && f.filters.all { it is Filter.InWorkspace } ->
+                workspaces += f.filters.map { (it as Filter.InWorkspace).workspaceId }
             f is Filter.InProgress && f.value -> started = true
             f is Filter.Done -> show = if (f.value) ShowMode.DONE else ShowMode.OPEN
             f is Filter.Prop -> conds += Cond(
@@ -424,10 +458,15 @@ private fun decodeFilter(filter: Filter): Decoded {
         }
     }
     // Started is the narrower claim, so it wins over an accompanying "open".
-    return Decoded(if (started) ShowMode.STARTED else show, conds, extras)
+    return Decoded(if (started) ShowMode.STARTED else show, conds, extras, workspaces)
 }
 
-private fun buildFilter(show: ShowMode, conds: List<Cond>, extras: List<Filter> = emptyList()): Filter {
+private fun buildFilter(
+    show: ShowMode,
+    conds: List<Cond>,
+    extras: List<Filter> = emptyList(),
+    workspaces: Set<String> = emptySet(),
+): Filter {
     val base = ArrayList<Filter>()
     base.add(Filter.Type(NodeType.TASK))
     when (show) {
@@ -448,6 +487,13 @@ private fun buildFilter(show: ShowMode, conds: List<Cond>, extras: List<Filter> 
         } else if (c.defId != null) {
             base.add(Filter.Prop(defId = c.defId, op = c.op, text = c.text, number = c.number, date = null, bool = c.bool, dateRel = c.dateRel))
         }
+    }
+    // No clause at all for "everywhere": the absence is what makes the rule portable, and writing
+    // one InWorkspace per repo would silently stop covering a workspace added afterwards.
+    when (workspaces.size) {
+        0 -> Unit
+        1 -> base.add(Filter.InWorkspace(workspaces.single()))
+        else -> base.add(Filter.AnyOf(workspaces.sorted().map { Filter.InWorkspace(it) }))
     }
     base.addAll(extras)
     return Filter.All(base)

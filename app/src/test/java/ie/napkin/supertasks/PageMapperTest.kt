@@ -19,6 +19,24 @@ class PageMapperTest {
 
     private val zone: ZoneId = ZoneId.of("Europe/Dublin")
 
+    /**
+     * A derived block id ends up in a navigation route, and a route is parsed as a URI.
+     *
+     * It used to join page and line with `#`, which a URI reads as the start of a fragment: the
+     * route `node/<page>#3` resolved to `node/<page>`, so tapping a block that had no id of its own
+     * played a transition onto the page it was already on. Nothing about that is visible from
+     * either end — the tap site had the right id and the destination had the right route — which is
+     * exactly why the character belongs in a test.
+     */
+    @Test
+    fun `a derived block id survives being put in a URI`() {
+        val id = PageMapper.blockId("7c3f", 3)
+        assertEquals("7c3f", id.substringBefore(PageMapper.BLOCK_SEP))
+        "#?/&= ".forEach { c ->
+            assertTrue("derived id must not contain '$c': $id", c !in id)
+        }
+    }
+
     private val page = """
         ---
         id: 7c3f

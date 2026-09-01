@@ -328,6 +328,65 @@ class PageCodecTest {
         assertEquals("plain bullet", (b as Bullet).text)
     }
 
+    // ---- an empty block keeps its kind (P0-2) ----
+
+    /**
+     * The bug this pins: a task with nothing written in it renders as "- [ ] ", and the only thing
+     * telling it apart from a bullet was the space on the end of the line. Anything that trims
+     * trailing whitespace — an editor, a linter, a git hook — turned a checkbox into a bullet, and
+     * the id after it into stray text on the line. Kind must not be inferred from content.
+     */
+    @Test
+    fun `an empty task is still a task, with or without its trailing space`() {
+        listOf("- [ ]", "- [ ] ", "- [x]", "- [~] ").forEach { line ->
+            val b = PageCodec.decodeBlock(line)
+            assertTrue("$line parsed as ${b::class.simpleName}", b is TaskRef)
+            assertEquals("", (b as TaskRef).title)
+        }
+    }
+
+    @Test
+    fun `an empty task round-trips, id and all`() {
+        listOf(
+            TaskRef(id = "", title = ""),
+            TaskRef(id = "abc-123", title = ""),
+            TaskRef(id = "abc-123", title = "", status = TaskStatus.IN_PROGRESS),
+        ).forEach { task ->
+            val line = PageCodec.encodeBlock(task)
+            assertEquals(line, line.trimEnd())
+            assertEquals(task, PageCodec.decodeBlock(line).let { (it as TaskRef).copy(raw = null) })
+        }
+    }
+
+    @Test
+    fun `every block kind survives a full page round trip`() {
+        val blocks = listOf(
+            Heading(""), Bullet(""), Numbered(""), Prose(""),
+            TaskRef(id = "t1", title = ""),
+            TaskRef(id = "t2", title = "named"),
+            InkRef("ink-1"), ImageRef("pic-1"),
+        )
+        val back = PageCodec.decode(PageCodec.encode(page(blocks))).blocks
+        assertEquals(blocks.map { it::class }, back.map { it::class })
+    }
+
+    /**
+     * The emitter has to put *something* on the line to keep an empty block, and what it puts must
+     * not come back as content. It did: a blank note round-tripped into a note containing a space,
+     * so the first thing typed into it was pushed one character right — visible on the first line
+     * of a paragraph and nowhere else, because only the first line had it.
+     */
+    @Test
+    fun `an empty block does not come back holding whitespace`() {
+        val blank = Prose("")
+        val line = PageCodec.encodeBlock(blank)
+        assertTrue("an empty block still needs a line", line.isNotEmpty())
+        assertEquals("", (PageCodec.decodeBlock(line) as Prose).text)
+
+        val back = PageCodec.decode(PageCodec.encode(page(listOf(blank, Prose("after"))))).blocks
+        assertEquals(listOf("", "after"), back.map { (it as Prose).text })
+    }
+
     // ---- helpers ----
 
     private fun page(blocks: List<Block>) = PageDoc(

@@ -100,6 +100,12 @@ object FilterCompiler {
                 sb.append("EXISTS (SELECT 1 FROM node_label nl WHERE nl.node_id = n.id AND nl.label_id = ?)")
                 args += f.labelId
             }
+            // The column, not a join: `idx_node_workspace` already covers it, where the label this
+            // replaces cost a row per task and an EXISTS over node_label to read back.
+            is Filter.InWorkspace -> {
+                sb.append("n.workspace_id = ?")
+                args += f.workspaceId
+            }
         }
     }
 

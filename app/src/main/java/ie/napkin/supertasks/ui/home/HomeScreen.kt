@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,6 +75,7 @@ import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoBanner
+import ie.napkin.supertasks.data.workspace.WorkspaceEntry
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
@@ -239,14 +242,16 @@ fun HomeScreen(nav: NavHostController) {
             CreatePanel(
                 allLabels = labels,
                 listNames = allRegularLists.mapNotNull { it.title },
-                onCreate = { type, name, makeSmart ->
+                workspaces = vm.workspaces,
+                defaultWorkspaceId = vm.defaultWorkspaceId,
+                onCreate = { type, name, makeSmart, wsId ->
                     when (type) {
                         CreateType.TASK -> vm.quickAddTask(name) { id -> nav.navigate(Routes.node(id)) }
                         CreateType.LIST -> {
                             if (makeSmart) customSmartName = name
-                            else vm.createListThen(name) { id -> nav.navigate(Routes.node(id)) }
+                            else vm.createListThen(name, wsId) { id -> nav.navigate(Routes.node(id)) }
                         }
-                        CreateType.GROUP -> vm.createGroup(name)
+                        CreateType.GROUP -> vm.createGroup(name, wsId)
                     }
                     showCreate = false
                 },
@@ -260,6 +265,7 @@ fun HomeScreen(nav: NavHostController) {
             defs = defs,
             labels = labels,
             lists = allRegularLists,
+            workspaces = vm.workspaces,
             onCreateLabel = vm::createLabel,
             onDismiss = { customSmartName = null },
             onCreate = { name, filter, sort, homeId ->
@@ -274,7 +280,9 @@ fun HomeScreen(nav: NavHostController) {
             confirmLabel = "Create",
             placeholder = "Group name — e.g. Work",
             onDismiss = { showNewGroup = false },
-            onConfirm = { vm.createGroup(it); showNewGroup = false },
+            // No picker here — a bare text dialog. It lands in the default workspace, and the
+            // create sheet is where the choice is offered.
+            onConfirm = { vm.createGroup(it, vm.defaultWorkspaceId); showNewGroup = false },
         )
     }
     movingNode?.let { node ->
@@ -440,16 +448,21 @@ private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelet
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CreatePanel(
     allLabels: List<ie.napkin.supertasks.data.db.LabelEntity>,
     listNames: List<String>,
-    onCreate: (CreateType, String, Boolean) -> Unit,
+    /** Every workspace on this device. One (or none) and the choice is not offered. */
+    workspaces: List<WorkspaceEntry>,
+    defaultWorkspaceId: String,
+    onCreate: (CreateType, String, Boolean, String) -> Unit,
 ) {
     val y = Yantra.colors
     var type by remember { mutableStateOf(CreateType.TASK) }
     var text by remember { mutableStateOf(TextFieldValue()) }
     var makeSmart by remember { mutableStateOf(false) }
+    var wsId by remember { mutableStateOf(defaultWorkspaceId) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
@@ -465,7 +478,7 @@ private fun CreatePanel(
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = {
-                if (valid) onCreate(type, text.text.trim(), makeSmart)
+                if (valid) onCreate(type, text.text.trim(), makeSmart, wsId)
             }),
             // Only for a task. A list or a group is named literally — its title is whatever you
             // typed — so tinting part of it would promise a reading that is never applied.
@@ -497,6 +510,22 @@ private fun CreatePanel(
                 SelectChip(t.label, selected = t == type, onClick = { type = t }, modifier = Modifier.weight(1f))
             }
         }
+        // Only for the things that have no parent to inherit from. A task goes to the Inbox and a
+        // block belongs to its page; a list or a group is the one create where the repo is a real
+        // choice — and only worth asking when there is more than one answer.
+        if (type != CreateType.TASK && workspaces.size > 1) {
+            Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionLabel(if (type == CreateType.GROUP) "Group lives in" else "List lives in", color = y.textMuted)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    workspaces.forEach { w ->
+                        SelectChip(w.name.ifBlank { "Untitled" }, selected = w.id == wsId) { wsId = w.id }
+                    }
+                }
+            }
+        }
         if (type == CreateType.LIST) {
             Row(
                 Modifier
@@ -517,7 +546,7 @@ private fun CreatePanel(
             label = actionLabel,
             modifier = Modifier.fillMaxWidth(),
             enabled = valid,
-            onClick = { onCreate(type, text.text.trim(), makeSmart) },
+            onClick = { onCreate(type, text.text.trim(), makeSmart, wsId) },
         )
     }
 }
