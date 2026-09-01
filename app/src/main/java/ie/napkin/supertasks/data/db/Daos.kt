@@ -136,6 +136,16 @@ interface NodeDao {
     @Query("SELECT COUNT(*) FROM node WHERE workspace_id = :ws")
     suspend fun countNodes(ws: String): Int
 
+    /**
+     * Every workspace the index believes in.
+     *
+     * Asked at startup so one that no longer exists can be swept out — see
+     * [ie.napkin.supertasks.AppContainer]. The index is the only place a forgotten workspace could
+     * still be, and nothing else knows to look.
+     */
+    @Query("SELECT DISTINCT workspace_id FROM node")
+    suspend fun indexedWorkspaces(): List<String>
+
     @Update
     suspend fun update(node: NodeEntity)
 

@@ -63,6 +63,7 @@ class SignInStatesTest {
                         onRepoName = {},
                         onInstall = onInstall,
                         onCreate = onCreate,
+                        onUseExisting = {},
                         onSignOut = onSignOut,
                     )
                 }
@@ -182,6 +183,7 @@ class SignInStatesTest {
                         onRepoName = {},
                         onInstall = {},
                         onCreate = {},
+                        onUseExisting = {},
                         onSignOut = { out++ },
                     )
                 }

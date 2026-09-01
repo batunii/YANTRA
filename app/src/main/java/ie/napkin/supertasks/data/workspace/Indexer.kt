@@ -29,6 +29,30 @@ class Indexer(private val db: AppDatabase) {
      */
     private val last = HashMap<String, WorkspaceIndex>()
 
+    /**
+     * Removes every row a workspace owns.
+     *
+     * Forgetting a workspace used to delete its files, its credentials and its registry entry, and
+     * leave the index alone — so its lists went on appearing on Home and in Today, belonging to a
+     * repository that was no longer on the device. They could not be deleted either: a write is
+     * routed by the node's `workspace_id`, and with no writer under that id it fell through to
+     * Personal, which has no such page, so Delete succeeded at doing nothing.
+     *
+     * The same seven tables the rebuild clears, in the same order — children before parents, or the
+     * foreign key on `node.parent_id` refuses. [reindexAll] cannot do this job: it rebuilds the
+     * workspaces that are *open*, and the whole point here is one that is not.
+     */
+    suspend fun purge(workspaceId: String) {
+        last.remove(workspaceId)
+        db.labelDao().clearNodeLabels(workspaceId)
+        db.labelDao().clearLabels(workspaceId)
+        db.propertyDao().clearValues(workspaceId)
+        db.smartListDao().clearSmartLists(workspaceId)
+        db.inkDao().clearStrokes(workspaceId)
+        db.focusDao().clearSessions(workspaceId)
+        db.nodeDao().clearNodes(workspaceId)
+    }
+
     /** Per workspace, the mapping of each page — reused while the page's file is untouched. */
     private val mapped = HashMap<String, MutableMap<String, Pair<
         ie.napkin.supertasks.data.format.PageDoc, MappedPage>>>()

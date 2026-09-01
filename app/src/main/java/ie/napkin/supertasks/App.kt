@@ -255,6 +255,23 @@ class AppContainer(val app: Application) {
         report(workspaces.reindexAll())
         workspaces.all.forEach { attach(it) }
 
+        // Sweep out any workspace the index still believes in and nothing else does.
+        //
+        // Forgetting one used to leave its rows behind, so its lists went on appearing on Home and
+        // in Today long after its files and its registry entry were gone — and they could not be
+        // deleted, because a write is routed by the node's workspace and there was no longer a
+        // writer to route it to. Fixed at the source in [forgetWorkspace], but a device that has
+        // already forgotten one is still carrying the rows, and only this notices.
+        //
+        // Deliberately keyed on what is *open* rather than on the registry: those agree by the time
+        // this runs, and a workspace that failed to open keeps its rows for the next launch rather
+        // than being erased because a disk was slow.
+        val known = workspaces.all.map { it.id }.toSet()
+        db.nodeDao().indexedWorkspaces().filterNot { it in known }.forEach { orphan ->
+            Log.i("Yantra", "Sweeping index rows for forgotten workspace $orphan")
+            indexer.purge(orphan)
+        }
+
         // Also on launch, not only on the daily worker. Android is free to decide a periodic job can
         // wait until tomorrow — Samsung especially — and archiving is what keeps the working set at
         // the size the whole indexing design assumes. A file scan on a workspace that has not opted
@@ -515,6 +532,10 @@ class AppContainer(val app: Application) {
         registry.remove(workspaceId)
         workspaces.close(workspaceId)
         registry.dirFor(workspaceId).deleteRecursively()
+        // The index does not follow the files. reindexAll rebuilds the workspaces that are open,
+        // and this one no longer is — so without naming it here its lists stayed on Home, pointing
+        // at a repository that had been removed, and Delete on them did nothing at all.
+        indexer.purge(workspaceId)
         workspaces.reindexAll()
     }
 
