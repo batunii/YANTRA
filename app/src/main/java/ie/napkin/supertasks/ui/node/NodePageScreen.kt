@@ -141,7 +141,12 @@ import ie.napkin.supertasks.ui.components.LocalLinkResolver
 import ie.napkin.supertasks.ui.components.inlineAnnotated
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.ui.components.QuickAddBar
+import ie.napkin.supertasks.ui.components.ElapsedSlot
+import ie.napkin.supertasks.ui.components.timingTaskId
+import ie.napkin.supertasks.ui.components.BottomBar
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.NeutralChip
 import androidx.compose.material.icons.automirrored.filled.List
@@ -813,15 +818,35 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         val actOn = blocks.firstOrNull { it.id == activeBlockId }
         // Lists capture with the same bar as a smart list. A task's page has no such bar: you type
         // into it directly, which is what a document is.
-        if (!isTask) {
-            QuickAddBar(
-                modifier = Modifier.navigationBarsPadding().imePadding(),
-                labels = allLabels,
-                lists = listNames,
-                people = assignable,
-                findTasks = { q -> vm.linkTargets(q) },
-                resolveLinks = { t -> vm.linkIdsFor(t) },
-                onAdd = { title -> vm.captureTask(title) },
+        BottomBar(
+            onOpenNow = { n ->
+                nav.navigate(if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId))
+            },
+            onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
+            // Lists and workspaces show what is on the go; a task's own page does not. You are
+            // already inside one task — a deck of the others is a list of places you are not, and
+            // it would sit exactly where the words go on the one screen that is written into.
+            showNow = !isTask,
+            modifier = Modifier.navigationBarsPadding().imePadding(),
+        ) { bottomPadding ->
+            if (!isTask) {
+                QuickAddBar(
+                    labels = allLabels,
+                    lists = listNames,
+                    people = assignable,
+                    findTasks = { q -> vm.linkTargets(q) },
+                    resolveLinks = { t -> vm.linkIdsFor(t) },
+                    onAdd = { title -> vm.captureTask(title) },
+                    bottomPadding = bottomPadding,
+                )
+            }
+        }
+        val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
+        timingOccupied?.let {
+            SwitchHereDialog(
+                runningTitle = it.byTitle,
+                onConfirm = { vm.timing.confirm() },
+                onDismiss = { vm.timing.dismiss() },
             )
         }
         // Only a task's page is typed into, so only it can be mid-link.
@@ -1614,8 +1639,22 @@ internal fun TextualBlockRow(
         },
     )
 
+    /**
+     * Whether a clock is actually running on this task, on this device.
+     *
+     * Not `child.inProgress`, and not merely "the task you are on". Being on something is a claim
+     * that syncs; a session is a live stopwatch that does not. A task marked on the laptop arrives
+     * here wearing the ring with no elapsed time to show, and a task you swiped a moment ago has not
+     * been given any time yet — in both cases the trailing slot has nothing to put in place of the
+     * schedule chip, so the chip stays.
+     */
+    val timing = isTask && child.id == timingTaskId()
+    // While the clock runs the trailing slot belongs to it, and the schedule steps aside rather than
+    // sharing the space — effort outranks schedule for exactly as long as effort is being spent.
+    val shownChips = if (timing) chips.filterNot { it.defId == BuiltIns.DUE_DEF_ID } else chips
     // See the note at the call site below.
-    val inlineChips = isTask && !editable && chips.size + (if (pomoCount > 0) 1 else 0) == 1
+    val inlineChips = isTask && !editable && !timing &&
+        shownChips.size + (if (pomoCount > 0) 1 else 0) == 1
 
     val titleColor = if (isTask && child.done) y.textDim else y.textPrimary
     // No strikethrough. A finished task is struck through with the ink strike below — a pen mark in
@@ -1883,10 +1922,13 @@ internal fun TextualBlockRow(
             // title. More than one still gets its own line, where wrapping is honest; and a row you
             // can type into never does this, because a chip must not narrow the field the caret is
             // in as you type.
-            if (isTask && inlineChips) {
+            if (isTask && timing) {
+                Spacer(Modifier.width(6.dp))
+                ElapsedSlot(child.id, Modifier.padding(top = 2.dp))
+            } else if (isTask && inlineChips) {
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.padding(top = 1.dp)) {
-                    chips.firstOrNull()?.let { PropertyChip(it) } ?: FocusCount(pomoCount)
+                    shownChips.firstOrNull()?.let { PropertyChip(it) } ?: FocusCount(pomoCount)
                 }
             }
             // The way in, always available on a task. It carries the child count when there is
@@ -1911,13 +1953,13 @@ internal fun TextualBlockRow(
                 }
             }
         }
-        if (isTask && !inlineChips && (chips.isNotEmpty() || pomoCount > 0)) {
+        if (isTask && !inlineChips && (shownChips.isNotEmpty() || pomoCount > 0)) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.padding(start = 35.dp, top = 6.dp),
             ) {
-                chips.forEach { PropertyChip(it) }
+                shownChips.forEach { PropertyChip(it) }
                 if (pomoCount > 0) FocusCount(pomoCount)
             }
         }

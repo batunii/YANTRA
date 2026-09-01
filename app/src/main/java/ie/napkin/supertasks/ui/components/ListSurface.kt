@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -90,6 +91,13 @@ fun QuickAddBar(
     /** Typed link name to node id, so the tint agrees with what committing will actually write. */
     resolveLinks: suspend (String) -> Map<String, String> = { emptyMap() },
     onAdd: (String) -> Unit,
+    /**
+     * Room under the field.
+     *
+     * The screen edge's worth by default, and much less when the player is sitting underneath to
+     * catch it — see [BottomBar].
+     */
+    bottomPadding: Dp = 22.dp,
 ) {
     val y = Yantra.colors
     // TextFieldValue rather than String, because tapping a suggestion has to place the caret as
@@ -129,7 +137,7 @@ fun QuickAddBar(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
+                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = bottomPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(

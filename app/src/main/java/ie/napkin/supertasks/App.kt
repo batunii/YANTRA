@@ -29,6 +29,8 @@ import ie.napkin.supertasks.data.sync.GitRepo
 import ie.napkin.supertasks.data.sync.SyncEngine
 import ie.napkin.supertasks.data.sync.TokenRenewal
 import ie.napkin.supertasks.domain.FocusTimer
+import ie.napkin.supertasks.domain.RunningTask
+import ie.napkin.supertasks.domain.SessionNotification
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
 import ie.napkin.supertasks.reminders.Reminders
@@ -58,8 +60,16 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
+        val notifications = getSystemService(NotificationManager::class.java)
+        notifications.createNotificationChannel(
             NotificationChannel(Reminders.CHANNEL_ID, "Reminders", NotificationManager.IMPORTANCE_HIGH)
+        )
+        // Low, and deliberately so: a reminder interrupts you, a running session only reports. See
+        // SessionNotification.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                SessionNotification.CHANNEL_ID, "Running session", NotificationManager.IMPORTANCE_LOW,
+            )
         )
         // Component enabled-states are package state, not app data: a reinstall resets them to the
         // manifest defaults while the stored accent survives in prefs, which would leave a coral
@@ -195,6 +205,7 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
+    val running = RunningTask(timer, nodes, appScope)
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
@@ -460,6 +471,40 @@ class AppContainer(val app: Application) {
     init {
         // Any process wake (widget tap, worker, activity) revives a live focus session.
         appScope.launch { timer.restoreIfNeeded() }
+        // Starting a session marks the task, and this is the seam that does it.
+        //
+        // One direction only. You cannot be focusing on something you are not on, so a session
+        // start writes the flag — but the reverse is not true and must not be wired: marking a task
+        // is a claim about what you are doing, and committing a block of time to it is a separate
+        // decision the person may not have made yet. See RunningTask.
+        //
+        // Nor does the flag come off when a session ends. You stopped timing; you are usually still
+        // on the thing, and having the ring vanish the moment a pomodoro ran out would be the
+        // opposite of what just happened. Putting a task down is always something you do — a swipe,
+        // or completing it.
+        //
+        // The timer is the authority on *what is running now*: it already permits exactly one, ends
+        // the previous one when a second starts, and comes back after process death. What it cannot
+        // do is outlive the install — it is a ticking clock, not a record — so the durable half of
+        // the claim goes on the task's line, where it syncs and another device can see it.
+        //
+        // Here rather than at the three places a session can begin — the focus screen, the widget,
+        // and a restore after process death — because a rule enforced once is a rule a new caller
+        // cannot forget.
+        //
+        // A device with no live session still shows the ring for a task another device marked, and
+        // shows no clock beside it. That is the honest reading: the claim travelled, the stopwatch
+        // did not.
+        appScope.launch {
+            timer.state
+                .map { s -> s?.takeIf { !it.isFinished }?.nodeId }
+                .distinctUntilChanged()
+                .collect { current ->
+                    // setInProgress clears whatever else held the mark, so a session that starts on
+                    // a different task moves it in one write.
+                    current?.let { nodes.setInProgress(it, true) }
+                }
+        }
         // Focus widget re-renders on state *transitions* only — never per tick (the widget's
         // Chronometer handles the live countdown). Also (de)schedules the dead-process finalizer.
         appScope.launch {
@@ -472,6 +517,13 @@ class AppContainer(val app: Application) {
                         FocusFinalizeWorker.schedule(app, s.remainingSecs)
                     } else if (s == null || s.isFinished) {
                         FocusFinalizeWorker.cancel(app)
+                    }
+                    // Posted on transitions only, for the same reason the widget is: the chronometer
+                    // in the notification ticks itself, so there is nothing per-second to push.
+                    if (s != null && !s.isFinished) {
+                        SessionNotification.show(app, s.nodeTitle, s.nodeId, s.elapsedSecs)
+                    } else {
+                        SessionNotification.clear(app)
                     }
                     FocusWidget().updateAll(app)
                 }

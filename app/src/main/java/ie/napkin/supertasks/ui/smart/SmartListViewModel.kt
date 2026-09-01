@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ie.napkin.supertasks.data.db.NodeType
+import ie.napkin.supertasks.domain.RunningTask
+import ie.napkin.supertasks.domain.TimingRequest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmartListViewModel(
@@ -36,6 +38,12 @@ class SmartListViewModel(
     private val smartLists = container.smartLists
     private val nodes = container.nodes
     private val properties = container.properties
+
+    /** Picking a task up and putting it down; see [RunningTask]. */
+    private val running = container.running
+
+    /** The player's play/stop, and the consent it needs when the clock is elsewhere. */
+    val timing = TimingRequest(container.running)
 
     /**
      * The workspaces the builder may offer as a rule's reach.
@@ -253,8 +261,32 @@ class SmartListViewModel(
         viewModelScope.launch { nodes.setDone(id, done) }
     }
 
+    /**
+     * The ladder's pick-up/put-down.
+     *
+     * It marks the task and nothing else. Taking the clock here was wrong: a swipe says "I have
+     * picked this up", which is not the same decision as committing a block of time to it, and
+     * starting a session on the gesture put minutes in the ledger nobody asked for. The card it
+     * deals onto the stack is how you start the focus, one tap away.
+     *
+     * Nothing else is put down either. Several things can be on the go at once; only the clock is
+     * exclusive, and it lives a screen away.
+     */
     fun setInProgress(id: String, inProgress: Boolean) {
-        viewModelScope.launch { nodes.setInProgress(id, inProgress) }
+        viewModelScope.launch {
+            if (inProgress) running.start(id) else running.stop(id)
+        }
+    }
+
+    /**
+     * The player's one button.
+     *
+     * An open stopwatch, not a commitment — pressing play on a bar you were passing anyway says
+     * "start counting", and says nothing about for how long. The length is a decision with its own
+     * screen, which the body of the player opens.
+     */
+    fun toggleClock(id: String, title: String) {
+        viewModelScope.launch { timing.toggle(id, title) }
     }
 
     private suspend fun describe(d: SmartListDefEntity?, defs: List<PropertyDefEntity>, labels: List<LabelEntity>): String {

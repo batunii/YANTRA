@@ -340,6 +340,17 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         )
     }
 
+    /** Everything on the go, newest first — see [setInProgress]. */
+    fun inProgress() = dao.inProgress()
+
+    /**
+     * The middle state: picked up, not finished.
+     *
+     * Deliberately **not** limited to one. Having several things on the go is the ordinary shape of
+     * a day, and an app that refuses to record it makes you choose which of your started tasks to
+     * lie about. What there is only one of is the focus session — a clock you commit to — and that
+     * limit lives where the clock does, in [ie.napkin.supertasks.domain.FocusTimer].
+     */
     suspend fun setInProgress(id: String, inProgress: Boolean) = ws.writerFor(id).editTask(id) {
         if (it.status == TaskStatus.DONE) it
         else it.copy(status = if (inProgress) TaskStatus.IN_PROGRESS else TaskStatus.OPEN)

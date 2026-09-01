@@ -3,6 +3,7 @@ package ie.napkin.supertasks.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.napkin.supertasks.AppContainer
+import ie.napkin.supertasks.domain.TimingRequest
 import ie.napkin.supertasks.data.workspace.WorkspaceEntry
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
@@ -31,6 +32,20 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val smartLists = container.smartLists
     private val properties = container.properties
     private val labelsRepo = container.labels
+
+    /** The player's play/stop, and the consent it needs when the clock is elsewhere. */
+    val timing = TimingRequest(container.running)
+
+    /**
+     * The player's one button.
+     *
+     * An open stopwatch, not a commitment — pressing play on a bar you were passing anyway says
+     * "start counting", and says nothing about for how long. The length is a decision with its own
+     * screen, which the body of the player opens.
+     */
+    fun toggleClock(id: String, title: String) {
+        viewModelScope.launch { timing.toggle(id, title) }
+    }
 
     /**
      * The workspaces the builder may offer as a rule's reach.

@@ -53,6 +53,9 @@ import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.QuickAddBar
+import ie.napkin.supertasks.ui.components.BottomBar
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
+import ie.napkin.supertasks.ui.components.startedTaskIds
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.node.TextualBlockRow
 import ie.napkin.supertasks.ui.container
@@ -198,6 +201,20 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         // which is why they are not two different blocks of code any more.
         val resolveLink: (String) -> String? = remember(linkTitles) { { id -> linkTitles[id] } }
 
+        /**
+         * What you have on the go, pinned to the top of whatever is open.
+         *
+         * These leave their sections rather than being highlighted where they sit. A row you have to
+         * scroll to find is a row that can be scrolled away from, and the things you have actually
+         * started are the ones a list should never be able to hide. The sort is stable, so the
+         * started rows keep their order relative to each other and everything else keeps the order
+         * the rule gave it.
+         */
+        val started = startedTaskIds()
+        val ordered = remember(tasks, started) {
+            if (started.isEmpty()) tasks else tasks.sortedByDescending { it.id in started }
+        }
+
         @Composable
         fun SmartTaskRow(task: NodeEntity) {
             ListGroupRow(started = task.inProgress) {
@@ -269,7 +286,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 // Open first, then what you finished. Two cards rather than one run of rows: the done
                 // half is not part of the rule's ordering — it is there because you did it today, not
                 // because it still matches — and giving it its own surface says so.
-                items(tasks, key = { it.id }) { task -> SmartTaskRow(task) }
+                items(ordered, key = { it.id }) { task -> SmartTaskRow(task) }
 
                 if (completed.isNotEmpty()) {
                     item(key = "done-header") {
@@ -285,20 +302,42 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             }
         }
 
-        if (def?.homeParentId != null || def?.scopeRootId != null) {
-            QuickAddBar(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .imePadding(),
-                labels = labels,
-                lists = lists.mapNotNull { it.title },
-                people = assignable,
-                findTasks = { q -> vm.linkTargets(q) },
-                resolveLinks = { t -> vm.linkIdsFor(t) },
-                onAdd = vm::addTask,
+        // The now bar takes this slot whenever a session runs, and hands capture a key beside it.
+        // A view with no home to add to still gets the bar: what is running is true of the app, not
+        // of the list you happen to be looking at.
+        BottomBar(
+            // The body opens focus — where you commit to a length. The button beside it starts the
+            // clock here and now. Two instruments, two targets.
+            onOpenNow = { n ->
+                nav.navigate(if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId))
+            },
+            onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
+            modifier = Modifier
+                .navigationBarsPadding()
+                .imePadding(),
+        ) { bottomPadding ->
+            if (def?.homeParentId != null || def?.scopeRootId != null) {
+                QuickAddBar(
+                    labels = labels,
+                    lists = lists.mapNotNull { it.title },
+                    people = assignable,
+                    findTasks = { q -> vm.linkTargets(q) },
+                    resolveLinks = { t -> vm.linkIdsFor(t) },
+                    onAdd = vm::addTask,
+                    bottomPadding = bottomPadding,
+                )
+            }
+        }
+        val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
+        timingOccupied?.let {
+            SwitchHereDialog(
+                runningTitle = it.byTitle,
+                onConfirm = { vm.timing.confirm() },
+                onDismiss = { vm.timing.dismiss() },
             )
         }
     }
+
 
     // The same sheet the list was created with, opened on the stored rule. Reusing it is the point:
     // an "edit" screen of its own would be a second place for the same decisions to be made

@@ -63,6 +63,9 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
+import ie.napkin.supertasks.ui.components.NowPlayer
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
+import ie.napkin.supertasks.ui.components.LocalNow
 import androidx.compose.ui.text.input.VisualTransformation
 import ie.napkin.supertasks.ui.components.CaptureSuggestions
 import ie.napkin.supertasks.ui.components.rememberCaptureHighlight
@@ -167,10 +170,33 @@ fun HomeScreen(nav: NavHostController) {
     Scaffold(
         containerColor = y.page,
         bottomBar = {
-            HomeTabBar(
-                onCog = { showCreate = true },
-                onStats = { nav.navigate(Routes.STATS) },
-            )
+            Column {
+                // The same bar as every other screen, above the strip rather than replacing it —
+                // Home's capture is already a key in that strip (the cog), so there is nothing here
+                // for the now bar to take.
+                val stack by LocalNow.current.collectAsStateWithLifecycle()
+                NowPlayer(
+                    stack = stack,
+                    onOpen = { n ->
+                        nav.navigate(
+                            if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId)
+                        )
+                    },
+                    onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
+                )
+                val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
+                timingOccupied?.let {
+                    SwitchHereDialog(
+                        runningTitle = it.byTitle,
+                        onConfirm = { vm.timing.confirm() },
+                        onDismiss = { vm.timing.dismiss() },
+                    )
+                }
+                HomeTabBar(
+                    onCog = { showCreate = true },
+                    onStats = { nav.navigate(Routes.STATS) },
+                )
+            }
         },
     ) { padding ->
         PullToSync(Modifier.fillMaxSize().padding(padding)) {
@@ -186,16 +212,10 @@ fun HomeScreen(nav: NavHostController) {
                     )
                 }
 
-                if (timer != null) {
-                    item(key = "timer") {
-                        ActiveTimerCard(
-                            title = timer!!.nodeTitle,
-                            remainingSecs = timer!!.remainingSecs,
-                            plannedSecs = timer!!.plannedSecs,
-                            onClick = { nav.navigate(Routes.FOCUS_CURRENT) },
-                        )
-                    }
-                }
+                // The session used to be reported twice on this screen — a card up here and,
+                // now, the bar at the bottom. One running task, one treatment: the card goes, and
+                // what it alone could show (a commitment's countdown and how much of it is spent)
+                // stays on the focus screen, one tap away through the bar.
 
                 // The app has an empty state, with its own mark and an action, and until now used it
                 // on one screen out of five — not this one, which is the first screen anyone sees.
@@ -695,33 +715,3 @@ private fun MoveRow(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun ActiveTimerCard(title: String, remainingSecs: Int, plannedSecs: Int, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        Modifier.fillMaxWidth().padding(top = 12.dp)
-            .background(y.bandTimer, shape)
-            .border(1.dp, y.accent.copy(alpha = 0.28f), shape)
-            .clickable(onClick = onClick).padding(14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(38.dp).background(y.accent.copy(alpha = 0.16f), RoundedCornerShape(11.dp)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Default.Timer, null, tint = y.accent, modifier = Modifier.size(19.dp)) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("FOCUSING", fontFamily = YantraMono, fontSize = 10.sp, fontWeight = FontWeight.W700, letterSpacing = 1.6.sp, color = y.accentEyebrow)
-                Text(title, fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W700, color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.width(8.dp))
-            Text("%d:%02d".format(remainingSecs / 60, remainingSecs % 60), style = MonoBanner, color = y.accentText)
-        }
-        Spacer(Modifier.height(12.dp))
-        Box(Modifier.fillMaxWidth().height(5.dp).background(y.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(3.dp))) {
-            val frac = if (plannedSecs == 0) 0f else (plannedSecs - remainingSecs).toFloat() / plannedSecs
-            Box(Modifier.fillMaxWidth(frac.coerceIn(0f, 1f)).height(5.dp).background(y.accent, RoundedCornerShape(3.dp)))
-        }
-    }
-}

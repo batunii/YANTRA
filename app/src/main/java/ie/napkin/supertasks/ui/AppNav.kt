@@ -10,6 +10,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
@@ -21,6 +22,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ie.napkin.supertasks.App
 import ie.napkin.supertasks.AppContainer
+import ie.napkin.supertasks.ui.components.LocalNow
 import ie.napkin.supertasks.ui.home.HomeScreen
 import ie.napkin.supertasks.ui.ink.InkScreen
 import ie.napkin.supertasks.ui.node.NodePageScreen
@@ -92,6 +94,11 @@ fun AppNav(
      */
     val startDestination = remember { if (openTarget != null) Routes.HOME else Routes.SPLASH }
 
+    // The task being worked on, offered once to the whole graph. Every screen that draws it — the
+    // washed row's trailing slot, the now bar — reads this one, so none of them can be looking at
+    // a different task from the one the app is actually on.
+    val now = appContainer().running.now
+
     // A widget tap skips the splash and jumps straight to the tapped list/task.
     LaunchedEffect(openTarget) {
         val target = openTarget ?: return@LaunchedEffect
@@ -121,6 +128,7 @@ fun AppNav(
     val spatialSlide = spring<IntOffset>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
     val fadeAway = tween<Float>(outMs, easing = LinearEasing)
     val fadeUp = tween<Float>(inMs, delayMillis = outMs, easing = LinearEasing)
+    CompositionLocalProvider(LocalNow provides now) {
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -165,5 +173,6 @@ fun AppNav(
         composable(Routes.ARCHIVE) {
             ArchiveScreen(navController)
         }
+    }
     }
 }

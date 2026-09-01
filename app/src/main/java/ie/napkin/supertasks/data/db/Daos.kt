@@ -154,6 +154,23 @@ interface NodeDao {
     @Query("UPDATE node SET in_progress = :inProgress, updated_at = :now WHERE id = :id AND done = 0")
     suspend fun setInProgress(id: String, inProgress: Boolean, now: Long)
 
+    /**
+     * Everything on the go, newest first.
+     *
+     * A list, not a single row: you can have several things started at once, and the bar shows them
+     * as a stack you swipe through. What there is only ever one of is the *focus session* — see
+     * [ie.napkin.supertasks.domain.FocusTimer] — which is a different and much stronger claim than
+     * having picked something up.
+     *
+     * Newest first because marking a task bumps `updated_at`, so the thing you just started is the
+     * card on top, which is where you would look for it.
+     */
+    @Query(
+        "SELECT * FROM node WHERE in_progress = 1 AND done = 0 AND deleted_at IS NULL " +
+            "ORDER BY updated_at DESC"
+    )
+    fun inProgress(): Flow<List<NodeEntity>>
+
     @Query("UPDATE node SET collapsed = :collapsed, updated_at = :now WHERE id = :id")
     suspend fun setCollapsed(id: String, collapsed: Boolean, now: Long)
 
