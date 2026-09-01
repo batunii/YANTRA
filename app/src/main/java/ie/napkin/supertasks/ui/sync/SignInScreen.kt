@@ -151,6 +151,8 @@ fun SignInScreen(nav: NavHostController) {
     var noteBad by remember { mutableStateOf(false) }
     /** Set when the repository turned out to have a task list of its own — see [LinkOutcome.Asks]. */
     var asking by remember { mutableStateOf<LinkOutcome.Asks?>(null) }
+    /** True while an existing repository is being looked up and attached. */
+    var linking by remember { mutableStateOf(false) }
 
     /**
      * Everything that happened in the browser, noticed on the way back.
@@ -363,6 +365,42 @@ fun SignInScreen(nav: NavHostController) {
                         awaiting = repoName.trim()
                         uri.openUri(GitHubAuth.newRepoUrl(repoName.trim()))
                     },
+                    linking = linking,
+                    onUseExisting = {
+                        note = null
+                        linking = true
+                        scope.launch {
+                            try {
+                                val tok = container.credentials.token(Credentials.ACCOUNT)
+                                val who = account
+                                when {
+                                    tok == null || who == null -> {
+                                        note = "Sign in again — we do not know who you are"
+                                        noteBad = true
+                                    }
+                                    else -> when (
+                                        val outcome = linkCreated(container, who, repoName.trim(), tok)
+                                    ) {
+                                        // Only the resume check may treat "not there yet" as
+                                        // patience; asked for directly, it is an answer.
+                                        null -> {
+                                            note = "${who}/${repoName.trim()} is not there, or " +
+                                                "Yantra has not been given access to it"
+                                            noteBad = true
+                                        }
+                                        is LinkOutcome.Done -> {
+                                            note = outcome.said.message
+                                            noteBad = !outcome.said.ok
+                                            localSlug = container.slugOf("")
+                                        }
+                                        is LinkOutcome.Asks -> asking = outcome
+                                    }
+                                }
+                            } finally {
+                                linking = false
+                            }
+                        }
+                    },
                     onSignOut = {
                         // Only the account. A workspace keeps its own copy of the token, so signing
                         // out stops this app reaching GitHub on your behalf and does not break the
@@ -513,7 +551,10 @@ internal fun SignedIn(
     onRepoName: (String) -> Unit,
     onInstall: () -> Unit,
     onCreate: () -> Unit,
+    /** Point Personal at a repository that is already there. */
+    onUseExisting: () -> Unit,
     onSignOut: () -> Unit,
+    linking: Boolean = false,
 ) {
     val y = Yantra.colors
 
@@ -603,6 +644,22 @@ internal fun SignedIn(
                     busy = awaiting != null,
                     enabled = repoName.isNotBlank(),
                     onClick = onCreate,
+                )
+                Spacer(Modifier.height(8.dp))
+                // The other half of the question, and it was missing.
+                //
+                // "Create a private repository" is the only thing this card offered, so someone who
+                // *already had* one had no way to say so: the working route was to type its name,
+                // press Create, create nothing, and come back so the resume check found it. Failing
+                // that you added it from Add a workspace, which makes a second workspace — and if
+                // its manifest says Personal, a second Personal.
+                YantraButton(
+                    label = "Use a repository I already have",
+                    tone = ButtonTone.Quiet,
+                    modifier = Modifier.fillMaxWidth(),
+                    busy = linking,
+                    enabled = repoName.isNotBlank() && awaiting == null,
+                    onClick = onUseExisting,
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
