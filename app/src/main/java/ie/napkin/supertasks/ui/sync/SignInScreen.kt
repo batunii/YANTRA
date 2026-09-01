@@ -26,9 +26,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +65,7 @@ import ie.napkin.supertasks.ui.components.ButtonTone
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.YantraField
 import ie.napkin.supertasks.ui.theme.Yantra
+import ie.napkin.supertasks.ui.theme.YantraMono
 import ie.napkin.supertasks.ui.theme.YantraText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -146,6 +149,8 @@ fun SignInScreen(nav: NavHostController) {
     var awaiting by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
     var noteBad by remember { mutableStateOf(false) }
+    /** Set when the repository turned out to have a task list of its own — see [LinkOutcome.Asks]. */
+    var asking by remember { mutableStateOf<LinkOutcome.Asks?>(null) }
 
     /**
      * Everything that happened in the browser, noticed on the way back.
@@ -180,12 +185,20 @@ fun SignInScreen(nav: NavHostController) {
             if (wanted != null && install == InstallState.Installed && !checking) {
                 checking = true
                 try {
-                    val outcome = linkCreated(container, account!!, wanted, tok)
-                    if (outcome != null) {
-                        awaiting = null
-                        note = outcome.message
-                        noteBad = !outcome.ok
-                        localSlug = container.slugOf("")
+                    when (val outcome = linkCreated(container, account!!, wanted, tok)) {
+                        null -> Unit
+                        is LinkOutcome.Done -> {
+                            awaiting = null
+                            note = outcome.said.message
+                            noteBad = !outcome.said.ok
+                            localSlug = container.slugOf("")
+                        }
+                        // Nothing was written. The repository has a list of its own, and which list
+                        // wins is not a question this screen may answer on its own.
+                        is LinkOutcome.Asks -> {
+                            awaiting = null
+                            asking = outcome
+                        }
                     }
                 } finally {
                     checking = false
@@ -193,6 +206,38 @@ fun SignInScreen(nav: NavHostController) {
             }
         }
         onPauseOrDispose { job.cancel() }
+    }
+
+    asking?.let { ask ->
+        RepoHasTasksDialog(
+            ask = ask,
+            onUseRepo = {
+                asking = null
+                scope.launch {
+                    val r = container.attachRemote("", ask.slug, ask.token, adopt = true)
+                    note = when (r) {
+                        is AddResult.Ok -> "This device now shows the tasks in ${ask.slug}"
+                        is AddResult.Refused -> r.reason
+                        is AddResult.HasTasks -> "${ask.slug} could not be joined"
+                    }
+                    noteBad = r !is AddResult.Ok
+                    localSlug = container.slugOf("")
+                }
+            },
+            onKeepBoth = {
+                asking = null
+                scope.launch {
+                    val r = container.addWorkspace(ask.slug, ask.token)
+                    note = when (r) {
+                        is AddResult.Ok -> "Added ${r.name}. Your tasks here are untouched."
+                        is AddResult.Refused -> r.reason
+                        is AddResult.HasTasks -> "${ask.slug} could not be joined"
+                    }
+                    noteBad = r !is AddResult.Ok
+                }
+            },
+            onCancel = { asking = null },
+        )
     }
 
     /** Polls until the user finishes on github.com, or until the code dies. */
@@ -662,23 +707,90 @@ private const val MAX_OFFLINE_POLLS = 6
  * should find the button still waiting rather than an error telling them they failed. Only an answer
  * that settles the matter comes back as a message.
  */
+/**
+ * What linking ended in: something to report, or something to ask.
+ *
+ * The ask exists because a repository that already holds tasks is genuinely ambiguous — it is either
+ * someone else's list or your own after a reinstall, and those want opposite things. See
+ * [ie.napkin.supertasks.data.sync.LinkResult.HasTasks].
+ */
+internal sealed interface LinkOutcome {
+    data class Done(val said: Said) : LinkOutcome
+    data class Asks(val slug: String, val localTasks: Int, val token: String) : LinkOutcome
+}
+
 private suspend fun linkCreated(
     container: AppContainer,
     login: String,
     name: String,
     token: String,
-): Said? = withContext(Dispatchers.IO) {
+): LinkOutcome? = withContext(Dispatchers.IO) {
     val ref = RepoRef(login, name)
     when (val check = container.github.check(ref, token)) {
         is RepoCheck.Ok ->
-            if (!check.canPush) Said(false, "${ref.slug} exists but Yantra cannot push to it")
-            else when (val attached = container.attachRemote("", ref.slug, token)) {
-                is AddResult.Ok -> Said(true, "Your tasks are now in ${ref.slug}")
-                is AddResult.Refused -> Said(false, attached.reason)
+            if (!check.canPush) {
+                LinkOutcome.Done(Said(false, "${ref.slug} exists but Yantra cannot push to it"))
+            } else when (val attached = container.attachRemote("", ref.slug, token)) {
+                is AddResult.Ok -> LinkOutcome.Done(Said(true, "Your tasks are now in ${ref.slug}"))
+                is AddResult.Refused -> LinkOutcome.Done(Said(false, attached.reason))
+                is AddResult.HasTasks ->
+                    LinkOutcome.Asks(attached.slug, attached.localTasks, token)
             }
         // Not there yet, or the App has not been granted it. Either way: keep waiting.
         RepoCheck.NotFound -> null
-        RepoCheck.Unauthorized -> Said(false, "Yantra was not given access to ${ref.slug}")
+        RepoCheck.Unauthorized ->
+            LinkOutcome.Done(Said(false, "Yantra was not given access to ${ref.slug}"))
         is RepoCheck.Failed -> null
     }
+}
+
+/**
+ * The repository already has a task list. Which one is the real one?
+ *
+ * Only the person knows. Two histories with no common ancestor look identical from the app's side
+ * whether they are two people's lists or one person's list and a phone that has been reinstalled
+ * since it last saw it — and the two want opposite things. So this asks, and says what taking the
+ * repository would cost, because "replaces the 3 tasks on this device" and "replaces the 214 tasks
+ * on this device" are not the same offer.
+ *
+ * Neither button is destructive by accident: keeping both is the safe reading and is one tap, and
+ * dismissing does nothing at all.
+ */
+@Composable
+private fun RepoHasTasksDialog(
+    ask: LinkOutcome.Asks,
+    onUseRepo: () -> Unit,
+    onKeepBoth: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val y = Yantra.colors
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("${ask.slug} already has tasks") },
+        text = {
+            Text(
+                if (ask.localTasks == 0) {
+                    "That repository already holds a Yantra list. There is nothing on this device " +
+                        "yet, so taking it costs nothing."
+                } else {
+                    "That repository already holds a Yantra list of its own. Using it replaces the " +
+                        "${ask.localTasks} ${if (ask.localTasks == 1) "task" else "tasks"} on this " +
+                        "device — keep both instead and it is added as a separate workspace."
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onUseRepo) {
+                Text(
+                    "USE THE REPOSITORY",
+                    fontFamily = YantraMono,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = 1.4.sp,
+                    color = y.accent,
+                )
+            }
+        },
+        dismissButton = { TextButton(onClick = onKeepBoth) { Text("Keep both") } },
+    )
 }

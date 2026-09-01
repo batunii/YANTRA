@@ -103,6 +103,16 @@ data class ArchivedGroup(
 sealed interface AddResult {
     data class Ok(val id: String, val name: String, val adopted: Boolean) : AddResult
     data class Refused(val reason: String) : AddResult
+
+    /**
+     * The repository already holds tasks, and only the person can say what that means.
+     *
+     * [localTasks] is what is on this device and would be replaced by taking the remote — the one
+     * number that makes the choice answerable. Nought or a handful is a phone that has been
+     * reinstalled; two hundred is a second real list, and nobody will tap "replace" by accident
+     * once it says so.
+     */
+    data class HasTasks(val slug: String, val localTasks: Int) : AddResult
 }
 
 /** Plain-manual DI: one graph for the whole app. */
@@ -313,13 +323,26 @@ class AppContainer(val app: Application) {
                     dir.deleteRecursively()
                     AddResult.Refused(result.reason)
                 }
+                // Unreachable: joining is already the answer to "the repository has tasks", so
+                // [WorkspaceLinker.link] adopts rather than asking. Here because the compiler is
+                // right to insist, and a bug in the linker should say so rather than crash.
+                is LinkResult.HasTasks -> {
+                    dir.deleteRecursively()
+                    AddResult.Refused("${result.ref.slug} could not be joined")
+                }
                 is LinkResult.Ok -> {
                     credentials.store(id, token, result.login)
                     // A workspace we joined already has a name, chosen by whoever started it. Taking
                     // ours over theirs would rename the same shared project on every device.
                     val store = WorkspaceStore(dir, id)
                     val named = store.readManifest()?.name?.takeIf { it.isNotBlank() } ?: label
-                    registry.add(WorkspaceEntry(id, named, result.ref.slug))
+                    // A joined workspace is named by whoever started it, and that name can already
+                    // be taken here — joining your own repository gives you a second "Personal",
+                    // and two workspaces answering to one name are indistinguishable in every list
+                    // that shows them. The slug is what actually tells them apart, so it is what
+                    // gets added.
+                    val unique = disambiguate(named, result.ref.slug)
+                    registry.add(WorkspaceEntry(id, unique, result.ref.slug))
                     // Who can be assigned, asked once, here — the moment the app has a repository
                     // and a token for it and is already on the network. Fetching it lazily instead
                     // meant a workspace arrived knowing nobody, and "nobody has been loaded yet"
@@ -327,10 +350,10 @@ class AppContainer(val app: Application) {
                     // answer is not allowed to fail the link: the repository is joined either way,
                     // and a roster is something to retry, not a reason to refuse.
                     people.refresh(id)
-                    workspaces.open(id, dir, named)
+                    workspaces.open(id, dir, unique)
                     attach(store)
                     workspaces.reindexAll()
-                    AddResult.Ok(id, named, result.adopted)
+                    AddResult.Ok(id, unique, result.adopted)
                 }
             }
         }
@@ -343,16 +366,27 @@ class AppContainer(val app: Application) {
      * tasks of its own. The scheduler is rebuilt afterwards so it picks up the credentials, which is
      * also what makes the first push happen without a restart.
      */
-    suspend fun attachRemote(workspaceId: String, urlOrSlug: String, token: String): AddResult =
+    suspend fun attachRemote(
+        workspaceId: String,
+        urlOrSlug: String,
+        token: String,
+        /** Take the remote as it stands, discarding what is here. Only ever set by an answered ask. */
+        adopt: Boolean = false,
+    ): AddResult =
         withContext(Dispatchers.IO) {
             seeding.join()
             val store = workspaces.store(workspaceId)
                 ?: return@withContext AddResult.Refused("That workspace is not open")
 
-            when (val result = linker.attach(store, urlOrSlug, token)) {
+            when (val result = linker.attach(store, urlOrSlug, token, adopt)) {
                 is LinkResult.Refused -> AddResult.Refused(result.reason)
+                is LinkResult.HasTasks ->
+                    AddResult.HasTasks(result.ref.slug, db.nodeDao().countNodes(workspaceId))
                 is LinkResult.Ok -> {
                     credentials.store(workspaceId, token, result.login)
+                    // Adopting replaced every file under this workspace, so the index is describing
+                    // a tree that is gone. Rebuilt before anything reads a name off it.
+                    if (result.adopted) workspaces.reindexAll()
                     val name = store.readManifest()?.name ?: "Workspace"
                     // The local workspace gets a registry entry too once it has a remote, even
                     // though it is not opened from the registry — it is the only record of where it
@@ -367,6 +401,22 @@ class AppContainer(val app: Application) {
                 }
             }
         }
+
+    /**
+     * A name no other workspace is already using.
+     *
+     * Qualified with the slug rather than numbered: "Personal (batunii/yantra-tasks)" says which one
+     * it is, and "Personal 2" says only that you have two. Falls back to numbering if even that
+     * collides, which takes two repositories of the same slug and cannot happen — but a name is not
+     * worth an exception.
+     */
+    private fun disambiguate(name: String, slug: String?): String {
+        val taken = registry.entries().map { it.name }.toSet() +
+            listOfNotNull(workspaces.store("")?.readManifest()?.name)
+        if (name !in taken) return name
+        slug?.let { "$name ($it)" }?.takeIf { it !in taken }?.let { return it }
+        return generateSequence(2) { it + 1 }.map { "$name $it" }.first { it !in taken }
+    }
 
     /**
      * Where a workspace points, for the UI to show. Null for one with no remote.

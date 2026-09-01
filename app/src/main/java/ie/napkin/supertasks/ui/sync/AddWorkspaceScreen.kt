@@ -247,6 +247,9 @@ private suspend fun join(container: AppContainer, url: String, ownToken: String)
             ?: return@withContext Said(false, "No token to use. Sign in, or paste one.")
         when (val result = container.addWorkspace(url, token)) {
             is AddResult.Refused -> Said(false, result.reason)
+            // Joining is already the answer to "the repository has tasks", so addWorkspace never
+            // asks. Here because the compiler is right to insist on it.
+            is AddResult.HasTasks -> Said(false, "${result.slug} could not be joined")
             is AddResult.Ok -> Said(
                 true,
                 if (result.adopted) "Joined ${result.name}. Its tasks are on their way in."
@@ -280,6 +283,7 @@ private suspend fun joinCreated(
             if (!check.canPush) return@withContext Created(false, "${ref.slug} exists but Yantra cannot push to it", null)
             when (val result = container.addWorkspace(ref.slug, token, name)) {
                 is AddResult.Refused -> Created(false, result.reason, null)
+                is AddResult.HasTasks -> Created(false, "${result.slug} could not be joined", null)
                 is AddResult.Ok -> Created(true, "Created ${ref.slug}. It is yours to fill.", ref.slug)
             }
         }
