@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ie.napkin.supertasks.data.format.Links
 
 /**
  * App-scoped focus timer: survives navigation, one session at a time.
@@ -74,7 +75,7 @@ class FocusTimer(
         _state.value = State(
             sessionId = open.id,
             nodeId = open.nodeId,
-            nodeTitle = repo.nodeTitle(open.nodeId).orEmpty(),
+            nodeTitle = Links.plain(repo.nodeTitle(open.nodeId).orEmpty()),
             plannedSecs = open.plannedSecs,
             remainingSecs = if (open.plannedSecs > 0) open.plannedSecs - elapsed else 0,
             elapsedSecs = elapsed,
@@ -97,7 +98,11 @@ class FocusTimer(
             ticker?.cancel()
             val sessionId = repo.startSession(nodeId, plannedSecs)
             _state.value = State(
-                sessionId = sessionId, nodeId = nodeId, nodeTitle = nodeTitle,
+                // Reduced here rather than at each call site, and there are four. Everything
+                // downstream of this — the focus screen, the widget, the notification — is a
+                // surface that cannot render a link, so the snapshot they all read from holds
+                // what the link says rather than how it is written.
+                sessionId = sessionId, nodeId = nodeId, nodeTitle = Links.plain(nodeTitle),
                 plannedSecs = plannedSecs,
                 remainingSecs = plannedSecs.coerceAtLeast(0),
                 elapsedSecs = 0,

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ie.napkin.supertasks.data.db.PropertyDefEntity
@@ -98,10 +99,25 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Quick-capture a task from the cog: drop it in the Inbox, then open that list. */
+    /**
+     * Who a typed `@` may name on Home.
+     *
+     * Home captures into the Inbox, which is Personal's, so this is Personal's roster — not a union
+     * across repos. Offering a shared project's collaborators on a line that is about to land in
+     * your own workspace is exactly the mix-up the scoped query exists to prevent.
+     */
+    val assignable: StateFlow<List<String>> =
+        flow { emit(container.people.loginsFor("")) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun linkTargets(query: String) = container.nodes.searchLinkTargets(query)
+
+    suspend fun linkIdsFor(text: String) = container.nodes.linkIdsFor(text)
+
     fun quickAddTask(title: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
             val inboxId = nodes.inboxList()
-            nodes.captureTask(inboxId, title, container.labels, container.properties)
+            nodes.captureTask(inboxId, title, container.labels, container.properties, container.people)
             onDone(inboxId)
         }
     }

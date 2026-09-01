@@ -62,6 +62,43 @@ interface NodeDao {
     @Query("SELECT * FROM node WHERE id = :id")
     suspend fun byId(id: String): NodeEntity?
 
+    /** The rows behind a set of ids, for resolving what `[[…|^id]]` links point at. */
+    @Query("SELECT * FROM node WHERE id IN (:ids) AND deleted_at IS NULL")
+    fun byIds(ids: List<String>): Flow<List<NodeEntity>>
+
+    /**
+     * Somewhere a link could point, matched on title.
+     *
+     * **Tasks only**, and that is narrower than what can technically be addressed. Lists and smart
+     * lists carry their own ids too, so a link to one would resolve perfectly well — offering them
+     * was the mistake. A smart list is a *view*: it owns nothing, it is a question the app answers,
+     * and "this task depends on Today" is not a sentence anyone means. Every list in the workspace
+     * showing up under a half-typed name buried the tasks that were the point.
+     *
+     * Everything else is excluded for a harder reason: a paragraph or a heading has a *positional*
+     * id — `<page>~3`, regenerated on every re-index — so a link to one would drift onto whatever
+     * line landed there after the next edit.
+     *
+     * Deliberately unscoped by workspace: the index holds every open repo, so a personal note can
+     * point at a work task and the link resolves without either repo knowing about the other.
+     */
+    @Query(
+        """
+        SELECT * FROM node
+        WHERE type = 'task'
+          AND deleted_at IS NULL
+          AND title IS NOT NULL AND title != ''
+          AND title LIKE '%' || :query || '%'
+        ORDER BY
+          CASE WHEN title LIKE :query || '%' THEN 0 ELSE 1 END,
+          done,
+          length(title),
+          title COLLATE NOCASE
+        LIMIT :limit
+        """
+    )
+    suspend fun searchLinkTargets(query: String, limit: Int = 12): List<NodeEntity>
+
     @Query("SELECT * FROM node WHERE system_key = :key AND deleted_at IS NULL LIMIT 1")
     suspend fun bySystemKey(key: String): NodeEntity?
 
@@ -234,6 +271,40 @@ interface PropertyDao {
 
     @Query("SELECT * FROM property_value WHERE node_id = :nodeId")
     suspend fun valuesForNodeOnce(nodeId: String): List<PropertyValueEntity>
+
+    /**
+     * Every distinct text value in use for one def — the logins already written on tasks.
+     *
+     * The floor under the assignee picker, and the only source of names that needs no network and
+     * no token. Whoever has been put on a task in **this repository** before can be put on another
+     * one there, whatever GitHub is or is not reachable to say.
+     *
+     * Scoped by workspace, and it was not — which is the bug this scoping exists to prevent rather
+     * than a precaution. One database holds every repo, so an unscoped `DISTINCT` offered everyone
+     * from your personal workspace as a candidate on a shared project, in the same list and with
+     * the same weight as people who could actually see it. Assigning a colleague's task to someone
+     * with no access to the repository is not a typo the app should be able to help you make.
+     */
+    @Query(
+        """
+        SELECT DISTINCT v_text FROM property_value
+        WHERE def_id = :defId AND workspace_id = :ws
+          AND v_text IS NOT NULL AND v_text != ''
+        ORDER BY v_text COLLATE NOCASE
+        """
+    )
+    fun textValuesInUse(defId: String, ws: String): Flow<List<String>>
+
+    /** The same question asked once, for the capture path. See [textValuesInUse]. */
+    @Query(
+        """
+        SELECT DISTINCT v_text FROM property_value
+        WHERE def_id = :defId AND workspace_id = :ws
+          AND v_text IS NOT NULL AND v_text != ''
+        ORDER BY v_text COLLATE NOCASE
+        """
+    )
+    suspend fun textValuesInUseOnce(defId: String, ws: String): List<String>
 
     /**
      * Armed-reminder candidates on the Due def: rows with a reminder offset. Fire instant

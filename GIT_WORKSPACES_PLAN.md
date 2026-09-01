@@ -104,9 +104,22 @@ Rules:
 - **`^<id>`** on a task line is the id its page file and its ink sidecars are keyed by.
 - **Inline properties** on a task line: `due:`, `deadline:`, `!priority`, `#label`, `@assignee`.
   `due:2026-08-26` is all-day; `due:2026-08-26T09:00Z` is timed — the date/datetime distinction
-  carries `hasTime` for free. Reminder offset is `due:...+r-540`.
+  carries `hasTime` for free. Reminder offset is `due:...+r-540`. `@assignee` is a GitHub login and
+  is backed by the `builtin-assignee` def, which every workspace's `meta/properties.json` carries —
+  including ones scaffolded before it existed, which are caught up on open.
 - **`![[ink:<id>]]`** and **`![[image:<uri>]]`** are the two blocks that own external data and so
   are the only blocks needing stable ids. Every other block's identity is positional.
+- **`[[Label|^<id>]]`** anywhere in a block's text is a link to another task or list. Same bracket
+  family as the embeds above, minus the `!` that means *embed*, and the same `^` that a task line
+  writes its own id behind. The label comes first so the file reads and greps as prose; the id
+  behind the pipe is what actually resolves, and it is **required** — `[[Some name]]` is not a link,
+  because titles are not unique and a link that quietly resolves to the wrong "Call Bob" is worse
+  than plain text. The app renders the target's *current* title and falls back to the stored label
+  when the id resolves to nothing (deleted, or in a workspace this device has not added), so a
+  rename never has to rewrite anyone else's files. Only tasks and lists can be linked: every other
+  block's id is positional, so a link to one would drift to whatever line landed there next.
+  Consequence for the task-line grammar: **a word containing `]]` is never a trailing token**, or
+  `[[Buy milk #2|^abc]]` would be read right-to-left as a `#`-label called `2|^abc]]`.
 - **`modified_at`** is the LWW clock, ms precision, tiebroken by GitHub login. Never commit
   metadata — rebase rewrites commit timestamps, file content survives.
 

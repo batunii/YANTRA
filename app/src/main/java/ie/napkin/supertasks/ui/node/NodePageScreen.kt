@@ -81,6 +81,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -130,13 +131,22 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.ConfirmDialog
-import ie.napkin.supertasks.ui.components.MarkdownEmphasis
-import ie.napkin.supertasks.ui.components.markdownStripped
+import ie.napkin.supertasks.ui.components.InlineStyle
+import ie.napkin.supertasks.ui.components.InlineTransformation
+import ie.napkin.supertasks.data.format.Links
+import ie.napkin.supertasks.ui.components.LinkSuggestions
+import ie.napkin.supertasks.ui.components.followLinks
+import ie.napkin.supertasks.ui.components.LocalLinkOpener
+import ie.napkin.supertasks.ui.components.LocalLinkResolver
+import ie.napkin.supertasks.ui.components.inlineAnnotated
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.horizontalFadingEdge
 import ie.napkin.supertasks.ui.components.NeutralChip
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.CheckCircleOutline
+import ie.napkin.supertasks.ui.components.ChipSize
 import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.FocusCount
 import ie.napkin.supertasks.ui.components.PropertyChip
@@ -181,6 +191,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
     val inkPreviews by vm.inkPreviews.collectAsStateWithLifecycle()
+    val linkedNodes by vm.linkedNodes.collectAsStateWithLifecycle()
+    val linkTitles by vm.linkTitles.collectAsStateWithLifecycle()
+    val people by vm.people.collectAsStateWithLifecycle()
+    val peopleState by vm.peopleState.collectAsStateWithLifecycle()
+    val canRefreshPeople by vm.canRefreshPeople.collectAsStateWithLifecycle()
+    val assignable by vm.assignable.collectAsStateWithLifecycle()
+
+    // The block being typed in and what its field currently holds, so the `[[` strip can ask
+    // whether a link is half-written and where. Only ever written by the focused row.
+    var linkDraft by remember { mutableStateOf<Pair<String, TextFieldValue>?>(null) }
+    // The other direction: a link picked from the strip, on its way back into that field.
+    var linkInsert by remember { mutableStateOf<Pair<String, TextFieldValue>?>(null) }
+    var linkResults by remember { mutableStateOf<List<NodeEntity>>(emptyList()) }
 
     var propertySheetFor by remember { mutableStateOf<String?>(null) }
     var deletingPage by remember { mutableStateOf(false) }
@@ -311,6 +334,20 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val taskChildren = blocks.count { it.type == NodeType.TASK }
     val doneChildren = blocks.count { it.type == NodeType.TASK && it.done }
 
+    // What a `[[…|^id]]` on this page is called *now*, so a rename shows through everywhere it is
+    // mentioned without anything having gone and rewritten another file.
+    val resolveLink: (String) -> String? = remember(linkTitles) { { id -> linkTitles[id] } }
+
+    CompositionLocalProvider(
+        LocalPeople provides PeopleSource(
+            people = people,
+            refreshing = peopleState.first,
+            note = peopleState.second,
+            onRefresh = if (canRefreshPeople) vm::refreshPeople else null,
+        ),
+        LocalLinkResolver provides resolveLink,
+        LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
+    ) {
     Column(
         Modifier
             .fillMaxSize()
@@ -345,6 +382,11 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         onCreateAndAttachLabel = { name, colour -> vm.createAndAttachLabel(nodeId, name, colour) },
                         onRecolourLabel = { label, colour -> vm.setLabelColor(label.id, colour) },
                         modifier = Modifier.padding(top = 16.dp),
+                    )
+                    LinkedRow(
+                        targets = linkedNodes,
+                        onOpen = { id -> nav.navigate(Routes.node(id)) },
+                        modifier = Modifier.padding(top = 10.dp),
                     )
                 }
             },
@@ -668,6 +710,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     // Complement of `grouped` above: a task's page is a document you type in, a
                     // list is a set of rows you open.
                     editable = isTask,
+                    onDraft = { v -> linkDraft = child.id to v },
+                    replaceWith = linkInsert?.takeIf { it.first == child.id }?.second,
+                    onReplaced = { linkInsert = null },
                     onOpen = {
                         // A destination that is this page is not a destination. Belt and braces
                         // over the id fix: if a block ever resolves to its own page again, the tap
@@ -773,9 +818,40 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 modifier = Modifier.navigationBarsPadding().imePadding(),
                 labels = allLabels,
                 lists = listNames,
+                people = assignable,
+                findTasks = { q -> vm.linkTargets(q) },
+                resolveLinks = { t -> vm.linkIdsFor(t) },
                 onAdd = { title -> vm.captureTask(title) },
             )
         }
+        // Only a task's page is typed into, so only it can be mid-link.
+        val typing = linkDraft?.takeIf { isTask }
+        val linkQuery = typing?.let { (_, v) -> Links.draft(v.text, v.selection.end)?.second }
+        LaunchedEffect(linkQuery, typing?.first) {
+            // Never the block being typed in. A line that links to itself is a line that says
+            // nothing, and it is the one candidate guaranteed to match whatever was just typed.
+            linkResults = linkQuery
+                ?.let { q -> vm.linkTargets(q).filterNot { it.id == typing?.first } }
+                .orEmpty()
+        }
+        LinkSuggestions(
+            draft = linkQuery,
+            results = linkResults,
+            onPick = { target ->
+                val (blockId, value) = typing ?: return@LinkSuggestions
+                val span = Links.draft(value.text, value.selection.end)?.first ?: return@LinkSuggestions
+                val written = Links.encode(target.title.orEmpty(), target.id)
+                val next = value.text.replaceRange(span, written)
+                // The caret lands after the closing brackets, not inside them: the link is
+                // finished, and leaving the caret in the middle of it would reopen the strip on
+                // the name that was just chosen.
+                linkInsert = blockId to TextFieldValue(next, TextRange(span.first + written.length))
+            },
+            // No ime padding of its own. Only the bottom-most thing in this column may hold the
+            // keyboard inset — the bar below does — and a second sibling claiming it too reserves
+            // the keyboard's height twice, which squeezes the page itself to nothing and pushes
+            // the bar off the bottom of the screen.
+        )
         BlockTypeBar(
             modifier = Modifier
                 .navigationBarsPadding()
@@ -809,6 +885,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 }
             },
         )
+    }
+
     }
 
     // Leaving the page is the moment trailing blanks become litter rather than workspace.
@@ -1024,12 +1102,35 @@ private fun PageBand(
                         }
                         Spacer(Modifier.width(12.dp))
                     }
+                    // The page's own name is a task line too — it can hold a link, and it has to
+                    // read the same way that line does everywhere else. Without this the one place
+                    // that names the task most loudly was also the only place still shouting a UUID.
+                    val titleStyle = remember(y.textDim, y.accent, y.textMuted) {
+                        InlineStyle(marker = y.textDim, link = y.accent, brokenLink = y.textMuted)
+                    }
+                    val titleResolve = LocalLinkResolver.current
+                    val titleOpen = LocalLinkOpener.current
+                    var titleLayout by remember(node?.id) { mutableStateOf<TextLayoutResult?>(null) }
+                    val titleLinks = remember(title, titleResolve) {
+                        Links.collapse(title, titleResolve).shown
+                    }
                     BasicTextField(
                         value = title,
                         onValueChange = { title = it; onRename(it) },
                         textStyle = MaterialTheme.typography.headlineMedium.copy(color = y.textPrimary),
                         cursorBrush = SolidColor(y.accent),
-                        modifier = Modifier.fillMaxWidth(),
+                        // A page title is a name, so no emphasis — the same rule task rows follow.
+                        visualTransformation = remember(titleStyle, titleResolve) {
+                            InlineTransformation(
+                                style = titleStyle,
+                                emphasis = false,
+                                resolve = titleResolve,
+                            )
+                        },
+                        onTextLayout = { titleLayout = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .followLinks(node?.id, { titleLayout }, { titleLinks }, titleOpen),
                         decorationBox = { inner ->
                             Box {
                                 if (title.isEmpty()) {
@@ -1077,6 +1178,9 @@ private fun BlockRow(
     onBecome: (type: String, text: String) -> Unit,
     onOpen: () -> Unit,
     editable: Boolean = true,
+    onDraft: (TextFieldValue) -> Unit = {},
+    replaceWith: TextFieldValue? = null,
+    onReplaced: () -> Unit = {},
 ) {
     when (child.type) {
         // Task, note and heading all go through the SAME composable so that converting between
@@ -1092,6 +1196,9 @@ private fun BlockRow(
             onBecome = onBecome,
             onOpen = onOpen,
             editable = editable,
+            onDraft = onDraft,
+            replaceWith = replaceWith,
+            onReplaced = onReplaced,
         )
     }
 }
@@ -1356,6 +1463,19 @@ internal fun TextualBlockRow(
      * its text lives. Same row either way; only what a tap means changes.
      */
     editable: Boolean = true,
+    /**
+     * The field's text and caret, reported upward so the screen can offer link completions.
+     *
+     * The caret is the part the screen cannot get any other way — `onRename` carries the text and
+     * nothing else — and a `[[` completion is meaningless without knowing whether you are still
+     * inside the brackets. Deliberately not called on blur: tapping a completion chip takes focus,
+     * and a row that reported "no draft" on the way out would close the strip under the finger
+     * that was reaching for it.
+     */
+    onDraft: (TextFieldValue) -> Unit = {},
+    /** A value the screen wants this field to take — the link just picked from that strip. */
+    replaceWith: TextFieldValue? = null,
+    onReplaced: () -> Unit = {},
 ) {
     val y = Yantra.colors
     val isTask = child.type == NodeType.TASK
@@ -1377,6 +1497,17 @@ internal fun TextualBlockRow(
     // where the caret went afterwards. So the caret's own rectangle is asked for, on every change
     // of selection or text, with a line of air under it so it never sits flush against the IME.
     val caretView = remember { BringIntoViewRequester() }
+
+    // How this row reads emphasis and links. `brokenLink` is muted rather than red on purpose: a
+    // link whose target is in a repository this device has not added is a normal state, not a
+    // mistake, and colouring it as an error would make half a shared workspace look broken.
+    val inlineStyle = remember(y.textDim, y.accent, y.textMuted) {
+        InlineStyle(marker = y.textDim, link = y.accent, brokenLink = y.textMuted)
+    }
+    val resolveLink = LocalLinkResolver.current
+    val onOpenLink = LocalLinkOpener.current
+    // Where the links ended up in the text as drawn, for the tap that follows one.
+    val linkSpans = remember(text, resolveLink) { Links.collapse(text, resolveLink).shown }
 
     // Every task is reachable, whether or not anything is under it yet — the chevron is always
     // there. And the text is always editable in place. Those are two different targets on one row
@@ -1422,6 +1553,43 @@ internal fun TextualBlockRow(
                 Rect(cursor.left, cursor.top - air, cursor.right, cursor.bottom + air)
             )
         }
+    }
+
+    // The screen rewriting this field, which is the one direction the row cannot manage itself:
+    // `field` is keyed on the block id and never re-reads the row, so a link written into the text
+    // through `rename` alone would be invisible until the page was left and come back to.
+    LaunchedEffect(replaceWith) {
+        val next = replaceWith ?: return@LaunchedEffect
+        field = next
+        onRename(next.text)
+        // The screen's idea of what is being typed is now a link that has been finished, and it
+        // has to hear that from the field or the completion strip goes on offering names for a
+        // token nobody is writing any more.
+        onDraft(next)
+        onReplaced()
+    }
+
+    /**
+     * Backspace immediately after a link takes the whole link.
+     *
+     * A collapsed link is one thing on screen and sixty characters in the file, so the default
+     * behaviour is five or six presses that visibly change nothing followed by a half-eaten
+     * `[[Call Bob|^9f1e` left in the text. Deleting it whole is both what it looks like should
+     * happen and the only way to remove one at all.
+     *
+     * Only when the caret sits exactly at the closing brackets, and only when nothing is selected —
+     * anywhere else Backspace still means what it always meant.
+     */
+    fun eatLink(event: KeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown || event.key != Key.Backspace) return false
+        val caret = field.selection
+        if (!caret.collapsed) return false
+        val link = Links.links(field.text).firstOrNull { caret.start == it.range.last + 1 }
+            ?: return false
+        val next = field.text.removeRange(link.range.first, link.range.last + 1)
+        field = TextFieldValue(next, TextRange(link.range.first))
+        onRename(next)
+        return true
     }
 
     val editing = BlockEditing(
@@ -1610,12 +1778,21 @@ internal fun TextualBlockRow(
                     Text(placeholder, style = style, color = y.textMuted.copy(alpha = 0.5f), modifier = textMod)
                 } else {
                     Text(
-                        // Read-only, so the markers can go. The *stored* title stays literal — see
-                        // the note on the editable branch below, which is about what a title means,
-                        // not about what a row should look like. A row that cannot be typed into
-                        // has no caret to keep honest, and printing `does *it*` verbatim in a list
-                        // reads as the app failing to render rather than as the user's asterisks.
-                        markdownStripped(shown),
+                        // Read-only, so the markers can go and the links can collapse. The *stored*
+                        // text stays literal — see the note on the editable branch below, which is
+                        // about what a title means, not about what a row should look like. A row
+                        // that cannot be typed into has no caret to keep honest, and printing
+                        // `does *it*` or `[[Bob|^9f1e…]]` verbatim in a list reads as the app
+                        // failing to render rather than as the characters somebody typed.
+                        inlineAnnotated(
+                            text = shown,
+                            style = inlineStyle,
+                            resolve = resolveLink,
+                            // A task title is a name, not prose. Links are the one exception it
+                            // makes, and they earn it by reducing to plain words everywhere.
+                            emphasis = !isTask,
+                            onOpen = onOpenLink,
+                        ),
                         style = style,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1628,30 +1805,46 @@ internal fun TextualBlockRow(
                 onValueChange = { v ->
                     field = v
                     editing.onValueChange(v.text)
+                    onDraft(v)
                 },
                 textStyle = style,
                 cursorBrush = SolidColor(y.accent),
                 // Prose only. **bold**, *italic* and `code` render as you type, markers staying
-                // put and merely dimmed — see MarkdownEmphasis for why that matters.
+                // put and merely dimmed — see InlineText for why that matters.
                 //
                 // A task title is deliberately not prose. It is a name, and it is shown in places
                 // that cannot style anything at all: a widget, a notification, the archive, the
                 // focus screen. Emphasis there could only ever be dropped or shown raw, so the
                 // honest answer is that a title means exactly the characters it contains. That
                 // also leaves the punctuation free for capture to spend — `~` names a list.
-                visualTransformation =
-                    if (isTask) VisualTransformation.None
-                    else remember(y.textDim) { MarkdownEmphasis(y.textDim) },
+                //
+                // Links are the exception a title does make, because a link has a defined
+                // plain-text reading and emphasis does not: a widget can show "Call Bob", it
+                // cannot show bold. They collapse to that reading the moment the caret leaves,
+                // and show their real characters while it is here — see InlineText.
+                visualTransformation = remember(inlineStyle, isTask, resolveLink) {
+                    InlineTransformation(
+                        style = inlineStyle,
+                        emphasis = !isTask,
+                        resolve = resolveLink,
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 1.dp)
+                    // Before the field's own gestures, so a tap on a link opens it instead of
+                    // dropping a caret into the middle of a name.
+                    .followLinks(child.id, { titleLayout }, { linkSpans }, onOpenLink)
                     .bringIntoViewRequester(caretView)
                     .focusRequester(focusRequester)
-                    .onPreviewKeyEvent(editing::onKey)
+                    .onPreviewKeyEvent { ev -> eatLink(ev) || editing.onKey(ev) }
                     .onFocusChanged {
                         hasFocus = it.isFocused
                         onFocusChange(it.isFocused)
-                        if (it.isFocused) onActivate()
+                        if (it.isFocused) {
+                            onActivate()
+                            onDraft(field)
+                        }
                     },
                 onTextLayout = { titleLayout = it },
                 decorationBox = { inner ->
@@ -1979,5 +2172,55 @@ private fun WriteLine(label: String, onClick: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = y.textMuted.copy(alpha = 0.5f),
         )
+    }
+}
+
+/**
+ * Everywhere this page's text points, as chips under the header.
+ *
+ * This is how a link is *followed* from a page you are writing on. Inline, a link on a task page
+ * lives inside a live text field, and a tap there has to mean "put the caret here" — the whole
+ * editor is built around one field per block surviving every change so the keyboard never drops,
+ * and adding a second meaning to a tap inside it would be re-litigating that. Read-only rows have
+ * no such conflict and their links are tappable in place.
+ *
+ * So the destinations are lifted out to where a tap is unambiguous. It reads as a summary as much
+ * as a control — "this page is about those three things" — which is most of what a link is for.
+ * Nothing is drawn when the page points nowhere.
+ */
+@Composable
+private fun LinkedRow(
+    targets: List<NodeEntity>,
+    onOpen: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (targets.isEmpty()) return
+    val y = Yantra.colors
+    Row(
+        modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "LINKS TO",
+            fontFamily = YantraText,
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.W600,
+            letterSpacing = 1.2.sp,
+            color = y.textDim,
+        )
+        targets.forEach { target ->
+            SelectChip(
+                label = target.title?.takeIf { it.isNotBlank() } ?: "Untitled",
+                selected = false,
+                size = ChipSize.Small,
+                icon = if (target.type == NodeType.TASK) Icons.Default.CheckCircleOutline
+                else Icons.AutoMirrored.Filled.List,
+                onClick = { onOpen(target.id) },
+            )
+        }
+        Spacer(Modifier.width(12.dp))
     }
 }

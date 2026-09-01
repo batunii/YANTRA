@@ -15,6 +15,7 @@ import ie.napkin.supertasks.data.filter.Op
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.buildChips
 import ie.napkin.supertasks.ui.components.buildLabelChips
+import ie.napkin.supertasks.ui.components.strangerAgainst
 import ie.napkin.supertasks.ui.components.dateLabel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -87,14 +88,41 @@ class SmartListViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Matching tasks can live anywhere, so chips come from the full value/label set. */
+    /**
+     * The current title of everything the shown tasks link to, by id.
+     *
+     * The same lookup the node page does, and it is here for the same reason: without it a task
+     * whose title holds a link would read one way on its own page and another in a view of it, the
+     * moment anybody renamed what it points at. A link is a reference to a thing, not a copy of
+     * what that thing was called when the reference was made — and a view that disagrees with the
+     * page about which is which is a view you cannot trust.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val linkTitles: StateFlow<Map<String, String>> =
+        combine(tasks, completed) { open, done ->
+            (open + done).mapNotNull { it.title }
+                .flatMap { ie.napkin.supertasks.data.format.Links.targets(it) }
+                .distinct()
+        }
+            .flatMapLatest { ids ->
+                if (ids.isEmpty()) flowOf(emptyMap())
+                else nodes.byIds(ids).map { rows ->
+                    rows.associate { it.id to (it.title?.takeIf { t -> t.isNotBlank() } ?: "Untitled") }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val chips: StateFlow<Map<String, List<ChipData>>> =
         combine(
             properties.defs(),
             container.db.propertyDao().allValues(),
             container.labels.all(),
             container.labels.allNodeLabels(),
-        ) { d, v, labels, nodeLabels ->
-            val merged = buildChips(d, v).toMutableMap()
+            container.people.rosters(),
+        ) { d, v, labels, nodeLabels, rosters ->
+            // Judged per row's own repository: a smart list gathers from every workspace at once,
+            // so "can this person see it" has a different answer for two rows side by side.
+            val merged = buildChips(d, v, strangerAgainst(rosters)).toMutableMap()
             buildLabelChips(labels, nodeLabels).forEach { (nodeId, chips) ->
                 merged[nodeId] = merged[nodeId].orEmpty() + chips
             }
@@ -125,10 +153,36 @@ class SmartListViewModel(
         combine(def, properties.defs(), container.labels.all()) { d, defs, labels -> describe(d, defs, labels) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    /**
+     * Who a typed `@` may name here — the roster of the workspace new tasks land in.
+     *
+     * A smart list spans repos, but a task it creates lands in exactly one: its home list's. So the
+     * answer is a property of the rule, not of whatever is currently on screen.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val assignable: StateFlow<List<String>> =
+        def.flatMapLatest { d ->
+            flowOf(d?.homeParentId).map { home ->
+                container.people.loginsFor(home?.let { nodes.byId(it)?.workspaceId }.orEmpty())
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun linkTargets(query: String) = nodes.searchLinkTargets(query)
+
+    suspend fun linkIdsFor(text: String) = nodes.linkIdsFor(text)
+
     fun addTask(title: String) {
         viewModelScope.launch {
             val d = def.value ?: smartLists.defById(nodeId) ?: return@launch
-            val parsed = ie.napkin.supertasks.data.capture.CaptureParse.parse(title)
+            // A smart list is a view, so the workspace a new task lands in is the one its home list
+            // is in — that is where `@name` has to be checked, and it is not necessarily the
+            // workspace of anything currently on screen.
+            val homeWorkspace = d.homeParentId?.let { nodes.byId(it)?.workspaceId }.orEmpty()
+            val parsed = ie.napkin.supertasks.data.capture.CaptureParse.parse(
+                title,
+                people = container.people.loginsFor(homeWorkspace),
+                links = nodes.linkIdsFor(title),
+            )
             if (parsed.title.isBlank()) return@launch
             // The list's own apply-on-create lands first — a task added to Today is due today — and
             // anything typed on the line then overrides it, because an explicit "friday" must beat
@@ -149,6 +203,9 @@ class SmartListViewModel(
         }
         parsed.priority?.let {
             container.properties.setValue(id, ie.napkin.supertasks.data.db.BuiltIns.PRIORITY_DEF_ID, text = it)
+        }
+        parsed.assignee?.let {
+            container.properties.setValue(id, ie.napkin.supertasks.data.db.BuiltIns.ASSIGNEE_DEF_ID, text = it)
         }
         parsed.labels.forEach { name ->
             container.labels.attach(id, container.labels.getOrCreate(name).id)

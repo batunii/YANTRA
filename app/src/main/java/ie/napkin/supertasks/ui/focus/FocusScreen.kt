@@ -82,6 +82,7 @@ import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
 import ie.napkin.supertasks.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
+import ie.napkin.supertasks.data.format.Links
 
 class FocusViewModel(
     container: AppContainer,
@@ -251,7 +252,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Focus on")
         Text(
-            node.title.orEmpty().ifBlank { "Untitled task" },
+            Links.plain(node.title.orEmpty()).ifBlank { "Untitled task" },
             fontFamily = YantraDisplay,
             fontSize = 32.sp,
             lineHeight = 39.sp,

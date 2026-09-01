@@ -19,9 +19,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.data.capture.CaptureParse
+import ie.napkin.supertasks.data.db.NodeEntity
+import ie.napkin.supertasks.data.format.Links
+import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.Person
 
 /**
- * The lists a half-typed `~` could mean, offered while there is still time to pick one.
+ * What the token you are half-way through typing could mean, offered while there is still time.
  *
  * A `~` that names a list the workspace does not have now *makes* one, which is what lets someone
  * file into a new list without leaving capture. The risk that comes with it is the obvious one: a
@@ -30,16 +34,124 @@ import ie.napkin.supertasks.data.capture.CaptureParse
  * so the common case is a tap rather than a spelling test, and a name that matches nothing says so
  * plainly — `New list "Camping"` — before it becomes real.
  *
- * Matching is [CaptureParse.listSuggestions], the same rule the parser resolves with, so the field
- * cannot offer something the line would not actually produce.
+ * One strip for all three marks — `~` a list, `@` a person, `[[` another task — because only one
+ * of them can be under the caret at a time, and three rows that each know about one would be three
+ * chances for the bar to jump as you type.
+ *
+ * Matching is [CaptureParse]'s own, the same rule the parser resolves with, so the field cannot
+ * offer something the line would not actually produce. `@` and `[[` are closed lists and `~` is
+ * not: you may invent a list by naming it, and you may invent neither a colleague nor a task.
  *
  * Nothing is drawn unless a mark is being typed. A row that is merely empty still takes its space,
  * and the capture bar moving up and down as you type would be worse than no help at all.
  */
 @Composable
-fun ListSuggestions(
+fun CaptureSuggestions(
     text: String,
     /** Where the caret is, which is how this knows whether the name is still being typed. */
+    caret: Int,
+    lists: List<String> = emptyList(),
+    people: List<String> = emptyList(),
+    /** Tasks matching the `[[` being typed. Searched by the caller — this file runs no queries. */
+    tasks: List<NodeEntity> = emptyList(),
+    modifier: Modifier = Modifier,
+    onPick: (TextFieldValue) -> Unit,
+) {
+    // Most specific mark first. A `[[` draft and a `~` draft cannot both hold the caret, but the
+    // order still has to be written down: `Links.draft` and `assigneeDraft` are both satisfied by a
+    // caret at the end of the line, and whichever is asked first decides what is being typed.
+    Links.draft(text, caret)?.let { (span, typed) ->
+        LinkStrip(text, span, typed, tasks, modifier, onPick)
+        return
+    }
+    CaptureParse.assigneeDraft(text, caret)?.let { (span, typed) ->
+        PeopleStrip(text, span, typed, people, modifier, onPick)
+        return
+    }
+    ListStrip(text, caret, lists, modifier, onPick)
+}
+
+/**
+ * Somebody to hand it to.
+ *
+ * Nothing to offer means nothing is drawn, and there is deliberately no "assign anyway" row: a name
+ * outside this list is left in the title by the parser, which is the closed-list rule the assignee
+ * sheet enforces, said the same way in the other place a name can be typed.
+ */
+@Composable
+private fun PeopleStrip(
+    text: String,
+    span: IntRange,
+    typed: String,
+    people: List<String>,
+    modifier: Modifier,
+    onPick: (TextFieldValue) -> Unit,
+) {
+    val matches = remember(typed, people) { CaptureParse.peopleSuggestions(typed, people) }
+    if (matches.isEmpty()) return
+    if (matches.size == 1 && matches.first().equals(typed, ignoreCase = true)) return
+
+    Strip(modifier) {
+        matches.forEach { login ->
+            SelectChip(
+                label = "@$login",
+                selected = false,
+                size = ChipSize.Small,
+                icon = Icons.Default.Person,
+                onClick = { onPick(settle(text, span, "@$login")) },
+            )
+        }
+    }
+}
+
+/** Another task to point at. Closed for the reason `NodeDao.searchLinkTargets` gives. */
+@Composable
+private fun LinkStrip(
+    text: String,
+    span: IntRange,
+    typed: String,
+    tasks: List<NodeEntity>,
+    modifier: Modifier,
+    onPick: (TextFieldValue) -> Unit,
+) {
+    Strip(modifier) {
+        if (tasks.isEmpty()) {
+            Text(
+                if (typed.isBlank()) "Type to find a task to link"
+                else "No task called \u201C$typed\u201D",
+                color = Yantra.colors.textDim,
+                fontSize = 11.5.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        } else {
+            tasks.forEach { task ->
+                val title = task.title?.takeIf { it.isNotBlank() } ?: "Untitled"
+                SelectChip(
+                    label = title,
+                    selected = false,
+                    size = ChipSize.Small,
+                    icon = Icons.Default.CheckCircleOutline,
+                    onClick = { onPick(settle(text, span, Links.encode(title, task.id))) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Replaces the token being typed and puts the caret after it, with a space to carry on into.
+ *
+ * Unlike a list name, neither of these needs a closing mark or a trailing position: a login ends at
+ * a space and a link ends at its brackets, so the rest of the line is yours again immediately.
+ */
+private fun settle(text: String, span: IntRange, written: String): TextFieldValue {
+    val next = text.replaceRange(span, "$written ")
+    return TextFieldValue(next, TextRange(span.first + written.length + 1))
+}
+
+@Composable
+private fun ListStrip(
+    text: String,
     caret: Int,
     lists: List<String>,
     modifier: Modifier = Modifier,
@@ -74,7 +186,7 @@ fun ListSuggestions(
      * with a space either side. Whatever is typed next lands in the task, the list stays last, and
      * the line reads exactly as though it had been typed in that order.
      */
-    fun settle(name: String): TextFieldValue {
+    fun settleList(name: String): TextFieldValue {
         val head = text.substring(0, span.first).trimEnd()
         return TextFieldValue(
             text = "$head  ${CaptureParse.LIST_MARK}$name",
@@ -82,6 +194,25 @@ fun ListSuggestions(
         )
     }
 
+    Strip(modifier) {
+        if (matches.isEmpty()) {
+            NewListChip(typed) { onPick(settleList(typed)) }
+        } else {
+            matches.forEach { name ->
+                SelectChip(
+                    label = name,
+                    selected = false,
+                    size = ChipSize.Small,
+                    onClick = { onPick(settleList(name)) },
+                )
+            }
+        }
+    }
+}
+
+/** The one row every strip is drawn in, so they cannot disagree about spacing or the fade. */
+@Composable
+private fun Strip(modifier: Modifier, content: @Composable () -> Unit) {
     Row(
         modifier
             .fillMaxWidth()
@@ -89,20 +220,7 @@ fun ListSuggestions(
             .horizontalFadingEdge()
             .padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (matches.isEmpty()) {
-            NewListChip(typed) { onPick(settle(typed)) }
-        } else {
-            matches.forEach { name ->
-                SelectChip(
-                    label = name,
-                    selected = false,
-                    size = ChipSize.Small,
-                    onClick = { onPick(settle(name)) },
-                )
-            }
-        }
-    }
+    ) { content() }
 }
 
 /**

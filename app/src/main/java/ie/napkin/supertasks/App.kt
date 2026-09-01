@@ -187,6 +187,7 @@ class AppContainer(val app: Application) {
     fun syncState(): kotlinx.coroutines.flow.StateFlow<ie.napkin.supertasks.data.sync.SyncResult?>? =
         commits.values.firstOrNull()?.lastResult
 
+    val people = ie.napkin.supertasks.data.people.People(app, db, credentials, registry, github)
     val nodes = NodeRepository(db, workspaces)
     val properties = PropertyRepository(db, workspaces)
     val labels = LabelRepository(db, workspaces)
@@ -308,6 +309,13 @@ class AppContainer(val app: Application) {
                     val store = WorkspaceStore(dir, id)
                     val named = store.readManifest()?.name?.takeIf { it.isNotBlank() } ?: label
                     registry.add(WorkspaceEntry(id, named, result.ref.slug))
+                    // Who can be assigned, asked once, here — the moment the app has a repository
+                    // and a token for it and is already on the network. Fetching it lazily instead
+                    // meant a workspace arrived knowing nobody, and "nobody has been loaded yet"
+                    // and "nobody else can push here" look identical from the assignee sheet. The
+                    // answer is not allowed to fail the link: the repository is joined either way,
+                    // and a roster is something to retry, not a reason to refuse.
+                    people.refresh(id)
                     workspaces.open(id, dir, named)
                     attach(store)
                     workspaces.reindexAll()
@@ -340,6 +348,9 @@ class AppContainer(val app: Application) {
                     // points, and without it the UI could not tell a backed-up workspace from one
                     // that has never left the device.
                     registry.add(WorkspaceEntry(workspaceId, name, result.ref.slug))
+                    // Same as addWorkspace: the roster is fetched the moment there is a repository
+                    // to fetch it from, so the assignee sheet is never empty for want of asking.
+                    people.refresh(workspaceId)
                     attach(store)
                     AddResult.Ok(workspaceId, name, adopted = false)
                 }

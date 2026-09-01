@@ -59,6 +59,9 @@ import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.runtime.CompositionLocalProvider
+import ie.napkin.supertasks.ui.components.LocalLinkOpener
+import ie.napkin.supertasks.ui.components.LocalLinkResolver
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -78,6 +81,8 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     var editingRule by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     val absentWorkspaces by vm.absentWorkspaces.collectAsStateWithLifecycle()
+    val linkTitles by vm.linkTitles.collectAsStateWithLifecycle()
+    val assignable by vm.assignable.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val labels by vm.labels.collectAsStateWithLifecycle()
     val lists by vm.lists.collectAsStateWithLifecycle()
@@ -191,10 +196,18 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         // is a task wherever it is shown; the only thing a screen decides is which tasks to put in
         // front of it — and the open half and the done half are not two different kinds of task,
         // which is why they are not two different blocks of code any more.
+        val resolveLink: (String) -> String? = remember(linkTitles) { { id -> linkTitles[id] } }
+
         @Composable
         fun SmartTaskRow(task: NodeEntity) {
             ListGroupRow(started = task.inProgress) {
+                // A row here cannot be typed into, so a link in a title is collapsed and tappable —
+                // and tapping it goes where it points rather than opening the task it sits on.
                 Box(Modifier.padding(horizontal = 14.dp)) {
+                CompositionLocalProvider(
+                    LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
+                    LocalLinkResolver provides resolveLink,
+                ) {
                     TextualBlockRow(
                         child = task,
                         active = activeId == task.id,
@@ -223,6 +236,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         // text field. Typing happens on the task's own page.
                         editable = false,
                     )
+                }
                 }
             }
         }
@@ -278,6 +292,9 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                     .imePadding(),
                 labels = labels,
                 lists = lists.mapNotNull { it.title },
+                people = assignable,
+                findTasks = { q -> vm.linkTargets(q) },
+                resolveLinks = { t -> vm.linkIdsFor(t) },
                 onAdd = vm::addTask,
             )
         }

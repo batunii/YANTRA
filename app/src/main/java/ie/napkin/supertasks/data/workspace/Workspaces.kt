@@ -28,6 +28,10 @@ class Workspaces(
         val store = WorkspaceStore(root, id)
         val fresh = !store.exists
         if (fresh) store.scaffold(name, System.currentTimeMillis())
+        // An existing directory was scaffolded by whatever build made it, so it is missing every
+        // built-in field added since. Filling those in on open is the only migration this format
+        // needs: the file is the truth, and the truth simply has one more line in it now.
+        else store.ensureBuiltInProperties()
         stores[id] = store
         writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
         return fresh

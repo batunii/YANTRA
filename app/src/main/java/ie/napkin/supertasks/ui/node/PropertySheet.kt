@@ -115,6 +115,14 @@ private fun PropertyEditor(
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // Assignee before the kind switch, exactly as in the pill row. It is stored as text and the
+        // text branch would give it a free-typing field — which is the escape hatch, not the
+        // affordance: a login typed one character wrong assigns the task to nobody and no layer of
+        // this app is in a position to notice.
+        if (def.id == BuiltIns.ASSIGNEE_DEF_ID) {
+            AssigneeButton(current = value?.vText, onPick = { onSet(it, null, null, null) }, onClear = onClear)
+            return@Column
+        }
         when (def.kind) {
             PropertyKind.SELECT -> {
                 FlowRow(
@@ -228,3 +236,36 @@ private fun PropertyEditor(
     }
 }
 
+/**
+ * The assignee, as a line in a sheet of lines.
+ *
+ * A button that opens [AssigneeSheet] rather than the sheet's contents inlined here: this sheet is
+ * a list of every property at once, and a searchable list of people unfolding inside one row of it
+ * would push everything below off the screen.
+ */
+@Composable
+private fun AssigneeButton(current: String?, onPick: (String) -> Unit, onClear: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val source = LocalPeople.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = { open = true }) {
+            Text(current?.let { "@$it" } ?: "Assign to someone")
+        }
+        if (current != null) {
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onClear) { Text("Clear") }
+        }
+    }
+    if (open) {
+        AssigneeSheet(
+            current = current,
+            people = source.people,
+            onRefresh = source.onRefresh,
+            refreshing = source.refreshing,
+            refreshNote = source.note,
+            onPick = { onPick(it); open = false },
+            onClear = { onClear(); open = false },
+            onDismiss = { open = false },
+        )
+    }
+}

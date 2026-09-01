@@ -51,6 +51,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import ie.napkin.supertasks.ui.theme.YantraDisplay
+import ie.napkin.supertasks.data.format.Links
 
 data class DayStat(val date: LocalDate, val completed: Int, val totalSecs: Int)
 data class TaskStat(val nodeId: String, val title: String, val completed: Int, val totalSecs: Int)
@@ -91,7 +92,7 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
         val topTasks = completed
             .groupBy { it.nodeId }
             .map { (nodeId, list) ->
-                val title = container.nodes.byId(nodeId)?.title.orEmpty().ifBlank { "Untitled task" }
+                val title = Links.plain(container.nodes.byId(nodeId)?.title.orEmpty()).ifBlank { "Untitled task" }
                 TaskStat(nodeId, title, list.size, list.sumOf { it.actualSecs ?: 0 })
             }
             .sortedByDescending { it.totalSecs }

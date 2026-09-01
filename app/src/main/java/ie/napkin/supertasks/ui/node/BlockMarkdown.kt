@@ -7,7 +7,7 @@ import ie.napkin.supertasks.data.db.NodeType
  *
  * Only the *block* shapes are here. Inline emphasis (`**bold**`) is deliberately absent — it is
  * rendered from the markers stored in the text itself and never changes what kind of block this is
- * (see `MarkdownEmphasis`).
+ * (see `InlineText`), as are links.
  *
  * Lives in its own file, away from the screen, because it is the half of the feature that can be
  * tested: whether "## " means a heading is a question with an answer, and it should not need an

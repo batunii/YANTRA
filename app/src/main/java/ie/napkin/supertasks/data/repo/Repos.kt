@@ -71,6 +71,17 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
     fun observe(id: String) = dao.observe(id)
     suspend fun byId(id: String) = dao.byId(id)
+    fun byIds(ids: List<String>) = dao.byIds(ids)
+
+    /**
+     * Somewhere a `[[` link could point, across every open workspace.
+     *
+     * A blank query is not "everything" — it is "the things worth offering before anyone has typed
+     * anything", which SQL's `LIKE '%%'` already answers, ordered by the same rules. So the empty
+     * case needs no branch here and the strip is useful the moment the brackets are typed.
+     */
+    suspend fun searchLinkTargets(query: String, limit: Int = 12) =
+        dao.searchLinkTargets(query.trim(), limit)
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
     fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)
@@ -214,16 +225,76 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * property writes afterwards leaves a task with less on it rather than no task at all. Capture is
      * the thing that must not be lost; a due date is a nicety by comparison.
      */
+    /**
+     * Where a captured line goes: the list it named, else where it was typed, else nothing.
+     *
+     * A named list wins over wherever this was typed: saying where it goes is the whole point of
+     * saying it. A name the workspace does not have is made, rather than refused — otherwise filing
+     * into a new list means leaving capture to go and create it first, which is the interruption
+     * this whole path exists to remove. The field offers the lists that already match before it
+     * comes to this, so a typo is visible rather than silently made real.
+     */
+    private suspend fun destinationFor(
+        parsed: ie.napkin.supertasks.data.capture.Captured,
+        lists: List<NodeEntity>,
+        parentId: String?,
+    ): String? = parsed.list
+        ?.let { name ->
+            lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
+                ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
+        }
+        ?: parentId
+
+    /**
+     * Turns every `[[Call Bob]]` on the line into the id it names, where exactly one task answers.
+     *
+     * **Exactly one.** Two tasks called "Call Bob" is an ordinary Tuesday, and picking either is
+     * how a link comes to point somewhere nobody meant. An ambiguous name is left as the characters
+     * it is, which reads as text and links to nothing — the same bargain a `~list` that matches
+     * nothing already strikes. This is also why resolving by name is safe *here* and refused in the
+     * file format: here a person is watching the words change as they type them.
+     */
+    suspend fun linkIdsFor(text: String): Map<String, String> {
+        val names = CaptureParse.linkNames(text)
+        if (names.isEmpty()) return emptyMap()
+        return names.mapNotNull { name ->
+            val hits = dao.searchLinkTargets(name, limit = 3)
+                .filter { it.title.equals(name, ignoreCase = true) }
+            hits.singleOrNull()?.let { name.lowercase() to it.id }
+        }.toMap()
+    }
+
     suspend fun captureTask(
         parentId: String?,
         text: String,
         labels: LabelRepository,
         properties: PropertyRepository,
+        /**
+         * Who may be assigned, per workspace. Null leaves `@name` in the title, which is the right
+         * answer for a caller with no directory to check against — see [Captured.assignee].
+         */
+        people: ie.napkin.supertasks.data.people.People? = null,
         zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
     ): String? {
         // The lists this workspace has, so "~ Groceries" can be matched rather than guessed at.
         val lists = dao.allListsOnce()
-        val parsed = CaptureParse.parse(text, lists = lists.mapNotNull { it.title })
+        val listNames = lists.mapNotNull { it.title }
+
+        // Read twice, and the order is forced rather than lazy. Which people may be assigned is a
+        // question about the *destination* repository, and the destination is not known until the
+        // line has been read far enough to see whether it names a list. So the first pass answers
+        // only "where does this go" — nothing about it depends on people or links — and the second
+        // does the real reading with that answer in hand. Both passes are pure and cheap.
+        val routing = CaptureParse.parse(text, lists = listNames)
+        val destination = destinationFor(routing, lists, parentId)
+        val workspaceId = destination?.let { dao.byId(it)?.workspaceId } ?: ""
+
+        val parsed = CaptureParse.parse(
+            text,
+            lists = listNames,
+            people = people?.loginsFor(workspaceId).orEmpty(),
+            links = linkIdsFor(text),
+        )
         if (parsed.title.isBlank()) return null
 
         // A named list wins over wherever this was typed: saying where it goes is the whole point of
@@ -231,15 +302,9 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         // filing into a new list means leaving capture to go and create it first, which is the
         // interruption this whole path exists to remove. The field offers the lists that already
         // match before it comes to this, so a typo is visible rather than silently made real.
-        val destination = parsed.list
-            ?.let { name ->
-                lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
-                    ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
-            }
-            ?: parentId
-            ?: inboxList()
+        val landsIn = destination ?: inboxList()
 
-        val id = create(destination, NodeType.TASK, parsed.title)
+        val id = create(landsIn, NodeType.TASK, parsed.title)
 
         parsed.dueAt()?.let { at ->
             properties.setDue(
@@ -250,6 +315,7 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
             )
         }
         parsed.priority?.let { properties.setValue(id, BuiltIns.PRIORITY_DEF_ID, text = it) }
+        parsed.assignee?.let { properties.setValue(id, BuiltIns.ASSIGNEE_DEF_ID, text = it) }
         parsed.labels.forEach { name -> labels.attach(id, labels.getOrCreate(name).id) }
         return id
     }
@@ -356,6 +422,7 @@ data class SelectConfig(val options: List<SelectOption> = emptyList())
  * Property values live on the task's line, so setting one rewrites the page that holds it. The
  * defs themselves are the workspace registry and are read-only from here.
  */
+
 class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.propertyDao()
 

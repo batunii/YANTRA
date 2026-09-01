@@ -64,7 +64,7 @@ import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
 import androidx.compose.ui.text.input.VisualTransformation
-import ie.napkin.supertasks.ui.components.ListSuggestions
+import ie.napkin.supertasks.ui.components.CaptureSuggestions
 import ie.napkin.supertasks.ui.components.rememberCaptureHighlight
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.Compass
@@ -118,6 +118,7 @@ fun HomeScreen(nav: NavHostController) {
     val timer by vm.timerState.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val labels by vm.labels.collectAsStateWithLifecycle()
+    val assignable by vm.assignable.collectAsStateWithLifecycle()
 
     var showCreate by remember { mutableStateOf(false) }
     var showNewGroup by remember { mutableStateOf(false) }
@@ -244,6 +245,9 @@ fun HomeScreen(nav: NavHostController) {
                 listNames = allRegularLists.mapNotNull { it.title },
                 workspaces = vm.workspaces,
                 defaultWorkspaceId = vm.defaultWorkspaceId,
+                people = assignable,
+                findTasks = { q -> vm.linkTargets(q) },
+                resolveLinks = { t -> vm.linkIdsFor(t) },
                 onCreate = { type, name, makeSmart, wsId ->
                     when (type) {
                         CreateType.TASK -> vm.quickAddTask(name) { id -> nav.navigate(Routes.node(id)) }
@@ -456,6 +460,10 @@ private fun CreatePanel(
     /** Every workspace on this device. One (or none) and the choice is not offered. */
     workspaces: List<WorkspaceEntry>,
     defaultWorkspaceId: String,
+    /** Who `@` may name. Home captures into the Inbox, so this is Personal's roster. */
+    people: List<String> = emptyList(),
+    findTasks: suspend (String) -> List<ie.napkin.supertasks.data.db.NodeEntity> = { emptyList() },
+    resolveLinks: suspend (String) -> Map<String, String> = { emptyMap() },
     onCreate: (CreateType, String, Boolean, String) -> Unit,
 ) {
     val y = Yantra.colors
@@ -465,6 +473,17 @@ private fun CreatePanel(
     var wsId by remember { mutableStateOf(defaultWorkspaceId) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    // Only a task is parsed, so only a task pays for these lookups.
+    val linkDraft = if (type == CreateType.TASK) {
+        ie.napkin.supertasks.data.format.Links.draft(text.text, text.selection.start)?.second
+    } else null
+    var taskMatches by remember { mutableStateOf<List<ie.napkin.supertasks.data.db.NodeEntity>>(emptyList()) }
+    LaunchedEffect(linkDraft) { taskMatches = linkDraft?.let { findTasks(it) }.orEmpty() }
+    var linkIds by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(text.text, type) {
+        linkIds = if (type == CreateType.TASK) resolveLinks(text.text) else emptyMap()
+    }
 
     val valid = text.text.isNotBlank()
     val actionLabel = if (type == CreateType.LIST && makeSmart) "Continue" else type.action
@@ -483,7 +502,7 @@ private fun CreatePanel(
             // Only for a task. A list or a group is named literally — its title is whatever you
             // typed — so tinting part of it would promise a reading that is never applied.
             visualTransformation = if (type == CreateType.TASK) {
-                rememberCaptureHighlight(labels = allLabels, lists = listNames)
+                rememberCaptureHighlight(allLabels, listNames, people, linkIds)
             } else {
                 VisualTransformation.None
             },
@@ -496,10 +515,12 @@ private fun CreatePanel(
         // Only while a `~` is being typed, and only for a task — a list is named literally, so
         // there is no destination to offer it.
         if (type == CreateType.TASK) {
-            ListSuggestions(
+            CaptureSuggestions(
                 text = text.text,
                 caret = text.selection.start,
                 lists = listNames,
+                people = people,
+                tasks = taskMatches,
                 modifier = Modifier.padding(top = 4.dp),
                 onPick = { text = it },
             )

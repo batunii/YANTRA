@@ -169,6 +169,12 @@ object PageCodec {
         while (words.isNotEmpty()) {
             val w = words.last()
             val consumed = when {
+                // A word carrying a link's closing brackets is part of the title, whatever it
+                // starts with. Without this the scan reads `[[Buy milk #2|^abc]]` from the right,
+                // sees a word beginning `#`, and files the task under a label called
+                // `2|^abc]]` — taking half the link out of the title on the way. The right-to-left
+                // rule is about trailing *tokens*, and nothing that closes a link is one.
+                w.contains(Links.CLOSE) -> false
                 w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); true }
                 w.startsWith("due:") -> parseDue(w.removePrefix("due:"))?.also { due = it } != null
                 w.startsWith("deadline:") ->

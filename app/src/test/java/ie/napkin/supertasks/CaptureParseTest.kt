@@ -460,4 +460,130 @@ class CaptureParseTest {
     fun `no mark means no draft`() {
         assertNull(CaptureParse.listDraft("buy milk tomorrow"))
     }
+
+    // ---- @assignee ----------------------------------------------------------------------------
+
+    private val people = listOf("batunii", "saieeshward")
+
+    private fun withPeople(s: String) = CaptureParse.parse(s, today, people = people)
+
+    @Test
+    fun `an at-name that can be assigned leaves the title`() {
+        val c = withPeople("review the PR @saieeshward")
+        assertEquals("review the PR", c.title)
+        assertEquals("saieeshward", c.assignee)
+    }
+
+    /** The closed-list rule, at capture. See Captured.assignee. */
+    @Test
+    fun `an at-name nobody can be assigned to stays in the title`() {
+        val c = withPeople("review the PR @octocat")
+        assertEquals("review the PR @octocat", c.title)
+        assertNull(c.assignee)
+    }
+
+    @Test
+    fun `a login is matched however it was capitalised, and stored canonically`() {
+        assertEquals("batunii", withPeople("ping @BATUNII").assignee)
+    }
+
+    /** What stops "email me @ 5" and "meet @ the office" from naming anybody. */
+    @Test
+    fun `a bare at-sign is not a name`() {
+        val c = withPeople("meet @ the office")
+        assertEquals("meet @ the office", c.title)
+        assertNull(c.assignee)
+    }
+
+    @Test
+    fun `an at-name inside a word is not a name`() {
+        val c = withPeople("mail bob@batunii now")
+        assertEquals("mail bob@batunii now", c.title)
+        assertNull(c.assignee)
+    }
+
+    @Test
+    fun `the first assignable name wins and the rest stay as text`() {
+        val c = withPeople("@batunii @saieeshward sort it")
+        assertEquals("batunii", c.assignee)
+        assertEquals("@saieeshward sort it", c.title)
+    }
+
+    @Test
+    fun `an assignee is reported where it was written`() {
+        val c = withPeople("ping @batunii tomorrow")
+        val span = c.spans.single { it.kind == Captured.Kind.ASSIGNEE }
+        assertEquals("@batunii", "ping @batunii tomorrow".substring(span.range))
+    }
+
+    // ---- [[links]] ----------------------------------------------------------------------------
+
+    private val links = mapOf("call bob" to "9f1e")
+
+    private fun withLinks(s: String) = CaptureParse.parse(s, today, links = links)
+
+    @Test
+    fun `a bracketed name that resolves becomes a real link`() {
+        assertEquals("follow up on [[Call Bob|^9f1e]]", withLinks("follow up on [[Call Bob]]").title)
+    }
+
+    /** Unlike every other token, a link stays on the line — it is part of what the task says. */
+    @Test
+    fun `a link is rewritten rather than removed`() {
+        val c = withLinks("[[Call Bob]] before friday")
+        assertTrue(c.title.startsWith("[[Call Bob|^9f1e]]"))
+    }
+
+    @Test
+    fun `a bracketed name that resolves to nothing is left as characters`() {
+        assertEquals("chase [[Someone Else]]", withLinks("chase [[Someone Else]]").title)
+    }
+
+    /** A link written out in full is already resolved and must not be read again. */
+    @Test
+    fun `an already-finished link passes through untouched`() {
+        val text = "see [[Bob|^abc]] now"
+        assertEquals(text, CaptureParse.parse(text, today, links = mapOf("bob" to "zzz")).title)
+    }
+
+    @Test
+    fun `link names are reported for the caller to look up`() {
+        assertEquals(
+            listOf("Call Bob", "Ship it"),
+            CaptureParse.linkNames("[[Call Bob]] then [[Ship it]] and [[Bob|^abc]]"),
+        )
+    }
+
+    @Test
+    fun `a link and the other tokens coexist`() {
+        val c = CaptureParse.parse(
+            "chase [[Call Bob]] tomorrow #work !high @batunii",
+            today, people = people, links = links,
+        )
+        assertEquals("chase [[Call Bob|^9f1e]]", c.title)
+        assertEquals(today.plusDays(1), c.date)
+        assertEquals(listOf("work"), c.labels)
+        assertEquals("High", c.priority)
+        assertEquals("batunii", c.assignee)
+    }
+
+    // ---- the completion strips ------------------------------------------------------------------
+
+    @Test
+    fun `an at-draft is the name the caret is inside`() {
+        val (range, typed) = CaptureParse.assigneeDraft("ping @sai", 9)!!
+        assertEquals("sai", typed)
+        assertEquals("@sai", "ping @sai".substring(range))
+    }
+
+    @Test
+    fun `an at-draft ends at a space`() {
+        assertNull(CaptureParse.assigneeDraft("ping @sai now", 13))
+    }
+
+    @Test
+    fun `people are offered prefix-first`() {
+        assertEquals(listOf("batunii"), CaptureParse.peopleSuggestions("bat", people))
+        assertEquals(people, CaptureParse.peopleSuggestions("", people))
+    }
 }

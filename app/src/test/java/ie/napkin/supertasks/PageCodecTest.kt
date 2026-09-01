@@ -401,4 +401,55 @@ class PageCodecTest {
 
     private fun render(t: TaskRef): String =
         PageCodec.encode(page(listOf(t))).lines().first { it.startsWith("- [") }
+
+    // ---- links on a task line ----
+
+    /** The smallest well-formed page, so a one-line test can be one line. */
+    private val header = "---\nid: p\ntype: list\nmodified_at: 2026-09-01T00:00:00Z\n---\n"
+
+    /**
+     * The right-to-left token scan and `[[…|^id]]` have to coexist, and by default they do not.
+     *
+     * `[[Buy milk #2|^abc]]` ends in a word beginning with `#`, so the scan filed the task under a
+     * label called `2|^abc]]` and took half the link out of the title on the way. The guard is that
+     * nothing containing a link's closing brackets is a trailing token.
+     */
+    @Test
+    fun `a link in a task title is not read as trailing tokens`() {
+        val page = PageCodec.decode(
+            """
+            ---
+            id: p1
+            type: list
+            modified_at: 2026-09-01T00:00:00Z
+            ---
+            - [ ] See [[Buy milk #2|^abc]] first ^t1 #real !High
+            """.trimIndent()
+        )
+        val t = page.blocks.filterIsInstance<TaskRef>().single()
+        assertEquals("See [[Buy milk #2|^abc]] first", t.title)
+        assertEquals("t1", t.id)
+        assertEquals(listOf("real"), t.labels)
+        assertEquals("High", t.priority)
+    }
+
+    @Test
+    fun `a link at the very end of a title survives the round trip`() {
+        val line = "- [ ] Ask [[Bob|^9f1e]] ^t2 @batunii"
+        val page = PageCodec.decode(header + line)
+        val t = page.blocks.filterIsInstance<TaskRef>().single()
+        assertEquals("Ask [[Bob|^9f1e]]", t.title)
+        assertEquals("batunii", t.assignee)
+        // Re-rendered from the model rather than replayed from raw, so the emitter is tested too.
+        assertEquals(line, PageCodec.encodeBlock(t.copy(raw = null)))
+    }
+
+    /** An at-sign inside a link label is part of the label, not an assignee. */
+    @Test
+    fun `an at-sign inside a link is not an assignee`() {
+        val page = PageCodec.decode(header + "- [ ] Ping [[ask @bob|^x]]")
+        val t = page.blocks.filterIsInstance<TaskRef>().single()
+        assertEquals("Ping [[ask @bob|^x]]", t.title)
+        assertNull(t.assignee)
+    }
 }

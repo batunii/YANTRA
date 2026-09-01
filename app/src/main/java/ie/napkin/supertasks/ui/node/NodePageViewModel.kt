@@ -10,15 +10,21 @@ import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.PropertyDefEntity
 import ie.napkin.supertasks.data.db.PropertyValueEntity
 import ie.napkin.supertasks.data.db.SubtreeTaskCount
+import ie.napkin.supertasks.data.format.Links
 import ie.napkin.supertasks.data.ink.StrokeCodec
+import ie.napkin.supertasks.data.people.Person
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.buildChips
 import ie.napkin.supertasks.ui.components.buildLabelChips
+import ie.napkin.supertasks.ui.components.strangerAgainst
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -37,6 +43,67 @@ class NodePageViewModel(
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    // ---- people ----
+
+    private val peopleRefreshing = MutableStateFlow(false)
+    private val peopleProblem = MutableStateFlow<String?>(null)
+
+    /**
+     * Who a task on this page can be assigned to.
+     *
+     * Keyed off the page's own workspace, because that is the repository whose collaborators are
+     * the answer. A task in Personal has a roster of one; a task in a shared repo has whoever can
+     * push to it.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val people: StateFlow<List<Person>> =
+        node.flatMapLatest { n ->
+            if (n == null) flowOf(emptyList()) else container.people.known(n.workspaceId)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * Just the logins a typed `@` may name here — the same closed list the sheet offers.
+     *
+     * Anyone already on a task but off the roster is deliberately absent: they are shown in the
+     * sheet because they are *there*, not because they are a choice, and capture has no equivalent
+     * of "shown but not offered".
+     */
+    val assignable: StateFlow<List<String>> =
+        people.map { who -> who.filter { it.onRepo != false }.map { it.login } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Link names on a captured line, resolved to ids — see `NodeRepository.linkIdsFor`. */
+    suspend fun linkIdsFor(text: String) = nodes.linkIdsFor(text)
+
+    val peopleState: StateFlow<Pair<Boolean, String?>> =
+        combine(peopleRefreshing, peopleProblem) { busy, note -> busy to note }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false to null)
+
+    /**
+     * Whether asking GitHub for this workspace's collaborators could work at all.
+     *
+     * A flow, not a function, and that is a correctness fix rather than a style one. It was
+     * `node.value` read straight out of a composable — not a snapshot read, so composition had no
+     * reason to run again when the node finally arrived. The page composes once with no node, the
+     * answer is no, and the Collaborators button is simply absent: the feature looks unbuilt rather
+     * than unavailable, and nothing on screen ever says otherwise. It happened to recover most of
+     * the time because something else in the same scope changed a moment later, which is the worst
+     * kind of working.
+     */
+    val canRefreshPeople: StateFlow<Boolean> =
+        node.map { it != null && container.people.canRefresh(it.workspaceId) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun refreshPeople() {
+        val ws = node.value?.workspaceId ?: return
+        if (peopleRefreshing.value) return
+        viewModelScope.launch {
+            peopleRefreshing.value = true
+            peopleProblem.value = container.people.refresh(ws)
+            peopleRefreshing.value = false
+        }
+    }
+
     /** Titles of this page's ancestors, root → parent, for the header breadcrumb. */
     val breadcrumb: StateFlow<List<String>> =
         nodes.observe(nodeId)
@@ -53,6 +120,42 @@ class NodePageViewModel(
     val blocks: StateFlow<List<NodeEntity>> =
         nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // ---- links ----
+
+    /**
+     * Everything this page's text points at, in the order it is first mentioned.
+     *
+     * Resolved live rather than trusting the label stored inside each link, so renaming a task
+     * updates every reference to it and nothing has to go and rewrite other people's files. An id
+     * that resolves to nothing is simply absent, and the renderer falls back to what the file says
+     * — see [Links].
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val linkedNodes: StateFlow<List<NodeEntity>> =
+        combine(node, blocks) { page, children ->
+            (listOfNotNull(page?.title) + children.mapNotNull { it.title })
+                .flatMap { Links.targets(it) }
+                .distinct()
+        }
+            .flatMapLatest { ids ->
+                if (ids.isEmpty()) flowOf(emptyList())
+                // Ordered by first mention, not by whatever order the query returned them in: the
+                // header row reads down the page, and a set of chips that reshuffles when an
+                // unrelated block changes is a set of chips nobody can aim at.
+                else nodes.byIds(ids).map { rows -> ids.mapNotNull { id -> rows.firstOrNull { it.id == id } } }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** The same thing in the shape the renderer asks its question in: id → current title. */
+    val linkTitles: StateFlow<Map<String, String>> =
+        linkedNodes
+            .map { rows -> rows.associate { it.id to (it.title?.takeIf { t -> t.isNotBlank() } ?: "Untitled") } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Somewhere a `[[` could point. A page never offers itself. */
+    suspend fun linkTargets(query: String): List<NodeEntity> =
+        nodes.searchLinkTargets(query).filterNot { it.id == nodeId }
+
     /** Only the fixed Priority/Due fields — no more arbitrary user-created schema fields. */
     val defs: StateFlow<List<PropertyDefEntity>> =
         properties.builtInDefs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -64,8 +167,9 @@ class NodePageViewModel(
             properties.valuesUnder(nodeId),
             labels.all(),
             labels.forChildrenOf(nodeId),
-        ) { d, v, allLabels, nodeLabels ->
-            val merged = buildChips(d, v).toMutableMap()
+            container.people.rosters(),
+        ) { d, v, allLabels, nodeLabels, rosters ->
+            val merged = buildChips(d, v, strangerAgainst(rosters)).toMutableMap()
             buildLabelChips(allLabels, nodeLabels).forEach { (id, chips) ->
                 merged[id] = merged[id].orEmpty() + chips
             }
@@ -171,7 +275,7 @@ class NodePageViewModel(
      */
     fun captureTask(text: String) {
         viewModelScope.launch {
-            nodes.captureTask(nodeId, text, container.labels, container.properties)
+            nodes.captureTask(nodeId, text, container.labels, container.properties, container.people)
         }
     }
 

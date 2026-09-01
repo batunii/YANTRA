@@ -46,6 +46,7 @@ import ie.napkin.supertasks.ui.theme.YantraText
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import ie.napkin.supertasks.data.format.Links
 
 /**
  * What has left the working set.
@@ -142,7 +143,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                task.title.ifBlank { "Untitled task" },
+                Links.plain(task.title).ifBlank { "Untitled task" },
                 color = y.textSecondary,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W600,

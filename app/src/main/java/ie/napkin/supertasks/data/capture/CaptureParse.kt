@@ -1,5 +1,6 @@
 package ie.napkin.supertasks.data.capture
 
+import ie.napkin.supertasks.data.format.Links
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -22,6 +23,15 @@ data class Captured(
     val labels: List<String> = emptyList(),
     val priority: String? = null,
     /**
+     * The GitHub login this should be assigned to, if the line named one the workspace allows.
+     *
+     * Matched against who can actually be assigned rather than taken as whatever followed the `@`,
+     * for the same reason the assignee sheet is a closed list: a task handed to somebody outside
+     * the repository is a task nobody will ever be shown. A name that matches nobody is left in the
+     * title, where it reads as the ordinary English it probably was.
+     */
+    val assignee: String? = null,
+    /**
      * Which list this should go to, if the line named one.
      *
      * Unlike everything else here, this is **not** written to the file. A task's list is the page it
@@ -42,10 +52,11 @@ data class Captured(
     /** A recognised run of characters in the input, and what it turned into. */
     data class Span(val range: IntRange, val kind: Kind)
 
-    enum class Kind { DATE, TIME, LABEL, PRIORITY, LIST }
+    enum class Kind { DATE, TIME, LABEL, PRIORITY, LIST, ASSIGNEE, LINK }
 
     val hasAnything: Boolean
-        get() = date != null || time != null || labels.isNotEmpty() || priority != null || list != null
+        get() = date != null || time != null || labels.isNotEmpty() || priority != null ||
+            list != null || assignee != null || spans.any { it.kind == Kind.LINK }
 
     /** Due as a single moment when a time was given, otherwise just the day. */
     fun dueAt(): LocalDateTime? = date?.let { LocalDateTime.of(it, time ?: LocalTime.MIDNIGHT) }
@@ -119,6 +130,34 @@ object CaptureParse {
     private val WEEKDAY = Regex("""(?<=^|\s)([a-z]{3,9})(?=$|\s)""", RegexOption.IGNORE_CASE)
 
     /**
+     * `@batunii` — who it is for. The same character the file format writes an assignee with, so
+     * what you type is what the line says, exactly as `#label` and `!priority` already are.
+     *
+     * Bounded by GitHub's own rule for logins: letters, digits and hyphens, up to 39 characters.
+     * That is what stops `email me @ 5` and `meet @ the office` from being read as names.
+     */
+    private val ASSIGNEE = Regex("""(?<=^|\s)@([A-Za-z0-9][A-Za-z0-9-]{0,38})(?=$|\s)""")
+
+    /**
+     * `[[Call Bob]]` — a link to another task, written by name.
+     *
+     * Deliberately does not match a `|`, which is what a *finished* link contains: `[[Bob|^9f1e…]]`
+     * is already resolved and must pass through untouched rather than being resolved a second time
+     * against whatever it now reads as.
+     */
+    private val LINK_DRAFT = Regex("""\[\[([^\[\]|\n]+)]]""")
+
+    /**
+     * The names inside every unresolved `[[…]]` on this line.
+     *
+     * Separate from [parse] because resolving a name means a database query and this file is pure:
+     * the caller looks the names up and hands the answers back through [parse]'s `links`. Keeping
+     * the grammar and the lookup apart is also what lets the grammar be tested without a database.
+     */
+    fun linkNames(input: String): List<String> =
+        LINK_DRAFT.findAll(input).map { it.groupValues[1].trim() }.filter { it.isNotEmpty() }.distinct().toList()
+
+    /**
      * [lists] are the names this workspace actually has. A list is matched against them rather than
      * taken as whatever follows the mark, for two reasons: names contain spaces, so there is no way
      * to know where one ends without knowing what exists; and a typo must leave the text alone rather
@@ -128,12 +167,42 @@ object CaptureParse {
         input: String,
         today: LocalDate = LocalDate.now(),
         lists: List<String> = emptyList(),
+        /**
+         * The logins that may be assigned here — see [Captured.assignee]. A name outside this set
+         * is not an assignee and is left in the title.
+         */
+        people: List<String> = emptyList(),
+        /**
+         * Typed name (lowercased) to node id, for turning `[[Call Bob]]` into a real link. Supplied
+         * by the caller because the lookup is a query; see [linkNames].
+         */
+        links: Map<String, String> = emptyMap(),
     ): Captured {
         val spans = ArrayList<Captured.Span>()
+        // Only links rewrite rather than vanish, and only they need an entry here. Everything else
+        // is a modifier that moves off the line into a property, so its span is simply removed.
+        val rewrites = HashMap<IntRange, String>()
         var date: LocalDate? = null
         var time: LocalTime? = null
         var priority: String? = null
+        var assignee: String? = null
         val labels = ArrayList<String>()
+
+        // Before anything else, because a resolved link puts brackets and an id into the title and
+        // every other pattern here would then be reading characters nobody typed.
+        LINK_DRAFT.findAll(input).forEach { m ->
+            val id = links[m.groupValues[1].trim().lowercase()] ?: return@forEach
+            spans += Captured.Span(m.range, Captured.Kind.LINK)
+            rewrites[m.range] = Links.encode(m.groupValues[1].trim(), id)
+        }
+
+        ASSIGNEE.findAll(input).forEach { m ->
+            if (assignee != null) return@forEach
+            val login = people.firstOrNull { it.equals(m.groupValues[1], ignoreCase = true) }
+                ?: return@forEach
+            assignee = login
+            spans += Captured.Span(m.range, Captured.Kind.ASSIGNEE)
+        }
 
         var list: String? = null
         var listIsNew = false
@@ -184,11 +253,14 @@ object CaptureParse {
             }
         }
 
-        val title = strip(input, spans)
+        val title = strip(input, spans, rewrites)
         // Everything was a modifier and nothing was a task. Then it was never a modifier.
         if (title.isBlank()) return Captured(title = input.trim())
 
-        return Captured(title, date, time, labels, priority, list, listIsNew, spans.sortedBy { it.range.first })
+        return Captured(
+            title, date, time, labels, priority, assignee, list, listIsNew,
+            spans.sortedBy { it.range.first },
+        )
     }
 
     /**
@@ -327,6 +399,35 @@ object CaptureParse {
     }
 
     /**
+     * The `@…` currently being typed, for a field that wants to offer the people it could mean.
+     *
+     * Unlike [listDraft] this needs the caret, and can use it: a login has no spaces, so the token
+     * ends at the next one and there is no ambiguity about where the name stops. The draft is only
+     * live while the caret is inside it — once you have typed past the name, the decision is made.
+     */
+    fun assigneeDraft(input: String, caret: Int): Pair<IntRange, String>? {
+        val at = caret.coerceIn(0, input.length)
+        val mark = input.lastIndexOf('@', (at - 1).coerceAtLeast(0))
+        if (mark < 0 || mark >= at) return null
+        if (mark > 0 && !input[mark - 1].isWhitespace()) return null
+        val typed = input.substring(mark + 1, at)
+        if (typed.any { it.isWhitespace() }) return null
+        return (mark until at) to typed
+    }
+
+    /**
+     * The people worth offering for a partial login, best first — the same shape as
+     * [listSuggestions] and for the same reason: what the strip offers and what the line resolves
+     * to must be decided by one rule.
+     */
+    fun peopleSuggestions(draft: String, people: List<String>): List<String> {
+        val d = draft.lowercase(Locale.ROOT)
+        if (d.isEmpty()) return people
+        val starts = people.filter { it.lowercase(Locale.ROOT).startsWith(d) }
+        return starts + people.filter { it.lowercase(Locale.ROOT).contains(d) && it !in starts }
+    }
+
+    /**
      * The lists worth offering for a partial name, best first, or every list when nothing is typed.
      *
      * Matched on the same [normalise] the parser uses, so what the field offers and what the line
@@ -459,11 +560,24 @@ object CaptureParse {
         return d
     }
 
-    /** The input with every recognised run removed, and the leftover whitespace tidied. */
-    private fun strip(input: String, spans: List<Captured.Span>): String {
+    /**
+     * The input with every recognised run removed — or, for a link, replaced by what it resolved to
+     * — and the leftover whitespace tidied.
+     *
+     * A link is the one token that stays on the line, because it *is* part of what the task says:
+     * "follow up on [[Call Bob]]" is a sentence about Bob, not a sentence with a property attached.
+     * Everything else names a field and moves off the title into it.
+     */
+    private fun strip(
+        input: String,
+        spans: List<Captured.Span>,
+        rewrites: Map<IntRange, String> = emptyMap(),
+    ): String {
         if (spans.isEmpty()) return input.trim()
         val sb = StringBuilder(input)
-        spans.sortedByDescending { it.range.first }.forEach { sb.delete(it.range.first, it.range.last + 1) }
+        spans.sortedByDescending { it.range.first }.forEach { span ->
+            sb.replace(span.range.first, span.range.last + 1, rewrites[span.range].orEmpty())
+        }
         return sb.toString().replace(Regex("\\s+"), " ").trim()
     }
 }

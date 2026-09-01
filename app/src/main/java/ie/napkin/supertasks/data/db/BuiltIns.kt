@@ -30,11 +30,14 @@ object BuiltIns {
      *
      * A property value rather than a column: it is single-valued and per-node like `done`, so a
      * column was the obvious shape, but routing it through the property registry means smart lists
-     * can filter on it the moment collaboration exists — "assigned to me" for free, and no schema
-     * version spent on a field nothing renders yet.
+     * can filter on it for free — "assigned to me" is an ordinary `Prop` clause and needed no new
+     * kind of question.
      *
-     * Deliberately **not seeded**. There is no def row and no UI for it until Phase 5; the value
-     * still round-trips through the index, and a value whose def is missing simply draws no chip.
+     * It went unseeded for a long time and the consequence is worth remembering: every layer
+     * existed — the `@login` token parsed and rendered, the value mapped both ways, the repository
+     * set and cleared it — and none of it was reachable, because a value whose def row is missing
+     * draws no chip and gets no editor. The feature was complete and invisible. A def is not
+     * bookkeeping; it is the thing that makes a value appear.
      */
     const val ASSIGNEE_DEF_ID = "builtin-assignee"
     const val ASSIGNEE_NAME = "Assignee"
