@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:oklch(0.972 0.006 80);
+  --surface:oklch(0.995 0.003 80);
+  --surfaceHigh:oklch(0.958 0.007 80);
+  --rail:oklch(0.935 0.007 80);
+  --ink:oklch(0.26 0.012 80);
+  --ink2:oklch(0.44 0.011 80);
+  --muted:oklch(0.545 0.010 80);
+  --dim:oklch(0.655 0.009 80);
+  --hair:oklch(0.26 0.012 80 / 0.085);
+  --tile:oklch(0.26 0.012 80 / 0.105);
+  --accent:#D85A30;
+  --accentFill:#D85A301F;
+  --accentBorder:#D85A3070;
+  --accentChip:#D85A3026;
+  --wash:#D85A3017;
+  --onAccent:#ffffff;
+  --crimson:#A32D2D;
+  --crimsonChip:#A32D2D21;
+  --amber:#BA7517;
+  --frame:#5F5E5A;
+  --desk:oklch(0.885 0.006 80);
+  --teal:#00948E;
+  --violet:#8A6BB8;
+  --olive:#5D8F52;
+}
+body{margin:0;background:var(--desk);}
+a{color:var(--accent);text-decoration:none;}
+a:hover{color:var(--ink);}
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:58px;padding:56px 56px 96px;font-family:'Space Grotesk',sans-serif;background:var(--desk);">
+
+  <div style="display:flex;flex-direction:column;gap:11px;max-width:800px;">
+    <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.7px;color:var(--muted);">YANTRA · THE DECIDED SYSTEM</div>
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:42px;letter-spacing:-1.2px;color:var(--ink);line-height:1.03;">Every screen, one grammar</div>
+    <div style="font-size:15px;line-height:1.6;color:var(--ink2);text-wrap:pretty;">Drag right and the glyph draws itself: the ring closes at the first detent to start, and at the second the frame drops away for a plain filled circle — done. The row never leaves its place. Tap to open. Hold stays free for reorder. Workspace leads the second line and the line falls through to whatever the task has. The trailing slot is only for what is wrong with a row — late, or running. Coral means effort and nothing else; crimson only ever appears on a task.</div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">01 · FIRST RUN</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;padding:34px;box-sizing:border-box;font-family:'Space Grotesk',sans-serif;">
+          <svg viewBox="0 0 28 28" style="width:132px;height:132px;">
+            <path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="0.6" stroke-linejoin="round"></path>
+            <circle cx="14" cy="14" r="8" fill="none" stroke="var(--accent)" stroke-width="0.5"></circle>
+            <path d="M11.1 9.4h5.8L14 12.8Z" fill="none" stroke="var(--accent)" stroke-width="0.5" stroke-linejoin="round"></path>
+            <circle cx="14" cy="14" r="4.5" fill="none" stroke="var(--accent)" stroke-width="0.5"></circle>
+            <circle cx="14" cy="14" r="1.6" fill="var(--accent)"></circle>
+          </svg>
+          <div style="text-align:center;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:38px;letter-spacing:-1.1px;color:var(--ink);line-height:1.05;">Yantra</div>
+            <div style="font-size:15.5px;line-height:1.55;color:var(--ink2);margin-top:12px;text-wrap:pretty;">Catch it, do it, and see where the day went.</div>
+          </div>
+          <div style="width:100%;display:flex;flex-direction:column;gap:9px;">
+            <div style="text-align:center;font-size:15px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:17px 0;border-radius:16px;">Start with nothing</div>
+            <div style="text-align:center;font-size:14.5px;font-weight:600;color:var(--ink2);padding:15px 0;">I have a backup</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">WELCOME</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:34px 26px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.6px;color:var(--accent);">ONE THING TO LEARN</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:31px;letter-spacing:-0.9px;color:var(--ink);margin-top:14px;line-height:1.1;text-wrap:pretty;">Drag a task to the right.</div>
+            <div style="font-size:15px;line-height:1.6;color:var(--ink2);margin-top:14px;text-wrap:pretty;">The glyph draws as you go. A closed ring starts the clock. Keep going and the frame drops away: a plain circle means done.</div>
+
+            <div style="display:flex;flex-direction:column;gap:2px;margin:30px -26px 0;">
+
+              <div style="position:relative;height:64px;overflow:hidden;">
+                <div style="position:absolute;inset:0;display:flex;align-items:center;gap:14px;padding:0 26px;">
+                  <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                  <div style="flex:1;font-size:16px;font-weight:500;color:var(--ink);">Drag me</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.1px;color:var(--dim);">AT REST</div>
+                </div>
+              </div>
+
+              <div style="position:relative;height:64px;overflow:hidden;">
+                <div style="position:absolute;left:0;top:0;bottom:0;width:236px;background:var(--accentFill);"></div>
+                <div style="position:absolute;inset:0;display:flex;align-items:center;gap:14px;padding:0 26px;">
+                  <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+                  <div style="flex:1;font-size:16px;font-weight:500;color:var(--ink);">Drag me</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.1px;color:var(--accent);">IN PROGRESS</div>
+                </div>
+                <div style="position:absolute;left:236px;top:50%;width:34px;height:34px;border-radius:20px;background:var(--ink);opacity:0.07;transform:translate(-50%,-50%);"></div>
+              </div>
+
+              <div style="position:relative;height:64px;overflow:hidden;">
+                <div style="position:absolute;left:0;top:0;bottom:0;right:0;background:var(--accentFill);"></div>
+                <div style="position:absolute;inset:0;display:flex;align-items:center;gap:14px;padding:0 26px;">
+                  <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><circle cx="14" cy="14" r="9" fill="var(--accent)"></circle></svg>
+                  <div style="flex:1;font-size:16px;font-weight:500;color:var(--ink);">Drag me</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.1px;color:var(--accent);">DONE · JUST A CIRCLE</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:9px;margin-top:26px;font-size:13.5px;line-height:1.6;color:var(--muted);">
+              <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">←</div>
+              <div style="flex:1;text-wrap:pretty;">Dragging left takes it out of the day. Nothing is deleted by a gesture.</div>
+            </div>
+          </div>
+          <div style="padding:0 22px 20px;">
+            <div style="text-align:center;font-size:15px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:17px 0;border-radius:16px;">Got it</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">THE GLYPH DRAWS AS YOU DRAG</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:34px 26px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.6px;color:var(--accent);">WHERE THINGS LIVE</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:31px;letter-spacing:-0.9px;color:var(--ink);margin-top:14px;line-height:1.1;text-wrap:pretty;">Name a workspace or two.</div>
+            <div style="font-size:15px;line-height:1.6;color:var(--ink2);margin-top:14px;text-wrap:pretty;">Big divisions only — work, home, a project. Lists go inside them later.</div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:30px;">
+              <div style="display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--tile);border-radius:14px;padding:16px;">
+                <div style="flex:1;font-size:16px;font-weight:600;color:var(--ink);">Work</div>
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;"><circle cx="14" cy="14" r="8.5" fill="var(--accent)"></circle></svg>
+              </div>
+              <div style="display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--tile);border-radius:14px;padding:16px;">
+                <div style="flex:1;font-size:16px;font-weight:600;color:var(--ink);">Home</div>
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;"><circle cx="14" cy="14" r="8.5" fill="var(--accent)"></circle></svg>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;border:1px dashed var(--tile);border-radius:14px;padding:16px;">
+                <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 5v14M5 12h14" stroke="var(--muted)" stroke-width="2" stroke-linecap="round"></path></svg>
+                <div style="flex:1;font-size:16px;font-weight:500;color:var(--muted);">Add another</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:0 22px 20px;display:flex;gap:9px;">
+            <div style="flex:1;text-align:center;font-size:15px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:17px 0;border-radius:16px;">Done</div>
+            <div style="width:110px;text-align:center;font-size:14.5px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:17px 0;border-radius:16px;">Skip</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">WORKSPACES · SKIPPABLE</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">02 · THE DAY</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="padding:44px 22px 26px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.7px;color:var(--muted);">WED 26 AUG</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:46px;letter-spacing:-1.6px;color:var(--ink);margin-top:12px;line-height:1;">Morning</div>
+            <div style="font-size:14px;font-weight:500;color:var(--muted);margin-top:12px;">6 open · nothing overdue · 1:12 given</div>
+          </div>
+
+          <div style="flex:1;padding:0 22px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Rewrite the capture parser</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">YANTRA</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--teal);">#dev</div>
+                </div>
+              </div>
+              <div style="width:58px;text-align:right;font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">06:36</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Call the accountant</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">WORK</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--violet);">#admin</div>
+                </div>
+              </div>
+              <div style="width:58px;text-align:right;font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--muted);">18:00</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Pick up the prescription</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">HOME</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);">17:30</div>
+                </div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Ship the palette fix</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">YANTRA</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);">1:40 given</div>
+                </div>
+              </div>
+              <div style="width:58px;display:flex;justify-content:flex-end;"><div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;color:var(--onAccent);background:var(--crimson);padding:3px 7px;border-radius:6px;">LATE</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Book the van</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">HOME</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);">Weekend</div>
+                </div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Send Aoife the ink demo</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">YANTRA</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);">Inbox</div>
+                </div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+          </div>
+
+          <div style="padding:10px 16px 8px;background:linear-gradient(to top,var(--page) 72%,transparent);">
+            <div style="display:flex;align-items:center;gap:14px;background:var(--accent);border-radius:20px;padding:15px 18px;">
+              <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--onAccent)" stroke-width="1.3" stroke-linejoin="round" opacity="0.6"></path><circle cx="14" cy="14" r="5.5" fill="none" stroke="var(--onAccent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:700;color:var(--onAccent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rewrite the capture parser</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.2px;color:var(--onAccent);opacity:0.78;margin-top:2px;">RUNNING · 06:36 · TAP TO OPEN</div>
+              </div>
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none;"><path d="M9 4l7 8-7 8" fill="none" stroke="var(--onAccent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;padding:4px 16px 14px;">
+            <div style="width:52px;display:flex;align-items:center;justify-content:center;background:var(--surfaceHigh);border-radius:14px;">
+              <svg viewBox="0 0 28 28" style="width:18px;height:18px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+            </div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Now</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:11px 0;border-radius:14px;">Today</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Loose</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TODAY · AT REST</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="display:flex;align-items:center;gap:12px;padding:0 22px;height:56px;background:var(--surface);border-bottom:1px solid var(--hair);">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:19px;letter-spacing:-0.4px;color:var(--ink);">Morning</div>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--muted);">WED 26 · 6 OPEN</div>
+            <div style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);">06:36</div>
+          </div>
+
+          <div style="flex:1;padding:8px 22px 0;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Call the accountant</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">WORK</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--violet);">#admin</div>
+                </div>
+              </div>
+              <div style="width:58px;text-align:right;font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--muted);">18:00</div>
+            </div>
+
+            <div style="position:relative;height:72px;margin:0 -22px;overflow:hidden;border-top:1px solid var(--hair);">
+              <div style="position:absolute;left:0;top:0;bottom:0;width:268px;background:var(--accentFill);"></div>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;gap:13px;padding:0 22px;">
+                <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><path d="M14 8a6 6 0 1 1-4.24 1.76" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round"></path></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:16px;font-weight:500;color:var(--ink);">Pick up the prescription</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">HOME <span style="font-weight:400;color:var(--muted);">17:30</span></div>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--accent);">RING CLOSING</div>
+              </div>
+              <div style="position:absolute;left:268px;top:50%;width:38px;height:38px;border-radius:20px;background:var(--ink);opacity:0.08;transform:translate(-50%,-50%);"></div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Ship the palette fix</div>
+                <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);">YANTRA</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);">1:40 given</div>
+                </div>
+              </div>
+              <div style="width:58px;display:flex;justify-content:flex-end;"><div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;color:var(--onAccent);background:var(--crimson);padding:3px 7px;border-radius:6px;">LATE</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);opacity:0.5;">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><circle cx="14" cy="14" r="8.5" fill="var(--accent)"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent);text-decoration-thickness:1.5px;">Water the plants</div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Book the van</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">HOME <span style="font-weight:400;color:var(--muted);">Weekend</span></div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+          </div>
+
+          <div style="padding:10px 16px 8px;">
+            <div style="display:flex;align-items:center;gap:14px;background:var(--accent);border-radius:20px;padding:15px 18px;">
+              <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--onAccent)" stroke-width="1.3" stroke-linejoin="round" opacity="0.6"></path><circle cx="14" cy="14" r="5.5" fill="none" stroke="var(--onAccent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:700;color:var(--onAccent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rewrite the capture parser</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.2px;color:var(--onAccent);opacity:0.78;margin-top:2px;">RUNNING · 06:36 · TAP TO OPEN</div>
+              </div>
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none;"><path d="M9 4l7 8-7 8" fill="none" stroke="var(--onAccent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;padding:4px 16px 14px;">
+            <div style="width:52px;display:flex;align-items:center;justify-content:center;background:var(--surfaceHigh);border-radius:14px;">
+              <svg viewBox="0 0 28 28" style="width:18px;height:18px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+            </div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Now</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:11px 0;border-radius:14px;">Today</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Loose</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">SCROLLED · HEADER COLLAPSED · GLYPH DRAWING</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="padding:44px 22px 26px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.7px;color:var(--muted);">UNSCHEDULED</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:46px;letter-spacing:-1.6px;color:var(--ink);margin-top:12px;line-height:1;">Loose</div>
+            <div style="font-size:14px;font-weight:500;color:var(--muted);margin-top:12px;">11 caught · none of them urgent yet</div>
+          </div>
+          <div style="flex:1;padding:0 22px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Read the OKLCH paper</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--teal);">#dev</span></div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Replace the bathroom bulb</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">HOME <span style="font-weight:400;color:var(--olive);">#errands</span></div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Ask Dara about the lease</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">WORK <span style="font-weight:400;color:var(--muted);">Inbox</span></div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Try the pressure curve again</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--muted);">0:35 given</span></div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Find a van for the move</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">HOME <span style="font-weight:400;color:var(--muted);">Weekend</span></div>
+              </div>
+              <div style="width:58px;"></div>
+            </div>
+          </div>
+          <div style="padding:10px 16px 8px;">
+            <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--tile);border-radius:20px;padding:15px 16px;">
+              <svg viewBox="0 0 28 28" style="width:21px;height:21px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"></path></svg>
+              <div style="flex:1;font-family:'Space Mono',monospace;font-size:13.5px;color:var(--dim);">say it, don't sort it</div>
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none;"><path d="M12 3.5a2.6 2.6 0 0 1 2.6 2.6v5.4a2.6 2.6 0 0 1-5.2 0V6.1A2.6 2.6 0 0 1 12 3.5ZM6.5 11a5.5 5.5 0 0 0 11 0M12 16.5V20" fill="none" stroke="var(--muted)" stroke-width="1.7" stroke-linecap="round"></path></svg>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;padding:4px 16px 14px;">
+            <div style="width:52px;display:flex;align-items:center;justify-content:center;background:var(--surfaceHigh);border-radius:14px;">
+              <svg viewBox="0 0 28 28" style="width:18px;height:18px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+            </div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Now</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Today</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:11px 0;border-radius:14px;">Loose</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">LOOSE · NOTHING RUNNING</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="flex:1;padding:16px 22px 0;opacity:0.42;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:34px;letter-spacing:-1px;color:var(--ink);line-height:1;">Loose</div>
+            <div style="margin-top:22px;">
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;font-size:16px;font-weight:500;color:var(--ink);">Read the OKLCH paper</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;font-size:16px;font-weight:500;color:var(--ink);">Replace the bathroom bulb</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:16px 18px 14px;background:var(--surface);border-top:1px solid var(--tile);border-radius:20px 20px 0 0;">
+            <div style="font-size:17.5px;line-height:27px;font-weight:500;color:var(--ink);">drop the van keys back <span style="color:var(--accent);">friday 9am</span> <span style="color:var(--olive);">#errands</span> <span style="color:var(--crimson);">!high</span> <span style="color:var(--accent);">~Home</span><span style="display:inline-block;width:2px;height:20px;background:var(--accent);vertical-align:-4px;margin-left:2px;"></span></div>
+            <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:7px;background:var(--accentChip);padding:6px 11px;border-radius:9px;">
+                <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.9"></rect><path d="M8 3v4M16 3v4M3.5 10h17" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">FRI 09:00</div>
+              </div>
+              <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--crimson);background:var(--crimsonChip);padding:6px 11px;border-radius:9px;">HIGH</div>
+              <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--olive);background:#5D8F5222;padding:6px 11px;border-radius:9px;">#errands</div>
+              <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--ink2);background:var(--surfaceHigh);padding:6px 11px;border-radius:9px;">~HOME</div>
+            </div>
+          </div>
+
+          <div style="background:var(--rail);padding:9px 5px 12px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:5px;">
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">q</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">w</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">e</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">r</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">t</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">y</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">u</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">i</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">o</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">p</div>
+            </div>
+            <div style="display:flex;gap:5px;padding:0 18px;">
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">a</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">s</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">d</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">f</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">g</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">h</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">j</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">k</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">l</div>
+            </div>
+            <div style="display:flex;gap:5px;">
+              <div style="width:44px;height:42px;background:var(--surfaceHigh);border-radius:6px;display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" style="width:17px;height:17px;"><path d="M12 5l7 7h-4v6h-6v-6H5l7-7Z" fill="none" stroke="var(--ink2)" stroke-width="1.7" stroke-linejoin="round"></path></svg></div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">z</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">x</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">c</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">v</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">b</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">n</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);">m</div>
+              <div style="width:44px;height:42px;background:var(--surfaceHigh);border-radius:6px;display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" style="width:19px;height:19px;"><path d="M9 5h10v14H9L3 12 9 5Z" fill="none" stroke="var(--ink2)" stroke-width="1.6" stroke-linejoin="round"></path><path d="M11.5 9.5l5 5M16.5 9.5l-5 5" stroke="var(--ink2)" stroke-width="1.6" stroke-linecap="round"></path></svg></div>
+            </div>
+            <div style="display:flex;gap:5px;">
+              <div style="width:52px;height:42px;background:var(--surfaceHigh);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink2);">?123</div>
+              <div style="flex:1;height:42px;background:var(--surface);border-radius:6px;"></div>
+              <div style="width:74px;height:42px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--onAccent);">add</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">QUICK CAPTURE · PARSED AS YOU TYPE</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">03 · ONE TASK</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.4px;color:var(--ink2);">HOME · WEEKEND</div>
+            <svg viewBox="0 0 24 24" style="width:19px;height:19px;"><circle cx="12" cy="5.5" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="12" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="18.5" r="1.6" fill="var(--ink2)"></circle></svg>
+          </div>
+
+          <div style="flex:1;padding:10px 22px 0;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:31px;letter-spacing:-0.9px;line-height:1.12;color:var(--ink);text-wrap:pretty;">Book the van for Saturday</div>
+
+            <div style="display:flex;gap:9px;margin-top:22px;">
+              <div style="flex:1.35;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--accent);border-radius:15px;padding:16px 0;">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;"><circle cx="14" cy="14" r="6" fill="var(--onAccent)"></circle></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--onAccent);">Start</div>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--surfaceHigh);border-radius:15px;padding:16px 0;">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;"><circle cx="14" cy="14" r="8.5" fill="var(--ink2)"></circle></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--ink);">Done</div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;">
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <svg viewBox="0 0 24 24" style="width:15px;height:15px;"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="var(--ink2)" stroke-width="1.8"></rect><path d="M8 3v4M16 3v4M3.5 10h17" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--ink);">Sat 30 Aug, 09:00</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <svg viewBox="0 0 28 28" style="width:15px;height:15px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linejoin="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--ink);">Medium</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--olive);">#errands</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--tile);border-radius:11px;padding:10px 13px;">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M12 6v12M6 12h12" stroke="var(--muted)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--muted);">Label</div>
+              </div>
+            </div>
+
+            <div style="margin-top:26px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">NOTE</div>
+            <div style="margin-top:10px;font-size:15px;line-height:1.6;color:var(--ink2);text-wrap:pretty;">Two-seater is fine. Ring before nine, they hold the keys behind the counter.</div>
+
+            <div style="margin-top:26px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">STEPS</div>
+            <div style="margin-top:8px;">
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:20px;height:20px;flex:none;"><circle cx="14" cy="14" r="8.5" fill="var(--accent)"></circle></svg>
+                <div style="flex:1;font-size:14.5px;color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent);text-decoration-thickness:1.5px;">Check the insurance covers it</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:20px;height:20px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;font-size:14.5px;color:var(--ink);">Ring the depot</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none;"><path d="M12 7v10M7 12h10" stroke="var(--dim)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="flex:1;font-size:14.5px;color:var(--dim);">Add a step</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TASK · NOTHING RUNNING</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.4px;color:var(--ink2);">YANTRA · INBOX</div>
+            <svg viewBox="0 0 24 24" style="width:19px;height:19px;"><circle cx="12" cy="5.5" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="12" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="18.5" r="1.6" fill="var(--ink2)"></circle></svg>
+          </div>
+
+          <div style="flex:1;padding:10px 22px 0;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:31px;letter-spacing:-0.9px;line-height:1.12;color:var(--ink);text-wrap:pretty;">Rewrite the capture parser</div>
+
+            <div style="display:flex;gap:9px;margin-top:22px;">
+              <div style="flex:1.35;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--accentFill);border:1.5px solid var(--accentBorder);border-radius:15px;padding:14.5px 0;">
+                <div style="width:13px;height:13px;border-radius:2px;background:var(--accent);"></div>
+                <div style="font-size:15px;font-weight:700;color:var(--accent);">Stop</div>
+                <div style="font-family:'Space Mono',monospace;font-size:14px;font-weight:700;color:var(--accent);">06:36</div>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--surfaceHigh);border-radius:15px;padding:16px 0;">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;"><circle cx="14" cy="14" r="8.5" fill="var(--ink2)"></circle></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--ink);">Done</div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;">
+              <div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--tile);border-radius:11px;padding:10px 13px;">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M12 6v12M6 12h12" stroke="var(--muted)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--muted);">Due</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--teal);">#dev</div>
+              </div>
+            </div>
+
+            <div style="margin-top:28px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">SESSIONS · 1:12 TODAY</div>
+            <div style="margin-top:8px;">
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);">
+                <div style="width:11px;height:11px;border-radius:2px;background:var(--accent);"></div>
+                <div style="flex:1;font-size:14.5px;font-weight:500;color:var(--ink);">Running since 11:52</div>
+                <div style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);">06:36</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);">
+                <div style="width:11px;height:11px;border-radius:2px;border:1.4px solid var(--dim);"></div>
+                <div style="flex:1;font-size:14.5px;color:var(--ink2);">11:04 – 11:29</div>
+                <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);">25:00</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+                <div style="width:11px;height:11px;border-radius:2px;border:1.4px solid var(--dim);"></div>
+                <div style="flex:1;font-size:14.5px;color:var(--ink2);">09:30 – 10:10</div>
+                <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);">40:12</div>
+              </div>
+            </div>
+
+            <div style="margin-top:26px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">NOTE</div>
+            <div style="margin-top:10px;font-size:15px;line-height:1.6;color:var(--ink2);text-wrap:pretty;">Tokenise on whitespace first, then walk backwards — the date grammar is greedy and eats label names otherwise.</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TASK · THIS ONE RUNNING</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.4px;color:var(--ink2);">WORK · ADMIN</div>
+            <svg viewBox="0 0 24 24" style="width:19px;height:19px;"><circle cx="12" cy="5.5" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="12" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="18.5" r="1.6" fill="var(--ink2)"></circle></svg>
+          </div>
+
+          <div style="margin:0 16px 10px;background:var(--surfaceHigh);border-radius:13px;padding:11px 14px;display:flex;align-items:center;gap:11px;">
+            <svg viewBox="0 0 28 28" style="width:17px;height:17px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.6" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+            <div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rewrite the capture parser</div>
+            <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">06:36</div>
+          </div>
+
+          <div style="flex:1;padding:6px 22px 0;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:31px;letter-spacing:-0.9px;line-height:1.12;color:var(--ink);text-wrap:pretty;">Call the accountant</div>
+
+            <div style="display:flex;gap:9px;margin-top:22px;">
+              <div style="flex:1.35;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--accent);border-radius:15px;padding:16px 0;">
+                <svg viewBox="0 0 24 24" style="width:19px;height:19px;"><path d="M4 8h13M17 8l-3.5-3.5M17 8l-3.5 3.5M20 16H7M7 16l3.5-3.5M7 16l3.5 3.5" fill="none" stroke="var(--onAccent)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--onAccent);">Switch here</div>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--surfaceHigh);border-radius:15px;padding:16px 0;">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;"><circle cx="14" cy="14" r="8.5" fill="var(--ink2)"></circle></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--ink);">Done</div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;">
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <svg viewBox="0 0 24 24" style="width:15px;height:15px;"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="var(--ink2)" stroke-width="1.8"></rect><path d="M8 3v4M16 3v4M3.5 10h17" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--ink);">Today, 18:00</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <svg viewBox="0 0 28 28" style="width:15px;height:15px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="2" stroke-linejoin="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--ink);">High</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:10px 13px;">
+                <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--violet);">#admin</div>
+              </div>
+            </div>
+
+            <div style="margin-top:26px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">NOTE</div>
+            <div style="margin-top:10px;font-size:15px;line-height:1.6;color:var(--ink2);text-wrap:pretty;">VAT return, and ask whether the Q3 filing can wait until the new year.</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TASK · SOMETHING ELSE RUNNING</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">04 · FOCUS</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="display:flex;align-items:center;gap:12px;padding:0 22px;height:56px;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.6px;color:var(--muted);">SESSION 3 · COMMITTED</div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 26px;">
+            <svg viewBox="0 0 28 28" style="width:250px;height:250px;">
+              <path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="0.4" stroke-linejoin="round"></path>
+              <circle cx="14" cy="14" r="8" fill="none" stroke="var(--frame)" stroke-width="0.2" opacity="0.4"></circle>
+              <path d="M14 6a8 8 0 0 1 5.66 13.66" fill="none" stroke="var(--accent)" stroke-width="0.7" stroke-linecap="round"></path>
+              <path d="M11.1 9.4h5.8L14 12.8Z" fill="none" stroke="var(--accent)" stroke-width="0.4" stroke-linejoin="round" opacity="0.5"></path>
+              <circle cx="14" cy="14" r="4.5" fill="none" stroke="var(--accent)" stroke-width="0.4" opacity="0.5"></circle>
+              <circle cx="14" cy="14" r="3.6" fill="none" stroke="var(--accent)" stroke-width="0.4" opacity="0.5"></circle>
+              <circle cx="14" cy="14" r="1.5" fill="var(--accent)"></circle>
+            </svg>
+            <div style="font-family:'Space Mono',monospace;font-size:40px;font-weight:700;letter-spacing:-1.6px;color:var(--ink);margin-top:22px;">18:24</div>
+            <div style="font-size:17px;font-weight:500;color:var(--ink2);margin-top:14px;text-align:center;line-height:1.35;text-wrap:pretty;">Rewrite the capture parser</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:8px;">YANTRA · 3rd session · 1:12 today</div>
+          </div>
+          <div style="display:flex;gap:10px;padding:0 16px 18px;">
+            <div style="flex:1;text-align:center;font-size:15px;font-weight:700;color:var(--ink);background:var(--surfaceHigh);padding:17px 0;border-radius:16px;">Stop</div>
+            <div style="flex:1;text-align:center;font-size:15px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:17px 0;border-radius:16px;">+25 more</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">FOCUS · RUNNING</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="padding:18px 20px 20px;display:flex;flex-direction:column;align-items:center;background:var(--surface);border-radius:0 0 22px 22px;">
+            <div style="align-self:stretch;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.6px;color:var(--accent);">SESSION 3 · 11:52 – 12:17</div>
+            <svg viewBox="0 0 28 28" style="width:150px;height:150px;margin-top:8px;">
+              <path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="0.5" stroke-linejoin="round" opacity="0.45"></path>
+              <path d="M11.1 9.4h5.8L14 12.8Z" fill="none" stroke="var(--accent)" stroke-width="0.4" stroke-linejoin="round" opacity="0.3"></path>
+              <circle cx="14" cy="14" r="4.5" fill="none" stroke="var(--accent)" stroke-width="0.4" opacity="0.3"></circle>
+              <circle cx="14" cy="14" r="3.6" fill="none" stroke="var(--accent)" stroke-width="1.1"></circle>
+              <circle cx="14" cy="14" r="2.5" fill="none" stroke="var(--accent)" stroke-width="0.4" opacity="0.3"></circle>
+              <circle cx="14" cy="14" r="1.6" fill="var(--accent)" opacity="0.4"></circle>
+            </svg>
+            <div style="font-family:'Space Mono',monospace;font-size:26px;font-weight:700;letter-spacing:-0.8px;color:var(--ink);margin-top:10px;">25:00</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">committed · ran out</div>
+          </div>
+          <div style="flex:1;padding:22px 20px 0;">
+            <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">GIVEN TO</div>
+            <div style="display:flex;align-items:center;gap:13px;padding:16px 0;border-bottom:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Rewrite the capture parser</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--muted);">1:37 total</span></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px;">
+              <div style="flex:1;text-align:center;font-size:14.5px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:15px 0;border-radius:14px;">Another 25</div>
+              <div style="flex:1;text-align:center;font-size:14.5px;font-weight:700;color:var(--ink);background:var(--surfaceHigh);padding:15px 0;border-radius:14px;">Back to today</div>
+            </div>
+            <div style="margin-top:34px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.2px;color:var(--dim);">TODAY SO FAR</div>
+            <div style="display:flex;gap:26px;margin-top:14px;">
+              <div>
+                <div style="font-family:'Space Mono',monospace;font-size:24px;font-weight:700;color:var(--ink);">1:37</div>
+                <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.3px;color:var(--muted);margin-top:3px;">GIVEN</div>
+              </div>
+              <div>
+                <div style="font-family:'Space Mono',monospace;font-size:24px;font-weight:700;color:var(--ink);">3</div>
+                <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.3px;color:var(--muted);margin-top:3px;">SESSIONS</div>
+              </div>
+              <div>
+                <div style="font-family:'Space Mono',monospace;font-size:24px;font-weight:700;color:var(--ink);">2</div>
+                <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.3px;color:var(--muted);margin-top:3px;">FINISHED</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">FOCUS · SESSION ENDED</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="padding:44px 22px 26px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.7px;color:var(--muted);">WED 26 AUG</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:46px;letter-spacing:-1.6px;color:var(--ink);margin-top:12px;line-height:1;">The day</div>
+            <div style="font-size:14px;font-weight:500;color:var(--muted);margin-top:12px;">1:37 given · 3 sessions · 2 finished</div>
+          </div>
+          <div style="flex:1;padding:0 22px;display:flex;flex-direction:column;align-items:center;">
+            <svg viewBox="0 0 28 28" style="width:230px;height:230px;">
+              <path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="0.42" stroke-linejoin="round"></path>
+              <circle cx="14" cy="14" r="8" fill="none" stroke="var(--frame)" stroke-width="0.2" opacity="0.4"></circle>
+              <path d="M14 6a8 8 0 0 1 6.9 12.03" fill="none" stroke="var(--accent)" stroke-width="0.75" stroke-linecap="round"></path>
+              <path d="M11.1 9.4h5.8L14 12.8Z" fill="none" stroke="var(--accent)" stroke-width="0.45" stroke-linejoin="round"></path>
+              <circle cx="14" cy="14" r="4.5" fill="none" stroke="var(--accent)" stroke-width="0.45"></circle>
+              <circle cx="14" cy="14" r="3.6" fill="none" stroke="var(--accent)" stroke-width="0.45"></circle>
+              <path d="M12.1 17.4h3.8L14 15.2Z" fill="none" stroke="var(--accent)" stroke-width="0.4" stroke-linejoin="round" opacity="0.6"></path>
+              <circle cx="14" cy="14" r="2.5" fill="none" stroke="var(--accent)" stroke-width="0.4" opacity="0.6"></circle>
+              <circle cx="14" cy="14" r="1.6" fill="var(--accent)"></circle>
+            </svg>
+            <div style="align-self:stretch;margin-top:16px;">
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);">
+                <div style="width:52px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">40:12</div>
+                <div style="flex:1;font-size:14.5px;color:var(--ink);">Rewrite the capture parser</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);">
+                <div style="width:52px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">25:00</div>
+                <div style="flex:1;font-size:14.5px;color:var(--ink);">Rewrite the capture parser</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+                <div style="width:52px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">32:04</div>
+                <div style="flex:1;font-size:14.5px;color:var(--ink);">Ship the palette fix</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:16px 22px 20px;font-size:13.5px;color:var(--muted);text-align:center;">Yesterday you gave 2:05.</div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">THE LEDGER · TAPPED FROM THE HEADER</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">05 · WIDGETS</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" hint-size="412px,892px">
+        <div style="height:100%;background:#1d1b20;display:flex;flex-direction:column;padding:22px 18px 0;box-sizing:border-box;font-family:'Space Grotesk',sans-serif;">
+          <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.6px;color:rgba(255,255,255,0.55);">WED 26 AUGUST</div>
+
+          <div style="margin-top:18px;background:var(--page);border-radius:22px;padding:16px 18px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TODAY · 6 OPEN</div>
+              <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--accent);">1:37</div>
+            </div>
+            <div style="margin-top:10px;">
+              <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.8" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+                <div style="flex:1;font-size:13.5px;font-weight:500;color:var(--ink);">Rewrite the capture parser</div>
+                <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;color:var(--accent);">06:36</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;font-size:13.5px;font-weight:500;color:var(--ink);">Call the accountant</div>
+                <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);">18:00</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;font-size:13.5px;font-weight:500;color:var(--ink);">Pick up the prescription</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:14px;margin-top:14px;">
+            <div style="width:150px;height:150px;background:var(--page);border-radius:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
+              <svg viewBox="0 0 28 28" style="width:82px;height:82px;">
+                <path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="0.6" stroke-linejoin="round"></path>
+                <path d="M14 6a8 8 0 0 1 6.9 12.03" fill="none" stroke="var(--accent)" stroke-width="1" stroke-linecap="round"></path>
+                <circle cx="14" cy="14" r="4.5" fill="none" stroke="var(--accent)" stroke-width="0.6"></circle>
+                <circle cx="14" cy="14" r="1.6" fill="var(--accent)"></circle>
+              </svg>
+              <div style="font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--ink);">1:37</div>
+              <div style="font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:1.3px;color:var(--muted);">GIVEN TODAY</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:14px;">
+              <div style="flex:1;background:var(--accent);border-radius:22px;display:flex;flex-direction:column;justify-content:center;padding:0 16px;">
+                <svg viewBox="0 0 28 28" style="width:22px;height:22px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--onAccent)" stroke-width="1.9" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--onAccent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-size:14px;font-weight:700;color:var(--onAccent);margin-top:8px;line-height:1.2;">Catch<br>something</div>
+              </div>
+              <div style="flex:1;background:var(--page);border-radius:22px;display:flex;flex-direction:column;justify-content:center;padding:0 16px;">
+                <svg viewBox="0 0 28 28" style="width:22px;height:22px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+                <div style="font-size:13.5px;font-weight:700;color:var(--ink);margin-top:8px;line-height:1.2;">Focus</div>
+                <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--accent);margin-top:2px;">06:36</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1;"></div>
+          <div style="display:flex;gap:20px;justify-content:center;padding-bottom:20px;">
+            <div style="width:52px;height:52px;border-radius:15px;background:rgba(255,255,255,0.13);"></div>
+            <div style="width:52px;height:52px;border-radius:15px;background:rgba(255,255,255,0.13);"></div>
+            <div style="width:52px;height:52px;border-radius:15px;background:rgba(255,255,255,0.13);"></div>
+            <div style="width:52px;height:52px;border-radius:15px;background:rgba(255,255,255,0.13);"></div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">HOME SCREEN · FOUR WIDGETS</div>
+    </div>
+
+    <div style="width:300px;display:flex;flex-direction:column;gap:14px;padding-top:6px;">
+      <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--accent);">WIDGET RULES</div>
+      <div style="font-size:13.5px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">Same rows as the app, same trailing slot, same two-line grammar minus the second line. A widget is a window, not a summary — nothing here is a figure the app doesn't already show.</div>
+      <div style="font-size:13.5px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">The seal is the one place a number gets to be large, because it is the only number worth knowing at a glance.</div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="font-size:13px;line-height:1.6;color:var(--muted);text-wrap:pretty;">Capture is the only coral tile, so on a full home screen the eye lands on the thing that costs least and returns most.</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">06 · TABLET · LIST LEFT, INK RIGHT</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div style="width:1330px;background:oklch(0.24 0.008 80);border-radius:34px;padding:14px;box-shadow:0 22px 60px rgba(0,0,0,0.22);">
+      <div style="height:812px;background:var(--page);border-radius:22px;overflow:hidden;display:flex;font-family:'Space Grotesk',sans-serif;">
+
+        <div style="width:376px;border-right:1px solid var(--hair);display:flex;flex-direction:column;background:var(--surface);">
+          <div style="padding:26px 24px 18px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.7px;color:var(--muted);">WED 26 AUG</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:34px;letter-spacing:-1.1px;color:var(--ink);margin-top:8px;line-height:1;">Morning</div>
+          </div>
+          <div style="flex:1;padding:0 24px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15.5px;font-weight:500;color:var(--ink);">Rewrite the capture parser</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--teal);">#dev</span></div>
+              </div>
+              <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">06:36</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15.5px;font-weight:500;color:var(--ink);">Call the accountant</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">WORK <span style="font-weight:400;color:var(--violet);">#admin</span></div>
+              </div>
+              <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--muted);">18:00</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);background:var(--wash);margin:0 -24px;padding-left:24px;padding-right:24px;">
+              <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--amber)" stroke-width="1.9" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15.5px;font-weight:600;color:var(--ink);">Sketch the ink toolbar</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--muted);">open on the right</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15.5px;font-weight:500;color:var(--ink);">Pick up the prescription</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">HOME <span style="font-weight:400;color:var(--muted);">17:30</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15.5px;font-weight:500;color:var(--ink);">Send Aoife the ink demo</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--muted);">Inbox</span></div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:14px 20px 18px;">
+            <div style="display:flex;align-items:center;gap:12px;background:var(--page);border:1px solid var(--tile);border-radius:18px;padding:14px 16px;">
+              <svg viewBox="0 0 28 28" style="width:20px;height:20px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"></path></svg>
+              <div style="flex:1;font-family:'Space Mono',monospace;font-size:13px;color:var(--dim);">or just write it on the right</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;position:relative;background:var(--page);">
+          <div style="position:absolute;inset:0;background-image:radial-gradient(oklch(0.26 0.012 80 / 0.13) 1px, transparent 1px);background-size:26px 26px;"></div>
+
+          <div style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:16px;padding:20px 28px;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:20px;letter-spacing:-0.4px;color:var(--ink);">Sketch the ink toolbar</div>
+            <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.4px;color:var(--muted);">YANTRA · SCROLLS ON</div>
+            <div style="flex:1;"></div>
+            <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--tile);border-radius:13px;padding:8px 14px;">
+              <div style="width:11px;height:11px;border-radius:2px;background:var(--accent);"></div>
+              <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">06:36</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--tile);border-radius:13px;padding:8px 14px;">
+              <svg viewBox="0 0 28 28" style="width:16px;height:16px;"><circle cx="14" cy="14" r="8.5" fill="var(--ink2)"></circle></svg>
+              <div style="font-size:13px;font-weight:700;color:var(--ink);">Done</div>
+            </div>
+          </div>
+
+          <svg viewBox="0 0 900 700" style="position:absolute;left:0;top:56px;width:100%;height:640px;">
+            <path d="M92 132c34-46 96-52 132-14 24 26 20 66-8 84-30 20-72 8-86-24-12-28 2-62 30-74" fill="none" stroke="var(--ink)" stroke-width="3.4" stroke-linecap="round"></path>
+            <path d="M250 96c48 0 96 2 142 12" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linecap="round"></path>
+            <path d="M254 130c62-4 124-2 184 10" fill="none" stroke="var(--ink)" stroke-width="3.8" stroke-linecap="round"></path>
+            <path d="M256 166c40 0 80 2 118 8" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"></path>
+            <rect x="92" y="250" width="300" height="150" rx="14" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="1 0"></rect>
+            <path d="M120 296h180M120 330h140M120 364h90" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+            <path d="M470 250c0 90 0 180 4 268" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"></path>
+            <path d="M540 268c58-14 118-10 172 10 34 12 52 44 40 74-14 34-62 46-100 34-32-10-50-42-40-72 8-24 34-40 62-42" fill="none" stroke="var(--ink)" stroke-width="3.2" stroke-linecap="round"></path>
+            <path d="M556 420c66 0 132 4 196 14" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"></path>
+            <path d="M556 456c50 2 100 6 148 14" fill="none" stroke="var(--ink)" stroke-width="4.2" stroke-linecap="round"></path>
+            <circle cx="700" cy="180" r="52" fill="none" stroke="var(--accent)" stroke-width="2.6"></circle>
+            <path d="M700 146v34l24 12" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"></path>
+            <path d="M120 520c48-28 104-30 152-6 30 16 40 54 22 82-20 30-66 36-96 14-26-18-30-58-8-80" fill="none" stroke="var(--ink)" stroke-width="2.8" stroke-linecap="round"></path>
+            <path d="M330 548h120M330 584h96" fill="none" stroke="var(--ink2)" stroke-width="2.4" stroke-linecap="round"></path>
+          </svg>
+
+          <div style="position:absolute;left:148px;top:284px;width:274px;height:137px;border:1.5px dashed var(--accentBorder);border-radius:8px;background:var(--accentFill);"></div>
+          <div style="position:absolute;left:148px;top:284px;width:12px;height:12px;border-radius:7px;background:var(--surface);border:2px solid var(--accent);transform:translate(-50%,-50%);"></div>
+          <div style="position:absolute;left:422px;top:284px;width:12px;height:12px;border-radius:7px;background:var(--surface);border:2px solid var(--accent);transform:translate(-50%,-50%);"></div>
+          <div style="position:absolute;left:148px;top:421px;width:12px;height:12px;border-radius:7px;background:var(--surface);border:2px solid var(--accent);transform:translate(-50%,-50%);"></div>
+          <div style="position:absolute;left:422px;top:421px;width:12px;height:12px;border-radius:7px;background:var(--surface);border:2px solid var(--accent);transform:translate(-50%,-50%);"></div>
+          <div style="position:absolute;left:148px;top:437px;display:flex;gap:8px;background:var(--surface);border:1px solid var(--tile);border-radius:12px;padding:7px 10px;box-shadow:0 8px 22px rgba(0,0,0,0.10);">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--ink2);">Move</div>
+            <div style="width:1px;background:var(--hair);"></div>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--ink2);">Copy</div>
+            <div style="width:1px;background:var(--hair);"></div>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--ink2);">To task</div>
+            <div style="width:1px;background:var(--hair);"></div>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--crimson);">Delete</div>
+          </div>
+
+          <div style="position:absolute;right:26px;bottom:26px;display:flex;flex-direction:column;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--tile);border-radius:24px;padding:12px 10px;box-shadow:0 12px 32px rgba(0,0,0,0.13);">
+            <div style="width:46px;height:46px;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M4 20l3-9 9-9 3 3-9 9-6 6Z" fill="none" stroke="var(--onAccent)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+            </div>
+            <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M5 19l6-14 6 14M8 14h6" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="12" r="9" fill="none" stroke="var(--ink2)" stroke-width="1.4" stroke-dasharray="3 3"></circle></svg>
+            </div>
+            <div style="width:46px;height:46px;border-radius:16px;background:var(--accentFill);display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M4 8h10a5 5 0 0 1 0 10H8" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"></path><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.3" opacity="0.4"></rect></svg>
+            </div>
+            <div style="height:1px;width:30px;background:var(--hair);"></div>
+            <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h2" fill="none" stroke="var(--dim)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+          </div>
+
+          <div style="position:absolute;left:28px;bottom:26px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--tile);border-radius:16px;padding:9px 12px;">
+            <div style="width:9px;height:9px;border-radius:6px;background:var(--ink);"></div>
+            <div style="width:13px;height:13px;border-radius:8px;background:var(--ink);"></div>
+            <div style="width:18px;height:18px;border-radius:10px;background:var(--ink);border:2px solid var(--accent);"></div>
+            <div style="width:23px;height:23px;border-radius:13px;background:var(--ink);"></div>
+            <div style="width:1px;height:24px;background:var(--hair);"></div>
+            <div style="width:20px;height:20px;border-radius:11px;background:var(--ink);"></div>
+            <div style="width:20px;height:20px;border-radius:11px;background:var(--crimson);"></div>
+            <div style="width:20px;height:20px;border-radius:11px;background:var(--teal);"></div>
+            <div style="width:20px;height:20px;border-radius:11px;background:var(--accent);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TABLET · ONE CONTINUOUS SURFACE · TOOL PUCK UNDER THE HAND · LASSO SELECTION SHOWN</div>
+  </div>
+
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">07 · A TASK'S PAGE IS A PAGE</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+
+    <div style="width:296px;display:flex;flex-direction:column;gap:14px;padding-top:6px;">
+      <div style="font-size:14px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">Every task opens a document of blocks — prose, headings, bullets, numbered lines, ink, images, and other tasks — each with an indent. So the page is not a form with a note field on it. It is an outline, and a subtask is just a line that happens to have a page of its own.</div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.6;color:var(--ink2);">
+        <div><span style="color:var(--ink);font-weight:600;">One column, one indent scale.</span> 20dp per level, one hairline per block, no cards. A page of eleven blocks has to stay quiet.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Blocks carry no chrome at rest.</span> No drag handles, no per-block menus, no type badges. The block's own shape says what it is.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Nested tasks keep the full row grammar</span> — glyph, ladder, trailing slot — because they are tasks. Drag one right on this page and it starts, same gesture as the day list.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Ink and images are blocks, not attachments.</span> They sit in the flow where you put them, at the width of the column, and open full-bleed on tap.</div>
+        <div><span style="color:var(--ink);font-weight:600;">One insert affordance</span> at the end of the page and on Enter. Six kinds, no submenus.</div>
+      </div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.2px;line-height:1.9;color:var(--muted);">BLOCK KINDS<br>· prose · heading · bullet<br>· numbered · task · ink · image</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.4px;color:var(--ink2);">YANTRA · INK</div>
+            <svg viewBox="0 0 24 24" style="width:19px;height:19px;"><circle cx="12" cy="5.5" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="12" r="1.6" fill="var(--ink2)"></circle><circle cx="12" cy="18.5" r="1.6" fill="var(--ink2)"></circle></svg>
+          </div>
+
+          <div style="flex:1;padding:8px 22px 0;overflow:hidden;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:31px;letter-spacing:-0.9px;line-height:1.12;color:var(--ink);text-wrap:pretty;">Sketch the ink toolbar</div>
+
+            <div style="display:flex;gap:9px;margin-top:20px;">
+              <div style="flex:1.35;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--accent);border-radius:15px;padding:15px 0;">
+                <svg viewBox="0 0 28 28" style="width:18px;height:18px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--onAccent)" stroke-width="1.4" opacity="0.55" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--onAccent)" stroke-width="2.4"></circle></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--onAccent);">Start</div>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--surfaceHigh);border-radius:15px;padding:15px 0;">
+                <svg viewBox="0 0 28 28" style="width:18px;height:18px;"><circle cx="14" cy="14" r="8.5" fill="var(--ink2)"></circle></svg>
+                <div style="font-size:15px;font-weight:700;color:var(--ink);">Done</div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;">
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:9px 12px;">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="var(--ink2)" stroke-width="1.8"></rect><path d="M8 3v4M16 3v4M3.5 10h17" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path></svg>
+                <div style="font-size:13px;font-weight:600;color:var(--ink);">Fri</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:9px 12px;">
+                <div style="font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;color:var(--teal);">#dev</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:9px 12px;">
+                <div style="font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;color:var(--muted);">0:35 given</div>
+              </div>
+            </div>
+
+            <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--hair);">
+              <div style="font-size:15.5px;line-height:1.6;color:var(--ink2);text-wrap:pretty;">The puck has to sit under the hand holding the pen, not at the top of the screen.</div>
+            </div>
+
+            <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);">
+              <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:18px;letter-spacing:-0.3px;color:var(--ink);">What it must hold</div>
+            </div>
+
+            <div style="display:flex;gap:11px;padding:11px 0 0;">
+              <div style="font-family:'Space Mono',monospace;font-size:14px;color:var(--dim);line-height:1.5;">·</div>
+              <div style="flex:1;font-size:15px;line-height:1.5;color:var(--ink2);">Four stroke widths, no slider</div>
+            </div>
+            <div style="display:flex;gap:11px;padding:6px 0 0;">
+              <div style="font-family:'Space Mono',monospace;font-size:14px;color:var(--dim);line-height:1.5;">·</div>
+              <div style="flex:1;font-size:15px;line-height:1.5;color:var(--ink2);">Lasso, and nothing else selecting</div>
+            </div>
+
+            <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);">
+              <div style="display:flex;align-items:center;gap:11px;">
+                <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:15.5px;font-weight:500;color:var(--ink);">Draw the four widths</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:2px;">SUBTASK <span style="font-weight:400;color:var(--accent);">running</span></div>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">02:11</div>
+              </div>
+            </div>
+            <div style="padding-left:20px;">
+              <div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:22px;height:22px;flex:none;"><circle cx="14" cy="14" r="8.5" fill="var(--accent)"></circle></svg>
+                <div style="flex:1;font-size:15px;color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent);text-decoration-thickness:1.5px;">Try it at 1.5dp</div>
+              </div>
+            </div>
+
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hair);">
+              <div style="height:118px;border-radius:12px;background:var(--surface);border:1px solid var(--tile);position:relative;overflow:hidden;">
+                <svg viewBox="0 0 360 120" style="position:absolute;inset:0;width:100%;height:100%;">
+                  <path d="M28 58c18-30 52-34 70-8 12 18 4 42-16 48-22 6-42-10-42-32" fill="none" stroke="var(--ink)" stroke-width="2.6" stroke-linecap="round"></path>
+                  <path d="M124 32h96M124 54h72M124 76h110" fill="none" stroke="var(--ink2)" stroke-width="2.2" stroke-linecap="round"></path>
+                  <rect x="252" y="24" width="80" height="52" rx="8" fill="none" stroke="var(--accent)" stroke-width="2.2"></rect>
+                </svg>
+                <div style="position:absolute;left:12px;bottom:8px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.2px;color:var(--muted);background:var(--surface);padding:2px 6px;border-radius:5px;">INK · 14 STROKES</div>
+              </div>
+            </div>
+
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:11px;">
+              <svg viewBox="0 0 24 24" style="width:19px;height:19px;"><path d="M12 6v12M6 12h12" stroke="var(--dim)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+              <div style="font-size:15px;color:var(--dim);">Add a block</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">THE PAGE · MIXED BLOCKS</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="flex:1;padding:16px 22px 0;opacity:0.4;">
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;letter-spacing:-0.7px;color:var(--ink);">Sketch the ink toolbar</div>
+            <div style="margin-top:22px;font-size:15.5px;line-height:1.6;color:var(--ink2);">The puck has to sit under the hand holding the pen, not at the top of the screen.</div>
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--hair);font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:18px;color:var(--ink);">What it must hold</div>
+          </div>
+
+          <div style="padding:14px 14px 12px;background:var(--surface);border-top:1px solid var(--tile);border-radius:22px 22px 0 0;">
+            <div style="display:flex;align-items:center;gap:11px;padding:0 8px 12px;">
+              <div style="width:2px;height:19px;background:var(--accent);"></div>
+              <div style="flex:1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.4px;color:var(--muted);">NEW BLOCK, AFTER LINE 3</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surfaceHigh);border-radius:14px;padding:15px 14px;">
+                <svg viewBox="0 0 24 24" style="width:19px;height:19px;flex:none;"><path d="M4 6h16M4 11h16M4 16h11" stroke="var(--ink2)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-size:14.5px;font-weight:600;color:var(--ink);">Note</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surfaceHigh);border-radius:14px;padding:15px 14px;">
+                <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:var(--ink2);width:19px;text-align:center;">H</div>
+                <div style="font-size:14.5px;font-weight:600;color:var(--ink);">Heading</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surfaceHigh);border-radius:14px;padding:15px 14px;">
+                <svg viewBox="0 0 24 24" style="width:19px;height:19px;flex:none;"><circle cx="6" cy="8" r="1.7" fill="var(--ink2)"></circle><circle cx="6" cy="16" r="1.7" fill="var(--ink2)"></circle><path d="M11 8h9M11 16h9" stroke="var(--ink2)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-size:14.5px;font-weight:600;color:var(--ink);">Bullets</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surfaceHigh);border-radius:14px;padding:15px 14px;">
+                <svg viewBox="0 0 28 28" style="width:19px;height:19px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="font-size:14.5px;font-weight:600;color:var(--ink);">Task</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;background:var(--accentChip);border-radius:14px;padding:15px 14px;">
+                <svg viewBox="0 0 24 24" style="width:19px;height:19px;flex:none;"><path d="M4 20l3-9 9-9 3 3-9 9-6 6Z" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+                <div style="font-size:14.5px;font-weight:700;color:var(--accent);">Ink</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surfaceHigh);border-radius:14px;padding:15px 14px;">
+                <svg viewBox="0 0 24 24" style="width:19px;height:19px;flex:none;"><rect x="3.5" y="5" width="17" height="14" rx="3" fill="none" stroke="var(--ink2)" stroke-width="1.8"></rect><path d="M6 16l4-5 3.5 4 2.5-3 3 4" fill="none" stroke="var(--ink2)" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+                <div style="font-size:14.5px;font-weight:600;color:var(--ink);">Image</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:0 8px;">
+              <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.2px;color:var(--dim);">OR JUST KEEP TYPING FOR A NOTE</div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">INSERT · SIX KINDS, NO SUBMENUS</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;position:relative;">
+          <div style="display:flex;align-items:center;gap:14px;padding:0 20px;height:56px;">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="flex:1;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.4px;color:var(--ink2);">INK BLOCK · 14 STROKES</div>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">02:11</div>
+          </div>
+
+          <div style="flex:1;position:relative;overflow:hidden;">
+            <div style="position:absolute;inset:0;background-image:radial-gradient(oklch(0.26 0.012 80 / 0.12) 1px, transparent 1px);background-size:24px 24px;"></div>
+            <svg viewBox="0 0 380 640" style="position:absolute;inset:0;width:100%;height:100%;">
+              <path d="M40 96c22-38 66-44 90-14 16 20 12 50-10 62-24 14-52 2-60-22-8-22 4-46 24-54" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"></path>
+              <path d="M158 70h150M158 98h108M158 126h132" fill="none" stroke="var(--ink2)" stroke-width="2.4" stroke-linecap="round"></path>
+              <rect x="40" y="192" width="240" height="120" rx="12" fill="none" stroke="var(--accent)" stroke-width="2.6"></rect>
+              <path d="M66 232h150M66 262h110M66 292h72" fill="none" stroke="var(--ink2)" stroke-width="2.4" stroke-linecap="round"></path>
+              <path d="M40 380c40-24 88-26 128-6 26 14 34 46 18 70-18 26-56 30-82 12-22-16-26-50-8-68" fill="none" stroke="var(--ink)" stroke-width="2.8" stroke-linecap="round"></path>
+              <path d="M212 404h120M212 436h84" fill="none" stroke="var(--ink2)" stroke-width="2.4" stroke-linecap="round"></path>
+              <path d="M40 528c60 0 120 4 178 14" fill="none" stroke="var(--ink)" stroke-width="4.4" stroke-linecap="round"></path>
+              <path d="M40 566c48 0 96 2 140 8" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"></path>
+            </svg>
+
+            <div style="position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--tile);border-radius:22px;padding:10px 8px;box-shadow:0 12px 30px rgba(0,0,0,0.13);">
+              <div style="width:44px;height:44px;border-radius:15px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M4 20l3-9 9-9 3 3-9 9-6 6Z" fill="none" stroke="var(--onAccent)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:44px;height:44px;border-radius:15px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M5 19l6-14 6 14M8 14h6" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:44px;height:44px;border-radius:15px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="12" r="9" fill="none" stroke="var(--ink2)" stroke-width="1.3" stroke-dasharray="3 3"></circle></svg>
+              </div>
+              <div style="height:1px;width:28px;background:var(--hair);"></div>
+              <div style="width:44px;height:44px;border-radius:15px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+            </div>
+
+            <div style="position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--tile);border-radius:16px;padding:9px 11px;">
+              <div style="width:8px;height:8px;border-radius:5px;background:var(--ink);"></div>
+              <div style="width:12px;height:12px;border-radius:7px;background:var(--ink);"></div>
+              <div style="width:17px;height:17px;border-radius:10px;background:var(--ink);border:2px solid var(--accent);"></div>
+              <div style="width:22px;height:22px;border-radius:12px;background:var(--ink);"></div>
+              <div style="width:1px;height:22px;background:var(--hair);"></div>
+              <div style="width:19px;height:19px;border-radius:11px;background:var(--crimson);"></div>
+              <div style="width:19px;height:19px;border-radius:11px;background:var(--teal);"></div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">INK BLOCK OPENED · PHONE</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">08 · IN PROGRESS, END TO END</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;">
+
+    <div style="width:296px;display:flex;flex-direction:column;gap:14px;padding-top:6px;">
+      <div style="font-size:14px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">In progress is a status in the data, so it should be a status in the flow: not a badge you notice, but the reason the app looks different while it is true. Five places carry it, and they are the same five on every screen.</div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.6;color:var(--ink2);">
+        <div><span style="color:var(--ink);font-weight:600;">1 · The glyph.</span> Drawn ring — the only row in the list wearing one.</div>
+        <div><span style="color:var(--ink);font-weight:600;">2 · The row's ground.</span> A coral wash, the only tinted row on the screen.</div>
+        <div><span style="color:var(--ink);font-weight:600;">3 · The trailing slot</span> shows elapsed time in coral instead of a deadline. Effort outranks schedule while the clock is on.</div>
+        <div><span style="color:var(--ink);font-weight:600;">4 · Position.</span> It leaves its section and pins to the top of whatever list you are looking at, so it is never scrolled away from.</div>
+        <div><span style="color:var(--ink);font-weight:600;">5 · The now bar</span> replaces the capture bar app-wide until the session ends. Capture moves into the leading key of the tab strip and stays reachable.</div>
+      </div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="font-size:13px;line-height:1.6;color:var(--ink2);text-wrap:pretty;"><span style="color:var(--ink);font-weight:600;">Exactly one task can be running.</span> That is what makes the treatment legible — a wash means nothing if three rows have it. Starting a second offers <span style="font-family:'Space Mono',monospace;font-size:11.5px;">SWITCH HERE</span>, never a second clock.</div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.2px;line-height:1.9;color:var(--muted);">AND WHERE IT DOESN'T GO<br>· no colour on the frame<br>· no animation, ever<br>· no count in the header</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" hint-size="412px,892px">
+        <div style="height:100%;background:var(--page);display:flex;flex-direction:column;font-family:'Space Grotesk',sans-serif;">
+          <div style="padding:44px 22px 26px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.7px;color:var(--muted);">UNSCHEDULED</div>
+            <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:46px;letter-spacing:-1.6px;color:var(--ink);margin-top:12px;line-height:1;">Loose</div>
+            <div style="font-size:14px;font-weight:500;color:var(--muted);margin-top:12px;">11 caught · one of them running</div>
+          </div>
+          <div style="flex:1;padding:0 22px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:13px;padding:15px 14px;margin:0 -14px;background:var(--wash);border-radius:14px;">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Try the pressure curve again</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--teal);">#dev</span></div>
+              </div>
+              <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">02:11</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;margin-top:8px;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Read the OKLCH paper</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">YANTRA <span style="font-weight:400;color:var(--teal);">#dev</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Replace the bathroom bulb</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">HOME <span style="font-weight:400;color:var(--olive);">#errands</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+              <svg viewBox="0 0 28 28" style="width:25px;height:25px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:16px;font-weight:500;color:var(--ink);">Ask Dara about the lease</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:3px;">WORK <span style="font-weight:400;color:var(--muted);">Inbox</span></div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:10px 16px 8px;">
+            <div style="display:flex;align-items:center;gap:14px;background:var(--accent);border-radius:20px;padding:15px 18px;">
+              <svg viewBox="0 0 28 28" style="width:26px;height:26px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--onAccent)" stroke-width="1.3" opacity="0.6" stroke-linejoin="round"></path><circle cx="14" cy="14" r="5.5" fill="none" stroke="var(--onAccent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:700;color:var(--onAccent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Try the pressure curve again</div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.2px;color:var(--onAccent);opacity:0.78;margin-top:2px;">RUNNING · 02:11 · TAP TO OPEN</div>
+              </div>
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none;"><path d="M9 4l7 8-7 8" fill="none" stroke="var(--onAccent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;padding:4px 16px 14px;">
+            <div style="width:52px;display:flex;align-items:center;justify-content:center;background:var(--surfaceHigh);border-radius:14px;">
+              <svg viewBox="0 0 28 28" style="width:18px;height:18px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linejoin="round"></path><path d="M14 10.5V17.5M10.5 14H17.5" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+            </div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Now</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surfaceHigh);padding:11px 0;border-radius:14px;">Today</div>
+            <div style="flex:1;text-align:center;font-size:13px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:11px 0;border-radius:14px;">Loose</div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">IT PINS TO THE TOP OF WHATEVER LIST YOU OPEN</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" hint-size="412px,892px">
+        <div style="height:100%;background:#1d1b20;display:flex;flex-direction:column;padding:0 20px;box-sizing:border-box;font-family:'Space Grotesk',sans-serif;">
+          <div style="margin-top:74px;text-align:center;">
+            <div style="font-family:'Space Mono',monospace;font-size:66px;font-weight:700;letter-spacing:-3px;color:rgba(255,255,255,0.92);line-height:1;">11:58</div>
+            <div style="font-size:14px;color:rgba(255,255,255,0.5);margin-top:8px;">Wednesday 26 August</div>
+          </div>
+
+          <div style="margin-top:44px;background:rgba(255,255,255,0.10);border-radius:22px;padding:16px 18px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <svg viewBox="0 0 28 28" style="width:20px;height:20px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+              <div style="flex:1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;color:rgba(255,255,255,0.55);">YANTRA · RUNNING</div>
+              <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--accent);">02:11</div>
+            </div>
+            <div style="font-size:16.5px;font-weight:600;color:rgba(255,255,255,0.94);margin-top:12px;line-height:1.3;">Try the pressure curve again</div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+              <div style="flex:1;text-align:center;font-size:13.5px;font-weight:700;color:rgba(255,255,255,0.9);background:rgba(255,255,255,0.14);padding:11px 0;border-radius:12px;">Stop</div>
+              <div style="flex:1;text-align:center;font-size:13.5px;font-weight:700;color:rgba(255,255,255,0.9);background:rgba(255,255,255,0.14);padding:11px 0;border-radius:12px;">Done</div>
+              <div style="flex:1;text-align:center;font-size:13.5px;font-weight:700;color:var(--onAccent);background:var(--accent);padding:11px 0;border-radius:12px;">Open</div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;background:rgba(255,255,255,0.06);border-radius:22px;padding:15px 18px;display:flex;align-items:center;gap:12px;">
+            <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;color:rgba(255,255,255,0.4);">TODAY</div>
+            <div style="flex:1;font-size:14px;color:rgba(255,255,255,0.72);">6 open · 1:37 given</div>
+          </div>
+
+          <div style="flex:1;"></div>
+          <div style="display:flex;justify-content:space-between;padding-bottom:28px;">
+            <div style="width:46px;height:46px;border-radius:23px;background:rgba(255,255,255,0.12);"></div>
+            <div style="width:46px;height:46px;border-radius:23px;background:rgba(255,255,255,0.12);"></div>
+          </div>
+        </div>
+      </x-import>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">LOCK SCREEN · THE SESSION IS REACHABLE WITHOUT OPENING THE APP</div>
+    </div>
+  </div>
+
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">09 · TABLET · THE TASK'S PAGE</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;">
+    <div style="width:296px;display:flex;flex-direction:column;gap:14px;padding-top:6px;">
+      <div style="font-size:14px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">Same two panes as the ink screen, different right-hand content: the page itself, with its ink blocks live in the flow. You write into a block where it sits rather than opening it — that is the whole reason the tablet exists.</div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.6;color:var(--ink2);">
+        <div><span style="color:var(--ink);font-weight:600;">The column stays a column.</span> 720dp of measure centred in the pane, not stretched to the glass — a page of prose at 1300dp wide is unreadable.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Ink blocks are full-column and always live.</span> Pen down anywhere inside one and it draws; palm and finger scroll. No mode to enter.</div>
+        <div><span style="color:var(--ink);font-weight:600;">The puck only appears once the pen is near</span> a block, and it sits at the writing hand's side of the canvas.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Nested tasks keep the ladder</span> here too, so a page can be worked as a checklist without leaving it.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Properties are chips under the title</span> — the same chips as the phone, one row, no sidebar of fields.</div>
+      </div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.2px;line-height:1.9;color:var(--muted);">STYLUS<br>· pressure · palm rejection<br>· hover preview · lasso<br>· shape snap · undo in reach</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="width:1330px;background:oklch(0.24 0.008 80);border-radius:34px;padding:14px;box-shadow:0 22px 60px rgba(0,0,0,0.22);">
+        <div style="height:812px;background:var(--page);border-radius:22px;overflow:hidden;display:flex;font-family:'Space Grotesk',sans-serif;">
+
+          <div style="width:340px;border-right:1px solid var(--hair);display:flex;flex-direction:column;background:var(--surface);">
+            <div style="padding:24px 22px 16px;">
+              <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.7px;color:var(--muted);">YANTRA · INK</div>
+              <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;letter-spacing:-0.8px;color:var(--ink);margin-top:8px;line-height:1.05;">Ink</div>
+            </div>
+            <div style="flex:1;padding:0 22px;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 12px;margin:0 -12px;background:var(--wash);border-radius:12px;">
+                <svg viewBox="0 0 28 28" style="width:23px;height:23px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:15px;font-weight:600;color:var(--ink);">Sketch the ink toolbar</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:2px;">YANTRA <span style="font-weight:400;color:var(--teal);">#dev</span></div>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">02:11</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;margin-top:6px;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:23px;height:23px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:15px;font-weight:500;color:var(--ink);">Try the pressure curve again</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:2px;">YANTRA <span style="font-weight:400;color:var(--muted);">0:35 given</span></div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:23px;height:23px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--crimson)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:15px;font-weight:500;color:var(--ink);">Ship the palette fix</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:2px;">YANTRA <span style="font-weight:400;color:var(--muted);">1:40 given</span></div>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--onAccent);background:var(--crimson);padding:3px 6px;border-radius:6px;">LATE</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:23px;height:23px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:15px;font-weight:500;color:var(--ink);">Read the OKLCH paper</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:2px;">YANTRA <span style="font-weight:400;color:var(--teal);">#dev</span></div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);">
+                <svg viewBox="0 0 28 28" style="width:23px;height:23px;flex:none;"><circle cx="14" cy="14" r="8.5" fill="var(--accent)"></circle></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:15px;color:var(--muted);text-decoration:line-through;text-decoration-color:var(--accent);text-decoration-thickness:1.5px;">Pick the four widths</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:14px 18px 18px;">
+              <div style="display:flex;align-items:center;gap:14px;background:var(--accent);border-radius:18px;padding:14px 16px;">
+                <svg viewBox="0 0 28 28" style="width:23px;height:23px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--onAccent)" stroke-width="1.3" opacity="0.6" stroke-linejoin="round"></path><circle cx="14" cy="14" r="5.5" fill="none" stroke="var(--onAccent)" stroke-width="2.4"></circle></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:14px;font-weight:700;color:var(--onAccent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Sketch the ink toolbar</div>
+                  <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.2px;color:var(--onAccent);opacity:0.78;margin-top:2px;">RUNNING · 02:11</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1;position:relative;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:14px;padding:18px 28px;border-bottom:1px solid var(--hair);">
+              <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.4px;color:var(--muted);">YANTRA · INK · 11 BLOCKS</div>
+              <div style="flex:1;"></div>
+              <div style="display:flex;align-items:center;gap:9px;background:var(--accentFill);border:1px solid var(--accentBorder);border-radius:13px;padding:8px 14px;">
+                <div style="width:11px;height:11px;border-radius:2px;background:var(--accent);"></div>
+                <div style="font-size:13px;font-weight:700;color:var(--accent);">Stop</div>
+                <div style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);">02:11</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;background:var(--surfaceHigh);border-radius:13px;padding:8px 14px;">
+                <svg viewBox="0 0 28 28" style="width:15px;height:15px;"><circle cx="14" cy="14" r="8.5" fill="var(--ink2)"></circle></svg>
+                <div style="font-size:13px;font-weight:700;color:var(--ink);">Done</div>
+              </div>
+            </div>
+
+            <div style="padding:26px 0 0;display:flex;justify-content:center;">
+              <div style="width:720px;">
+                <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:34px;letter-spacing:-1.1px;line-height:1.1;color:var(--ink);">Sketch the ink toolbar</div>
+
+                <div style="display:flex;gap:8px;margin-top:16px;">
+                  <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:9px 13px;">
+                    <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="var(--ink2)" stroke-width="1.8"></rect><path d="M8 3v4M16 3v4M3.5 10h17" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path></svg>
+                    <div style="font-size:13px;font-weight:600;color:var(--ink);">Fri 29 Aug</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:9px 13px;">
+                    <svg viewBox="0 0 28 28" style="width:14px;height:14px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linejoin="round"></path></svg>
+                    <div style="font-size:13px;font-weight:600;color:var(--ink);">Medium</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;background:var(--surfaceHigh);border-radius:11px;padding:9px 13px;">
+                    <div style="font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;color:var(--teal);">#dev</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--tile);border-radius:11px;padding:9px 13px;">
+                    <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><path d="M12 6v12M6 12h12" stroke="var(--muted)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                    <div style="font-size:13px;font-weight:600;color:var(--muted);">Label</div>
+                  </div>
+                </div>
+
+                <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--hair);font-size:16px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">The puck has to sit under the hand holding the pen, not at the top of the screen. Everything else follows from that one constraint.</div>
+
+                <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:19px;letter-spacing:-0.3px;color:var(--ink);">Widths, drawn at size</div>
+
+                <div style="margin-top:14px;height:250px;border-radius:14px;background:var(--surface);border:1px solid var(--tile);position:relative;overflow:hidden;">
+                  <svg viewBox="0 0 720 250" style="position:absolute;inset:0;width:100%;height:100%;">
+                    <path d="M56 76c40 0 80 2 118 8" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linecap="round"></path>
+                    <path d="M56 118c40 0 80 2 118 8" fill="none" stroke="var(--ink)" stroke-width="2.8" stroke-linecap="round"></path>
+                    <path d="M56 160c40 0 80 2 118 8" fill="none" stroke="var(--ink)" stroke-width="4.4" stroke-linecap="round"></path>
+                    <path d="M56 202c40 0 80 2 118 8" fill="none" stroke="var(--ink)" stroke-width="6.4" stroke-linecap="round"></path>
+                    <path d="M236 60c58-14 118-10 172 10 34 12 52 44 40 74-14 34-62 46-100 34-32-10-50-42-40-72 8-24 34-40 62-42" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"></path>
+                    <rect x="500" y="70" width="164" height="112" rx="12" fill="none" stroke="var(--accent)" stroke-width="2.4"></rect>
+                    <path d="M528 108h108M528 138h72" fill="none" stroke="var(--ink2)" stroke-width="2.2" stroke-linecap="round"></path>
+                    <path d="M236 196c56 0 112 4 166 12" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linecap="round"></path>
+                  </svg>
+                  <div style="position:absolute;left:14px;bottom:10px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.2px;color:var(--muted);background:var(--surface);padding:2px 6px;border-radius:5px;">INK · LIVE · PEN DOWN TO DRAW</div>
+                  <div style="position:absolute;right:96px;top:150px;width:52px;height:52px;border-radius:28px;border:1.5px dashed var(--accentBorder);background:var(--accentFill);"></div>
+                </div>
+
+                <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;">
+                  <svg viewBox="0 0 28 28" style="width:24px;height:24px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path><circle cx="14" cy="14" r="6" fill="none" stroke="var(--accent)" stroke-width="2.4"></circle></svg>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:16px;font-weight:500;color:var(--ink);">Draw the four widths</div>
+                    <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.5px;color:var(--ink2);margin-top:2px;">SUBTASK <span style="font-weight:400;color:var(--accent);">running</span></div>
+                  </div>
+                  <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">02:11</div>
+                </div>
+                <div style="padding-left:20px;">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--hair);">
+                    <svg viewBox="0 0 28 28" style="width:22px;height:22px;flex:none;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--frame)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                    <div style="flex:1;font-size:15px;color:var(--ink);">Check hover preview on the S Pen</div>
+                    <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--muted);">SAT</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:absolute;right:26px;bottom:26px;display:flex;flex-direction:column;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--tile);border-radius:24px;padding:12px 10px;box-shadow:0 12px 32px rgba(0,0,0,0.13);">
+              <div style="width:46px;height:46px;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M4 20l3-9 9-9 3 3-9 9-6 6Z" fill="none" stroke="var(--onAccent)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M5 19l6-14 6 14M8 14h6" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="12" r="9" fill="none" stroke="var(--ink2)" stroke-width="1.4" stroke-dasharray="3 3"></circle></svg>
+              </div>
+              <div style="height:1px;width:30px;background:var(--hair);"></div>
+              <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:46px;height:46px;border-radius:16px;display:flex;align-items:center;justify-content:center;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h2" fill="none" stroke="var(--dim)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">TABLET · THE PAGE, WITH ITS INK BLOCKS LIVE IN THE FLOW · HOVER PREVIEW SHOWN</div>
+    </div>
+  </div>
+
+
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:1.7px;color:var(--accent);">10 · FULL-SCREEN INK</div>
+    <div style="flex:1;height:1px;background:var(--tile);"></div>
+  </div>
+
+  <div style="display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;">
+    <div style="width:296px;display:flex;flex-direction:column;gap:14px;padding-top:6px;">
+      <div style="font-size:14px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">One ink block, the whole glass. The layout follows what the established handwriting apps converge on: nobody browses a tool library mid-sentence, they keep two or three pens they already trust and switch between them without looking.</div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.6;color:var(--ink2);">
+        <div><span style="color:var(--ink);font-weight:600;">A pen kit, not a palette.</span> Three slots — fine, bold, marker — each drawn as the stroke it actually makes, so you pick by sight and one tap. Hold a slot to change what it holds; that is the only place width and colour live.</div>
+        <div><span style="color:var(--ink);font-weight:600;">The eraser is a gesture, not a trip.</span> Double-tap the pen, or hold its button, and the active slot flips to erase until you lift. This is the single biggest speed difference between the apps that feel good and the ones that don't.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Chrome dims while you write</span> and never moves, so the kit is where you left it. Undo and redo stay at full strength in the far corner.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Selection is where the app earns its keep.</span> Lasso, then the ink becomes something: text, or a task on this page. Every other app stops at "copy".</div>
+        <div><span style="color:var(--ink);font-weight:600;">There are no pages.</span> The surface scrolls down for as long as you keep writing and grows a screenful ahead of the pen, so the bottom edge is never a wall you have to do something about. Nothing to add, nothing to number, no page chrome at all.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Position is a scrollbar, briefly.</span> A hairline appears at the left edge while you scroll and leaves when you stop — the only indicator a continuous surface needs.</div>
+        <div><span style="color:var(--ink);font-weight:600;">Pen draws, finger scrolls, two fingers zoom.</span> Pressure and tilt vary the stroke; the palm is ignored. There is no mode to be in the wrong one of.</div>
+      </div>
+      <div style="height:1px;background:var(--hair);"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:1.2px;line-height:1.9;color:var(--muted);">LEFT-HANDED<br>· kit and undo swap edges<br>· or follow the resting palm</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:26px;">
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="width:1330px;background:oklch(0.24 0.008 80);border-radius:34px;padding:14px;box-shadow:0 22px 60px rgba(0,0,0,0.22);">
+          <div style="height:812px;background:var(--page);border-radius:22px;overflow:hidden;position:relative;font-family:'Space Grotesk',sans-serif;">
+            <div style="position:absolute;inset:0;background-image:radial-gradient(oklch(0.26 0.012 80 / 0.11) 1px, transparent 1px);background-size:28px 28px;"></div>
+            
+            <svg viewBox="0 0 1240 784" style="position:absolute;inset:0;width:100%;height:100%;">
+              <path d="M120 150c40-58 122-66 168-20 30 30 26 82-10 104-38 24-92 10-110-30-16-34 4-78 38-92" fill="none" stroke="var(--ink)" stroke-width="3.6" stroke-linecap="round"></path>
+              <path d="M330 104h250M330 142h188M330 180h224" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+              <rect x="120" y="266" width="440" height="200" rx="16" fill="none" stroke="var(--accent)" stroke-width="3"></rect>
+              <path d="M156 318h340M156 362h250M156 406h180" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+              <path d="M660 250c78-18 158-14 230 14 46 18 70 60 54 100-20 46-84 62-134 46-42-14-66-56-52-96 10-32 44-54 82-56" fill="none" stroke="var(--ink)" stroke-width="3.4" stroke-linecap="round"></path>
+              <path d="M660 448c88 0 176 6 260 18" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"></path>
+              <path d="M660 486c72 2 144 8 210 20" fill="none" stroke="var(--ink)" stroke-width="4.6" stroke-linecap="round"></path>
+              <path d="M120 560c66-34 144-36 208-6 42 20 56 66 28 100-28 36-88 42-126 16-32-22-36-70-10-96" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"></path>
+              <path d="M380 596h230M380 642h164" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+              <path d="M700 596c60 0 120 4 176 12" fill="none" stroke="var(--ink)" stroke-width="6.2" stroke-linecap="round"></path>
+              
+            </svg>
+
+            <div style="position:absolute;left:26px;top:22px;display:flex;align-items:center;gap:10px;opacity:0.26;">
+              <svg viewBox="0 0 24 24" style="width:17px;height:17px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.4px;color:var(--ink2);">SKETCH THE INK TOOLBAR</div>
+            </div>
+
+            <div style="position:absolute;right:22px;top:22px;display:flex;align-items:center;gap:8px;opacity:0.34;">
+              <div style="width:9px;height:9px;border-radius:2px;background:var(--accent);"></div>
+              <div style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);">02:11</div>
+            </div>
+
+            <div style="position:absolute;left:26px;bottom:26px;display:flex;gap:10px;">
+              <div style="width:52px;height:52px;border-radius:18px;background:var(--surface);border:1px solid var(--tile);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.09);">
+                <svg viewBox="0 0 24 24" style="width:22px;height:22px;"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" fill="none" stroke="var(--ink2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:52px;height:52px;border-radius:18px;background:var(--surface);border:1px solid var(--tile);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.09);">
+                <svg viewBox="0 0 24 24" style="width:22px;height:22px;"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h2" fill="none" stroke="var(--dim)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+            </div>
+            <div style="position:absolute;right:22px;bottom:22px;display:flex;flex-direction:column;gap:9px;align-items:center;background:var(--surface);border:1px solid var(--tile);border-radius:26px;padding:11px 9px;box-shadow:0 12px 30px rgba(0,0,0,0.13);opacity:0.55;">
+              <div style="width:56px;height:56px;border-radius:19px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;">
+                <svg viewBox="0 0 40 14" style="width:30px;height:11px;"><path d="M3 9c8-6 22-6 34 0" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:0.8px;color:var(--muted);">FINE</div>
+              </div>
+              <div style="width:56px;height:56px;border-radius:19px;background:var(--accentFill);border:1.5px solid var(--accent);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;">
+                <svg viewBox="0 0 40 14" style="width:30px;height:11px;"><path d="M3 9c8-6 22-6 34 0" fill="none" stroke="var(--ink)" stroke-width="4.2" stroke-linecap="round"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:0.8px;color:var(--accent);">BOLD</div>
+              </div>
+              <div style="width:56px;height:56px;border-radius:19px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;">
+                <svg viewBox="0 0 40 14" style="width:30px;height:11px;"><path d="M3 8h34" fill="none" stroke="var(--teal)" stroke-width="9" stroke-linecap="butt" opacity="0.4"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:0.8px;color:var(--muted);">MARK</div>
+              </div>
+              <div style="height:1px;width:34px;background:var(--hair);"></div>
+              <div style="width:56px;height:48px;border-radius:17px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="12" r="9" fill="none" stroke="var(--ink2)" stroke-width="1.3" stroke-dasharray="3 3"></circle></svg>
+              </div>
+              <div style="width:56px;height:48px;border-radius:17px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M8 5h8l3 8-7 6-7-6 3-8Z" fill="none" stroke="var(--ink2)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              </div>
+            </div>
+            <div style="position:absolute;right:98px;bottom:130px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.2px;color:var(--dim);text-align:right;line-height:1.8;">DOUBLE-TAP THE PEN<br>TO ERASE</div>
+          </div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">WRITING · KIT DIMS BUT STAYS PUT · UNDO NEVER FADES</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="width:1330px;background:oklch(0.24 0.008 80);border-radius:34px;padding:14px;box-shadow:0 22px 60px rgba(0,0,0,0.22);">
+          <div style="height:812px;background:var(--page);border-radius:22px;overflow:hidden;position:relative;font-family:'Space Grotesk',sans-serif;">
+            <div style="position:absolute;inset:0;background-image:radial-gradient(oklch(0.26 0.012 80 / 0.11) 1px, transparent 1px);background-size:28px 28px;"></div>
+            
+            <svg viewBox="0 0 1240 784" style="position:absolute;inset:0;width:100%;height:100%;">
+              <path d="M120 150c40-58 122-66 168-20 30 30 26 82-10 104-38 24-92 10-110-30-16-34 4-78 38-92" fill="none" stroke="var(--ink)" stroke-width="3.6" stroke-linecap="round"></path>
+              <path d="M330 104h250M330 142h188M330 180h224" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+              <rect x="120" y="266" width="440" height="200" rx="16" fill="none" stroke="var(--accent)" stroke-width="3"></rect>
+              <path d="M156 318h340M156 362h250M156 406h180" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+              <path d="M660 250c78-18 158-14 230 14 46 18 70 60 54 100-20 46-84 62-134 46-42-14-66-56-52-96 10-32 44-54 82-56" fill="none" stroke="var(--ink)" stroke-width="3.4" stroke-linecap="round"></path>
+              <path d="M660 448c88 0 176 6 260 18" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"></path>
+              <path d="M660 486c72 2 144 8 210 20" fill="none" stroke="var(--ink)" stroke-width="4.6" stroke-linecap="round"></path>
+              <path d="M120 560c66-34 144-36 208-6 42 20 56 66 28 100-28 36-88 42-126 16-32-22-36-70-10-96" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"></path>
+              <path d="M380 596h230M380 642h164" fill="none" stroke="var(--ink2)" stroke-width="2.6" stroke-linecap="round"></path>
+              <path d="M700 596c60 0 120 4 176 12" fill="none" stroke="var(--ink)" stroke-width="6.2" stroke-linecap="round"></path>
+              <path d="M322 84c92-14 178-12 262 6 20 4 30 16 28 34-2 26-6 52-14 72-6 16-22 22-44 22-78 2-158-2-234-12-20-2-30-14-30-32 0-28 2-56 8-76 4-10 12-14 24-14Z" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="10 8" stroke-linejoin="round"></path>
+            </svg>
+            <div style="position:absolute;left:0;right:0;bottom:0;height:112px;background:linear-gradient(to top,var(--page),transparent);"></div>
+            <div style="position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:7px;">
+              <div style="width:1px;height:26px;background:var(--tile);"></div>
+              <div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.3px;color:var(--dim);">KEEP GOING · THE PAGE DOESN'T END</div>
+            </div>
+
+
+            <div style="position:absolute;left:26px;top:22px;display:flex;align-items:center;gap:10px;">
+              <svg viewBox="0 0 24 24" style="width:17px;height:17px;"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.4px;color:var(--ink2);">SKETCH THE INK TOOLBAR</div>
+            </div>
+
+            <div style="position:absolute;right:22px;top:22px;display:flex;align-items:center;gap:9px;background:var(--accentFill);border:1px solid var(--accentBorder);border-radius:13px;padding:7px 13px;">
+              <div style="width:10px;height:10px;border-radius:2px;background:var(--accent);"></div>
+              <div style="font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;color:var(--accent);">02:11</div>
+            </div>
+
+            <div style="position:absolute;left:350px;top:214px;display:flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--tile);border-radius:15px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,0.14);">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:11px;background:var(--accentFill);">
+                <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M4 7h13M4 12h16M4 17h9" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:700;color:var(--accent);">To text</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:11px;">
+                <svg viewBox="0 0 28 28" style="width:16px;height:16px;"><path d="M8 4H11V2H17V4H20Q24 4 24 8V11H26V17H24V20Q24 24 20 24H17V26H11V24H8Q4 24 4 20V17H2V11H4V8Q4 4 8 4Z" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:var(--ink);">To task</div>
+              </div>
+              <div style="width:1px;height:24px;background:var(--hair);margin:0 4px;"></div>
+              <div style="padding:10px 13px;border-radius:11px;font-size:13.5px;font-weight:600;color:var(--ink);">Move</div>
+              <div style="padding:10px 13px;border-radius:11px;font-size:13.5px;font-weight:600;color:var(--ink);">Copy</div>
+              <div style="padding:10px 13px;border-radius:11px;font-size:13.5px;font-weight:600;color:var(--ink);">Tidy</div>
+              <div style="padding:10px 13px;border-radius:11px;font-size:13.5px;font-weight:600;color:var(--crimson);">Delete</div>
+            </div>
+
+            <div style="position:absolute;left:26px;bottom:26px;display:flex;gap:10px;">
+              <div style="width:52px;height:52px;border-radius:18px;background:var(--surface);border:1px solid var(--tile);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.09);">
+                <svg viewBox="0 0 24 24" style="width:22px;height:22px;"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" fill="none" stroke="var(--ink2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+              <div style="width:52px;height:52px;border-radius:18px;background:var(--surface);border:1px solid var(--tile);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.09);">
+                <svg viewBox="0 0 24 24" style="width:22px;height:22px;"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h2" fill="none" stroke="var(--dim)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+            </div>
+            <div style="position:absolute;right:22px;bottom:22px;display:flex;flex-direction:column;gap:9px;align-items:center;background:var(--surface);border:1px solid var(--tile);border-radius:26px;padding:11px 9px;box-shadow:0 12px 30px rgba(0,0,0,0.13);">
+              <div style="width:56px;height:56px;border-radius:19px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;">
+                <svg viewBox="0 0 40 14" style="width:30px;height:11px;"><path d="M3 9c8-6 22-6 34 0" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:0.8px;color:var(--muted);">FINE</div>
+              </div>
+              <div style="width:56px;height:56px;border-radius:19px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;">
+                <svg viewBox="0 0 40 14" style="width:30px;height:11px;"><path d="M3 9c8-6 22-6 34 0" fill="none" stroke="var(--ink)" stroke-width="4.2" stroke-linecap="round"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:0.8px;color:var(--muted);">BOLD</div>
+              </div>
+              <div style="width:56px;height:56px;border-radius:19px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;">
+                <svg viewBox="0 0 40 14" style="width:30px;height:11px;"><path d="M3 8h34" fill="none" stroke="var(--teal)" stroke-width="9" stroke-linecap="butt" opacity="0.4"></path></svg>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;letter-spacing:0.8px;color:var(--muted);">MARK</div>
+              </div>
+              <div style="height:1px;width:34px;background:var(--hair);"></div>
+              <div style="width:56px;height:48px;border-radius:17px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="12" r="9" fill="none" stroke="var(--ink2)" stroke-width="1.3" stroke-dasharray="3 3"></circle></svg>
+              </div>
+              <div style="width:56px;height:48px;border-radius:17px;background:var(--accentFill);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+                <svg viewBox="0 0 24 24" style="width:21px;height:21px;"><path d="M8 5h8l3 8-7 6-7-6 3-8Z" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:1.4px;color:var(--muted);">LASSO HELD · INK BECOMES TEXT OR A TASK</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:820px;padding:24px 26px;background:var(--surface);border:1px solid var(--tile);border-radius:16px;display:flex;flex-direction:column;gap:11px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--accent);">STILL OPEN</div>
+    <div style="font-size:14.5px;line-height:1.65;color:var(--ink2);text-wrap:pretty;">Search, the label and workspace lists, settings, and real images in place of the placeholder blocks — send me the assets and I'll drop them in. Say which and I'll add them here rather than in a new file.</div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#D85A30&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#D85A30&quot;,&quot;#00A072&quot;,&quot;#0097B1&quot;,&quot;#5480EB&quot;,&quot;#A864CF&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;light&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+const THEMES = {
+  light: {
+    page:'oklch(0.972 0.006 80)', surface:'oklch(0.995 0.003 80)', surfaceHigh:'oklch(0.958 0.007 80)',
+    rail:'oklch(0.935 0.007 80)', ink:'oklch(0.26 0.012 80)', ink2:'oklch(0.44 0.011 80)',
+    muted:'oklch(0.545 0.010 80)', dim:'oklch(0.655 0.009 80)',
+    hair:'oklch(0.26 0.012 80 / 0.085)', tile:'oklch(0.26 0.012 80 / 0.105)',
+    crimson:'#A32D2D', amber:'#BA7517', frame:'#5F5E5A', onAccent:'#ffffff', desk:'oklch(0.885 0.006 80)',
+    teal:'#00948E', violet:'#8A6BB8', olive:'#5D8F52',
+  },
+  dark: {
+    page:'oklch(0.171 0.005 80)', surface:'oklch(0.216 0.007 80)', surfaceHigh:'oklch(0.257 0.009 80)',
+    rail:'oklch(0.137 0.005 80)', ink:'oklch(0.948 0.005 80)', ink2:'oklch(0.735 0.008 80)',
+    muted:'oklch(0.638 0.009 80)', dim:'oklch(0.510 0.010 80)',
+    hair:'oklch(0.948 0.005 80 / 0.10)', tile:'oklch(0.948 0.005 80 / 0.13)',
+    crimson:'#E24B4A', amber:'#EF9F27', frame:'#B4B2A9', onAccent:'oklch(0.16 0.010 80)', desk:'oklch(0.105 0.004 80)',
+    teal:'#3FC0B8', violet:'#B394DE', olive:'#8ABB7D',
+  },
+};
+
+const ACCENTS = {
+  '#D85A30':'#E8865F', '#00A072':'#3BBE8F', '#0097B1':'#00B8D6',
+  '#5480EB':'#7BA1F7', '#A864CF':'#C08BE0',
+};
+
+class Component extends DCLogic {
+  apply() {
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const t = THEMES[dark ? 'dark' : 'light'];
+    const base = this.props.accent ?? '#D85A30';
+    const accent = dark ? (ACCENTS[base] ?? base) : base;
+    const r = document.documentElement.style;
+    Object.keys(t).forEach(k => r.setProperty('--' + k, t[k]));
+    r.setProperty('--accent', accent);
+    r.setProperty('--accentFill', accent + (dark ? '26' : '1F'));
+    r.setProperty('--accentBorder', accent + '70');
+    r.setProperty('--accentChip', accent + (dark ? '33' : '26'));
+    r.setProperty('--wash', accent + (dark ? '1F' : '17'));
+    r.setProperty('--crimsonChip', t.crimson + '21');
+  }
+  componentDidMount() { this.apply(); }
+  componentDidUpdate() { this.apply(); }
+  renderVals() { return {}; }
+}
+
+</script>
+</body>
+</html>
