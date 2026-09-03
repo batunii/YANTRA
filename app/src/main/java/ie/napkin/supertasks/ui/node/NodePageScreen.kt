@@ -816,100 +816,117 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
         // Actions act on the block you last touched — the caret, or a long-pressed ink/image.
         val actOn = blocks.firstOrNull { it.id == activeBlockId }
-        // Lists capture with the same bar as a smart list. A task's page has no such bar: you type
-        // into it directly, which is what a document is.
-        BottomBar(
-            onOpenNow = { n ->
-                nav.navigate(if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId))
-            },
-            onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
-            // Lists and workspaces show what is on the go; a task's own page does not. You are
-            // already inside one task — a deck of the others is a list of places you are not, and
-            // it would sit exactly where the words go on the one screen that is written into.
-            showNow = !isTask,
-            modifier = Modifier.navigationBarsPadding().imePadding(),
-        ) { bottomPadding ->
-            if (!isTask) {
-                QuickAddBar(
-                    labels = allLabels,
-                    lists = listNames,
-                    people = assignable,
-                    findTasks = { q -> vm.linkTargets(q) },
-                    resolveLinks = { t -> vm.linkIdsFor(t) },
-                    onAdd = { title -> vm.captureTask(title) },
-                    bottomPadding = bottomPadding,
-                )
-            }
-        }
-        val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
-        timingOccupied?.let {
-            SwitchHereDialog(
-                runningTitle = it.byTitle,
-                onConfirm = { vm.timing.confirm() },
-                onDismiss = { vm.timing.dismiss() },
-            )
-        }
-        // Only a task's page is typed into, so only it can be mid-link.
-        val typing = linkDraft?.takeIf { isTask }
-        val linkQuery = typing?.let { (_, v) -> Links.draft(v.text, v.selection.end)?.second }
-        LaunchedEffect(linkQuery, typing?.first) {
-            // Never the block being typed in. A line that links to itself is a line that says
-            // nothing, and it is the one candidate guaranteed to match whatever was just typed.
-            linkResults = linkQuery
-                ?.let { q -> vm.linkTargets(q).filterNot { it.id == typing?.first } }
-                .orEmpty()
-        }
-        LinkSuggestions(
-            draft = linkQuery,
-            results = linkResults,
-            onPick = { target ->
-                val (blockId, value) = typing ?: return@LinkSuggestions
-                val span = Links.draft(value.text, value.selection.end)?.first ?: return@LinkSuggestions
-                val written = Links.encode(target.title.orEmpty(), target.id)
-                val next = value.text.replaceRange(span, written)
-                // The caret lands after the closing brackets, not inside them: the link is
-                // finished, and leaving the caret in the middle of it would reopen the strip on
-                // the name that was just chosen.
-                linkInsert = blockId to TextFieldValue(next, TextRange(span.first + written.length))
-            },
-            // No ime padding of its own. Only the bottom-most thing in this column may hold the
-            // keyboard inset — the bar below does — and a second sibling claiming it too reserves
-            // the keyboard's height twice, which squeezes the page itself to nothing and pushes
-            // the bar off the bottom of the screen.
-        )
-        BlockTypeBar(
-            modifier = Modifier
+        // One inset claim for the whole bottom cluster.
+        //
+        // Both bars used to take `.navigationBarsPadding().imePadding()` for themselves, as
+        // siblings of the page in this same column — which is exactly what the note on
+        // LinkSuggestions warns against, and it reserved the keyboard's height twice. On a task's
+        // page both of them render (the type bar always, the capture bar as an empty shell, since
+        // a document has no quick-add), so raising the keyboard subtracted two keyboards' worth of
+        // space from a column that only has one: the page — `weight(1f)` — was squeezed to nothing
+        // and the type bar was pushed off the bottom edge. Typing anywhere on a task page made the
+        // whole document and the toolbar disappear, and it came back only by leaving and
+        // returning, because nothing was wrong with the page except its height.
+        //
+        // The inset belongs to the cluster, not to whichever bar happens to be bottom-most in a
+        // given state — which is the thing that could not be answered locally, since either bar
+        // may be the only one showing.
+        Column(
+            Modifier
                 .navigationBarsPadding()
                 .imePadding(),
-            // Nothing to pick between on a list: every block on it is a task.
-            showTypes = isTask,
-            currentType = caretBlock?.type?.takeIf { it in textTypes },
-            onTask = { setType(NodeType.TASK) },
-            onText = { setType(NodeType.PARAGRAPH) },
-            onHeading = { setType(NodeType.HEADING) },
-            onBullet = { setType(NodeType.BULLET) },
-            onNumbered = { setType(NodeType.NUMBERED) },
-            onInk = { insertBelow(NodeType.INK) { id -> nav.navigate(Routes.ink(id)) } },
-            onImage = { imagePicker.launch(arrayOf("image/*")) },
-            actOnTask = actOn?.type == NodeType.TASK,
-            // Tab and shift-tab. A line can only go one step deeper than the line above it, so
-            // Indent is offered only while there is room, and never on the first block.
-            onIndent = actOn?.takeIf { block ->
-                val i = blocks.indexOfFirst { it.id == block.id }
-                i > 0 && block.indent <= blocks[i - 1].indent
-            }?.let { block -> { vm.indent(block) } },
-            onOutdent = actOn?.takeIf { it.indent > 0 }?.let { block -> { vm.outdent(block) } },
-            onProperties = actOn?.let { block -> { propertySheetFor = block.id } },
-            onFocusTask = actOn?.takeIf { it.type == NodeType.TASK }
-                ?.let { block -> { nav.navigate(Routes.focus(block.id)) } },
-            onDelete = actOn?.let { block ->
-                {
-                    if (activeBlockId == block.id) activeBlockId = null
-                    if (lastCaretBlockId == block.id) lastCaretBlockId = null
-                    vm.delete(block.id)
+        ) {
+            // Lists capture with the same bar as a smart list. A task's page has no such bar: you
+            // type into it directly, which is what a document is.
+            BottomBar(
+                onOpenNow = { n ->
+                    nav.navigate(if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId))
+                },
+                onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
+                // Lists and workspaces show what is on the go; a task's own page does not. You are
+                // already inside one task — a deck of the others is a list of places you are not, and
+                // it would sit exactly where the words go on the one screen that is written into.
+                showNow = !isTask,
+            ) { bottomPadding ->
+                if (!isTask) {
+                    QuickAddBar(
+                        labels = allLabels,
+                        lists = listNames,
+                        people = assignable,
+                        findTasks = { q -> vm.linkTargets(q) },
+                        resolveLinks = { t -> vm.linkIdsFor(t) },
+                        onAdd = { title -> vm.captureTask(title) },
+                        bottomPadding = bottomPadding,
+                    )
                 }
-            },
-        )
+            }
+            val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
+            timingOccupied?.let {
+                SwitchHereDialog(
+                    runningTitle = it.byTitle,
+                    onConfirm = { vm.timing.confirm() },
+                    onDismiss = { vm.timing.dismiss() },
+                )
+            }
+            // Only a task's page is typed into, so only it can be mid-link.
+            val typing = linkDraft?.takeIf { isTask }
+            val linkQuery = typing?.let { (_, v) -> Links.draft(v.text, v.selection.end)?.second }
+            LaunchedEffect(linkQuery, typing?.first) {
+                // Never the block being typed in. A line that links to itself is a line that says
+                // nothing, and it is the one candidate guaranteed to match whatever was just typed.
+                linkResults = linkQuery
+                    ?.let { q -> vm.linkTargets(q).filterNot { it.id == typing?.first } }
+                    .orEmpty()
+            }
+            LinkSuggestions(
+                draft = linkQuery,
+                results = linkResults,
+                onPick = { target ->
+                    val (blockId, value) = typing ?: return@LinkSuggestions
+                    val span = Links.draft(value.text, value.selection.end)?.first ?: return@LinkSuggestions
+                    val written = Links.encode(target.title.orEmpty(), target.id)
+                    val next = value.text.replaceRange(span, written)
+                    // The caret lands after the closing brackets, not inside them: the link is
+                    // finished, and leaving the caret in the middle of it would reopen the strip on
+                    // the name that was just chosen.
+                    linkInsert = blockId to TextFieldValue(next, TextRange(span.first + written.length))
+                },
+                // No ime padding of its own, and neither bar has any either: the column around
+                // all three holds the keyboard inset once. Two siblings claiming it reserve the
+                // keyboard's height twice, which squeezes the page itself to nothing and pushes
+                // the bottom bar off the screen — see the note on that column.
+            )
+            BlockTypeBar(
+                // Nothing to pick between on a list: every block on it is a task.
+                showTypes = isTask,
+                currentType = caretBlock?.type?.takeIf { it in textTypes },
+                onTask = { setType(NodeType.TASK) },
+                onText = { setType(NodeType.PARAGRAPH) },
+                onHeading = { setType(NodeType.HEADING) },
+                onBullet = { setType(NodeType.BULLET) },
+                onNumbered = { setType(NodeType.NUMBERED) },
+                onInk = { insertBelow(NodeType.INK) { id -> nav.navigate(Routes.ink(id)) } },
+                onImage = { imagePicker.launch(arrayOf("image/*")) },
+                actOnTask = actOn?.type == NodeType.TASK,
+                // Tab and shift-tab. A line can only go one step deeper than the line above it, so
+                // Indent is offered only while there is room, and never on the first block.
+                onIndent = actOn?.takeIf { block ->
+                    val i = blocks.indexOfFirst { it.id == block.id }
+                    i > 0 && block.indent <= blocks[i - 1].indent
+                }?.let { block -> { vm.indent(block) } },
+                onOutdent = actOn?.takeIf { it.indent > 0 }?.let { block -> { vm.outdent(block) } },
+                onProperties = actOn?.let { block -> { propertySheetFor = block.id } },
+                onFocusTask = actOn?.takeIf { it.type == NodeType.TASK }
+                    ?.let { block -> { nav.navigate(Routes.focus(block.id)) } },
+                onDelete = actOn?.let { block ->
+                    {
+                        if (activeBlockId == block.id) activeBlockId = null
+                        if (lastCaretBlockId == block.id) lastCaretBlockId = null
+                        vm.delete(block.id)
+                    }
+                },
+            )
+        }
     }
 
     }
