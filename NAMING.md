@@ -187,6 +187,7 @@ notice for rules pointing at repos this device has not cloned.
 **Stats** (the focus stats page) — the **week yantra** at the top with its **caption**, then the
 **stat strip** (four **stat cells**: Today · Rhythm · Week · Per day) and the **breakdown**: a
 **span toggle** (Week / All time) on the section label, **cut chips** (Tasks / Lists / Workspaces),
+a **scope crumb** once a list or workspace has been opened into its tasks,
 and **breakdown rows**, each led by a **share mark** — the bhupura filled from the left to that
 row's share of the leader — and ending in a **play key** on task rows.
 

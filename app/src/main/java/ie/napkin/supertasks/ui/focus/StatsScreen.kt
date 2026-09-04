@@ -107,11 +107,28 @@ data class Breakdown(
     val tasks: List<GroupStat> = emptyList(),
     val lists: List<GroupStat> = emptyList(),
     val workspaces: List<GroupStat> = emptyList(),
+    /**
+     * The tasks inside one list, and inside one workspace, keyed by that row's own key.
+     *
+     * A list row is a sum, and a sum you cannot open is a dead end — "September Tasks, 19h" invites
+     * exactly one question, which is *on what*. Cut here rather than fetched on demand: it is the
+     * same sessions grouped one level finer, so computing it costs a pass over a list already in
+     * memory and saves the page a round trip at the moment of the tap.
+     */
+    val tasksInList: Map<String, List<GroupStat>> = emptyMap(),
+    val tasksInWorkspace: Map<String, List<GroupStat>> = emptyMap(),
 ) {
     fun of(cut: Cut): List<GroupStat> = when (cut) {
         Cut.TASKS -> tasks
         Cut.LISTS -> lists
         Cut.WORKSPACES -> workspaces
+    }
+
+    /** The tasks behind one row of [cut], or empty where that row is not something you can open. */
+    fun inside(cut: Cut, key: String): List<GroupStat> = when (cut) {
+        Cut.TASKS -> emptyList()
+        Cut.LISTS -> tasksInList[key].orEmpty()
+        Cut.WORKSPACES -> tasksInWorkspace[key].orEmpty()
     }
 }
 
@@ -257,6 +274,12 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
             // A task with no list above it is not counted into any list, deliberately: inventing a
             // bucket for it would make the lists add up to more than the workspace they are in.
             workspaces = rollup(rows) { it.workspaceId to (wsNames[it.workspaceId] ?: "Workspace") },
+            tasksInList = rows.groupBy { listOf[it.nodeId]?.first }
+                .filterKeys { it != null }
+                .map { (id, inList) -> id!! to rollup(inList) { taskOf[it.nodeId] } }
+                .toMap(),
+            tasksInWorkspace = rows.groupBy { it.workspaceId }
+                .mapValues { (_, inWs) -> rollup(inWs) { taskOf[it.nodeId] } },
         )
 
         return Stats(
@@ -303,6 +326,9 @@ fun StatsScreen(nav: NavHostController) {
     val review = weekReview(stats)
     var cut by rememberSaveable { mutableStateOf(Cut.TASKS) }
     var span by rememberSaveable { mutableStateOf(Span.WEEK) }
+    /** The list or workspace whose tasks are being shown, if a row has been opened. */
+    var openedKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var openedTitle by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Starting a clock here can find one already running elsewhere, and that is a question rather
     // than something to do quietly — the ledger would otherwise gain an interruption nobody chose.
@@ -387,18 +413,54 @@ fun StatsScreen(nav: NavHostController) {
                             // happen to be next to each other.
                             stretch = true,
                             modifier = Modifier.weight(1f),
-                            onClick = { cut = option },
+                            // Changing the cut leaves whatever was open behind. A list you had
+                            // opened is not a thing the Workspaces chip can still be showing you.
+                            onClick = { cut = option; openedKey = null; openedTitle = null },
                         )
                     }
                 }
             }
-            val rows = stats.breakdown(span).of(cut)
-            if (rows.isEmpty()) {
+            val breakdown = stats.breakdown(span)
+            // Opened, the section shows the tasks inside that row instead of the row's peers. Same
+            // rows, same marks, one level down — so there is nothing new to learn and no screen to
+            // go to for a question the page already has the answer to.
+            val opened = openedKey?.let { breakdown.inside(cut, it) }.orEmpty()
+            val showing = if (openedKey != null) opened else breakdown.of(cut)
+            if (openedKey != null) {
+                item(key = "scope") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { openedKey = null; openedTitle = null }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = "Back to all ${cut.label.lowercase()}",
+                            tint = y.accent,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            openedTitle.orEmpty(),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.W700,
+                            color = y.accentText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                }
+            }
+            if (showing.isEmpty()) {
                 item(key = "breakdown-empty") {
                     Text(
-                        when (span) {
-                            Span.WEEK -> "No focus in the last 7 days."
-                            Span.ALL_TIME -> "No focus recorded yet."
+                        when {
+                            openedKey != null -> "Nothing focused here in this window."
+                            span == Span.WEEK -> "No focus in the last 7 days."
+                            else -> "No focus recorded yet."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = y.textMuted,
@@ -408,18 +470,20 @@ fun StatsScreen(nav: NavHostController) {
             } else {
                 // Against the leader, not against the total. A share of the whole makes every mark
                 // nearly empty the moment the work is spread over a dozen tasks — which is the
-                // ordinary case and the one the column most needs to be readable in. The bars above
-                // are normalised the same way, so the two read alike.
-                val top = rows.first().totalSecs.coerceAtLeast(1)
-                items(rows, key = { "${cut.name}-${it.key}" }) { row ->
+                // ordinary case and the one the column most needs to be readable in.
+                val top = showing.first().totalSecs.coerceAtLeast(1)
+                items(showing, key = { "${cut.name}-${openedKey ?: "all"}-${it.key}" }) { row ->
+                    // Inside an opened list or workspace, every row is a task again — so it opens
+                    // and starts exactly as the Tasks cut does.
+                    val isTask = cut == Cut.TASKS || openedKey != null
                     BreakdownRow(
                         row = row,
                         fraction = row.totalSecs.toFloat() / top,
-                        // Only a task is somewhere you can go and something you can start. A list
-                        // and a workspace are sums over many tasks — there is no clock to put on
-                        // them, and no one page that is theirs.
-                        onOpen = if (cut == Cut.TASKS) ({ nav.navigate(Routes.focus(row.key)) }) else null,
-                        onPlay = if (cut == Cut.TASKS) ({ vm.startFocus(row.key, row.title) }) else null,
+                        onOpen = {
+                            if (isTask) nav.navigate(Routes.focus(row.key))
+                            else { openedKey = row.key; openedTitle = row.title }
+                        },
+                        onPlay = if (isTask) ({ vm.startFocus(row.key, row.title) }) else null,
                         running = live?.nodeId == row.key,
                     )
                 }
