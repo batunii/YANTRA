@@ -1,6 +1,12 @@
 package ie.napkin.supertasks.ui.focus
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,19 +21,30 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -41,33 +58,83 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.FocusSessionEntity
+import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.counts
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.PageHeader
+import ie.napkin.supertasks.ui.components.bhupuraPath
+import ie.napkin.supertasks.ui.components.YantraInk
+import ie.napkin.supertasks.ui.components.SelectChip
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
 import ie.napkin.supertasks.ui.components.isReducedMotion
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
+import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.container
+import ie.napkin.supertasks.domain.FocusTimer
+import ie.napkin.supertasks.domain.TimingRequest
 import ie.napkin.supertasks.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import ie.napkin.supertasks.ui.theme.YantraDisplay
+import ie.napkin.supertasks.ui.theme.YantraMono
 import ie.napkin.supertasks.data.format.Links
 
 data class DayStat(val date: LocalDate, val completed: Int, val totalSecs: Int)
-data class TaskStat(val nodeId: String, val title: String, val completed: Int, val totalSecs: Int)
+
+/** One row of a breakdown — a task, a list or a workspace, with what was given to it. */
+data class GroupStat(
+    val key: String,
+    val title: String,
+    val sessions: Int,
+    val totalSecs: Int,
+)
+
+/**
+ * The same time, cut three ways.
+ *
+ * All three are built from one pass over the same sessions, so they add up to each other: a task's
+ * hours are inside its list's, and a list's are inside its workspace's. That only holds because a
+ * session is attributed to exactly one of each — see [StatsViewModel.build].
+ */
+data class Breakdown(
+    val tasks: List<GroupStat> = emptyList(),
+    val lists: List<GroupStat> = emptyList(),
+    val workspaces: List<GroupStat> = emptyList(),
+) {
+    fun of(cut: Cut): List<GroupStat> = when (cut) {
+        Cut.TASKS -> tasks
+        Cut.LISTS -> lists
+        Cut.WORKSPACES -> workspaces
+    }
+}
+
+/** Which way the breakdown is cut. The label is the chip's. */
+enum class Cut(val label: String) { TASKS("Tasks"), LISTS("Lists"), WORKSPACES("Workspaces") }
+
+/** How far back the breakdown reaches. */
+enum class Span(val label: String) { WEEK("Week"), ALL_TIME("All time") }
+
 data class Stats(
     val todaySecs: Int = 0,
     val todayCount: Int = 0,
     val weekSecs: Int = 0,
     val weekCount: Int = 0,
     val days: List<DayStat> = emptyList(),
-    val topTasks: List<TaskStat> = emptyList(),
-)
+    val week: Breakdown = Breakdown(),
+    val allTime: Breakdown = Breakdown(),
+) {
+    fun breakdown(span: Span): Breakdown = when (span) {
+        Span.WEEK -> week
+        Span.ALL_TIME -> allTime
+    }
+}
 
 /**
  * The two facts the diagram at the top of this page draws: how much you did today, and how much of
@@ -116,6 +183,22 @@ fun weekReview(stats: Stats): WeekReview = WeekReview(
 
 class StatsViewModel(private val container: AppContainer) : ViewModel() {
 
+    /** The live session, so the yantra on this page can sweep it. */
+    val timer = container.timer
+
+    /**
+     * The play key on a breakdown row.
+     *
+     * The same one button the now player has, and deliberately the same request object: starting a
+     * clock on a task while another is running is a decision someone has to make, and it is made in
+     * one place so that every surface asks it the same way.
+     */
+    val timing = TimingRequest(container.running)
+
+    fun startFocus(nodeId: String, title: String) {
+        viewModelScope.launch { timing.toggle(nodeId, title) }
+    }
+
     /** History screens = plain queries over focus_session (per-task, per-day, totals). */
     val stats: StateFlow<Stats> = container.focus.all()
         .map { sessions -> build(sessions) }
@@ -144,32 +227,93 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
             DayStat(date, daySessions.size, daySessions.sumOf { it.actualSecs ?: 0 })
         }
 
-        val topTasks = counted
-            .groupBy { it.nodeId }
-            .map { (nodeId, list) ->
-                val title = Links.plain(container.nodes.byId(nodeId)?.title.orEmpty()).ifBlank { "Untitled task" }
-                TaskStat(nodeId, title, list.size, list.sumOf { it.actualSecs ?: 0 })
-            }
-            .sortedByDescending { it.totalSecs }
-            .take(8)
-
         val weekCounted = counted.filter { dayOf(it) >= weekStart }
+
+        // Every distinct task that was focused, resolved once. A session names a node; the row a
+        // breakdown wants is that node's title, the list the work sits in, and the repository it
+        // came from. Two windows are cut from the same sessions, so resolving per window would ask
+        // the same questions twice for no new answer.
+        val ids = counted.map { it.nodeId }.distinct()
+        val taskOf = HashMap<String, Pair<String, String>>()
+        val listOf = HashMap<String, Pair<String, String>?>()
+        ids.forEach { id ->
+            val node = container.nodes.byId(id)
+            taskOf[id] = id to Links.plain(node?.title.orEmpty()).ifBlank { "Untitled task" }
+            // The *nearest* list above the task, not the top of the chain. A subtask three deep
+            // still belongs to the list its ancestor sits on, and that is the list you would say it
+            // was work on. `ancestors` reads root → parent, so the nearest one is the last match.
+            listOf[id] = container.nodes.ancestors(id)
+                .lastOrNull { it.type == NodeType.LIST }
+                ?.let { it.id to Links.plain(it.title.orEmpty()).ifBlank { "Untitled list" } }
+        }
+        // Names live in the registry rather than on the store, and Personal is in there too — it is
+        // the entry with the empty id, which is also what a session written before workspaces
+        // existed carries.
+        val wsNames = container.registry.entries().associate { it.id to it.name }
+
+        fun cuts(rows: List<FocusSessionEntity>) = Breakdown(
+            tasks = rollup(rows) { taskOf[it.nodeId] },
+            lists = rollup(rows) { listOf[it.nodeId] },
+            // A task with no list above it is not counted into any list, deliberately: inventing a
+            // bucket for it would make the lists add up to more than the workspace they are in.
+            workspaces = rollup(rows) { it.workspaceId to (wsNames[it.workspaceId] ?: "Workspace") },
+        )
+
         return Stats(
             todaySecs = todaySessions.sumOf { it.actualSecs ?: 0 },
             todayCount = todaySessions.size,
             weekSecs = weekCounted.sumOf { it.actualSecs ?: 0 },
             weekCount = weekCounted.size,
             days = days,
-            topTasks = topTasks,
+            week = cuts(weekCounted),
+            allTime = cuts(counted),
         )
     }
 }
+
+/**
+ * Sessions grouped by whatever [key] names them, ranked by time given.
+ *
+ * Ranked by seconds rather than by session count, because a count stopped measuring anything the
+ * moment an open stopwatch existed — three four-minute sessions would outrank one deliberate
+ * ninety-minute block. The count still rides along, since it is the other half of the same story.
+ *
+ * A null key drops the row rather than bucketing it under "other". A task with no list above it
+ * belongs to no list, and inventing somewhere to put it would make the lists sum to more than the
+ * workspace containing them.
+ */
+private fun rollup(
+    rows: List<FocusSessionEntity>,
+    key: (FocusSessionEntity) -> Pair<String, String>?,
+): List<GroupStat> =
+    rows.mapNotNull { s -> key(s)?.let { it to s } }
+        .groupBy({ it.first }, { it.second })
+        .map { (id, list) ->
+            GroupStat(id.first, id.second, list.size, list.sumOf { it.actualSecs ?: 0 })
+        }
+        .sortedByDescending { it.totalSecs }
+        .take(8)
 
 @Composable
 fun StatsScreen(nav: NavHostController) {
     val vm: StatsViewModel = viewModel { StatsViewModel(container()) }
     val stats by vm.stats.collectAsStateWithLifecycle()
+    val live by vm.timer.state.collectAsStateWithLifecycle()
     val y = Yantra.colors
+    val review = weekReview(stats)
+    var cut by rememberSaveable { mutableStateOf(Cut.TASKS) }
+    var span by rememberSaveable { mutableStateOf(Span.WEEK) }
+
+    // Starting a clock here can find one already running elsewhere, and that is a question rather
+    // than something to do quietly — the ledger would otherwise gain an interruption nobody chose.
+    val occupied by vm.timing.occupied.collectAsStateWithLifecycle()
+    occupied?.let {
+        SwitchHereDialog(
+            runningTitle = it.byTitle,
+            onConfirm = { vm.timing.confirm() },
+            onDismiss = { vm.timing.dismiss() },
+        )
+    }
 
     Column(
         Modifier
@@ -177,66 +321,107 @@ fun StatsScreen(nav: NavHostController) {
             .background(y.page)
             .statusBarsPadding(),
     ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Back",
-                onClick = { nav.popBackStack() },
-                iconSize = 22.dp,
-            )
-            Text("Focus stats", fontFamily = YantraDisplay, fontSize = 24.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.4).sp, color = y.textPrimary)
+        // Folds once the yantra has gone by, so the screen keeps its name without keeping the band.
+        val listState = rememberLazyListState()
+        val collapsed by remember {
+            derivedStateOf { listState.firstVisibleItemIndex > 0 }
         }
+        PageHeader("Focus stats", onBack = { nav.popBackStack() }, collapsed = collapsed)
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            item(key = "week-yantra") { WeekReviewPanel(weekReview(stats)) }
-            item(key = "totals") {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 12.dp)) {
-                    StatCard("Today", stats.todayCount, durationLabel(stats.todaySecs) + " focused", accent = true, modifier = Modifier.weight(1f))
-                    StatCard("This week", stats.weekCount, durationLabel(stats.weekSecs), accent = false, modifier = Modifier.weight(1f))
-                }
+            item(key = "week-yantra") {
+                WeekReviewPanel(
+                    week = review,
+                    live = live,
+                    // Only a running session is a destination. Idle, the focus screen says nothing
+                    // this page has not already said better, so the mark is not made to look like
+                    // a door that opens onto a dead end.
+                    onOpenLive = if (live != null) ({ nav.navigate(Routes.FOCUS_CURRENT) }) else null,
+                )
             }
-            item(key = "days-label") {
-                SectionLabel("Last 7 days", modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
-            }
-            item(key = "days") { DayBars(stats.days) }
-            if (stats.topTasks.isNotEmpty()) {
-                item(key = "top-header") {
-                    SectionLabel("Most focused", modifier = Modifier.padding(top = 26.dp, bottom = 6.dp))
-                }
-                itemsIndexed(stats.topTasks) { index, t ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "${index + 1}",
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.W700,
-                            fontSize = 13.sp,
-                            color = if (index == 0) y.accentEyebrow else y.textDim,
-                            modifier = Modifier.width(18.dp),
-                        )
-                        Text(
-                            t.title,
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.W600,
-                            color = y.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("${t.completed}", fontSize = 12.5.sp, color = y.textMuted)
-                            Icon(Icons.Default.Timer, contentDescription = null, tint = y.textMuted, modifier = Modifier.size(12.dp))
+            item(key = "strip") { StatStrip(stats, review) }
+            item(key = "breakdown-header") {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SectionLabel("Breakdown", modifier = Modifier.weight(1f))
+                    // The window toggle rides the section label rather than taking a row of its
+                    // own. It is a two-state question about the rows below, and this page is being
+                    // cut for space — a second strip of chips under the first would spend more of
+                    // it than the two cards this replaced.
+                    Span.entries.forEachIndexed { i, option ->
+                        if (i > 0) {
+                            Text(
+                                "·",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = y.textDim,
+                                modifier = Modifier.padding(horizontal = 6.dp),
+                            )
                         }
+                        Text(
+                            option.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (span == option) FontWeight.W700 else FontWeight.W500,
+                            color = if (span == option) y.accentText else y.textMuted,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { span = option }
+                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                        )
                     }
+                }
+            }
+            item(key = "cuts") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Cut.entries.forEach { option ->
+                        SelectChip(
+                            label = option.label,
+                            selected = cut == option,
+                            // Stretched to a third each: a segmented control, not three chips that
+                            // happen to be next to each other.
+                            stretch = true,
+                            modifier = Modifier.weight(1f),
+                            onClick = { cut = option },
+                        )
+                    }
+                }
+            }
+            val rows = stats.breakdown(span).of(cut)
+            if (rows.isEmpty()) {
+                item(key = "breakdown-empty") {
+                    Text(
+                        when (span) {
+                            Span.WEEK -> "No focus in the last 7 days."
+                            Span.ALL_TIME -> "No focus recorded yet."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = y.textMuted,
+                        modifier = Modifier.padding(top = 18.dp),
+                    )
+                }
+            } else {
+                // Against the leader, not against the total. A share of the whole makes every mark
+                // nearly empty the moment the work is spread over a dozen tasks — which is the
+                // ordinary case and the one the column most needs to be readable in. The bars above
+                // are normalised the same way, so the two read alike.
+                val top = rows.first().totalSecs.coerceAtLeast(1)
+                items(rows, key = { "${cut.name}-${it.key}" }) { row ->
+                    BreakdownRow(
+                        row = row,
+                        fraction = row.totalSecs.toFloat() / top,
+                        // Only a task is somewhere you can go and something you can start. A list
+                        // and a workspace are sums over many tasks — there is no clock to put on
+                        // them, and no one page that is theirs.
+                        onOpen = if (cut == Cut.TASKS) ({ nav.navigate(Routes.focus(row.key)) }) else null,
+                        onPlay = if (cut == Cut.TASKS) ({ vm.startFocus(row.key, row.title) }) else null,
+                        running = live?.nodeId == row.key,
+                    )
                 }
             }
             item(key = "bottom") { Spacer(Modifier.height(24.dp)) }
@@ -259,98 +444,241 @@ fun StatsScreen(nav: NavHostController) {
  * *watched* — the countdown on the focus screen is; a week you have already lived is reported.
  */
 @Composable
-private fun WeekReviewPanel(week: WeekReview) {
+private fun WeekReviewPanel(
+    week: WeekReview,
+    live: FocusTimer.State?,
+    onOpenLive: (() -> Unit)?,
+) {
     val y = Yantra.colors
     val context = LocalContext.current
     val reduced = remember { isReducedMotion(context) }
+
+    // The one thing in this app allowed to move at rest, and only while a session is actually
+    // running. An open session has nowhere to arrive, so its arc fills over an hour purely to mark
+    // passing time — the same reading the active timer uses, because it is the same session.
+    val elapsed = live?.let {
+        if (it.isOpen) it.elapsedSecs / 3600f
+        else if (it.plannedSecs == 0) 0f
+        else (it.plannedSecs - it.remainingSecs).toFloat() / it.plannedSecs
+    }
+    val progress by animateFloatAsState(
+        (elapsed ?: 0f).coerceIn(0f, 1f), tween(400), label = "sessionArc",
+    )
     Column(
         Modifier.fillMaxWidth().padding(top = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         YantraFocusGlyph(
             dayCounts = week.strataDayCounts,
-            // Nothing is running, so there is no arc to sweep. This is the one state of this glyph
-            // where nothing on it moves once it has arrived, which is what a review should do.
-            sessionProgress = null,
+            // Null when nothing runs: no arc, and the marks are the whole picture.
+            sessionProgress = if (live != null) progress else null,
             onBreak = false,
             darkTheme = y.isDark,
             reducedMotion = reduced,
-            // No haptic either: a thud is the reward for depositing a session, and nothing is being
-            // deposited by opening a screen.
-            modifier = Modifier.size(208.dp),
+            // No haptic: a thud is the reward for depositing a session, and nothing is deposited by
+            // opening a screen.
+            modifier = Modifier
+                .size(208.dp)
+                .then(
+                    if (onOpenLive == null) Modifier
+                    else Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        // No ripple. The mark is a drawing, and a rectangle of ink flashing behind
+                        // a gated square reads as a second, wrong shape.
+                        indication = null,
+                        onClickLabel = "Open the running session",
+                        onClick = onOpenLive,
+                    )
+                ),
         )
-        Text(
-            if (week.isEmpty) "No focus in the last 7 days"
-            else "Focused on ${week.activeDays} of the last 7 days",
-            style = MaterialTheme.typography.bodySmall,
-            color = y.textMuted,
-            modifier = Modifier.padding(top = 14.dp),
-        )
-    }
-}
-
-@Composable
-private fun StatCard(title: String, count: Int, sub: String, accent: Boolean, modifier: Modifier = Modifier) {
-    val y = Yantra.colors
-    Column(
-        modifier
-            .background(y.cardBg, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-    ) {
-        SectionLabel(title, color = y.textMuted)
-        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 10.dp)) {
+        if (live != null) {
+            // The session, named, directly under the arc that is drawing it. Mono here and nowhere
+            // else on this page: this is the one number being watched rather than reported.
             Text(
-                "$count",
-                fontFamily = YantraDisplay,
-                fontSize = 38.sp,
+                "%d:%02d".format(live.elapsedSecs / 60, live.elapsedSecs % 60),
+                fontFamily = YantraMono,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.W700,
-                letterSpacing = (-0.5).sp,
-                color = if (accent) y.accentText else y.textPrimary,
+                letterSpacing = 1.sp,
+                color = y.accentText,
+                modifier = Modifier.padding(top = 14.dp),
             )
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.Default.Timer,
-                contentDescription = null,
-                tint = if (accent) y.accentText else y.textPrimary,
-                modifier = Modifier.size(15.dp).padding(bottom = 4.dp),
+            Text(
+                Links.plain(live.nodeTitle).ifBlank { "Untitled task" },
+                style = MaterialTheme.typography.bodySmall,
+                color = y.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        } else {
+            Text(
+                if (week.isEmpty) "No focus in the last 7 days"
+                else "Focused on ${week.activeDays} of the last 7 days",
+                style = MaterialTheme.typography.bodySmall,
+                color = y.textMuted,
+                modifier = Modifier.padding(top = 14.dp),
             )
         }
-        Text(sub, fontSize = 12.5.sp, color = y.textMuted, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+/**
+ * The four numbers, in one row and no boxes.
+ *
+ * This replaced two cards that between them spent about a third of the screen on two figures. A
+ * card earns its background by being a thing you act on; these are read and nothing else, so they
+ * get a label, a numeral and the width they need. Four now fit in less room than two did.
+ *
+ * Two of them are also drawn above — the rings are Today and the trikonas are Rhythm — which is
+ * not a duplication to remove. The glyph is read at a glance and answers "how did the week go";
+ * the numerals answer "exactly how much", and a diagram that has to be counted precisely is a
+ * diagram doing a table's job.
+ */
+@Composable
+private fun StatStrip(stats: Stats, review: WeekReview) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 22.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        StatCell("Today", "${stats.todayCount}", "sessions", accent = true, modifier = Modifier.weight(1f))
+        // "Consistency" said in a word what "4 of 7" says in three characters, and cost more room
+        // than the number it labelled. Rhythm is the shorter word for the same question: did you
+        // keep showing up.
+        StatCell("Rhythm", "${review.activeDays}/7", "days", modifier = Modifier.weight(1f))
+        StatCell("Week", "${stats.weekCount}", durationLabel(stats.weekSecs), modifier = Modifier.weight(1f))
+        // Per day *worked*, not per day of the week. Dividing by seven answers a question nobody
+        // asks — it drags a good three-day week below a thin seven-day one — where this says how
+        // deep a working day goes, which is the one thing the other three cannot be read for.
+        StatCell(
+            "Per day",
+            if (review.activeDays == 0) "—" else "%.1f".format(stats.weekCount.toFloat() / review.activeDays),
+            "a day on",
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
 @Composable
-private fun DayBars(days: List<DayStat>) {
+private fun StatCell(
+    label: String,
+    value: String,
+    sub: String,
+    modifier: Modifier = Modifier,
+    accent: Boolean = false,
+) {
     val y = Yantra.colors
-    val barBg = y.tileWarm
-    val max = (days.maxOfOrNull { it.totalSecs } ?: 0).coerceAtLeast(1)
+    Column(modifier) {
+        SectionLabel(label, color = y.textMuted)
+        Text(
+            value,
+            fontFamily = YantraDisplay,
+            fontSize = 25.sp,
+            fontWeight = FontWeight.W700,
+            letterSpacing = (-0.5).sp,
+            color = if (accent) y.accentText else y.textPrimary,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            sub,
+            fontSize = 10.5.sp,
+            color = y.textDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 1.dp),
+        )
+    }
+}
+
+/**
+ * One line of a breakdown: how much of the leader's time this task, list or workspace took.
+ *
+ * The share is drawn as the bhupura rather than as a bar, which is the point of it. The mark is one
+ * path redrawn at every size — the checkbox, the focus glyph, the launcher icon are all this same
+ * outline — so a quantity in this app can be shown filling the app's own shape instead of importing
+ * a rectangle that belongs to no part of the language.
+ */
+@Composable
+private fun BreakdownRow(
+    row: GroupStat,
+    fraction: Float,
+    onOpen: (() -> Unit)?,
+    onPlay: (() -> Unit)?,
+    running: Boolean,
+) {
+    val y = Yantra.colors
     Row(
-        Modifier.fillMaxWidth().height(140.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-        verticalAlignment = Alignment.Bottom,
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onOpen == null) Modifier else Modifier.clickable(onClick = onOpen))
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        days.forEachIndexed { i, day ->
-            val isToday = i == days.lastIndex
-            Column(
-                Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom,
+        ShareMark(fraction, Modifier.size(24.dp))
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                row.title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.W600,
+                color = y.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${durationLabel(row.totalSecs)} · ${row.sessions} session${if (row.sessions == 1) "" else "s"}",
+                fontSize = 11.5.sp,
+                color = y.textDim,
+                maxLines = 1,
+            )
+        }
+        if (onPlay != null) {
+            // Its own target, and a real one: 40dp of tappable circle inside a row that also opens.
+            // A play key you have to aim at is a play key that starts the wrong task.
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (running) y.accentFill else Color.Transparent)
+                    .clickable(onClick = onPlay),
+                contentAlignment = Alignment.Center,
             ) {
-                val frac = day.totalSecs.toFloat() / max
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height((104 * frac).dp.coerceAtLeast(if (day.totalSecs > 0) 8.dp else 6.dp))
-                        .background(if (isToday && day.totalSecs > 0) y.accent else barBg, RoundedCornerShape(6.dp)),
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    day.date.dayOfWeek.name.first().toString(),
-                    fontSize = 10.5.sp,
-                    fontWeight = if (isToday) FontWeight.W700 else FontWeight.W400,
-                    color = if (isToday) y.accentEyebrow else y.textDim,
+                Icon(
+                    if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = if (running) "Stop the clock on ${row.title}" else "Start the clock on ${row.title}",
+                    tint = if (running) y.accent else y.textMuted,
+                    modifier = Modifier.size(19.dp),
                 )
             }
+        }
+    }
+}
+
+/**
+ * The bhupura, filled from the left to [fraction].
+ *
+ * The frame is always drawn whole and the fill clipped inside it, so every row shows the same mark
+ * at the same size and only the ink inside it differs — a gate that lost its corners at 12% would
+ * read as a different symbol rather than as a smaller quantity.
+ *
+ * Neutral outline and accent fill, which is the colour law doing its ordinary job: the frame is
+ * structure, and what is filled in is your own effort. Nothing here is a gauge of the bindu, which
+ * this deliberately does not draw — the bindu is the centre, not a measure, and a mark this small
+ * would turn it into one.
+ */
+@Composable
+private fun ShareMark(fraction: Float, modifier: Modifier = Modifier) {
+    val y = Yantra.colors
+    val neutral = YantraInk.neutral(y.isDark)
+    val accent = y.accent
+    Canvas(modifier) {
+        val s = size.minDimension
+        val path = bhupuraPath(s)
+        drawPath(path, color = neutral, alpha = 0.45f, style = Stroke(width = s * 0.055f))
+        val f = fraction.coerceIn(0f, 1f)
+        if (f > 0f) {
+            clipRect(right = s * f) { drawPath(path, color = accent, alpha = 0.9f) }
         }
     }
 }

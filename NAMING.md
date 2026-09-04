@@ -184,7 +184,21 @@ notice for rules pointing at repos this device has not cloned.
 
 **Ink screen** — **tool tray** (pen · marker · highlighter · shapes · eraser), **swatch row**.
 
-**Stats** — **stat card**, **day bars**.
+**Stats** (the focus stats page) — the **week yantra** at the top with its **caption**, then the
+**stat strip** (four **stat cells**: Today · Rhythm · Week · Per day) and the **breakdown**: a
+**span toggle** (Week / All time) on the section label, **cut chips** (Tasks / Lists / Workspaces),
+and **breakdown rows**, each led by a **share mark** — the bhupura filled from the left to that
+row's share of the leader — and ending in a **play key** on task rows.
+
+While a session runs, the week yantra sweeps the **live arc** and names the session beneath it;
+tapping it opens the running timer. The **day bars** are gone: the trikonas already said which days
+were worked, and the bars were ~600px repeating it.
+
+*Rhythm* is days worked out of the last seven. It is the same fact the yantra's trikonas draw, kept
+as a numeral because a diagram that has to be counted precisely is doing a table's job.
+
+The **stat card** is gone: it was a background around a number you only read, and two of them spent
+a third of the screen on two figures.
 
 **Settings** — **setting row**, **accent swatch**, **ink legend row**, **glyph sample**.
 
@@ -204,6 +218,7 @@ The vocabulary that travels between screens. Getting these right is most of the 
 | **key** | A round or square control in a bottom bar — the send key, a transport key, a tab-bar key. | a button |
 | **button** (`YantraButton`) | The real thing, with three tones: **solid**, **soft**, **quiet**. | anything above |
 | **band** | A screen's rounded header block. Every screen has one. | a bar |
+| **page header** (`PageHeader`) | The shared large title + back circle, folding into a bar on scroll. What an ordinary screen has where the node page has a page band. | a band |
 | **bar** | A horizontal strip of controls at the bottom. Block bar, capture bar, tab bar. | a band |
 | **strip** | A transient horizontal row of *suggestions*, above a bar. | a bar |
 | **sheet** | A modal from the bottom: **due sheet**, **property sheet**, **assignee sheet**, **smart-list builder**. | a dialog |
