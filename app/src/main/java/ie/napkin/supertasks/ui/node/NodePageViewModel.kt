@@ -117,7 +117,11 @@ class NodePageViewModel(
         nodes.observe(nodeId)
             .map { current ->
                 if (current == null) emptyList()
-                else nodes.ancestors(nodeId).map { it.title?.takeIf { t -> t.isNotBlank() } ?: "Untitled" }
+                else nodes.ancestors(nodeId).map { row ->
+                    // The trail reads names, and a link in an ancestor's title is part of its name.
+                    // Unreduced it printed `[[…|^uuid]]` into the breadcrumb.
+                    Links.plain(row.title.orEmpty()).takeIf { it.isNotBlank() } ?: "Untitled"
+                }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

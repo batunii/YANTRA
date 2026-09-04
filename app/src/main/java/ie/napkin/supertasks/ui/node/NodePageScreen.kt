@@ -135,6 +135,7 @@ import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.components.ChipData
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.InlineStyle
+import ie.napkin.supertasks.ui.components.inlinePlain
 import ie.napkin.supertasks.ui.components.InlineTransformation
 import ie.napkin.supertasks.data.format.Links
 import ie.napkin.supertasks.ui.components.LinkSuggestions
@@ -998,6 +999,9 @@ private fun PageBand(
     val crumbCurrent = y.textSecondary
     var menu by remember { mutableStateOf(false) }
     var title by remember(node?.id) { mutableStateOf(node?.title.orEmpty()) }
+    // What a link in this title is called, for the places that show the name without a field to
+    // edit it in — see the collapsed row below.
+    val bandResolve = LocalLinkResolver.current
     Column(
         Modifier
             .fillMaxWidth()
@@ -1017,7 +1021,12 @@ private fun PageBand(
             )
             if (collapsed) {
                 Text(
-                    title.ifBlank { "Untitled" },
+                    // Reduced to its words. This is a plain Text with no transformation on it, so
+                    // a title holding a link showed the brackets and the whole UUID — the one
+                    // thing the link design promises is never seen. It was rare while folding took
+                    // a deliberate scroll; the keyboard folds the band now, so every task with a
+                    // link in its name showed its id the moment you typed on its page.
+                    inlinePlain(title, bandResolve).ifBlank { "Untitled" },
                     fontFamily = YantraDisplay,
                     fontSize = 16.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.2).sp,
                     color = y.textPrimary,
