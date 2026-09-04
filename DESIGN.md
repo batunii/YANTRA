@@ -193,7 +193,7 @@ reported is not.
 
 ---
 
-## 6. Shape
+## 6. Shape and reach
 
 One radius per idea, and they are small:
 
@@ -208,6 +208,37 @@ One radius per idea, and they are small:
 Buttons have three tones — `Solid`, `Soft`, `Quiet` — and one radius. A chip declines focus
 (`canFocus = false`): it is a switch, not a stop on the way through a form, and taking focus would
 pull the caret out of the field it is configuring.
+
+### Reach — where a control may sit
+
+> `Chrome.kt` — `PageHeader`
+
+A phone this size cannot be worked one-handed at the top. The thumb covers the bottom two thirds and
+the top corner not at all, so the screen has two zones and they are not interchangeable:
+
+| Zone | Holds | Never holds |
+|---|---|---|
+| Top third | the screen's name, and nothing else | anything you have to hit |
+| Bottom third | every control that matters | the thing you are reading |
+
+Three rules follow, and they are the whole of it:
+
+1. **A screen opens with its name set large, and the name is not a control.** It spends the
+   unreachable band on the one thing you only ever read. It folds into the bar on scroll — a
+   one-shot transition, so nothing is mid-fold at rest.
+2. **Nothing in the expanded band is tappable** except the back circle, which is a courtesy. The
+   real way back is the system gesture, which needs no target at all.
+3. **Actions go to the bottom** — the block bar, the capture bar, the tab bar, the now player, a
+   row's own play key. If a new control has nowhere at the bottom to live, that is a question about
+   the control, not about the bottom.
+
+`PageHeader` is this pattern for an ordinary screen. The node page keeps `PageBand` instead, which
+is the same shape carrying a document's furniture — an editable title, a task glyph, a breadcrumb,
+property pills, a linked row — and folds all of it. Home and the smart list have their own hero
+bands for the same reason. Everything else uses `PageHeader`, and a new screen should.
+
+This is why the focus stats page has no chart at the top and a column of play keys down the right:
+the diagram is read and the keys are pressed, so the diagram is where the thumb is not.
 
 ---
 

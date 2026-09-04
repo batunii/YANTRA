@@ -1,6 +1,19 @@
 package ie.napkin.supertasks.ui.components
 
 import androidx.compose.foundation.background
+import ie.napkin.supertasks.ui.theme.YantraDisplay
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -179,4 +192,94 @@ fun HeaderFold(inset: Dp = 22.dp) {
             .height(1.dp)
             .background(y.hairline),
     )
+}
+
+/**
+ * The large title a screen opens with, and the compact bar it becomes.
+ *
+ * ## Why the top of the screen is mostly empty
+ *
+ * A phone this size cannot be operated one-handed at the top. The thumb reaches the bottom two
+ * thirds comfortably and the top corner not at all, which is the whole reason One UI puts a screen's
+ * name in a tall band that scrolls away and its controls near the bottom: the part you cannot reach
+ * is spent on something you only ever read.
+ *
+ * So the rule this encodes, and the one to keep when adding a screen:
+ *
+ *  - **The title is big, and it is not a control.** It occupies the unreachable band on purpose.
+ *  - **Nothing in the expanded band is tappable** except the back circle, which is a courtesy —
+ *    the real way back is the system gesture, which needs no target at all.
+ *  - **Actions live at the bottom**, in the bar or the cluster, where the thumb already is.
+ *
+ * [collapsed] is the screen's own answer, because only the screen knows what it scrolls: a list
+ * hands over its `firstVisibleItemIndex`, a `verticalScroll` its offset. Folding is a one-shot
+ * transition either way — the band is never mid-animation at rest, which the motion law requires.
+ *
+ * The node page keeps its own `PageBand` rather than using this. A page's title is editable, it
+ * carries a task glyph, a breadcrumb, property pills and a linked row, and it folds all of them —
+ * it is this pattern with a document's worth of extra furniture, not a variant of this component.
+ */
+@Composable
+fun PageHeader(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    collapsed: Boolean = false,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    val y = Yantra.colors
+    Column(Modifier.fillMaxWidth().background(y.page)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                NavCircle(
+                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    onClick = onBack,
+                    iconSize = 22.dp,
+                )
+            }
+            // Collapsed, the name moves up here so the screen never goes unlabelled. It is the
+            // same string at a size that fits a bar, not a second title.
+            AnimatedVisibility(
+                visible = collapsed,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    title,
+                    fontFamily = YantraDisplay,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = (-0.3).sp,
+                    color = y.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            if (!collapsed) Spacer(Modifier.weight(1f))
+            actions()
+        }
+        AnimatedVisibility(
+            visible = !collapsed,
+            enter = expandVertically(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+            exit = shrinkVertically(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
+        ) {
+            Text(
+                title,
+                fontFamily = YantraDisplay,
+                fontSize = 32.sp,
+                lineHeight = 38.sp,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.6).sp,
+                color = y.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 20.dp),
+            )
+        }
+    }
 }

@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +61,7 @@ import ie.napkin.supertasks.data.sync.RepoCheck
 import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.ButtonTone
 import ie.napkin.supertasks.ui.components.YantraButton
@@ -328,24 +330,17 @@ fun SignInScreen(nav: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Back",
-                onClick = { nav.popBackStack() },
-                iconSize = 20.dp,
-            )
-            Spacer(Modifier.width(12.dp))
-            Text("GitHub", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
-        }
+        val pageScroll = rememberScrollState()
+        // Folds as soon as the page has actually moved. A threshold rather than
+        // `> 0` because a scroll state twitches by a pixel on layout, and a band
+        // that folds and unfolds on its own is the texture the motion law forbids.
+        val collapsed by remember { derivedStateOf { pageScroll.value > 80 } }
+        PageHeader("GitHub", onBack = { nav.popBackStack() }, collapsed = collapsed)
 
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(pageScroll)
                 .padding(horizontal = 20.dp)
                 .padding(top = 8.dp, bottom = 40.dp),
         ) {
