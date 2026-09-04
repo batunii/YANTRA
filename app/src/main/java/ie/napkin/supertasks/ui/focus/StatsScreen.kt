@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.FocusSessionEntity
+import ie.napkin.supertasks.data.db.counts
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
@@ -68,7 +69,7 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
 
     /** History screens = plain queries over focus_session (per-task, per-day, totals). */
     val stats: StateFlow<Stats> = container.focus.all()
-        .map { sessions -> build(sessions.filter { it.endedAt != null }) }
+        .map { sessions -> build(sessions) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Stats())
 
     private suspend fun build(sessions: List<FocusSessionEntity>): Stats {
@@ -77,19 +78,24 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
         fun dayOf(s: FocusSessionEntity): LocalDate =
             Instant.ofEpochMilli(s.startedAt).atZone(zone).toLocalDate()
 
-        // Every session that produced time, whatever it was called at the end. Filtering on
-        // "completed" discarded the interrupted ones, which is exactly the time the ledger is for.
-        val completed = sessions.filter { it.actualSecs != null }
-        val todaySessions = completed.filter { dayOf(it) == today }
+        // The sessions that count — see `counts`, which is the one place that rule lives.
+        //
+        // This used to filter on `endedAt` and then on `actualSecs`, which caught the in-flight
+        // session and missed the mis-tap: a day of four accidental taps read as four sessions here,
+        // and the seconds they logged went into the totals beside them. Interruptions still count,
+        // which is the older half of the same rule — the ledger measures time given, not whether
+        // the session behaved.
+        val counted = sessions.filter { it.counts }
+        val todaySessions = counted.filter { dayOf(it) == today }
         val weekStart = today.minusDays(6)
 
         val days = (0..6).map { offset ->
             val date = today.minusDays((6 - offset).toLong())
-            val daySessions = completed.filter { dayOf(it) == date }
+            val daySessions = counted.filter { dayOf(it) == date }
             DayStat(date, daySessions.size, daySessions.sumOf { it.actualSecs ?: 0 })
         }
 
-        val topTasks = completed
+        val topTasks = counted
             .groupBy { it.nodeId }
             .map { (nodeId, list) ->
                 val title = Links.plain(container.nodes.byId(nodeId)?.title.orEmpty()).ifBlank { "Untitled task" }
@@ -98,12 +104,12 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
             .sortedByDescending { it.totalSecs }
             .take(8)
 
-        val weekCompleted = completed.filter { dayOf(it) >= weekStart }
+        val weekCounted = counted.filter { dayOf(it) >= weekStart }
         return Stats(
             todaySecs = todaySessions.sumOf { it.actualSecs ?: 0 },
             todayCount = todaySessions.size,
-            weekSecs = weekCompleted.sumOf { it.actualSecs ?: 0 },
-            weekCount = weekCompleted.size,
+            weekSecs = weekCounted.sumOf { it.actualSecs ?: 0 },
+            weekCount = weekCounted.size,
             days = days,
             topTasks = topTasks,
         )

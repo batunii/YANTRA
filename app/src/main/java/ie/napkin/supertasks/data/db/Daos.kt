@@ -423,6 +423,14 @@ interface FocusDao {
     )
     fun forNode(nodeId: String): Flow<List<FocusSessionEntity>>
 
+    /**
+     * Every session, unfiltered — the only read on this table that is.
+     *
+     * Every other query here says `outcome <> 'discarded'` in the SQL. This one cannot, because its
+     * callers want the rows in order to reduce them in Kotlin, and a mis-tap is not the only thing
+     * they have to exclude: an in-flight session has no `actual_secs` yet either. So the caller owes
+     * both, and owes them under one name — see [ie.napkin.supertasks.data.db.counts].
+     */
     @Query("SELECT * FROM focus_session ORDER BY started_at DESC")
     fun all(): Flow<List<FocusSessionEntity>>
 
