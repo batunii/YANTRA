@@ -12,6 +12,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -175,9 +178,8 @@ import androidx.compose.runtime.Stable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val vm: NodePageViewModel = viewModel(key = "node-$nodeId") { NodePageViewModel(container(), nodeId) }
@@ -239,6 +241,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // A freshly-added task auto-focuses for typing (since tapping a row now opens it).
     var justCreatedId by remember { mutableStateOf<String?>(null) }
 
+    val imeVisible = WindowInsets.isImeVisible
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -310,6 +313,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     //    the header once the list has hit the top and has nothing left to give (without this the
     //    header can latch collapsed with no way back);
     //  - latch across a hysteresis band, so a finger resting near the threshold doesn't flutter.
+    // Whether the caret is in the page's *title*, which is the one field that lives inside the
+    // band. Folding the band while it is being typed into would take the field away mid-word.
+    var titleFocused by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val collapsePx = with(LocalDensity.current) { 56.dp.toPx() }
     var dragged by remember { mutableFloatStateOf(0f) }
@@ -361,7 +367,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         PageBand(
             node = current,
             isTask = isTask,
-            collapsed = collapsed,
+            // Folded by a scroll, and folded by the keyboard.
+            //
+            // The band and the document are siblings in one column, so the band's height is space
+            // the page does not get — and with the keyboard up there is very little to go round.
+            // On a task whose name runs to three lines the document was about two lines tall, and
+            // there was no way out of it: folding needs a scroll, and there was nothing left to
+            // scroll. Raising the keyboard is an unambiguous statement that you are writing in the
+            // page rather than reading its header, so the header gets out of the way.
+            //
+            // Safe against the oscillation the note above warns about: IME visibility is an input
+            // from outside the layout, not a reading of where the list ended up, so it cannot be
+            // changed by the thing it changes.
+            collapsed = collapsed || (imeVisible && !titleFocused),
             crumbs = crumbs,
             metaTotal = taskChildren,
             metaDone = doneChildren,
@@ -369,6 +387,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onFocus = { nav.navigate(Routes.focus(nodeId)) },
             onDelete = { deletingPage = true },
             onRename = vm::renamePage,
+            onTitleFocusChanged = { titleFocused = it },
             onToggleDone = { done -> vm.setDone(nodeId, done) },
             onToggleInProgress = { on -> vm.setInProgress(nodeId, on) },
             properties = {
@@ -970,6 +989,7 @@ private fun PageBand(
     onFocus: () -> Unit,
     onDelete: () -> Unit,
     onRename: (String) -> Unit,
+    onTitleFocusChanged: (Boolean) -> Unit,
     onToggleDone: (Boolean) -> Unit,
     onToggleInProgress: (Boolean) -> Unit,
     properties: @Composable () -> Unit,
@@ -1170,8 +1190,25 @@ private fun PageBand(
                             )
                         },
                         onTextLayout = { titleLayout = it },
+                        /**
+                         * A name is allowed three lines, and no more.
+                         *
+                         * The band is a sibling of the page in one column, and the page is what is
+                         * left over — so every line the title grows is a line the document loses.
+                         * At four lines of 32sp, with the keyboard up, the document you are typing
+                         * into was about one line tall: the band, the toolbar and the keyboard had
+                         * taken the screen between them, and there was no way out of it, because
+                         * folding the band needs a scroll and there was nothing left to scroll.
+                         *
+                         * The clamp is on the *field*, not on a Text, so nothing is lost: a longer
+                         * name still scrolls inside the three lines while it is being edited, and
+                         * the collapsed bar carries it whole. Three rather than two because two is
+                         * a tight allowance for something that is genuinely called this.
+                         */
+                        maxLines = 3,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .onFocusChanged { onTitleFocusChanged(it.isFocused) }
                             .followLinks(node?.id, { titleLayout }, { titleLinks }, titleOpen),
                         decorationBox = { inner ->
                             Box {
