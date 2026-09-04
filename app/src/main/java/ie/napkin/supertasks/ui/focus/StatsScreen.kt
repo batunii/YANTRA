@@ -21,11 +21,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +43,7 @@ import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.data.db.counts
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.isReducedMotion
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.durationLabel
 import ie.napkin.supertasks.ui.container
@@ -63,6 +67,51 @@ data class Stats(
     val weekCount: Int = 0,
     val days: List<DayStat> = emptyList(),
     val topTasks: List<TaskStat> = emptyList(),
+)
+
+/**
+ * The two facts the diagram at the top of this page draws: how much you did today, and how much of
+ * the week you showed up for.
+ *
+ * Derived from [Stats] rather than queried again, and that is the whole point of it being a data
+ * class with no logic of its own. The window (seven days including today) and the rule for which
+ * sessions count (see `counts`) are already settled once in [StatsViewModel.build], and the bars
+ * and the cards on this same page read the same answers. A second query here could drift from the
+ * numbers printed inches below the marks, and nothing on screen would reveal which one was lying.
+ */
+data class WeekReview(
+    /** Days in the window with anything on them — one trikona each. */
+    val activeDays: Int = 0,
+    /** Sessions today — one ring each. */
+    val todayCount: Int = 0,
+) {
+    val isEmpty: Boolean get() = activeDays == 0
+
+    /**
+     * The review in the shape [strataMarks] reads: one trikona per active day, then today's rings
+     * after the last of them. A day with no rings of its own is a zero here, which is what puts
+     * the trikonas next to each other.
+     *
+     * **Not the week's full per-day counts**, which is the other reading of a weekly review and was
+     * built first. The strata band is 4.4 units of a 28-unit design space, so fifteen rings — an
+     * ordinary week once every task's sessions are pooled — sit 0.31u apart against a 0.16u stroke
+     * and read as one moiré disc. A mark you cannot count is not a mark, and counting them is the
+     * glyph's whole claim.
+     *
+     * The cost is accepted rather than hidden: several trikonas in a row open nothing, where the
+     * grammar says a trikona opens a day, and the week's earlier sessions are not drawn. What is
+     * bought is that both numbers stay legible — today's count is bounded by a day, the trikonas by
+     * seven — which is what a diagram at the top of a stats page is for. The per-day detail it
+     * gives up is exactly what the bars below it already show.
+     */
+    val strataDayCounts: List<Int> get() =
+        if (activeDays == 0) emptyList() else List(activeDays - 1) { 0 } + todayCount
+}
+
+/** [WeekReview] read straight off the page's own numbers. */
+fun weekReview(stats: Stats): WeekReview = WeekReview(
+    activeDays = stats.days.count { it.completed > 0 },
+    todayCount = stats.todayCount,
 )
 
 class StatsViewModel(private val container: AppContainer) : ViewModel() {
@@ -146,6 +195,7 @@ fun StatsScreen(nav: NavHostController) {
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
+            item(key = "week-yantra") { WeekReviewPanel(weekReview(stats)) }
             item(key = "totals") {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 12.dp)) {
                     StatCard("Today", stats.todayCount, durationLabel(stats.todaySecs) + " focused", accent = true, modifier = Modifier.weight(1f))
@@ -191,6 +241,51 @@ fun StatsScreen(nav: NavHostController) {
             }
             item(key = "bottom") { Spacer(Modifier.height(24.dp)) }
         }
+    }
+}
+
+/**
+ * The week, drawn — the diagram this page opens with.
+ *
+ * The same glyph the live session sits inside, reading the same way, with no arc on it because
+ * nothing is running: a trikona for each day you focused, then today's sessions as rings outside
+ * them. [WeekReview.strataDayCounts] says what it leaves out and why.
+ *
+ * Only one number is written underneath, and only the one nothing else on the page says. Today's
+ * count is already the card directly below this, and printing it twice a thumb's width apart would
+ * make the diagram look like a caption for the cards rather than the thing they are itemising.
+ *
+ * Set in the text voice, not mono: mono is the instrument voice and reads as a number being
+ * *watched* — the countdown on the focus screen is; a week you have already lived is reported.
+ */
+@Composable
+private fun WeekReviewPanel(week: WeekReview) {
+    val y = Yantra.colors
+    val context = LocalContext.current
+    val reduced = remember { isReducedMotion(context) }
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        YantraFocusGlyph(
+            dayCounts = week.strataDayCounts,
+            // Nothing is running, so there is no arc to sweep. This is the one state of this glyph
+            // where nothing on it moves once it has arrived, which is what a review should do.
+            sessionProgress = null,
+            onBreak = false,
+            darkTheme = y.isDark,
+            reducedMotion = reduced,
+            // No haptic either: a thud is the reward for depositing a session, and nothing is being
+            // deposited by opening a screen.
+            modifier = Modifier.size(208.dp),
+        )
+        Text(
+            if (week.isEmpty) "No focus in the last 7 days"
+            else "Focused on ${week.activeDays} of the last 7 days",
+            style = MaterialTheme.typography.bodySmall,
+            color = y.textMuted,
+            modifier = Modifier.padding(top = 14.dp),
+        )
     }
 }
 
