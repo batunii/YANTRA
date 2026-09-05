@@ -23,7 +23,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /** Clean shapes the shape-tool can draw and the recognizer can snap freehand strokes to. */
-enum class ShapeKind { LINE, RECTANGLE, ELLIPSE, ARROW }
+enum class ShapeKind { LINE, RECTANGLE, ELLIPSE, ARROW, TRIANGLE }
 
 /**
  * Ink stays ink: the payload is the Ink API's own serialized StrokeInputBatch (never text),
@@ -97,6 +97,36 @@ object StrokeCodec {
         return out.toByteArray()
     }
 
+    /**
+     * The same stroke, shifted.
+     *
+     * Goes through the header rather than through a decoded [Stroke], so the brush comes out the
+     * far side byte-for-byte what it was: family, colour, size and epsilon are copied across
+     * untouched. A stroke that has been moved is the same ink in a different place, and nothing
+     * about how it was drawn should change because it was picked up.
+     */
+    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray {
+        DataInputStream(ByteArrayInputStream(data)).use { dis ->
+            val headerBytes = ByteArray(dis.readInt())
+            dis.readFully(headerBytes)
+            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
+            val inputs = StrokeInputBatch.decode(dis)
+            val moved = MutableStrokeInputBatch()
+            for (i in 0 until inputs.size) {
+                val p = inputs[i]
+                moved.add(
+                    p.toolType, p.x + dx, p.y + dy, p.elapsedTimeMillis,
+                    p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
+                )
+            }
+            val stroke = Stroke(
+                brush = brush(header.family, header.color, header.size, header.epsilon),
+                inputs = moved.toImmutable(),
+            )
+            return encode(stroke, header.family)
+        }
+    }
+
     fun decode(data: ByteArray): Stroke {
         DataInputStream(ByteArrayInputStream(data)).use { dis ->
             val headerBytes = ByteArray(dis.readInt())
@@ -115,6 +145,29 @@ object StrokeCodec {
      * The result commits through the normal stroke path, so shapes stay ink: erasable,
      * theme-aware, persisted identically to freehand.
      */
+    /**
+     * A closed polygon through the given corners.
+     *
+     * Shapes whose form a bounding box cannot describe come through here instead of [shapeInputs].
+     * A triangle is the plain case: the same box holds a left-leaning, right-leaning or upright one,
+     * so snapping to a box would be snapping away the thing that was drawn.
+     */
+    fun polygonInputs(vx: FloatArray, vy: FloatArray): StrokeInputBatch {
+        val pts = ArrayList<FloatArray>()
+        for (i in vx.indices) {
+            val j = (i + 1) % vx.size
+            sampleLine(pts, vx[i], vy[i], vx[j], vy[j])
+        }
+        pts.add(floatArrayOf(vx[0], vy[0]))
+        val batch = MutableStrokeInputBatch()
+        var t = 0L
+        for (p in pts) {
+            batch.add(InputToolType.UNKNOWN, p[0], p[1], t)
+            t += 6L
+        }
+        return batch.toImmutable()
+    }
+
     fun shapeInputs(kind: ShapeKind, x0: Float, y0: Float, x1: Float, y1: Float): StrokeInputBatch {
         val pts = ArrayList<FloatArray>()
         val minX = min(x0, x1); val minY = min(y0, y1)
@@ -135,6 +188,14 @@ object StrokeCodec {
                     val a = (i.toFloat() / steps) * (2f * Math.PI.toFloat())
                     pts.add(floatArrayOf(cx + rx * cos(a), cy + ry * sin(a)))
                 }
+            }
+            ShapeKind.TRIANGLE -> {
+                // Only reached if something asks for a triangle by box alone; the recogniser sends
+                // real corners through polygonInputs. Upright and centred is the honest default.
+                val cx = (minX + maxX) / 2f
+                sampleLine(pts, cx, minY, maxX, maxY)
+                sampleLine(pts, maxX, maxY, minX, maxY)
+                sampleLine(pts, minX, maxY, cx, minY)
             }
             ShapeKind.ARROW -> {
                 sampleLine(pts, x0, y0, x1, y1)
@@ -192,6 +253,43 @@ object StrokeCodec {
     }
 
     /** Envelope of the raw input points — good enough for future canvas culling / hit-tests. */
+    /**
+     * Whether [stroke] is inside the closed path [px]/[py], and so caught by a lasso.
+     *
+     * **Most of it, not any of it.** A stroke that merely crosses the loop is not being selected —
+     * you drew the loop around what you wanted, and a word whose descender happens to poke into the
+     * circle should not come with it. Requiring a majority of the stroke's own points inside makes
+     * the loop mean what it looks like it means, and makes a near-miss a near-miss rather than a
+     * surprise.
+     *
+     * Ray casting, per point. The polygon is whatever the finger drew, so it is not convex and
+     * cannot be treated as a rectangle.
+     */
+    fun strokeInside(stroke: Stroke, px: FloatArray, py: FloatArray): Boolean {
+        val inputs = stroke.inputs
+        val n = inputs.size
+        if (n == 0 || px.size < 3) return false
+        var inside = 0
+        for (i in 0 until n) {
+            if (pointInPolygon(inputs[i].x, inputs[i].y, px, py)) inside++
+        }
+        return inside * 2 > n
+    }
+
+    private fun pointInPolygon(x: Float, y: Float, px: FloatArray, py: FloatArray): Boolean {
+        var hit = false
+        var j = px.size - 1
+        for (i in px.indices) {
+            val yi = py[i]; val yj = py[j]
+            if ((yi > y) != (yj > y)) {
+                val t = (x - px[i]) < (px[j] - px[i]) * (y - yi) / (yj - yi)
+                if (t) hit = !hit
+            }
+            j = i
+        }
+        return hit
+    }
+
     fun bbox(inputs: StrokeInputBatch): FloatArray? {
         if (inputs.size == 0) return null
         var minX = Float.MAX_VALUE
