@@ -124,7 +124,7 @@ its own note in `DESIGN.md`.
 | Say | Is |
 |---|---|
 | **top row** | Back circle · breadcrumb · timer circle · options — always visible. |
-| **breadcrumb** | `Workspace / Inbox`. Root → parent, never the page itself. |
+| **breadcrumb** | `Personal / Inbox`. The workspace by name, then root → parent, never the page itself. |
 | **back circle**, **timer circle**, **options** | The three `NavCircle`s. "Circle" is the shape's name — see `Chrome.kt`. |
 | **title row** | The task glyph plus the big editable title. |
 | **page title** | The title itself. Editable in place; renaming writes the file. |
@@ -188,8 +188,14 @@ notice for rules pointing at repos this device has not cloned.
 **stat strip** (four **stat cells**: Today · Rhythm · Week · Per day) and the **breakdown**: a
 **span toggle** (Week / All time) on the section label, **cut chips** (Tasks / Lists / Workspaces),
 a **scope crumb** once a list or workspace has been opened into its tasks,
-and **breakdown rows**, each led by a **share mark** — the bhupura filled from the left to that
-row's share of the leader — and ending in a **play key** on task rows.
+and **breakdown rows**, each led by the task's own **task glyph** — open, on the go or done — and
+ending in a **play key**. A list or workspace row has no glyph: it is a sum over many tasks and has
+no state of its own.
+
+There was briefly a **share mark** here — the bhupura filled to that row's share of the leader. It
+was removed for saying nothing: the rows are already ranked and each states its exact time, so it
+was relative size told a third time. The glyph replaced it because task state is the one thing a
+row of this page could not otherwise tell you — whether all those hours finished anything.
 
 While a session runs, the week yantra sweeps the **live arc** and names the session beneath it;
 tapping it opens the running timer. The **day bars** are gone: the trikonas already said which days

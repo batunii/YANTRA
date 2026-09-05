@@ -209,6 +209,53 @@ Buttons have three tones — `Solid`, `Soft`, `Quiet` — and one radius. A chip
 (`canFocus = false`): it is a switch, not a stop on the way through a form, and taking focus would
 pull the caret out of the field it is configuring.
 
+### The two-line row
+
+> `NodePageScreen.kt` — `TextualBlockRow`
+
+A task row on a list is **exactly two lines, whatever it holds**: the title on one, and one line of
+meta beneath it in the instrument voice. Both handoffs specify this — "the two-line grammar" — and
+the reason is what happens without it. Meta used to be chips: one rode up onto the title line, two
+or three sat in a wrapping cloud below, a long title took a second line of its own. Five tasks could
+be five heights, and a list read as a ragged pile.
+
+**Due sits at the end of the title line**, in the voice its chip wears everywhere else: crimson past,
+accent today, neutral further out. A day list is scanned for dates, so the date goes where the eye
+already is.
+
+**The sub-line is what the task is:** labels as `#name`, each in its own hue; then a deadline; then
+the list it came from. It ellipsises from the right, so the list goes first — it is the least urgent
+thing on the line and one tap away on the task itself.
+
+**What a row does not carry.** Assignee, session count and the workspace are all real facts, and
+none of them changes what you do next in a day list. They were crowding out the tags, which do. The
+rule is the one every list app converges on: a row carries what the next decision needs — what the
+task is, and when it is due — and the rest lives one tap away.
+
+**The workspace is a hue, not a word.** Written on every row it is the same word five times, taking
+the space the tags needed. Grouping by it is the textbook fix and it costs too much here: a view like
+Today is ordered by what is most pressing, and cutting it into per-repository runs puts an urgent
+task in one below a quiet one in another — the ordering is the point of the view. So the repository
+rides on the list name the row already prints, tinted by `LabelPalette.defaultFor(name)`: one piece
+of text carrying two facts at the width of one, which is what Reminders does with a list's colour.
+Neutral when only one repository is open, because a colour that always means the same thing means
+nothing.
+
+Character comes from colour, not from a box drawn round every value. The chips went because five of
+them read as five buttons and wrapped into a second row; the hues survived them.
+
+### One margin
+
+> `Panes.kt` — `PAGE_MARGIN`
+
+**22dp down both sides of a phone**, and every list of tasks is that wide. It had drifted to four
+values — 14dp on a list and a smart list, 18dp on Home, 20dp on stats and the archive — which is the
+same row drawn four widths, and walking between those screens made the content appear to breathe.
+The large title keeps the same edge, so a screen's name and its first row line up.
+
+The document on a task's page is the one exception, and deliberately: its text sits inside the drag
+gutter that belongs to the blocks, and that gutter *is* the margin there.
+
 ### Reach — where a control may sit
 
 > `Chrome.kt` — `PageHeader`
@@ -226,8 +273,12 @@ Three rules follow, and they are the whole of it:
 1. **A screen opens with its name set large, and the name is not a control.** It spends the
    unreachable band on the one thing you only ever read. It folds into the bar on scroll — a
    one-shot transition, so nothing is mid-fold at rest.
-2. **Nothing in the expanded band is tappable** except the back circle, which is a courtesy. The
-   real way back is the system gesture, which needs no target at all.
+2. **No *chrome* in the expanded band is tappable** except the back circle, which is a courtesy —
+   the real way back is the system gesture, which needs no target at all. The distinction is
+   between chrome and content: a page band carries the page's own title, glyph, properties and
+   links, and those are the thing you came for, not navigation furniture put where it fits. What
+   the rule forbids is a *control* parked up there because there was room — a settings cog in the
+   top-right corner is the clearest case, being the one pixel a thumb cannot reach.
 3. **Actions go to the bottom** — the block bar, the capture bar, the tab bar, the now player, a
    row's own play key. If a new control has nowhere at the bottom to live, that is a question about
    the control, not about the bottom.
