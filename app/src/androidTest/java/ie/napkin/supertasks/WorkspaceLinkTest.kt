@@ -152,7 +152,7 @@ class WorkspaceLinkTest {
     }
 
     @Test
-    fun attachingRefusesARemoteThatAlreadyHasTasks() {
+    fun attachingAsksAboutARemoteThatAlreadyHasTasks() {
         val at = remote()
         seedRemote(at, "Theirs", "their task")
 
@@ -160,12 +160,13 @@ class WorkspaceLinkTest {
         val store = workspace(d, "Personal", "my task")
         val result = WorkspaceLinker(StubApi()).attach(store, "batunii/tasks", "tok")
 
-        // Two real sets of work with no common ancestor. Rebasing one onto the other would
-        // interleave them; picking a winner would silently delete the loser.
-        // Disjoint histories: an orphan branch made on another device shares no commit with ours,
-        // which is exactly what tells this case apart from re-attaching our own workspace.
-        assertTrue("should have refused: $result", result is LinkResult.Refused)
-        assertTrue((result as LinkResult.Refused).reason.contains("separate workspace"))
+        // Two task histories with no common ancestor. They may be two real sets of work, or one
+        // set and a phone that has been reinstalled since it last saw it — identical from here and
+        // opposite in what they want. So this reports the situation rather than deciding it.
+        //
+        // It used to be a refusal telling the user to add their own repository as a second
+        // workspace, which is how someone ends up with two workspaces both called Personal.
+        assertTrue("should have asked: $result", result is LinkResult.HasTasks)
 
         // The half that matters: nothing of the user's was touched on the way to saying no.
         assertTrue(titlesOn(at).none { it.contains("my task") })
@@ -236,6 +237,52 @@ class WorkspaceLinkTest {
         assertTrue(
             "the existing tasks were cleared",
             d.resolve("pages").listFiles().orEmpty().any { it.readText().contains("do not delete me") },
+        )
+    }
+
+    @Test
+    fun adoptingTakesTheRemoteAndNothingIsInterleaved() {
+        // The reinstall: the repository is yours, and this device has nothing on it worth keeping.
+        // Answering the ask with adopt takes the branch as it stands — the same checkout-and-reset
+        // that joining a repository has always done, reached from the other door.
+        val at = remote()
+        seedRemote(at, "Mine", "the task I already had")
+
+        val d = local("mine", at)
+        val store = workspace(d, "Personal", "starter content")
+        val linker = WorkspaceLinker(StubApi())
+
+        assertTrue(linker.attach(store, "batunii/tasks", "tok") is LinkResult.HasTasks)
+        val adopted = linker.attach(store, "batunii/tasks", "tok", adopt = true)
+
+        assertTrue("should have adopted: $adopted", adopted is LinkResult.Ok)
+        assertTrue((adopted as LinkResult.Ok).adopted)
+
+        // What was on the remote is now here, and the local content did not survive to be
+        // interleaved with it — which is the whole difference between adopting and rebasing.
+        val pages = d.resolve("pages").listFiles().orEmpty().map { it.readText() }
+        assertTrue("the remote's tasks did not arrive", pages.any { it.contains("the task I already had") })
+        assertTrue("local content was merged in rather than replaced", pages.none { it.contains("starter content") })
+    }
+
+    @Test
+    fun askingChangesNothingSoTheAnswerCanStillBeNo() {
+        // The ask has to be free. Someone who is shown the question and backs out must find their
+        // tasks exactly as they left them, on both sides.
+        val at = remote()
+        seedRemote(at, "Theirs", "their task")
+
+        val d = local("mine", at)
+        val store = workspace(d, "Personal", "my task")
+        val linker = WorkspaceLinker(StubApi())
+
+        repeat(3) { assertTrue(linker.attach(store, "batunii/tasks", "tok") is LinkResult.HasTasks) }
+
+        assertTrue(titlesOn(at).none { it.contains("my task") })
+        assertTrue(titlesOn(at).any { it.contains("their task") })
+        assertTrue(
+            "the local tasks were disturbed by being asked about",
+            d.resolve("pages").listFiles().orEmpty().any { it.readText().contains("my task") },
         )
     }
 

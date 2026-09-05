@@ -12,11 +12,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -49,7 +51,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -110,17 +115,26 @@ fun DueSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
+        // The sheet's own inset, applied per child rather than to the column.
+        //
+        // The calendar is the reason. M3's DatePicker lays its month grid out at a fixed size —
+        // seven accessibility-sized cells inside its own padding — and does not shrink to fit; give
+        // it less room than that and the seventh column is simply cut off at the clip edge, with the
+        // selection indicator still drawn for the width the cell was *supposed* to have (which is
+        // why the selected Saturday read as a tall thin sliver rather than a circle). So the
+        // calendar gets the full width of the sheet and scales down as one piece if even that is
+        // not enough; everything else is inset the normal amount.
+        val pad = Modifier.padding(horizontal = 20.dp)
         Column(
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Due", style = MaterialTheme.typography.titleLarge, color = y.textPrimary)
+            Text("Due", style = MaterialTheme.typography.titleLarge, color = y.textPrimary, modifier = pad)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(pad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
                     "Today" to LocalDate.now(),
                     "Tomorrow" to LocalDate.now().plusDays(1),
@@ -134,11 +148,13 @@ fun DueSheet(
                 }
             }
 
-            DatePicker(state = dateState, showModeToggle = false, title = null, headline = null)
+            FitsWidth(needs = CALENDAR_WIDTH) {
+                DatePicker(state = dateState, showModeToggle = false, title = null, headline = null)
+            }
 
             // Time row
             Row(
-                Modifier
+                pad
                     .fillMaxWidth()
                     .clickable { showTimePicker = true }
                     .padding(vertical = 10.dp),
@@ -160,7 +176,7 @@ fun DueSheet(
             }
 
             // Reminder row
-            Box {
+            Box(pad) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -187,7 +203,7 @@ fun DueSheet(
             }
 
             Row(
-                Modifier.fillMaxWidth(),
+                pad.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -234,6 +250,38 @@ fun DueSheet(
             },
             dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/**
+ * The width M3's date picker needs before it starts cutting columns off: seven cells at the
+ * accessibility-recommended size, inside the picker's own horizontal padding.
+ */
+private val CALENDAR_WIDTH = 48.dp * 7 + 12.dp * 2
+
+/**
+ * Lays [content] out at [needs] and scales the whole thing down if the parent is narrower.
+ *
+ * Scaling rather than squeezing, because the thing this exists for — a calendar grid — divides a
+ * fixed width into seven equal columns and clips whatever will not fit rather than dividing what it
+ * is actually given. Shrinking it as one piece keeps every column, keeps each selection indicator
+ * concentric with its own number, and keeps the touch targets where they are drawn (a graphics
+ * layer transform applies to hit testing too). At or above [needs] this is a plain box.
+ */
+@Composable
+private fun FitsWidth(needs: Dp, content: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val scale = (maxWidth / needs).coerceAtMost(1f)
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .requiredWidth(needs)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                },
+        ) { content() }
     }
 }
 

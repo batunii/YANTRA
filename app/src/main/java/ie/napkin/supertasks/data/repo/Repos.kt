@@ -19,6 +19,7 @@ import ie.napkin.supertasks.data.filter.FilterCompiler
 import ie.napkin.supertasks.data.filter.completedVariant
 import ie.napkin.supertasks.data.filter.FilterJson
 import ie.napkin.supertasks.data.filter.SortSpec
+import ie.napkin.supertasks.data.filter.workspacesNamed
 import ie.napkin.supertasks.data.filter.deriveApplyOnCreate
 import ie.napkin.supertasks.data.rank.Rank
 import ie.napkin.supertasks.data.format.Block
@@ -70,6 +71,17 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
     fun observe(id: String) = dao.observe(id)
     suspend fun byId(id: String) = dao.byId(id)
+    fun byIds(ids: List<String>) = dao.byIds(ids)
+
+    /**
+     * Somewhere a `[[` link could point, across every open workspace.
+     *
+     * A blank query is not "everything" — it is "the things worth offering before anyone has typed
+     * anything", which SQL's `LIKE '%%'` already answers, ordered by the same rules. So the empty
+     * case needs no branch here and the strip is useful the moment the brackets are typed.
+     */
+    suspend fun searchLinkTargets(query: String, limit: Int = 12) =
+        dao.searchLinkTargets(query.trim(), limit)
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
     fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)
@@ -107,7 +119,22 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     }
 
     /** Create a Home group/banner (organizational container for lists & smart lists). */
-    suspend fun createGroup(title: String): String = ws.primary().createTopLevel(NodeType.GROUP, title)
+    suspend fun createGroup(title: String, workspaceId: String? = null): String =
+        writerFor(workspaceId).createTopLevel(NodeType.GROUP, title)
+
+    /**
+     * The writer for a workspace a caller has chosen, for the one case with nothing to infer from.
+     *
+     * Everything below the top level routes by its parent ([Workspaces.writerFor]) — a block belongs
+     * to whichever repo its page is in, and there is no choice to make. A list or a group has no
+     * parent, so the workspace is a real decision, and until now it was not one: every top-level
+     * create went to [Workspaces.primary], which is the local workspace by construction. Adding a
+     * second repo gave you no way to put anything in it.
+     *
+     * Null still means primary, for callers with no opinion. The UI always has one.
+     */
+    private fun writerFor(workspaceId: String?) =
+        workspaceId?.let { ws.writer(it) } ?: ws.primary()
 
     /** Move a list/smart list into a group (or back to top level when [groupId] is null). */
     suspend fun moveToGroup(id: String, groupId: String?) {
@@ -145,8 +172,10 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         title: String?,
         afterId: String? = null,
         indent: Int = 0,
+        /** Which repo a *top-level* node is born into. Ignored otherwise — the parent decides. */
+        workspaceId: String? = null,
     ): String =
-        if (parentId == null) ws.primary().createTopLevel(type, title)
+        if (parentId == null) writerFor(workspaceId).createTopLevel(type, title)
         else ws.writerFor(parentId).addBlock(parentId, type, title, afterId, indent)
 
 
@@ -196,16 +225,76 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * property writes afterwards leaves a task with less on it rather than no task at all. Capture is
      * the thing that must not be lost; a due date is a nicety by comparison.
      */
+    /**
+     * Where a captured line goes: the list it named, else where it was typed, else nothing.
+     *
+     * A named list wins over wherever this was typed: saying where it goes is the whole point of
+     * saying it. A name the workspace does not have is made, rather than refused — otherwise filing
+     * into a new list means leaving capture to go and create it first, which is the interruption
+     * this whole path exists to remove. The field offers the lists that already match before it
+     * comes to this, so a typo is visible rather than silently made real.
+     */
+    private suspend fun destinationFor(
+        parsed: ie.napkin.supertasks.data.capture.Captured,
+        lists: List<NodeEntity>,
+        parentId: String?,
+    ): String? = parsed.list
+        ?.let { name ->
+            lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
+                ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
+        }
+        ?: parentId
+
+    /**
+     * Turns every `[[Call Bob]]` on the line into the id it names, where exactly one task answers.
+     *
+     * **Exactly one.** Two tasks called "Call Bob" is an ordinary Tuesday, and picking either is
+     * how a link comes to point somewhere nobody meant. An ambiguous name is left as the characters
+     * it is, which reads as text and links to nothing — the same bargain a `~list` that matches
+     * nothing already strikes. This is also why resolving by name is safe *here* and refused in the
+     * file format: here a person is watching the words change as they type them.
+     */
+    suspend fun linkIdsFor(text: String): Map<String, String> {
+        val names = CaptureParse.linkNames(text)
+        if (names.isEmpty()) return emptyMap()
+        return names.mapNotNull { name ->
+            val hits = dao.searchLinkTargets(name, limit = 3)
+                .filter { it.title.equals(name, ignoreCase = true) }
+            hits.singleOrNull()?.let { name.lowercase() to it.id }
+        }.toMap()
+    }
+
     suspend fun captureTask(
         parentId: String?,
         text: String,
         labels: LabelRepository,
         properties: PropertyRepository,
+        /**
+         * Who may be assigned, per workspace. Null leaves `@name` in the title, which is the right
+         * answer for a caller with no directory to check against — see [Captured.assignee].
+         */
+        people: ie.napkin.supertasks.data.people.People? = null,
         zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
     ): String? {
         // The lists this workspace has, so "~ Groceries" can be matched rather than guessed at.
         val lists = dao.allListsOnce()
-        val parsed = CaptureParse.parse(text, lists = lists.mapNotNull { it.title })
+        val listNames = lists.mapNotNull { it.title }
+
+        // Read twice, and the order is forced rather than lazy. Which people may be assigned is a
+        // question about the *destination* repository, and the destination is not known until the
+        // line has been read far enough to see whether it names a list. So the first pass answers
+        // only "where does this go" — nothing about it depends on people or links — and the second
+        // does the real reading with that answer in hand. Both passes are pure and cheap.
+        val routing = CaptureParse.parse(text, lists = listNames)
+        val destination = destinationFor(routing, lists, parentId)
+        val workspaceId = destination?.let { dao.byId(it)?.workspaceId } ?: ""
+
+        val parsed = CaptureParse.parse(
+            text,
+            lists = listNames,
+            people = people?.loginsFor(workspaceId).orEmpty(),
+            links = linkIdsFor(text),
+        )
         if (parsed.title.isBlank()) return null
 
         // A named list wins over wherever this was typed: saying where it goes is the whole point of
@@ -213,15 +302,9 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         // filing into a new list means leaving capture to go and create it first, which is the
         // interruption this whole path exists to remove. The field offers the lists that already
         // match before it comes to this, so a typo is visible rather than silently made real.
-        val destination = parsed.list
-            ?.let { name ->
-                lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
-                    ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
-            }
-            ?: parentId
-            ?: inboxList()
+        val landsIn = destination ?: inboxList()
 
-        val id = create(destination, NodeType.TASK, parsed.title)
+        val id = create(landsIn, NodeType.TASK, parsed.title)
 
         parsed.dueAt()?.let { at ->
             properties.setDue(
@@ -232,6 +315,7 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
             )
         }
         parsed.priority?.let { properties.setValue(id, BuiltIns.PRIORITY_DEF_ID, text = it) }
+        parsed.assignee?.let { properties.setValue(id, BuiltIns.ASSIGNEE_DEF_ID, text = it) }
         parsed.labels.forEach { name -> labels.attach(id, labels.getOrCreate(name).id) }
         return id
     }
@@ -256,6 +340,17 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         )
     }
 
+    /** Everything on the go, newest first — see [setInProgress]. */
+    fun inProgress() = dao.inProgress()
+
+    /**
+     * The middle state: picked up, not finished.
+     *
+     * Deliberately **not** limited to one. Having several things on the go is the ordinary shape of
+     * a day, and an app that refuses to record it makes you choose which of your started tasks to
+     * lie about. What there is only one of is the focus session — a clock you commit to — and that
+     * limit lives where the clock does, in [ie.napkin.supertasks.domain.FocusTimer].
+     */
     suspend fun setInProgress(id: String, inProgress: Boolean) = ws.writerFor(id).editTask(id) {
         if (it.status == TaskStatus.DONE) it
         else it.copy(status = if (inProgress) TaskStatus.IN_PROGRESS else TaskStatus.OPEN)
@@ -279,7 +374,8 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         normalizeIndents(parentId)
     }
 
-    suspend fun setType(id: String, type: String) = ws.writerFor(id).convertBlock(id, type)
+    /** Returns the id the block ends up with — converting to a task mints it a real one. */
+    suspend fun setType(id: String, type: String): String = ws.writerFor(id).convertBlock(id, type)
 
     suspend fun delete(id: String) = ws.writerFor(id).removeBlock(id)
 
@@ -337,6 +433,7 @@ data class SelectConfig(val options: List<SelectOption> = emptyList())
  * Property values live on the task's line, so setting one rewrites the page that holds it. The
  * defs themselves are the workspace registry and are read-only from here.
  */
+
 class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.propertyDao()
 
@@ -462,17 +559,45 @@ class SmartListRepository(private val db: AppDatabase, private val ws: Workspace
     fun observeDef(nodeId: String) = dao.observe(nodeId)
     suspend fun defById(nodeId: String) = dao.byId(nodeId)
 
-    /** Read side: compile filter_json -> SQL and observe. Recompiled per call so relative dates stay fresh. */
+    /**
+     * Read side: compile filter_json -> SQL and observe. Recompiled per call so relative dates stay fresh.
+     *
+     * Unfenced on purpose. This used to hand the compiler the definition's own workspace, which
+     * meant a rule could only ever see the repo its file happened to sit in — so a task due today in
+     * another workspace could not appear in Today, whatever Today's rule said. The compiler's own
+     * note already knew better: null "spans all of them, which is what a unified Today wants".
+     *
+     * What that fence protected is real — a rule must not quietly gather repos it never meant to —
+     * but it stated the rule in the wrong place. A view that means one workspace says so with
+     * [Filter.InWorkspace], which is legible, editable, and travels with the definition instead of
+     * being inferred from a directory. Scope by containment ([SmartListDefEntity.scopeRootId]) is
+     * unaffected and still implies a workspace, because a subtree cannot cross repos.
+     */
     fun query(def: SmartListDefEntity): Flow<List<NodeEntity>> {
         val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
         val sort = def.sortJson
             ?.let { FilterJson.decodeFromString(ListSerializer(SortSpec.serializer()), it) }
             ?: emptyList()
-        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort, workspaceId = def.workspaceId)
+        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort, workspaceId = null)
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 
     fun allDefs(): Flow<List<SmartListDefEntity>> = dao.all()
+
+    /**
+     * Workspaces this rule asks about that the device has not added, named where it can be.
+     *
+     * The unavoidable cost of a view that spans repos: it can only answer for the ones present, and
+     * a partial answer that looks complete is the worst outcome available. Reinstalling and adding
+     * back only some of your workspaces is the ordinary way to arrive here, not an edge case — the
+     * registry that lists them is device-local, so a fresh install starts with none of them.
+     */
+    fun absentWorkspaces(def: SmartListDefEntity): List<String> {
+        val named = runCatching {
+            FilterJson.decodeFromString(Filter.serializer(), def.filterJson).workspacesNamed()
+        }.getOrDefault(emptySet())
+        return named.filterNot { ws.isOpen(it) }.sorted()
+    }
 
     /**
      * The done counterpart of [query]. A rule like "due today AND not done" excludes completed
@@ -483,7 +608,7 @@ class SmartListRepository(private val db: AppDatabase, private val ws: Workspace
     fun queryCompleted(def: SmartListDefEntity): Flow<List<NodeEntity>>? {
         val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
         val flipped = completedVariant(filter) ?: return null
-        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList(), workspaceId = def.workspaceId)
+        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList(), workspaceId = null)
         return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
     }
 
@@ -493,7 +618,9 @@ class SmartListRepository(private val db: AppDatabase, private val ws: Workspace
         filter: Filter,
         sort: List<SortSpec>,
         homeParentId: String?,
-    ): String = ws.primary().createSmartList(defFor("", scopeRootId, filter, sort, homeParentId), title)
+        // Personal, explicitly — see Workspaces.personal. A view over repos cannot live inside one
+        // of them, and this must not follow a future workspace switcher the way lists will.
+    ): String = ws.personal().createSmartList(defFor("", scopeRootId, filter, sort, homeParentId), title)
 
     suspend fun updateSmartList(
         nodeId: String,

@@ -60,8 +60,18 @@ object PageMapper {
      * sound for a disposable index, with one consequence worth knowing: a re-index during editing
      * renumbers blocks below an insertion, so anything holding a block id across a sync (a caret,
      * an active row) has to tolerate it changing.
+     *
+     * The separator is `~` rather than `#`, and that is not cosmetic. A node id is dropped into a
+     * navigation route, which is parsed as a URI — `#` starts a fragment there, so `node/<page>#3`
+     * was read as `node/<page>` and tapping a derived-id block navigated onto the page it was
+     * already on. `~` is an unreserved URI character and means nothing to any parser between here
+     * and the screen. (Routes encode the id as well; both, because either alone is a rule someone
+     * has to remember.)
      */
-    fun blockId(pageId: String, index: Int): String = "$pageId#$index"
+    fun blockId(pageId: String, index: Int): String = "$pageId$BLOCK_SEP$index"
+
+    /** Separator between a page id and a derived block's line number. See [blockId]. */
+    const val BLOCK_SEP = "~"
 
     // ---- file -> rows ----
 

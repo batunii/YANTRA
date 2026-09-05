@@ -237,6 +237,10 @@
         <receiver
             android:name=".reminders.ReminderReceiver"
             android:exported="false" />
+        <!-- Stop / Done on the running session, from the lock screen. -->
+        <receiver
+            android:name=".domain.SessionReceiver"
+            android:exported="false" />
         <receiver
             android:name=".reminders.BootReceiver"
             android:exported="false">

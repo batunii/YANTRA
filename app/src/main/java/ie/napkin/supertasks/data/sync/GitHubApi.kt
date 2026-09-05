@@ -1,6 +1,7 @@
 package ie.napkin.supertasks.data.sync
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.IOException
@@ -191,6 +192,50 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
         }
     }
 
+    /**
+     * Who can push to a repository — the people a task in it can be assigned to.
+     *
+     * A GET like everything else here, and for the same reason: inviting someone needs a permission
+     * far heavier than this App asks for, and happens on GitHub's own pages. This only reads the
+     * answer.
+     *
+     * The result is typed rather than a nullable list, and that is the whole point of it. This
+     * endpoint has more ways to say no than any other call in this file, and they need three
+     * different things said to the user: a token that has lapsed is a sign-in, a token that is fine
+     * but not allowed to see the roster is a permission on GitHub, and a dead network is neither.
+     * Collapsing them into null produced "could not reach GitHub" while the phone was online and
+     * GitHub had answered perfectly promptly with a refusal.
+     *
+     * One page. A hundred collaborators on a task repository is not the case worth paginating for,
+     * and the picker searches what it has rather than scrolling it.
+     */
+    open fun collaborators(ref: RepoRef, token: String): Collaborators {
+        val conn = open("$base/repos/${ref.owner}/${ref.name}/collaborators?per_page=100", token)
+        return try {
+            when (val code = conn.responseCode) {
+                200 -> {
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val logins = runCatching {
+                        json.decodeFromString(ListSerializer(User.serializer()), body).map { it.login }
+                    }.getOrDefault(emptyList())
+                    Collaborators.Ok(logins.filter { it.isNotBlank() }.distinct())
+                }
+                401 -> Collaborators.Unauthorized
+                // 403 and 404 are the same answer wearing different clothes. GitHub hides what you
+                // may not see rather than admitting it exists, so a token without the permission
+                // this endpoint wants gets a 404 for a repository it can otherwise read and push
+                // to — which is exactly the case a task app hits, because listing collaborators
+                // needs a heavier permission than syncing files does.
+                403, 404 -> Collaborators.NotPermitted(code)
+                else -> Collaborators.Failed("GitHub returned $code")
+            }
+        } catch (e: IOException) {
+            Collaborators.Failed(e.message ?: "could not reach GitHub")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun get(url: String, token: String): String? {
         val conn = open(url, token)
         return try {
@@ -211,6 +256,22 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
             connectTimeout = 15_000
             readTimeout = 15_000
         }
+}
+
+/**
+ * What GitHub said when asked who can push to a repository.
+ *
+ * [NotPermitted] is the interesting one and is not an error: the repository is there, the token
+ * works, and GitHub will not list its people for this token. Everything the picker does still
+ * works — the signed-in account and every login already on a task are read out of the index — so
+ * this is a note, not a failure.
+ */
+sealed interface Collaborators {
+    data class Ok(val logins: List<String>) : Collaborators
+    data object Unauthorized : Collaborators
+    /** [code] is 403 or 404 — kept because which one it is says *why* it is refused. */
+    data class NotPermitted(val code: Int) : Collaborators
+    data class Failed(val message: String) : Collaborators
 }
 
 /** Who a token belongs to. The id is what aims an installation link at one account. */

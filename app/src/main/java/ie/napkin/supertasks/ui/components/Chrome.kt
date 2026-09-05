@@ -1,6 +1,28 @@
 package ie.napkin.supertasks.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Stable
+import ie.napkin.supertasks.ui.theme.YantraDisplay
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -179,4 +201,152 @@ fun HeaderFold(inset: Dp = 22.dp) {
             .height(1.dp)
             .background(y.hairline),
     )
+}
+
+/**
+ * The large title a screen opens with, and the compact bar it becomes.
+ *
+ * ## Why the top of the screen is mostly empty
+ *
+ * A phone this size cannot be operated one-handed at the top. The thumb reaches the bottom two
+ * thirds comfortably and the top corner not at all, which is the whole reason One UI puts a screen's
+ * name in a tall band that scrolls away and its controls near the bottom: the part you cannot reach
+ * is spent on something you only ever read.
+ *
+ * So the rule this encodes, and the one to keep when adding a screen:
+ *
+ *  - **The title is big, and it is not a control.** It occupies the unreachable band on purpose.
+ *  - **Nothing in the expanded band is tappable** except the back circle, which is a courtesy —
+ *    the real way back is the system gesture, which needs no target at all.
+ *  - **Actions live at the bottom**, in the bar or the cluster, where the thumb already is.
+ *
+ * [collapsed] is the screen's own answer, because only the screen knows what it scrolls: a list
+ * hands over its `firstVisibleItemIndex`, a `verticalScroll` its offset. Folding is a one-shot
+ * transition either way — the band is never mid-animation at rest, which the motion law requires.
+ *
+ * The node page keeps its own `PageBand` rather than using this. A page's title is editable, it
+ * carries a task glyph, a breadcrumb, property pills and a linked row, and it folds all of them —
+ * it is this pattern with a document's worth of extra furniture, not a variant of this component.
+ */
+@Composable
+fun PageHeader(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    collapsed: Boolean = false,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    val y = Yantra.colors
+    Column(Modifier.fillMaxWidth().background(y.page)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                NavCircle(
+                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    onClick = onBack,
+                    iconSize = 22.dp,
+                )
+            }
+            // Collapsed, the name moves up here so the screen never goes unlabelled. It is the
+            // same string at a size that fits a bar, not a second title.
+            AnimatedVisibility(
+                visible = collapsed,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    title,
+                    fontFamily = YantraDisplay,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = (-0.3).sp,
+                    color = y.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            if (!collapsed) Spacer(Modifier.weight(1f))
+            actions()
+        }
+        AnimatedVisibility(
+            visible = !collapsed,
+            enter = expandVertically(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+            exit = shrinkVertically(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
+        ) {
+            Text(
+                title,
+                fontFamily = YantraDisplay,
+                fontSize = 32.sp,
+                lineHeight = 38.sp,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.6).sp,
+                color = y.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                // The same edge the content below it keeps, so the title and the first row line up.
+                modifier = Modifier.fillMaxWidth().padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 14.dp, bottom = 20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Whether the large title has folded away, driven by the user's own scrolling.
+ *
+ * ## Why this is not `firstVisibleItemIndex > 0`
+ *
+ * Because a first item can be tall. The focus stats page opens with a 208dp glyph and its caption,
+ * so scrolling through all of that never changes the index and the title sat there expanded the
+ * whole way down — the fold looked broken because it had nothing to react to.
+ *
+ * ## Why it is not the scroll offset either
+ *
+ * That is the trap this exists to avoid, and `PageBand` carries the long version of the note. The
+ * header's size must not be derived, even indirectly, from where the content ended up: folding the
+ * title hands its height back to the scroller, the content then fits and clamps to the top,
+ * whatever read that position expands the header again, the content overflows, the next scroll
+ * collapses it. Several times a second.
+ *
+ * So the only input is what the finger actually did. Deltas are accumulated from what the scroller
+ * consumed plus any unconsumed *downward* remainder — the latter so a pull-down still expands the
+ * title once the content has hit the top and has nothing left to give, without which the header can
+ * latch collapsed with no way back. The threshold latches across a hysteresis band so a finger
+ * resting near it does not flutter.
+ */
+@Stable
+class HeaderFold internal constructor(private val collapsePx: Float) {
+    var collapsed by mutableStateOf(false)
+        internal set
+
+    private var dragged = 0f
+
+    val connection: NestedScrollConnection = object : NestedScrollConnection {
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            // Fling and bring-into-view arrive as SideEffect; only a real gesture counts.
+            if (source != NestedScrollSource.UserInput) return Offset.Zero
+            val delta = consumed.y + available.y.coerceAtLeast(0f)
+            dragged = (dragged - delta).coerceIn(0f, collapsePx * 1.5f)
+            collapsed = when {
+                dragged >= collapsePx -> true
+                dragged <= collapsePx * 0.35f -> false
+                else -> collapsed
+            }
+            return Offset.Zero
+        }
+    }
+}
+
+/** A [HeaderFold] for this screen. Attach [HeaderFold.connection] to whatever scrolls. */
+@Composable
+fun rememberHeaderFold(): HeaderFold {
+    val px = with(LocalDensity.current) { 56.dp.toPx() }
+    return remember(px) { HeaderFold(px) }
 }

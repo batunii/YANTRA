@@ -2,7 +2,10 @@ name: APK
 
 on:
   push:
-    branches: [main, UI_Changes]
+    # Every branch the work actually happens on. It was main and one long-lived branch, which meant
+    # the build ran for two of the seven branches this repo has had and silently for none of the
+    # rest — a build server that does not run is indistinguishable from a build that passes.
+    branches: [main, UI_Changes, 'feature/**', 'fix/**']
     # Tagging is how you ask for a build you can keep: a tag run also publishes a
     # Release with the APK attached, because run artifacts expire and are only
     # reachable by people who can see the Actions tab.

@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
 import ie.napkin.supertasks.ui.components.PullToSync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,12 +54,18 @@ import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.ui.components.ListGroupRow
 import ie.napkin.supertasks.ui.components.QuickAddBar
+import ie.napkin.supertasks.ui.components.BottomBar
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
+import ie.napkin.supertasks.ui.components.startedTaskIds
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.node.TextualBlockRow
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.runtime.CompositionLocalProvider
+import ie.napkin.supertasks.ui.components.LocalLinkOpener
+import ie.napkin.supertasks.ui.components.LocalLinkResolver
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -68,6 +75,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val def by vm.def.collectAsStateWithLifecycle()
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
+    val origins by vm.origins.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val completed by vm.completed.collectAsStateWithLifecycle()
@@ -77,6 +85,9 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     var menu by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    val absentWorkspaces by vm.absentWorkspaces.collectAsStateWithLifecycle()
+    val linkTitles by vm.linkTitles.collectAsStateWithLifecycle()
+    val assignable by vm.assignable.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val labels by vm.labels.collectAsStateWithLifecycle()
     val lists by vm.lists.collectAsStateWithLifecycle()
@@ -190,10 +201,32 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         // is a task wherever it is shown; the only thing a screen decides is which tasks to put in
         // front of it — and the open half and the done half are not two different kinds of task,
         // which is why they are not two different blocks of code any more.
+        val resolveLink: (String) -> String? = remember(linkTitles) { { id -> linkTitles[id] } }
+
+        /**
+         * What you have on the go, pinned to the top of whatever is open.
+         *
+         * These leave their sections rather than being highlighted where they sit. A row you have to
+         * scroll to find is a row that can be scrolled away from, and the things you have actually
+         * started are the ones a list should never be able to hide. The sort is stable, so the
+         * started rows keep their order relative to each other and everything else keeps the order
+         * the rule gave it.
+         */
+        val started = startedTaskIds()
+        val ordered = remember(tasks, started) {
+            if (started.isEmpty()) tasks else tasks.sortedByDescending { it.id in started }
+        }
+
         @Composable
         fun SmartTaskRow(task: NodeEntity) {
             ListGroupRow(started = task.inProgress) {
+                // A row here cannot be typed into, so a link in a title is collapsed and tappable —
+                // and tapping it goes where it points rather than opening the task it sits on.
                 Box(Modifier.padding(horizontal = 14.dp)) {
+                CompositionLocalProvider(
+                    LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
+                    LocalLinkResolver provides resolveLink,
+                ) {
                     TextualBlockRow(
                         child = task,
                         active = activeId == task.id,
@@ -210,18 +243,20 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         childCount = childCounts[task.id] ?: 0,
                         ordinal = 0,
                         pomoCount = pomoCounts[task.id] ?: 0,
+                        origin = origins[task.id],
                         autoFocus = false,
                         onAutoFocusConsumed = {},
                         onRename = {},
                         onToggleDone = { vm.setDone(task.id, it) },
                         onToggleInProgress = { vm.setInProgress(task.id, it) },
                         // Only tasks are gathered here, so there is no type to convert to.
-                        onBecome = {},
+                        onBecome = { _, _ -> },
                         onOpen = { nav.navigate(Routes.node(task.id)) },
                         // A smart list is a list: the row opens the task, it does not become a
                         // text field. Typing happens on the task's own page.
                         editable = false,
                     )
+                }
                 }
             }
         }
@@ -229,8 +264,15 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         PullToSync(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp),
             ) {
+                // Before the results, because it is about whether to believe them. A rule may name
+                // a workspace this device has not added — after a reinstall, most likely, since the
+                // registry that lists them is device-local — and then it can only answer for the
+                // repos present. Saying nothing would make a half-answer look like a whole one.
+                if (absentWorkspaces.isNotEmpty()) {
+                    item(key = "absent-workspaces") { AbsentWorkspaces(absentWorkspaces) }
+                }
                 if (tasks.isEmpty() && completed.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty("Nothing matches right now")
@@ -247,7 +289,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 // Open first, then what you finished. Two cards rather than one run of rows: the done
                 // half is not part of the rule's ordering — it is there because you did it today, not
                 // because it still matches — and giving it its own surface says so.
-                items(tasks, key = { it.id }) { task -> SmartTaskRow(task) }
+                items(ordered, key = { it.id }) { task -> SmartTaskRow(task) }
 
                 if (completed.isNotEmpty()) {
                     item(key = "done-header") {
@@ -263,17 +305,42 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             }
         }
 
-        if (def?.homeParentId != null || def?.scopeRootId != null) {
-            QuickAddBar(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .imePadding(),
-                labels = labels,
-                lists = lists.mapNotNull { it.title },
-                onAdd = vm::addTask,
+        // The now bar takes this slot whenever a session runs, and hands capture a key beside it.
+        // A view with no home to add to still gets the bar: what is running is true of the app, not
+        // of the list you happen to be looking at.
+        BottomBar(
+            // The body opens focus — where you commit to a length. The button beside it starts the
+            // clock here and now. Two instruments, two targets.
+            onOpenNow = { n ->
+                nav.navigate(if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId))
+            },
+            onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
+            modifier = Modifier
+                .navigationBarsPadding()
+                .imePadding(),
+        ) { bottomPadding ->
+            if (def?.homeParentId != null || def?.scopeRootId != null) {
+                QuickAddBar(
+                    labels = labels,
+                    lists = lists.mapNotNull { it.title },
+                    people = assignable,
+                    findTasks = { q -> vm.linkTargets(q) },
+                    resolveLinks = { t -> vm.linkIdsFor(t) },
+                    onAdd = vm::addTask,
+                    bottomPadding = bottomPadding,
+                )
+            }
+        }
+        val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
+        timingOccupied?.let {
+            SwitchHereDialog(
+                runningTitle = it.byTitle,
+                onConfirm = { vm.timing.confirm() },
+                onDismiss = { vm.timing.dismiss() },
             )
         }
     }
+
 
     // The same sheet the list was created with, opened on the stored rule. Reusing it is the point:
     // an "edit" screen of its own would be a second place for the same decisions to be made
@@ -285,6 +352,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 defs = defs,
                 labels = labels,
                 lists = lists,
+                workspaces = vm.workspaces,
                 onCreateLabel = vm::createLabel,
                 onDismiss = { editingRule = false },
                 onCreate = { newName, filter, sort, homeId ->
@@ -307,4 +375,30 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             onConfirm = { vm.renameList(it); renaming = false },
         )
     }
+}
+
+/**
+ * What this view cannot see.
+ *
+ * Deliberately not an error: nothing is broken and nothing is lost — the workspace is simply not on
+ * this device, and adding it back is the whole fix. So it reads as a fact about the view's reach
+ * rather than a failure, and it names the workspaces so the fix is obvious.
+ */
+@Composable
+private fun AbsentWorkspaces(names: List<String>) {
+    val y = Yantra.colors
+    val what = when (names.size) {
+        1 -> "${names.single()} isn't on this device"
+        else -> names.joinToString(", ").let { "$it aren't on this device" }
+    }
+    Text(
+        "$what — tasks from ${if (names.size == 1) "it" else "them"} aren't shown here.",
+        fontSize = 12.sp,
+        color = y.textSecondary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+            .background(y.warningChipBg, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+    )
 }

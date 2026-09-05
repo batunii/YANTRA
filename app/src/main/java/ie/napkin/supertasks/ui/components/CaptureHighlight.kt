@@ -36,12 +36,19 @@ class CaptureHighlight(
     private val dateColor: Color,
     private val priorityColor: Color,
     private val listColor: Color,
+    private val linkColor: Color,
+    private val assigneeColor: Color,
     private val lists: List<String>,
+    private val people: List<String>,
+    private val links: Map<String, String>,
     private val labelColor: (String) -> Color,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
-        val parsed = CaptureParse.parse(text.text, lists = lists)
+        // Parsed with everything the parser will be given for real, or the tint would promise
+        // readings the commit does not make — an `@name` glowing for somebody who cannot be
+        // assigned is worse than one that never lit up.
+        val parsed = CaptureParse.parse(text.text, lists = lists, people = people, links = links)
         // Nothing recognised, or everything was — a title that is only a token stays a title, and
         // tinting the whole thing would promise a modifier that was not applied.
         if (!parsed.hasAnything || parsed.spans.isEmpty()) {
@@ -60,6 +67,14 @@ class CaptureHighlight(
                     Captured.Kind.PRIORITY -> priorityColor
                     // Structure's own ink: a list is where a task goes, not something about it.
                     Captured.Kind.LIST -> listColor
+                    // The ink the link is about to be drawn in once it is committed — see
+                    // InlineText. The field and the block it becomes agree on what a link looks
+                    // like, which is the same promise the label tint makes.
+                    Captured.Kind.LINK -> linkColor
+                    // Neutral, because the chip it becomes is neutral, and because the colour law
+                    // has no free hue: coral is your own effort and crimson/amber is priority.
+                    // A person is structure — who a thing belongs to — and structure is neutral.
+                    Captured.Kind.ASSIGNEE -> assigneeColor
                     Captured.Kind.LABEL -> labelColor(written.removePrefix("#"))
                 }
                 AnnotatedString.Range(
@@ -87,6 +102,8 @@ class CaptureHighlight(
 fun rememberCaptureHighlight(
     labels: List<LabelEntity>,
     lists: List<String> = emptyList(),
+    people: List<String> = emptyList(),
+    links: Map<String, String> = emptyMap(),
 ): CaptureHighlight {
     val y = Yantra.colors
     val byName = remember(labels) { labels.associateBy { it.name.lowercase() } }
@@ -103,12 +120,19 @@ fun rememberCaptureHighlight(
     // and doing only the first by hand is how the preview drifted from the chip.
     val bySwatch = LabelPalette.swatches.associate { it.light to chipStyleFor(Color(it.light)).text }
 
-    return remember(existing, neutral, bySwatch, lists, y.due, y.overdue, y.accentText) {
+    return remember(
+        existing, neutral, bySwatch, lists, people, links,
+        y.due, y.overdue, y.accentText, y.textSecondary,
+    ) {
         CaptureHighlight(
             dateColor = y.due,
             priorityColor = y.overdue,
             listColor = y.accentText,
+            linkColor = y.accentText,
+            assigneeColor = y.textSecondary,
             lists = lists,
+            people = people,
+            links = links,
             labelColor = { name ->
                 // An existing tag keeps its own colour — including a deliberately neutral one, which
                 // must not be overridden by the name-derived default it would have had.

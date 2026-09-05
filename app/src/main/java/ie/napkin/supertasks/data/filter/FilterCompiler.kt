@@ -97,8 +97,30 @@ object FilterCompiler {
             }
             is Filter.Prop -> appendProp(sb, args, f, now)
             is Filter.HasLabel -> {
-                sb.append("EXISTS (SELECT 1 FROM node_label nl WHERE nl.node_id = n.id AND nl.label_id = ?)")
+                // A tag is its name, not one repository's row for it.
+                //
+                // Label ids carry the workspace that minted them — `<ws>:label:<name>`, so that the
+                // uniqueness constraint on (workspace_id, name) can hold — which means `#extra` in
+                // Personal and `#extra` in another repo are two ids for one tag. Matching the id
+                // alone made a smart list that gathers across repositories able to find the tag in
+                // exactly one of them: the rule was right, the task was tagged, and the view came
+                // back empty.
+                //
+                // The id is still matched first, for any label whose id predates the scheme or does
+                // not follow it. The name is compared lowercased because the id lowercases and the
+                // stored name keeps the spelling it was first written with.
+                sb.append(
+                    "EXISTS (SELECT 1 FROM node_label nl JOIN label l ON l.id = nl.label_id " +
+                        "WHERE nl.node_id = n.id AND (nl.label_id = ? OR lower(l.name) = ?))"
+                )
                 args += f.labelId
+                args += f.labelId.substringAfterLast(":label:").lowercase()
+            }
+            // The column, not a join: `idx_node_workspace` already covers it, where the label this
+            // replaces cost a row per task and an EXISTS over node_label to read back.
+            is Filter.InWorkspace -> {
+                sb.append("n.workspace_id = ?")
+                args += f.workspaceId
             }
         }
     }

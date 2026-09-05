@@ -328,6 +328,65 @@ class PageCodecTest {
         assertEquals("plain bullet", (b as Bullet).text)
     }
 
+    // ---- an empty block keeps its kind (P0-2) ----
+
+    /**
+     * The bug this pins: a task with nothing written in it renders as "- [ ] ", and the only thing
+     * telling it apart from a bullet was the space on the end of the line. Anything that trims
+     * trailing whitespace — an editor, a linter, a git hook — turned a checkbox into a bullet, and
+     * the id after it into stray text on the line. Kind must not be inferred from content.
+     */
+    @Test
+    fun `an empty task is still a task, with or without its trailing space`() {
+        listOf("- [ ]", "- [ ] ", "- [x]", "- [~] ").forEach { line ->
+            val b = PageCodec.decodeBlock(line)
+            assertTrue("$line parsed as ${b::class.simpleName}", b is TaskRef)
+            assertEquals("", (b as TaskRef).title)
+        }
+    }
+
+    @Test
+    fun `an empty task round-trips, id and all`() {
+        listOf(
+            TaskRef(id = "", title = ""),
+            TaskRef(id = "abc-123", title = ""),
+            TaskRef(id = "abc-123", title = "", status = TaskStatus.IN_PROGRESS),
+        ).forEach { task ->
+            val line = PageCodec.encodeBlock(task)
+            assertEquals(line, line.trimEnd())
+            assertEquals(task, PageCodec.decodeBlock(line).let { (it as TaskRef).copy(raw = null) })
+        }
+    }
+
+    @Test
+    fun `every block kind survives a full page round trip`() {
+        val blocks = listOf(
+            Heading(""), Bullet(""), Numbered(""), Prose(""),
+            TaskRef(id = "t1", title = ""),
+            TaskRef(id = "t2", title = "named"),
+            InkRef("ink-1"), ImageRef("pic-1"),
+        )
+        val back = PageCodec.decode(PageCodec.encode(page(blocks))).blocks
+        assertEquals(blocks.map { it::class }, back.map { it::class })
+    }
+
+    /**
+     * The emitter has to put *something* on the line to keep an empty block, and what it puts must
+     * not come back as content. It did: a blank note round-tripped into a note containing a space,
+     * so the first thing typed into it was pushed one character right — visible on the first line
+     * of a paragraph and nowhere else, because only the first line had it.
+     */
+    @Test
+    fun `an empty block does not come back holding whitespace`() {
+        val blank = Prose("")
+        val line = PageCodec.encodeBlock(blank)
+        assertTrue("an empty block still needs a line", line.isNotEmpty())
+        assertEquals("", (PageCodec.decodeBlock(line) as Prose).text)
+
+        val back = PageCodec.decode(PageCodec.encode(page(listOf(blank, Prose("after"))))).blocks
+        assertEquals(listOf("", "after"), back.map { (it as Prose).text })
+    }
+
     // ---- helpers ----
 
     private fun page(blocks: List<Block>) = PageDoc(
@@ -342,4 +401,55 @@ class PageCodecTest {
 
     private fun render(t: TaskRef): String =
         PageCodec.encode(page(listOf(t))).lines().first { it.startsWith("- [") }
+
+    // ---- links on a task line ----
+
+    /** The smallest well-formed page, so a one-line test can be one line. */
+    private val header = "---\nid: p\ntype: list\nmodified_at: 2026-09-01T00:00:00Z\n---\n"
+
+    /**
+     * The right-to-left token scan and `[[…|^id]]` have to coexist, and by default they do not.
+     *
+     * `[[Buy milk #2|^abc]]` ends in a word beginning with `#`, so the scan filed the task under a
+     * label called `2|^abc]]` and took half the link out of the title on the way. The guard is that
+     * nothing containing a link's closing brackets is a trailing token.
+     */
+    @Test
+    fun `a link in a task title is not read as trailing tokens`() {
+        val page = PageCodec.decode(
+            """
+            ---
+            id: p1
+            type: list
+            modified_at: 2026-09-01T00:00:00Z
+            ---
+            - [ ] See [[Buy milk #2|^abc]] first ^t1 #real !High
+            """.trimIndent()
+        )
+        val t = page.blocks.filterIsInstance<TaskRef>().single()
+        assertEquals("See [[Buy milk #2|^abc]] first", t.title)
+        assertEquals("t1", t.id)
+        assertEquals(listOf("real"), t.labels)
+        assertEquals("High", t.priority)
+    }
+
+    @Test
+    fun `a link at the very end of a title survives the round trip`() {
+        val line = "- [ ] Ask [[Bob|^9f1e]] ^t2 @batunii"
+        val page = PageCodec.decode(header + line)
+        val t = page.blocks.filterIsInstance<TaskRef>().single()
+        assertEquals("Ask [[Bob|^9f1e]]", t.title)
+        assertEquals("batunii", t.assignee)
+        // Re-rendered from the model rather than replayed from raw, so the emitter is tested too.
+        assertEquals(line, PageCodec.encodeBlock(t.copy(raw = null)))
+    }
+
+    /** An at-sign inside a link label is part of the label, not an assignee. */
+    @Test
+    fun `an at-sign inside a link is not an assignee`() {
+        val page = PageCodec.decode(header + "- [ ] Ping [[ask @bob|^x]]")
+        val t = page.blocks.filterIsInstance<TaskRef>().single()
+        assertEquals("Ping [[ask @bob|^x]]", t.title)
+        assertNull(t.assignee)
+    }
 }

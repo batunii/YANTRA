@@ -101,7 +101,12 @@ fun PropertyRow(
     val scroll = rememberScrollState()
     // Only dissolve the edge when there is genuinely something past it, or the last pill of a
     // row that fits would fade for no reason.
-    val overflows = scroll.maxValue > 0
+    //
+    // `canScrollForward`, not `maxValue`: the latter is the row's total overflow and says nothing
+    // about where you currently are in it, so the edge went on dissolving after you had scrolled
+    // to the end — and, read before the row had been measured, could be wrong in both directions.
+    // A cut-off chip with no fade behind it is just a chip that looks broken.
+    val overflows = scroll.canScrollForward
     val (set, unset) = defs.partition { values[it.id] != null }
     Row(
         modifier = modifier
@@ -356,14 +361,27 @@ private fun PropertyPill(
     var showDatePicker by remember { mutableStateOf(false) }
     var showDueSheet by remember { mutableStateOf(false) }
     var showTextDialog by remember { mutableStateOf(false) }
+    var showAssignee by remember { mutableStateOf(false) }
     val isDue = def.kind == PropertyKind.DATE && def.name == BuiltIns.DUE_NAME
     val isDeadline = def.kind == PropertyKind.DATE && def.name == BuiltIns.DEADLINE_NAME
+    // By id, not by name. A workspace scaffolded by an older build could carry a def called
+    // "Assignee" that is not this one, and the id is the thing that travels between devices.
+    val isAssignee = def.id == BuiltIns.ASSIGNEE_DEF_ID
 
-    val chip = value?.let { chipFor(def, it) }
+    // The page's own chip, and the only one that needs the roster passed in by hand — the row
+    // chips get it from the view model. Same predicate either way, so a task cannot read as
+    // assignable on its own page and unreachable one screen up.
+    val people = LocalPeople.current.people
+    val chip = value?.let { v ->
+        chipFor(def, v) { _, login ->
+            people.any { it.login.equals(login, ignoreCase = true) && it.onRepo == false }
+        }
+    }
 
     Box {
         val onClick: () -> Unit = {
             when {
+                isAssignee -> showAssignee = true
                 def.kind == PropertyKind.SELECT -> menu = true
                 isDue -> if (value?.vDate != null) menu = true else showDueSheet = true
                 def.kind == PropertyKind.DATE -> if (value?.vDate != null) menu = true else showDatePicker = true
@@ -391,7 +409,10 @@ private fun PropertyPill(
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "${def.name} · ${chip.label}",
+                    // A login already reads as a person, and "Assignee · @batunii" says the same
+                    // thing twice in a row that has no room to. Every other field needs its name
+                    // because "· High" alone means nothing.
+                    if (isAssignee) chip.label else "${def.name} · ${chip.label}",
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.W600,
                     color = s.text,
@@ -452,6 +473,20 @@ private fun PropertyPill(
                 }
             }
         }
+    }
+
+    if (showAssignee) {
+        val source = LocalPeople.current
+        AssigneeSheet(
+            current = value?.vText,
+            people = source.people,
+            onRefresh = source.onRefresh,
+            refreshing = source.refreshing,
+            refreshNote = source.note,
+            onPick = { login -> onSet(login, null, null, null); showAssignee = false },
+            onClear = { onClear(); showAssignee = false },
+            onDismiss = { showAssignee = false },
+        )
     }
 
     if (showDueSheet) {

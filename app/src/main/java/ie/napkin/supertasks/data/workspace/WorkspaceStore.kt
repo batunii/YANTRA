@@ -132,29 +132,62 @@ class WorkspaceStore(
         pagesDir.mkdirs()
         smartDir.mkdirs()
         writeManifest(Manifest(name = name, createdAt = now))
-        writeProperties(
-            listOf(
-                // Priority carries its option colours in config. Scaffolding without them left
-                // every High chip drawing as an unnamed neutral, because the chip looks its colour
-                // up by option name and found no options at all.
-                PropertyDef(
-                    BuiltIns.PRIORITY_DEF_ID, BuiltIns.PRIORITY_NAME, PropertyKind.SELECT,
-                    config = FilterJson.encodeToString(
-                        SelectConfig.serializer(),
-                        SelectConfig(
-                            listOf(
-                                SelectOption("High", 0xFFFF4A1F),
-                                SelectOption("Medium", 0xFFFFB020),
-                                SelectOption("Low", 0xFF4A90D9),
-                            )
-                        ),
-                    ),
-                ),
-                PropertyDef(BuiltIns.DUE_DEF_ID, BuiltIns.DUE_NAME, PropertyKind.DATE),
-                PropertyDef(BuiltIns.DEADLINE_DEF_ID, BuiltIns.DEADLINE_NAME, PropertyKind.DATE),
-            )
-        )
+        writeProperties(builtInProperties())
         writeLabels(emptyList())
+    }
+
+    /**
+     * The fixed fields every workspace has, and the only defs the app ever writes.
+     *
+     * One list rather than one per caller: [scaffold] lays them down for a new directory and
+     * [ensureBuiltInProperties] catches up an old one, and the two disagreeing would mean a field
+     * that works on a workspace made this week and not on the one you have had since June.
+     */
+    fun builtInProperties(): List<PropertyDef> = listOf(
+        // Priority carries its option colours in config. Scaffolding without them left
+        // every High chip drawing as an unnamed neutral, because the chip looks its colour
+        // up by option name and found no options at all.
+        PropertyDef(
+            BuiltIns.PRIORITY_DEF_ID, BuiltIns.PRIORITY_NAME, PropertyKind.SELECT,
+            config = FilterJson.encodeToString(
+                SelectConfig.serializer(),
+                SelectConfig(
+                    listOf(
+                        SelectOption("High", 0xFFFF4A1F),
+                        SelectOption("Medium", 0xFFFFB020),
+                        SelectOption("Low", 0xFF4A90D9),
+                    )
+                ),
+            ),
+        ),
+        PropertyDef(BuiltIns.DUE_DEF_ID, BuiltIns.DUE_NAME, PropertyKind.DATE),
+        PropertyDef(BuiltIns.DEADLINE_DEF_ID, BuiltIns.DEADLINE_NAME, PropertyKind.DATE),
+        // Text rather than select: the options are people, they are discovered rather than
+        // declared, and writing a roster into a file every collaborator pulls would make a
+        // merge conflict out of somebody joining. The picker is a property of the screen; the
+        // file only needs to say the field exists and holds a login.
+        PropertyDef(BuiltIns.ASSIGNEE_DEF_ID, BuiltIns.ASSIGNEE_NAME, PropertyKind.TEXT),
+    )
+
+    /**
+     * Adds any built-in this workspace's `properties.json` is missing. True if it wrote.
+     *
+     * Every workspace scaffolded before a field existed has a file without it, and the reconciler
+     * builds the def rows straight from that file — so a new built-in that is only added to
+     * [scaffold] appears on workspaces created afterwards and nowhere else. That is the shape of
+     * the Assignee bug: the format, the mapper and the repository all understood `@login` for
+     * months while no existing workspace could show one.
+     *
+     * Existing entries are left exactly as they are, including any a newer build wrote and this one
+     * does not recognise. Nothing here overwrites; it only fills gaps.
+     */
+    fun ensureBuiltInProperties(): Boolean {
+        val have = readProperties()
+        val known = have.mapTo(HashSet()) { it.id }
+        val missing = builtInProperties().filterNot { it.id in known }
+        if (missing.isEmpty()) return false
+        writeProperties(have + missing)
+        return true
     }
 
     fun readManifest(): Manifest? =

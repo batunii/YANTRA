@@ -14,6 +14,18 @@ sealed interface LinkResult {
     /** [adopted] means the branch was already there and we joined it rather than starting it. */
     data class Ok(val ref: RepoRef, val login: String, val adopted: Boolean) : LinkResult
     data class Refused(val reason: String) : LinkResult
+
+    /**
+     * The repository already holds tasks that did not come from here.
+     *
+     * Not a refusal — a fork in the road, and one only the person can take. This used to be a
+     * [Refused] whose text told you to add the repository as a second workspace, which is sound
+     * advice for someone else's project and precisely wrong for your own repository after a
+     * reinstall: it is *your* task list, and being handed a duplicate workspace instead of it is
+     * not what anyone meant. Reporting the situation rather than a verdict lets the caller offer
+     * both readings and lets the person say which one is true.
+     */
+    data class HasTasks(val ref: RepoRef, val login: String) : LinkResult
 }
 
 /**
@@ -83,13 +95,24 @@ class WorkspaceLinker(
      * nothing to adopt and nothing to scaffold — the remote is added and the existing commits are
      * pushed as they stand.
      *
-     * **Refuses when the remote branch already has tasks on it**, and that refusal is the whole
-     * reason this is not just [link]. Two populated task histories with no common ancestor are two
-     * real sets of work; rebasing one onto the other would interleave them into something nobody
-     * wrote, and picking a winner would silently delete the loser. Adding it as a second workspace
-     * keeps both, which is what the user would have asked for if anyone had asked them.
+     * **Stops when the remote branch already has tasks on it** and reports [LinkResult.HasTasks]
+     * rather than deciding. Two populated task histories with no common ancestor may be two real
+     * sets of work — rebasing one onto the other would interleave them into something nobody wrote,
+     * and picking a winner silently would delete the loser. But they may equally be the same set of
+     * work seen twice: your own repository, and a phone that has been reinstalled since it last saw
+     * it. Those two look identical from here and are opposite in what they want, so this asks
+     * instead of guessing, and [adopt] is the answer coming back.
+     *
+     * Pass [adopt] to take the remote as it stands. It is a hard reset onto `origin/$branch`: what
+     * is on this device goes. That is the right and only meaning of "use the repository's tasks",
+     * and it is why nothing here reaches that line without having been told to.
      */
-    fun attach(store: WorkspaceStore, urlOrSlug: String, token: String): LinkResult {
+    fun attach(
+        store: WorkspaceStore,
+        urlOrSlug: String,
+        token: String,
+        adopt: Boolean = false,
+    ): LinkResult {
         val (ref, login) = validate(urlOrSlug, token) ?: return refusal(urlOrSlug, token)
         val creds = provider(login, token)
         val repo = GitRepo(store.root, branch)
@@ -108,10 +131,11 @@ class WorkspaceLinker(
                     // must not be an error, and telling the user to add their own repository as a
                     // separate workspace would split their tasks in half for no reason.
                     if (local == null || !related(g, local, remote)) {
-                        return LinkResult.Refused(
-                            "${ref.slug} already has Yantra tasks on it. Add it as a separate " +
-                                "workspace so both sets are kept."
-                        )
+                        if (!adopt) return LinkResult.HasTasks(ref, login)
+                        // Told to take the remote: the same checkout-and-reset that joining an
+                        // existing repository has always done, reached from the other door.
+                        adopt(g)
+                        return LinkResult.Ok(ref, login, adopted = true)
                     }
                 }
                 repo.commitAll(g, "Start a Yantra workspace", "Yantra", "yantra@napkin.ie")
@@ -189,10 +213,26 @@ class WorkspaceLinker(
             walk.next() != null
         }
 
-    /** Someone has been here: take the branch as it stands. */
+    /**
+     * Someone has been here: take the branch as it stands.
+     *
+     * The no-local-branch case has two shapes and they need different handling. Reached from [link]
+     * the directory was made moments ago and is empty. Reached from [attach] it is a workspace that
+     * has been used offline: pages and a manifest on disk, and no branch holding any of them — so
+     * checkout refuses, because writing the repository's files over them would destroy work it was
+     * never told it could touch.
+     *
+     * Here it *has* been told. Adopting means the repository's copy replaces this device's, so the
+     * working tree is emptied first rather than merged into: a leftover page from the old copy would
+     * be indexed beside the ones that arrive, and a second Inbox is exactly the failure this whole
+     * path exists to avoid. Only reachable behind an answered question — see [attach].
+     */
     private fun adopt(git: Git) {
         val local = git.repository.resolve("refs/heads/$branch")
         if (local == null) {
+            git.repository.workTree.listFiles()
+                ?.filter { it.name != ".git" }
+                ?.forEach { it.deleteRecursively() }
             git.checkout().setCreateBranch(true).setName(branch)
                 .setStartPoint("origin/$branch").call()
         } else {

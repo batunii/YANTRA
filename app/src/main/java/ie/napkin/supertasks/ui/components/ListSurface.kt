@@ -21,12 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -82,7 +84,20 @@ fun QuickAddBar(
     labels: List<ie.napkin.supertasks.data.db.LabelEntity> = emptyList(),
     /** The workspace's lists, so `~` can name one — and offer the ones that match while you type. */
     lists: List<String> = emptyList(),
+    /** Who `@` may name here. A closed list — see [ie.napkin.supertasks.data.capture.Captured]. */
+    people: List<String> = emptyList(),
+    /** Tasks a half-typed `[[` could mean. Empty leaves the field with no link completion. */
+    findTasks: suspend (String) -> List<ie.napkin.supertasks.data.db.NodeEntity> = { emptyList() },
+    /** Typed link name to node id, so the tint agrees with what committing will actually write. */
+    resolveLinks: suspend (String) -> Map<String, String> = { emptyMap() },
     onAdd: (String) -> Unit,
+    /**
+     * Room under the field.
+     *
+     * The screen edge's worth by default, and much less when the player is sitting underneath to
+     * catch it — see [BottomBar].
+     */
+    bottomPadding: Dp = 22.dp,
 ) {
     val y = Yantra.colors
     // TextFieldValue rather than String, because tapping a suggestion has to place the caret as
@@ -90,6 +105,18 @@ fun QuickAddBar(
     // left the caret in the middle of what it had just written and the next keystroke landed inside
     // the list's name.
     var text by remember { mutableStateOf(TextFieldValue()) }
+
+    // Both of these are questions only the database can answer, so they are resolved beside the
+    // field rather than inside the transformation that paints it — a VisualTransformation runs on
+    // every keystroke and cannot suspend.
+    val linkDraft = ie.napkin.supertasks.data.format.Links.draft(text.text, text.selection.start)?.second
+    var taskMatches by remember { mutableStateOf<List<ie.napkin.supertasks.data.db.NodeEntity>>(emptyList()) }
+    LaunchedEffect(linkDraft) {
+        taskMatches = linkDraft?.let { findTasks(it) }.orEmpty()
+    }
+    var linkIds by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(text.text) { linkIds = resolveLinks(text.text) }
+
     val send = {
         if (text.text.isNotBlank()) {
             onAdd(text.text.trim())
@@ -99,16 +126,18 @@ fun QuickAddBar(
     // The strip belongs above the bar: growing the bar itself would move the send button
     // under the thumb that was reaching for it.
     Column(modifier.fillMaxWidth().background(y.page)) {
-        ListSuggestions(
-        text = text.text,
-        caret = text.selection.start,
-        lists = lists,
-        onPick = { text = it },
-    )
+        CaptureSuggestions(
+            text = text.text,
+            caret = text.selection.start,
+            lists = lists,
+            people = people,
+            tasks = taskMatches,
+            onPick = { text = it },
+        )
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 22.dp),
+                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = bottomPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
@@ -127,7 +156,7 @@ fun QuickAddBar(
                     cursorBrush = SolidColor(y.accent),
                     // Typing "buy milk tomorrow #home" tints what it understood as you write it, so a
                     // word that is about to leave the title says so first.
-                    visualTransformation = rememberCaptureHighlight(labels, lists),
+                    visualTransformation = rememberCaptureHighlight(labels, lists, people, linkIds),
                     modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.CenterStart) {

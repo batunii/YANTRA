@@ -382,11 +382,22 @@ class WorkspaceWriter(
      * carries one, so becoming a paragraph would leave the page with no line pointing at it and
      * everything on it unreachable. Better to decline than to strand it.
      */
-    suspend fun convertBlock(nodeId: String, type: String) {
+    suspend fun convertBlock(nodeId: String, type: String): String {
         if (type != NodeType.TASK && store.pageFile(nodeId).exists()) {
-            if (loadPage(nodeId)?.blocks?.isNotEmpty() == true) return
+            if (loadPage(nodeId)?.blocks?.isNotEmpty() == true) return nodeId
             store.deletePage(nodeId)
         }
+        // A task line owns a real id, and a converted line has to be given one.
+        //
+        // This used to reuse `nodeId`, which for anything but a task is the *derived* id — page id
+        // plus line number (see PageMapper.blockId). Turning a paragraph into a task therefore wrote
+        // a positional id into the file as though it were a name: `^<page>~3`. It stopped meaning
+        // the same line as soon as anything above it moved, and dropping it into a route resolved
+        // straight back to the page it names — so tapping the task you had just made opened the page
+        // you made it on. Minting one here is the only moment the block acquires an identity, and
+        // the id is returned so the caller can follow the caret to it.
+        val minted = if (type == NodeType.TASK || type == NodeType.INK) newId() else nodeId
+        var settled = nodeId
         editBlock(nodeId) { b ->
             val text = when (b) {
                 is TaskRef -> b.title
@@ -397,9 +408,13 @@ class WorkspaceWriter(
                 is ImageRef -> b.uri
                 is InkRef -> ""
             }
-            val id = if (b is TaskRef) b.id else nodeId
+            // A task that already has an identity keeps it: converting a task to a task is a no-op,
+            // and converting away and back should not fork its page.
+            val id = if (b is TaskRef && b.id.isNotEmpty()) b.id else minted
+            settled = id
             blockOf(type, id, text, b.indent)
         }
+        return settled
     }
 
     private fun withIndent(b: Block, indent: Int): Block = when (b) {

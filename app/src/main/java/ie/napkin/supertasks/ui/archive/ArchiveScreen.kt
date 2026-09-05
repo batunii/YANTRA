@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,12 +41,17 @@ import ie.napkin.supertasks.ArchivedTask
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
+import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraText
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import ie.napkin.supertasks.data.format.Links
 
 /**
  * What has left the working set.
@@ -85,26 +91,20 @@ fun ArchiveScreen(nav: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Back",
-                onClick = { nav.popBackStack() },
-                iconSize = 20.dp,
-            )
-            Spacer(Modifier.width(12.dp))
-            Text("Archive", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
-        }
+        val fold = rememberHeaderFold()
+        PageHeader("Archive", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         if (loaded && groups.isEmpty()) {
             ComposedEmpty("Nothing archived yet")
             return@Column
         }
 
-        LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .nestedScroll(fold.connection)
+                .padding(horizontal = PAGE_MARGIN),
+        ) {
             item(key = "why") {
                 Text(
                     "Finished tasks that left your lists. They are still in the repository — putting " +
@@ -142,7 +142,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                task.title.ifBlank { "Untitled task" },
+                Links.plain(task.title).ifBlank { "Untitled task" },
                 color = y.textSecondary,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W600,

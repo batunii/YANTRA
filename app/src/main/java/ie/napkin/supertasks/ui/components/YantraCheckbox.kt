@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -278,6 +279,14 @@ fun YantraCheckbox(
      */
     var animatedTo by remember(taskId) { mutableStateOf<TaskState?>(null) }
 
+    /**
+     * Whether the swipe that is committing has already traced the ring to full.
+     *
+     * Read through [rememberUpdatedState] because the transition effect keys on `state` alone and
+     * would otherwise close over whatever the progress happened to be when the row first composed.
+     */
+    val tracedByHand by rememberUpdatedState(swipeProgress >= 1f)
+
     // React to state transitions with the right choreography.
     LaunchedEffect(state) {
         val previous = animatedTo
@@ -296,14 +305,25 @@ fun YantraCheckbox(
 
             TaskState.IN_PROGRESS -> coroutineScope {
                 haptics?.tick()
-                if (reduced) {
-                    launch { ringDraw.snapTo(1f) }
-                    launch { ringFillAlpha.animateTo(0.18f, tween(Timing.REDUCED_MOTION_MS)) }
-                } else {
-                    launch { ringDraw.animateTo(1f, tween(320)) }
-                    // Fix 1: static fill. The ring drawing in IS the state
-                    // announcement; after that, nothing moves at rest.
-                    launch { ringFillAlpha.animateTo(0.18f, tween(200)) }
+                when {
+                    // The finger already drew it. Inherit the ring where the gesture left it
+                    // instead of announcing a state the user has just finished announcing: an
+                    // animation from zero here is what made a committed swipe draw the ring,
+                    // un-draw it, and draw it again.
+                    tracedByHand -> {
+                        launch { ringDraw.snapTo(1f) }
+                        launch { ringFillAlpha.snapTo(0.18f) }
+                    }
+                    reduced -> {
+                        launch { ringDraw.snapTo(1f) }
+                        launch { ringFillAlpha.animateTo(0.18f, tween(Timing.REDUCED_MOTION_MS)) }
+                    }
+                    else -> {
+                        launch { ringDraw.animateTo(1f, tween(320)) }
+                        // Fix 1: static fill. The ring drawing in IS the state
+                        // announcement; after that, nothing moves at rest.
+                        launch { ringFillAlpha.animateTo(0.18f, tween(200)) }
+                    }
                 }
             }
 

@@ -102,21 +102,40 @@ object PageCodec {
 
         inkOrImage(rest, indent, raw)?.let { return it }
 
-        val status = when {
-            rest.startsWith("- [ ] ") -> TaskStatus.OPEN
-            rest.startsWith("- [x] ") -> TaskStatus.DONE
-            rest.startsWith("- [~] ") -> TaskStatus.IN_PROGRESS
-            else -> null
+        // The box, with or without anything after it.
+        //
+        // Requiring the trailing space made a block's *kind* depend on its content: an empty task
+        // renders as "- [ ] " and the only thing distinguishing it from a bullet is a space at the
+        // end of the line — which any editor, any linter and most git hooks will strip. The line
+        // then came back as a bullet, so a task you made and did not type into changed into
+        // something else behind your back. A checkbox is a checkbox whether or not it says anything.
+        val marker = TASK_MARKER.find(rest)
+        if (marker != null) {
+            val status = when (marker.groupValues[1]) {
+                "x", "X" -> TaskStatus.DONE
+                "~" -> TaskStatus.IN_PROGRESS
+                else -> TaskStatus.OPEN
+            }
+            return parseTask(rest.drop(marker.value.length), status, indent, raw)
         }
-        if (status != null) return parseTask(rest.drop(6), status, indent, raw)
 
         return when {
             rest.startsWith("# ") -> Heading(rest.drop(2), indent, raw)
             rest.startsWith("- ") -> Bullet(rest.drop(2), indent, raw)
             NUMBERED.matches(rest) -> Numbered(NUMBERED.find(rest)!!.groupValues[1], indent, raw)
+            // A line with nothing but whitespace on it is an empty block, and empty is what it has
+            // to come back as. The emitter writes a lone space for an empty block because a block
+            // has to occupy a line — and this read that space back as the block's *text*. So every
+            // note started from the write line was born holding a space, and the first thing anyone
+            // typed landed after it: one character of indent on the first line of a paragraph, on
+            // its own line only, that nobody put there and nothing else in the app could explain.
+            rest.isBlank() -> Prose("", indent, raw)
             else -> Prose(rest, indent, raw)
         }
     }
+
+    /** `- [ ]`, `- [x]`, `- [~]`, each with or without a following space. See [parseBlock]. */
+    private val TASK_MARKER = Regex("""^- \[([ xX~])] ?""")
 
     private val NUMBERED = Regex("""^\d+\.\s+(.*)$""")
     private val INK = Regex("""^!\[\[ink:([^\]]+)]]$""")
@@ -150,6 +169,12 @@ object PageCodec {
         while (words.isNotEmpty()) {
             val w = words.last()
             val consumed = when {
+                // A word carrying a link's closing brackets is part of the title, whatever it
+                // starts with. Without this the scan reads `[[Buy milk #2|^abc]]` from the right,
+                // sees a word beginning `#`, and files the task under a label called
+                // `2|^abc]]` — taking half the link out of the title on the way. The right-to-left
+                // rule is about trailing *tokens*, and nothing that closes a link is one.
+                w.contains(Links.CLOSE) -> false
                 w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); true }
                 w.startsWith("due:") -> parseDue(w.removePrefix("due:"))?.also { due = it } != null
                 w.startsWith("deadline:") ->
@@ -298,14 +323,17 @@ object PageCodec {
     }
 
     private fun renderTask(t: TaskRef): String = buildString {
+        // No trailing space after the box, and none between an empty title and the first token.
+        // A line that ends in whitespace is a line something else will eventually trim, and the
+        // parser must not be the only thing standing between that and a block changing kind.
         append(
             when (t.status) {
-                TaskStatus.OPEN -> "- [ ] "
-                TaskStatus.DONE -> "- [x] "
-                TaskStatus.IN_PROGRESS -> "- [~] "
+                TaskStatus.OPEN -> "- [ ]"
+                TaskStatus.DONE -> "- [x]"
+                TaskStatus.IN_PROGRESS -> "- [~]"
             }
         )
-        append(t.title)
+        if (t.title.isNotEmpty()) append(' ').append(t.title)
         // Order is fixed so the same task always renders the same bytes — otherwise two devices
         // holding identical data would produce a diff, and every sync would look like a change.
         if (t.id.isNotEmpty()) append(" ^").append(t.id)

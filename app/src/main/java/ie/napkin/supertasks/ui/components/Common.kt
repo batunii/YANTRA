@@ -63,6 +63,8 @@ data class ChipData(
     val status: ChipStatus = ChipStatus.None,
     /** Set on the Priority chip so rows can carry priority on the checkbox too. */
     val isPriority: Boolean = false,
+    /** Set on a label so a row can give it the `#name` form the design uses. */
+    val isLabel: Boolean = false,
 )
 
 /** The packed-ARGB Long a label stores, opaque — the form [LabelPalette] speaks in. */

@@ -3,6 +3,8 @@ package ie.napkin.supertasks.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.napkin.supertasks.AppContainer
+import ie.napkin.supertasks.domain.TimingRequest
+import ie.napkin.supertasks.data.workspace.WorkspaceEntry
 import ie.napkin.supertasks.data.db.LabelEntity
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ie.napkin.supertasks.data.db.PropertyDefEntity
@@ -29,6 +32,29 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val smartLists = container.smartLists
     private val properties = container.properties
     private val labelsRepo = container.labels
+
+    /** The player's play/stop, and the consent it needs when the clock is elsewhere. */
+    val timing = TimingRequest(container.running)
+
+    /**
+     * The player's one button.
+     *
+     * An open stopwatch, not a commitment — pressing play on a bar you were passing anyway says
+     * "start counting", and says nothing about for how long. The length is a decision with its own
+     * screen, which the body of the player opens.
+     */
+    fun toggleClock(id: String, title: String) {
+        viewModelScope.launch { timing.toggle(id, title) }
+    }
+
+    /**
+     * The workspaces the builder may offer as a rule's reach.
+     *
+     * Registry order, filtered to what is actually open — a repo listed but not opened cannot be
+     * searched, and offering it would let someone write a rule that silently matches nothing.
+     */
+    val workspaces: List<WorkspaceEntry> =
+        container.registry.entries().filter { container.workspaces.isOpen(it.id) }
 
     val topLevel: StateFlow<List<NodeEntity>> =
         nodes.topLevel().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -83,27 +109,54 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     /** Get-or-create, called from the smart-list builder's inline label picker. */
     suspend fun createLabel(name: String) = labelsRepo.getOrCreate(name)
 
-    fun createList(title: String) {
-        viewModelScope.launch { nodes.create(null, NodeType.LIST, title) }
+    fun createList(title: String, workspaceId: String) {
+        viewModelScope.launch { nodes.create(null, NodeType.LIST, title, workspaceId = workspaceId) }
     }
 
     /** Quick-capture a task from the cog: drop it in the Inbox, then open that list. */
+    /**
+     * Who a typed `@` may name on Home.
+     *
+     * Home captures into the Inbox, which is Personal's, so this is Personal's roster — not a union
+     * across repos. Offering a shared project's collaborators on a line that is about to land in
+     * your own workspace is exactly the mix-up the scoped query exists to prevent.
+     */
+    val assignable: StateFlow<List<String>> =
+        flow { emit(container.people.loginsFor("")) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun linkTargets(query: String) = container.nodes.searchLinkTargets(query)
+
+    suspend fun linkIdsFor(text: String) = container.nodes.linkIdsFor(text)
+
     fun quickAddTask(title: String, onDone: (String) -> Unit) {
         viewModelScope.launch {
             val inboxId = nodes.inboxList()
-            nodes.captureTask(inboxId, title, container.labels, container.properties)
+            nodes.captureTask(inboxId, title, container.labels, container.properties, container.people)
             onDone(inboxId)
         }
     }
 
     /** Create a list and hand back its id so the caller can open it. */
-    fun createListThen(title: String, onDone: (String) -> Unit) {
-        viewModelScope.launch { onDone(nodes.create(null, NodeType.LIST, title)) }
+    fun createListThen(title: String, workspaceId: String, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            onDone(nodes.create(null, NodeType.LIST, title, workspaceId = workspaceId))
+        }
     }
 
-    fun createGroup(title: String) {
-        viewModelScope.launch { nodes.createGroup(title) }
+    fun createGroup(title: String, workspaceId: String) {
+        viewModelScope.launch { nodes.createGroup(title, workspaceId) }
     }
+
+    /**
+     * Where a new list goes when nobody has said otherwise: the local workspace.
+     *
+     * Named rather than positional. Registry order happens to put Personal first today, and a
+     * default that quietly followed whatever came back first would move people's lists the day that
+     * changed.
+     */
+    val defaultWorkspaceId: String
+        get() = workspaces.firstOrNull { it.id.isEmpty() }?.id ?: workspaces.firstOrNull()?.id ?: ""
 
     fun moveToGroup(id: String, groupId: String?) {
         viewModelScope.launch { nodes.moveToGroup(id, groupId) }

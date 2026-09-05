@@ -132,30 +132,35 @@ class WorkspaceLeakTest {
         assertTrue(nodesIn("ws-personal").any { it.title == "Only in Personal" })
     }
 
-    // ---- the derived label ----
+    // ---- provenance ----
 
     @Test
-    fun everyTaskCarriesALabelForTheWorkspaceItCameFrom() = runBlocking {
-        val labels = db.labelDao().all().first()
-        val workLabel = labels.single { it.name == "Work" }
-        val links = db.labelDao().allNodeLabels().first().filter { it.labelId == workLabel.id }
-
-        val workTasks = nodesIn("ws-work").filter { it.type == NodeType.TASK }
-        assertEquals(workTasks.map { it.id }.sorted(), links.map { it.nodeId }.sorted())
-        // And it filters through the existing machinery, with no new syntax.
-        val q = FilterCompiler.compile(null, Filter.HasLabel(workLabel.id), workspaceId = null)
+    fun everythingFromOneWorkspaceIsFilterableByItself() = runBlocking {
+        // This used to be a derived label attached to every task, which cost a row per task, shared
+        // a namespace with the tags people type, and rendered as a chip that offered to detach it.
+        // It is the column now, asked directly — and still through the existing machinery, with the
+        // rule able to state the workspace itself rather than being fenced into one from outside.
+        val q = FilterCompiler.compile(null, Filter.InWorkspace("ws-work"), workspaceId = null)
         val rows = db.nodeDao().rawNodeQuery(SimpleSQLiteQuery(q.sql, q.args.toTypedArray())).first()
         assertTrue(rows.isNotEmpty())
         assertTrue(rows.all { it.workspaceId == "ws-work" })
+        // Every node, not only the tasks: the column is on lists and blocks too, where the label
+        // it replaces was only ever put on tasks.
+        assertEquals(nodesIn("ws-work").map { it.id }.sorted(), rows.map { it.id }.sorted())
     }
 
     @Test
-    fun theWorkspaceLabelIsNotWrittenToAnyFile() = runBlocking {
+    fun noLabelIsInventedForTheWorkspaceItself() = runBlocking {
         // Provenance is not content. A file claiming its own workspace would be lying the moment
-        // the repo was cloned as a second one.
+        // the repo was cloned as a second one — and a label row saying it is a second copy of a
+        // column those same rows already carry.
         val text = work.root.walkTopDown().filter { it.isFile }.joinToString("\n") { it.readText() }
         assertTrue("the derived label leaked into the repo", !text.contains("ws-work:workspace"))
         assertTrue(!work.readLabels().any { it.name == "Work" })
+        assertTrue(
+            "a label was derived for the workspace",
+            db.labelDao().all().first().none { it.name == "Work" || it.id.endsWith(":workspace") },
+        )
     }
 
     @Test

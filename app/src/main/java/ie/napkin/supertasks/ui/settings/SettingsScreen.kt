@@ -25,10 +25,12 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,8 +39,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.ConfirmDialog
+import ie.napkin.supertasks.ui.components.ChipSize
 import ie.napkin.supertasks.ui.components.LocalCompletionTempo
 import ie.napkin.supertasks.ui.components.LocalYantraHaptics
 import ie.napkin.supertasks.ui.components.TaskState
@@ -84,6 +91,9 @@ fun SettingsScreen(nav: NavHostController) {
     // silently failed.
     var account by remember { mutableStateOf<String?>(null) }
     var spaces by remember { mutableStateOf<List<WorkspaceRow>>(emptyList()) }
+    /** The workspace being let go of, while the confirm is up. */
+    var forgetting by remember { mutableStateOf<WorkspaceRow?>(null) }
+    val settingsScope = rememberCoroutineScope()
     var archiveDays by remember { mutableStateOf(0) }
     var archived by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
@@ -114,23 +124,13 @@ fun SettingsScreen(nav: NavHostController) {
             .background(y.page)
             .statusBarsPadding(),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Back",
-                onClick = { nav.popBackStack() },
-                iconSize = 20.dp,
-            )
-            Spacer(Modifier.width(12.dp))
-            Text("Settings", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
-        }
+        val fold = rememberHeaderFold()
+        PageHeader("Settings", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         Column(
             Modifier
                 .fillMaxWidth()
+                .nestedScroll(fold.connection)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(top = 12.dp, bottom = 40.dp),
@@ -174,8 +174,30 @@ fun SettingsScreen(nav: NavHostController) {
                     // points is the part that is useful now, and a row that navigated nowhere would
                     // be worse than one that does not pretend to.
                     onClick = null,
+                    // Personal has no forget: it is the one workspace that must exist, and
+                    // forgetWorkspace refuses it anyway. Everything else can be let go of — which
+                    // it could not before, so a workspace joined by mistake was permanent.
+                    trailing = if (space.id.isEmpty()) null else ({
+                        SelectChip("Forget", selected = false, size = ChipSize.Small) { forgetting = space }
+                    }),
                 )
                 Spacer(Modifier.height(8.dp))
+            }
+            forgetting?.let { space ->
+                ConfirmDialog(
+                    title = "Forget ${space.name}?",
+                    body = "Its tasks stay in ${space.slug ?: "the repository"} — this only removes " +
+                        "the copy on this device, and it stops syncing here. You can join it again.",
+                    confirmLabel = "Forget",
+                    onDismiss = { forgetting = null },
+                    onConfirm = {
+                        forgetting = null
+                        settingsScope.launch {
+                            container.forgetWorkspace(space.id)
+                            spaces = spaces.filterNot { it.id == space.id }
+                        }
+                    },
+                )
             }
             SettingRow(
                 title = "Add a workspace",
@@ -417,6 +439,8 @@ private fun SettingRow(
     subtitle: String,
     onClick: (() -> Unit)?,
     icon: Boolean = false,
+    /** An action that belongs to this row rather than to opening it. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val y = Yantra.colors
     Row(
@@ -436,6 +460,7 @@ private fun SettingRow(
             Spacer(Modifier.height(2.dp))
             Text(subtitle, color = y.textMuted, fontSize = 11.5.sp)
         }
+        trailing?.invoke()
         if (onClick != null) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight, null,

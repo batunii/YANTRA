@@ -3,6 +3,7 @@ package ie.napkin.supertasks
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.util.Log
 import ie.napkin.supertasks.data.db.AppDatabase
 import ie.napkin.supertasks.data.repo.InkRepository
 import ie.napkin.supertasks.data.repo.LabelRepository
@@ -28,6 +29,8 @@ import ie.napkin.supertasks.data.sync.GitRepo
 import ie.napkin.supertasks.data.sync.SyncEngine
 import ie.napkin.supertasks.data.sync.TokenRenewal
 import ie.napkin.supertasks.domain.FocusTimer
+import ie.napkin.supertasks.domain.RunningTask
+import ie.napkin.supertasks.domain.SessionNotification
 import ie.napkin.supertasks.reminders.ReminderManager
 import ie.napkin.supertasks.reminders.ReminderScheduler
 import ie.napkin.supertasks.reminders.Reminders
@@ -57,8 +60,16 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
+        val notifications = getSystemService(NotificationManager::class.java)
+        notifications.createNotificationChannel(
             NotificationChannel(Reminders.CHANNEL_ID, "Reminders", NotificationManager.IMPORTANCE_HIGH)
+        )
+        // Low, and deliberately so: a reminder interrupts you, a running session only reports. See
+        // SessionNotification.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                SessionNotification.CHANNEL_ID, "Running session", NotificationManager.IMPORTANCE_LOW,
+            )
         )
         // Component enabled-states are package state, not app data: a reinstall resets them to the
         // manifest defaults while the stored accent survives in prefs, which would leave a coral
@@ -92,6 +103,16 @@ data class ArchivedGroup(
 sealed interface AddResult {
     data class Ok(val id: String, val name: String, val adopted: Boolean) : AddResult
     data class Refused(val reason: String) : AddResult
+
+    /**
+     * The repository already holds tasks, and only the person can say what that means.
+     *
+     * [localTasks] is what is on this device and would be replaced by taking the remote — the one
+     * number that makes the choice answerable. Nought or a handful is a phone that has been
+     * reinstalled; two hundred is a second real list, and nobody will tap "replace" by accident
+     * once it says so.
+     */
+    data class HasTasks(val slug: String, val localTasks: Int) : AddResult
 }
 
 /** Plain-manual DI: one graph for the whole app. */
@@ -186,6 +207,7 @@ class AppContainer(val app: Application) {
     fun syncState(): kotlinx.coroutines.flow.StateFlow<ie.napkin.supertasks.data.sync.SyncResult?>? =
         commits.values.firstOrNull()?.lastResult
 
+    val people = ie.napkin.supertasks.data.people.People(app, db, credentials, registry, github)
     val nodes = NodeRepository(db, workspaces)
     val properties = PropertyRepository(db, workspaces)
     val labels = LabelRepository(db, workspaces)
@@ -193,6 +215,7 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
+    val running = RunningTask(timer, nodes, appScope)
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
@@ -203,6 +226,23 @@ class AppContainer(val app: Application) {
      * the index is empty on every device that clones an existing workspace, and gating the other way
      * would give each machine that joins its own second Inbox and its own second Today.
      */
+    /**
+     * Says out loud what a rebuild could not make sense of.
+     *
+     * Every caller of `reindexAll` and `reindex` has always been handed this list and every one of
+     * them has always dropped it, which made a reported problem and a swallowed one the same thing.
+     * That is tolerable for a stale focus-log line and not at all tolerable for the reasons a
+     * workspace failed to index — those used to be a crash, and a fix that turns a crash into
+     * silence has moved the bug rather than found it.
+     *
+     * Logcat rather than the UI on purpose: what to *show* someone about a half-read workspace is a
+     * design question worth answering properly, and nothing here should pretend to have answered it.
+     * This only ensures the answer can be worked out from a bug report.
+     */
+    private fun report(problems: List<String>) {
+        problems.forEach { Log.w("Yantra.index", it) }
+    }
+
     val seeding: Job = appScope.launch {
         val fresh = workspaces.open(id = "", root = registry.dirFor(""), name = "Personal")
         if (fresh) WorkspaceSeeder.seed(workspaces.primaryStore())
@@ -212,8 +252,25 @@ class AppContainer(val app: Application) {
         registry.entries().filter { it.id.isNotEmpty() }.forEach { entry ->
             workspaces.open(entry.id, registry.dirFor(entry.id), entry.name)
         }
-        workspaces.reindexAll()
+        report(workspaces.reindexAll())
         workspaces.all.forEach { attach(it) }
+
+        // Sweep out any workspace the index still believes in and nothing else does.
+        //
+        // Forgetting one used to leave its rows behind, so its lists went on appearing on Home and
+        // in Today long after its files and its registry entry were gone — and they could not be
+        // deleted, because a write is routed by the node's workspace and there was no longer a
+        // writer to route it to. Fixed at the source in [forgetWorkspace], but a device that has
+        // already forgotten one is still carrying the rows, and only this notices.
+        //
+        // Deliberately keyed on what is *open* rather than on the registry: those agree by the time
+        // this runs, and a workspace that failed to open keeps its rows for the next launch rather
+        // than being erased because a disk was slow.
+        val known = workspaces.all.map { it.id }.toSet()
+        db.nodeDao().indexedWorkspaces().filterNot { it in known }.forEach { orphan ->
+            Log.i("Yantra", "Sweeping index rows for forgotten workspace $orphan")
+            indexer.purge(orphan)
+        }
 
         // Also on launch, not only on the daily worker. Android is free to decide a periodic job can
         // wait until tomorrow — Samsung especially — and archiving is what keeps the working set at
@@ -283,17 +340,37 @@ class AppContainer(val app: Application) {
                     dir.deleteRecursively()
                     AddResult.Refused(result.reason)
                 }
+                // Unreachable: joining is already the answer to "the repository has tasks", so
+                // [WorkspaceLinker.link] adopts rather than asking. Here because the compiler is
+                // right to insist, and a bug in the linker should say so rather than crash.
+                is LinkResult.HasTasks -> {
+                    dir.deleteRecursively()
+                    AddResult.Refused("${result.ref.slug} could not be joined")
+                }
                 is LinkResult.Ok -> {
                     credentials.store(id, token, result.login)
                     // A workspace we joined already has a name, chosen by whoever started it. Taking
                     // ours over theirs would rename the same shared project on every device.
                     val store = WorkspaceStore(dir, id)
                     val named = store.readManifest()?.name?.takeIf { it.isNotBlank() } ?: label
-                    registry.add(WorkspaceEntry(id, named, result.ref.slug))
-                    workspaces.open(id, dir, named)
+                    // A joined workspace is named by whoever started it, and that name can already
+                    // be taken here — joining your own repository gives you a second "Personal",
+                    // and two workspaces answering to one name are indistinguishable in every list
+                    // that shows them. The slug is what actually tells them apart, so it is what
+                    // gets added.
+                    val unique = disambiguate(named, result.ref.slug)
+                    registry.add(WorkspaceEntry(id, unique, result.ref.slug))
+                    // Who can be assigned, asked once, here — the moment the app has a repository
+                    // and a token for it and is already on the network. Fetching it lazily instead
+                    // meant a workspace arrived knowing nobody, and "nobody has been loaded yet"
+                    // and "nobody else can push here" look identical from the assignee sheet. The
+                    // answer is not allowed to fail the link: the repository is joined either way,
+                    // and a roster is something to retry, not a reason to refuse.
+                    people.refresh(id)
+                    workspaces.open(id, dir, unique)
                     attach(store)
                     workspaces.reindexAll()
-                    AddResult.Ok(id, named, result.adopted)
+                    AddResult.Ok(id, unique, result.adopted)
                 }
             }
         }
@@ -306,27 +383,57 @@ class AppContainer(val app: Application) {
      * tasks of its own. The scheduler is rebuilt afterwards so it picks up the credentials, which is
      * also what makes the first push happen without a restart.
      */
-    suspend fun attachRemote(workspaceId: String, urlOrSlug: String, token: String): AddResult =
+    suspend fun attachRemote(
+        workspaceId: String,
+        urlOrSlug: String,
+        token: String,
+        /** Take the remote as it stands, discarding what is here. Only ever set by an answered ask. */
+        adopt: Boolean = false,
+    ): AddResult =
         withContext(Dispatchers.IO) {
             seeding.join()
             val store = workspaces.store(workspaceId)
                 ?: return@withContext AddResult.Refused("That workspace is not open")
 
-            when (val result = linker.attach(store, urlOrSlug, token)) {
+            when (val result = linker.attach(store, urlOrSlug, token, adopt)) {
                 is LinkResult.Refused -> AddResult.Refused(result.reason)
+                is LinkResult.HasTasks ->
+                    AddResult.HasTasks(result.ref.slug, db.nodeDao().countNodes(workspaceId))
                 is LinkResult.Ok -> {
                     credentials.store(workspaceId, token, result.login)
+                    // Adopting replaced every file under this workspace, so the index is describing
+                    // a tree that is gone. Rebuilt before anything reads a name off it.
+                    if (result.adopted) workspaces.reindexAll()
                     val name = store.readManifest()?.name ?: "Workspace"
                     // The local workspace gets a registry entry too once it has a remote, even
                     // though it is not opened from the registry — it is the only record of where it
                     // points, and without it the UI could not tell a backed-up workspace from one
                     // that has never left the device.
                     registry.add(WorkspaceEntry(workspaceId, name, result.ref.slug))
+                    // Same as addWorkspace: the roster is fetched the moment there is a repository
+                    // to fetch it from, so the assignee sheet is never empty for want of asking.
+                    people.refresh(workspaceId)
                     attach(store)
                     AddResult.Ok(workspaceId, name, adopted = false)
                 }
             }
         }
+
+    /**
+     * A name no other workspace is already using.
+     *
+     * Qualified with the slug rather than numbered: "Personal (batunii/yantra-tasks)" says which one
+     * it is, and "Personal 2" says only that you have two. Falls back to numbering if even that
+     * collides, which takes two repositories of the same slug and cannot happen — but a name is not
+     * worth an exception.
+     */
+    private fun disambiguate(name: String, slug: String?): String {
+        val taken = registry.entries().map { it.name }.toSet() +
+            listOfNotNull(workspaces.store("")?.readManifest()?.name)
+        if (name !in taken) return name
+        slug?.let { "$name ($it)" }?.takeIf { it !in taken }?.let { return it }
+        return generateSequence(2) { it + 1 }.map { "$name $it" }.first { it !in taken }
+    }
 
     /**
      * Where a workspace points, for the UI to show. Null for one with no remote.
@@ -425,12 +532,50 @@ class AppContainer(val app: Application) {
         registry.remove(workspaceId)
         workspaces.close(workspaceId)
         registry.dirFor(workspaceId).deleteRecursively()
+        // The index does not follow the files. reindexAll rebuilds the workspaces that are open,
+        // and this one no longer is — so without naming it here its lists stayed on Home, pointing
+        // at a repository that had been removed, and Delete on them did nothing at all.
+        indexer.purge(workspaceId)
         workspaces.reindexAll()
     }
 
     init {
         // Any process wake (widget tap, worker, activity) revives a live focus session.
         appScope.launch { timer.restoreIfNeeded() }
+        // Starting a session marks the task, and this is the seam that does it.
+        //
+        // One direction only. You cannot be focusing on something you are not on, so a session
+        // start writes the flag — but the reverse is not true and must not be wired: marking a task
+        // is a claim about what you are doing, and committing a block of time to it is a separate
+        // decision the person may not have made yet. See RunningTask.
+        //
+        // Nor does the flag come off when a session ends. You stopped timing; you are usually still
+        // on the thing, and having the ring vanish the moment a pomodoro ran out would be the
+        // opposite of what just happened. Putting a task down is always something you do — a swipe,
+        // or completing it.
+        //
+        // The timer is the authority on *what is running now*: it already permits exactly one, ends
+        // the previous one when a second starts, and comes back after process death. What it cannot
+        // do is outlive the install — it is a ticking clock, not a record — so the durable half of
+        // the claim goes on the task's line, where it syncs and another device can see it.
+        //
+        // Here rather than at the three places a session can begin — the focus screen, the widget,
+        // and a restore after process death — because a rule enforced once is a rule a new caller
+        // cannot forget.
+        //
+        // A device with no live session still shows the ring for a task another device marked, and
+        // shows no clock beside it. That is the honest reading: the claim travelled, the stopwatch
+        // did not.
+        appScope.launch {
+            timer.state
+                .map { s -> s?.takeIf { !it.isFinished }?.nodeId }
+                .distinctUntilChanged()
+                .collect { current ->
+                    // setInProgress clears whatever else held the mark, so a session that starts on
+                    // a different task moves it in one write.
+                    current?.let { nodes.setInProgress(it, true) }
+                }
+        }
         // Focus widget re-renders on state *transitions* only — never per tick (the widget's
         // Chronometer handles the live countdown). Also (de)schedules the dead-process finalizer.
         appScope.launch {
@@ -443,6 +588,13 @@ class AppContainer(val app: Application) {
                         FocusFinalizeWorker.schedule(app, s.remainingSecs)
                     } else if (s == null || s.isFinished) {
                         FocusFinalizeWorker.cancel(app)
+                    }
+                    // Posted on transitions only, for the same reason the widget is: the chronometer
+                    // in the notification ticks itself, so there is nothing per-second to push.
+                    if (s != null && !s.isFinished) {
+                        SessionNotification.show(app, s.nodeTitle, s.nodeId, s.elapsedSecs)
+                    } else {
+                        SessionNotification.clear(app)
                     }
                     FocusWidget().updateAll(app)
                 }

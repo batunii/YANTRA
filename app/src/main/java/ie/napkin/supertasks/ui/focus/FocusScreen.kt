@@ -56,6 +56,7 @@ import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
 import ie.napkin.supertasks.ui.components.durationLabel
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoLarge
@@ -82,6 +83,7 @@ import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
 import ie.napkin.supertasks.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
+import ie.napkin.supertasks.data.format.Links
 
 class FocusViewModel(
     container: AppContainer,
@@ -124,7 +126,34 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                 .map { java.time.Instant.ofEpochMilli(it.startedAt) }
         )
     }
+    // The requested task's own history, which is not the same list as `sessions` above: that one
+    // follows the *running* task when there is one, so opening a second task's setup while a clock
+    // ticks elsewhere would have drawn the other task's ledger under this task's name.
+    val ownSessions by remember(nodeIdArg) {
+        nodeIdArg?.let { vm.sessionsFor(it) } ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val ownDayCounts = remember(ownSessions) {
+        groupSessionsByDay(
+            ownSessions.filter { it.actualSecs != null }
+                .map { java.time.Instant.ofEpochMilli(it.startedAt) }
+        )
+    }
+
     val active = timerState
+    /** The length chosen for a task that has to take the clock off another. Null when nothing asks. */
+    var switchTo by remember { mutableStateOf<Int?>(null) }
+    switchTo?.let { secs ->
+        SwitchHereDialog(
+            runningTitle = active?.nodeTitle.orEmpty(),
+            onConfirm = {
+                // The timer closes the running session as interrupted on its way in — see
+                // FocusTimer.start — so the switch is one call, and the time given still counts.
+                requestedNode?.let { vm.timer.start(it.id, it.title.orEmpty(), secs) }
+                switchTo = null
+            },
+            onDismiss = { switchTo = null },
+        )
+    }
 
     Box(
         Modifier
@@ -155,18 +184,28 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                     onStartAnother = vm.timer::dismissFinished,
                     onDone = { vm.timer.dismissFinished(); nav.popBackStack() },
                 )
-                active != null -> ActiveTimer(
-                    state = active,
-                    dayCounts = dayCounts,
-                    onPause = vm.timer::pause,
-                    onResume = vm.timer::resume,
-                    onComplete = vm.timer::finish,
-                    onAbandon = vm.timer::abandon,
-                )
+                // The live session, whenever this screen is about it — or about nothing in
+                // particular, which is what the deck's running card and the widget both open.
+                active != null && (requestedNode == null || active.nodeId == requestedNode!!.id) ->
+                    ActiveTimer(
+                        state = active,
+                        dayCounts = dayCounts,
+                        onPause = vm.timer::pause,
+                        onResume = vm.timer::resume,
+                        onComplete = vm.timer::finish,
+                        onAbandon = vm.timer::abandon,
+                    )
+                // Arrived here for a *different* task while something is running. The setup is
+                // still offered — you should be choosing the length before being asked to give up
+                // the clock, not after — and the ask comes when start is actually pressed.
                 requestedNode != null -> IdleScroll(sessions) {
                     TimerSetup(
                         node = requestedNode!!,
-                        onStart = { secs -> vm.timer.start(requestedNode!!.id, requestedNode!!.title.orEmpty(), secs) },
+                        dayCounts = ownDayCounts,
+                        onStart = { secs ->
+                            if (active != null) switchTo = secs
+                            else vm.timer.start(requestedNode!!.id, requestedNode!!.title.orEmpty(), secs)
+                        },
                     )
                 }
                 else -> IdleScroll(sessions) {
@@ -242,7 +281,7 @@ private fun DurationChip(
 private val PRESETS = listOf(15, 25, 50)
 
 @Composable
-private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
+private fun TimerSetup(node: NodeEntity, dayCounts: List<Int>, onStart: (Int) -> Unit) {
     val y = Yantra.colors
     var minutes by remember { mutableIntStateOf(25) }
     var picking by remember { mutableStateOf(false) }
@@ -251,7 +290,7 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Focus on")
         Text(
-            node.title.orEmpty().ifBlank { "Untitled task" },
+            Links.plain(node.title.orEmpty()).ifBlank { "Untitled task" },
             fontFamily = YantraDisplay,
             fontSize = 32.sp,
             lineHeight = 39.sp,
@@ -262,6 +301,38 @@ private fun TimerSetup(node: NodeEntity, onStart: (Int) -> Unit) {
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
+        // What this task has already had, before you decide what to give it next.
+        //
+        // The screen listed the sessions and drew none of them, which made it the one focus surface
+        // that could not answer "how much have I put into this" without being read line by line —
+        // and it is the screen you are on precisely while asking that. The glyph is the same one
+        // the running session sits inside, reading its own grammar: a trikona opens each day this
+        // task was worked, then one ring per session on it.
+        if (dayCounts.isNotEmpty()) {
+            val context = LocalContext.current
+            val reduced = remember { isReducedMotion(context) }
+            Spacer(Modifier.height(22.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                YantraFocusGlyph(
+                    dayCounts = dayCounts,
+                    // Nothing is running on it yet — that is why you are here.
+                    sessionProgress = null,
+                    onBreak = false,
+                    darkTheme = y.isDark,
+                    reducedMotion = reduced,
+                    modifier = Modifier.size(180.dp),
+                )
+            }
+            Text(
+                "${dayCounts.sum()} session${if (dayCounts.sum() == 1) "" else "s"} · " +
+                    "${dayCounts.size} day${if (dayCounts.size == 1) "" else "s"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = y.textMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            )
+        }
+
         Spacer(Modifier.height(28.dp))
         // Two instruments, and the screen has to make the difference legible rather than hide one
         // behind the other: a promise you are making, or a clock you are simply starting.

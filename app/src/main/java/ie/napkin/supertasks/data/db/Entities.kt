@@ -235,6 +235,22 @@ data class FocusSessionEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
 
+/**
+ * Whether this session belongs in a count or a total.
+ *
+ * Two conditions, and neither is optional. A null [FocusSessionEntity.actualSecs] is a session
+ * still in flight — the end line has not been written, so it has given nothing yet. And a mis-tap
+ * counts nowhere, by [FocusOutcome.DISCARDED]'s own rule.
+ *
+ * A property rather than a filter written out at each call site, because every SQL read of this
+ * table says `outcome <> 'discarded'` inline and exactly one — `FocusDao.all()` — does not. Both
+ * of its callers are screens that report session counts, and both had got it wrong: a day of four
+ * accidental taps read as four sessions on the focus screen and on the stats screen alike. The rule
+ * is one sentence; it should exist in one place, on the thing it is about.
+ */
+val FocusSessionEntity.counts: Boolean
+    get() = actualSecs != null && FocusOutcome.countsAsTime(outcome)
+
 @Entity(
     tableName = "smart_list_def",
     foreignKeys = [

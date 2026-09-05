@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,10 +61,14 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
+import ie.napkin.supertasks.ui.components.NowPlayer
+import ie.napkin.supertasks.ui.components.SwitchHereDialog
+import ie.napkin.supertasks.ui.components.LocalNow
 import androidx.compose.ui.text.input.VisualTransformation
-import ie.napkin.supertasks.ui.components.ListSuggestions
+import ie.napkin.supertasks.ui.components.CaptureSuggestions
 import ie.napkin.supertasks.ui.components.rememberCaptureHighlight
 import ie.napkin.supertasks.ui.components.YantraButton
 import ie.napkin.supertasks.ui.components.Compass
@@ -73,6 +79,7 @@ import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.TextFieldDialog
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoBanner
+import ie.napkin.supertasks.data.workspace.WorkspaceEntry
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
@@ -115,6 +122,7 @@ fun HomeScreen(nav: NavHostController) {
     val timer by vm.timerState.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val labels by vm.labels.collectAsStateWithLifecycle()
+    val assignable by vm.assignable.collectAsStateWithLifecycle()
 
     var showCreate by remember { mutableStateOf(false) }
     var showNewGroup by remember { mutableStateOf(false) }
@@ -163,16 +171,39 @@ fun HomeScreen(nav: NavHostController) {
     Scaffold(
         containerColor = y.page,
         bottomBar = {
-            HomeTabBar(
-                onCog = { showCreate = true },
-                onStats = { nav.navigate(Routes.STATS) },
-            )
+            Column {
+                // The same bar as every other screen, above the strip rather than replacing it —
+                // Home's capture is already a key in that strip (the cog), so there is nothing here
+                // for the now bar to take.
+                val stack by LocalNow.current.collectAsStateWithLifecycle()
+                NowPlayer(
+                    stack = stack,
+                    onOpen = { n ->
+                        nav.navigate(
+                            if (n.hasSession) Routes.FOCUS_CURRENT else Routes.focus(n.nodeId)
+                        )
+                    },
+                    onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
+                )
+                val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
+                timingOccupied?.let {
+                    SwitchHereDialog(
+                        runningTitle = it.byTitle,
+                        onConfirm = { vm.timing.confirm() },
+                        onDismiss = { vm.timing.dismiss() },
+                    )
+                }
+                HomeTabBar(
+                    onCog = { showCreate = true },
+                    onStats = { nav.navigate(Routes.STATS) },
+                )
+            }
         },
     ) { padding ->
         PullToSync(Modifier.fillMaxSize().padding(padding)) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 18.dp),
+                contentPadding = PaddingValues(horizontal = PAGE_MARGIN),
             ) {
                 item(key = "greet") {
                     Greeting(
@@ -182,16 +213,10 @@ fun HomeScreen(nav: NavHostController) {
                     )
                 }
 
-                if (timer != null) {
-                    item(key = "timer") {
-                        ActiveTimerCard(
-                            title = timer!!.nodeTitle,
-                            remainingSecs = timer!!.remainingSecs,
-                            plannedSecs = timer!!.plannedSecs,
-                            onClick = { nav.navigate(Routes.FOCUS_CURRENT) },
-                        )
-                    }
-                }
+                // The session used to be reported twice on this screen — a card up here and,
+                // now, the bar at the bottom. One running task, one treatment: the card goes, and
+                // what it alone could show (a commitment's countdown and how much of it is spent)
+                // stays on the focus screen, one tap away through the bar.
 
                 // The app has an empty state, with its own mark and an action, and until now used it
                 // on one screen out of five — not this one, which is the first screen anyone sees.
@@ -239,14 +264,19 @@ fun HomeScreen(nav: NavHostController) {
             CreatePanel(
                 allLabels = labels,
                 listNames = allRegularLists.mapNotNull { it.title },
-                onCreate = { type, name, makeSmart ->
+                workspaces = vm.workspaces,
+                defaultWorkspaceId = vm.defaultWorkspaceId,
+                people = assignable,
+                findTasks = { q -> vm.linkTargets(q) },
+                resolveLinks = { t -> vm.linkIdsFor(t) },
+                onCreate = { type, name, makeSmart, wsId ->
                     when (type) {
                         CreateType.TASK -> vm.quickAddTask(name) { id -> nav.navigate(Routes.node(id)) }
                         CreateType.LIST -> {
                             if (makeSmart) customSmartName = name
-                            else vm.createListThen(name) { id -> nav.navigate(Routes.node(id)) }
+                            else vm.createListThen(name, wsId) { id -> nav.navigate(Routes.node(id)) }
                         }
-                        CreateType.GROUP -> vm.createGroup(name)
+                        CreateType.GROUP -> vm.createGroup(name, wsId)
                     }
                     showCreate = false
                 },
@@ -260,6 +290,7 @@ fun HomeScreen(nav: NavHostController) {
             defs = defs,
             labels = labels,
             lists = allRegularLists,
+            workspaces = vm.workspaces,
             onCreateLabel = vm::createLabel,
             onDismiss = { customSmartName = null },
             onCreate = { name, filter, sort, homeId ->
@@ -274,7 +305,9 @@ fun HomeScreen(nav: NavHostController) {
             confirmLabel = "Create",
             placeholder = "Group name — e.g. Work",
             onDismiss = { showNewGroup = false },
-            onConfirm = { vm.createGroup(it); showNewGroup = false },
+            // No picker here — a bare text dialog. It lands in the default workspace, and the
+            // create sheet is where the choice is offered.
+            onConfirm = { vm.createGroup(it, vm.defaultWorkspaceId); showNewGroup = false },
         )
     }
     movingNode?.let { node ->
@@ -440,18 +473,38 @@ private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelet
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CreatePanel(
     allLabels: List<ie.napkin.supertasks.data.db.LabelEntity>,
     listNames: List<String>,
-    onCreate: (CreateType, String, Boolean) -> Unit,
+    /** Every workspace on this device. One (or none) and the choice is not offered. */
+    workspaces: List<WorkspaceEntry>,
+    defaultWorkspaceId: String,
+    /** Who `@` may name. Home captures into the Inbox, so this is Personal's roster. */
+    people: List<String> = emptyList(),
+    findTasks: suspend (String) -> List<ie.napkin.supertasks.data.db.NodeEntity> = { emptyList() },
+    resolveLinks: suspend (String) -> Map<String, String> = { emptyMap() },
+    onCreate: (CreateType, String, Boolean, String) -> Unit,
 ) {
     val y = Yantra.colors
     var type by remember { mutableStateOf(CreateType.TASK) }
     var text by remember { mutableStateOf(TextFieldValue()) }
     var makeSmart by remember { mutableStateOf(false) }
+    var wsId by remember { mutableStateOf(defaultWorkspaceId) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    // Only a task is parsed, so only a task pays for these lookups.
+    val linkDraft = if (type == CreateType.TASK) {
+        ie.napkin.supertasks.data.format.Links.draft(text.text, text.selection.start)?.second
+    } else null
+    var taskMatches by remember { mutableStateOf<List<ie.napkin.supertasks.data.db.NodeEntity>>(emptyList()) }
+    LaunchedEffect(linkDraft) { taskMatches = linkDraft?.let { findTasks(it) }.orEmpty() }
+    var linkIds by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(text.text, type) {
+        linkIds = if (type == CreateType.TASK) resolveLinks(text.text) else emptyMap()
+    }
 
     val valid = text.text.isNotBlank()
     val actionLabel = if (type == CreateType.LIST && makeSmart) "Continue" else type.action
@@ -465,12 +518,12 @@ private fun CreatePanel(
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = {
-                if (valid) onCreate(type, text.text.trim(), makeSmart)
+                if (valid) onCreate(type, text.text.trim(), makeSmart, wsId)
             }),
             // Only for a task. A list or a group is named literally — its title is whatever you
             // typed — so tinting part of it would promise a reading that is never applied.
             visualTransformation = if (type == CreateType.TASK) {
-                rememberCaptureHighlight(labels = allLabels, lists = listNames)
+                rememberCaptureHighlight(allLabels, listNames, people, linkIds)
             } else {
                 VisualTransformation.None
             },
@@ -483,10 +536,12 @@ private fun CreatePanel(
         // Only while a `~` is being typed, and only for a task — a list is named literally, so
         // there is no destination to offer it.
         if (type == CreateType.TASK) {
-            ListSuggestions(
+            CaptureSuggestions(
                 text = text.text,
                 caret = text.selection.start,
                 lists = listNames,
+                people = people,
+                tasks = taskMatches,
                 modifier = Modifier.padding(top = 4.dp),
                 onPick = { text = it },
             )
@@ -495,6 +550,22 @@ private fun CreatePanel(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             CreateType.entries.forEach { t ->
                 SelectChip(t.label, selected = t == type, onClick = { type = t }, modifier = Modifier.weight(1f))
+            }
+        }
+        // Only for the things that have no parent to inherit from. A task goes to the Inbox and a
+        // block belongs to its page; a list or a group is the one create where the repo is a real
+        // choice — and only worth asking when there is more than one answer.
+        if (type != CreateType.TASK && workspaces.size > 1) {
+            Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionLabel(if (type == CreateType.GROUP) "Group lives in" else "List lives in", color = y.textMuted)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    workspaces.forEach { w ->
+                        SelectChip(w.name.ifBlank { "Untitled" }, selected = w.id == wsId) { wsId = w.id }
+                    }
+                }
             }
         }
         if (type == CreateType.LIST) {
@@ -517,7 +588,7 @@ private fun CreatePanel(
             label = actionLabel,
             modifier = Modifier.fillMaxWidth(),
             enabled = valid,
-            onClick = { onCreate(type, text.text.trim(), makeSmart) },
+            onClick = { onCreate(type, text.text.trim(), makeSmart, wsId) },
         )
     }
 }
@@ -645,33 +716,3 @@ private fun MoveRow(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun ActiveTimerCard(title: String, remainingSecs: Int, plannedSecs: Int, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        Modifier.fillMaxWidth().padding(top = 12.dp)
-            .background(y.bandTimer, shape)
-            .border(1.dp, y.accent.copy(alpha = 0.28f), shape)
-            .clickable(onClick = onClick).padding(14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(38.dp).background(y.accent.copy(alpha = 0.16f), RoundedCornerShape(11.dp)),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Default.Timer, null, tint = y.accent, modifier = Modifier.size(19.dp)) }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("FOCUSING", fontFamily = YantraMono, fontSize = 10.sp, fontWeight = FontWeight.W700, letterSpacing = 1.6.sp, color = y.accentEyebrow)
-                Text(title, fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W700, color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.width(8.dp))
-            Text("%d:%02d".format(remainingSecs / 60, remainingSecs % 60), style = MonoBanner, color = y.accentText)
-        }
-        Spacer(Modifier.height(12.dp))
-        Box(Modifier.fillMaxWidth().height(5.dp).background(y.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(3.dp))) {
-            val frac = if (plannedSecs == 0) 0f else (plannedSecs - remainingSecs).toFloat() / plannedSecs
-            Box(Modifier.fillMaxWidth(frac.coerceIn(0f, 1f)).height(5.dp).background(y.accent, RoundedCornerShape(3.dp)))
-        }
-    }
-}

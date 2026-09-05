@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,9 @@ import ie.napkin.supertasks.data.sync.RepoCheck
 import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.ButtonTone
@@ -110,23 +114,13 @@ fun AddWorkspaceScreen(nav: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Back",
-                onClick = { nav.popBackStack() },
-                iconSize = 20.dp,
-            )
-            Spacer(Modifier.width(12.dp))
-            Text("Add a workspace", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
-        }
+        val fold = rememberHeaderFold()
+        PageHeader("Add a workspace", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         Column(
             Modifier
                 .fillMaxWidth()
+                .nestedScroll(fold.connection)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(top = 8.dp, bottom = 40.dp),
@@ -247,6 +241,9 @@ private suspend fun join(container: AppContainer, url: String, ownToken: String)
             ?: return@withContext Said(false, "No token to use. Sign in, or paste one.")
         when (val result = container.addWorkspace(url, token)) {
             is AddResult.Refused -> Said(false, result.reason)
+            // Joining is already the answer to "the repository has tasks", so addWorkspace never
+            // asks. Here because the compiler is right to insist on it.
+            is AddResult.HasTasks -> Said(false, "${result.slug} could not be joined")
             is AddResult.Ok -> Said(
                 true,
                 if (result.adopted) "Joined ${result.name}. Its tasks are on their way in."
@@ -280,6 +277,7 @@ private suspend fun joinCreated(
             if (!check.canPush) return@withContext Created(false, "${ref.slug} exists but Yantra cannot push to it", null)
             when (val result = container.addWorkspace(ref.slug, token, name)) {
                 is AddResult.Refused -> Created(false, result.reason, null)
+                is AddResult.HasTasks -> Created(false, "${result.slug} could not be joined", null)
                 is AddResult.Ok -> Created(true, "Created ${ref.slug}. It is yours to fill.", ref.slug)
             }
         }
