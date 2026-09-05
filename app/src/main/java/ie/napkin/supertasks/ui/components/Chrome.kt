@@ -1,6 +1,15 @@
 package ie.napkin.supertasks.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Stable
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -278,8 +287,66 @@ fun PageHeader(
                 color = y.textPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 20.dp),
+                // The same edge the content below it keeps, so the title and the first row line up.
+                modifier = Modifier.fillMaxWidth().padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 14.dp, bottom = 20.dp),
             )
         }
     }
+}
+
+/**
+ * Whether the large title has folded away, driven by the user's own scrolling.
+ *
+ * ## Why this is not `firstVisibleItemIndex > 0`
+ *
+ * Because a first item can be tall. The focus stats page opens with a 208dp glyph and its caption,
+ * so scrolling through all of that never changes the index and the title sat there expanded the
+ * whole way down — the fold looked broken because it had nothing to react to.
+ *
+ * ## Why it is not the scroll offset either
+ *
+ * That is the trap this exists to avoid, and `PageBand` carries the long version of the note. The
+ * header's size must not be derived, even indirectly, from where the content ended up: folding the
+ * title hands its height back to the scroller, the content then fits and clamps to the top,
+ * whatever read that position expands the header again, the content overflows, the next scroll
+ * collapses it. Several times a second.
+ *
+ * So the only input is what the finger actually did. Deltas are accumulated from what the scroller
+ * consumed plus any unconsumed *downward* remainder — the latter so a pull-down still expands the
+ * title once the content has hit the top and has nothing left to give, without which the header can
+ * latch collapsed with no way back. The threshold latches across a hysteresis band so a finger
+ * resting near it does not flutter.
+ */
+@Stable
+class HeaderFold internal constructor(private val collapsePx: Float) {
+    var collapsed by mutableStateOf(false)
+        internal set
+
+    private var dragged = 0f
+
+    val connection: NestedScrollConnection = object : NestedScrollConnection {
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            // Fling and bring-into-view arrive as SideEffect; only a real gesture counts.
+            if (source != NestedScrollSource.UserInput) return Offset.Zero
+            val delta = consumed.y + available.y.coerceAtLeast(0f)
+            dragged = (dragged - delta).coerceIn(0f, collapsePx * 1.5f)
+            collapsed = when {
+                dragged >= collapsePx -> true
+                dragged <= collapsePx * 0.35f -> false
+                else -> collapsed
+            }
+            return Offset.Zero
+        }
+    }
+}
+
+/** A [HeaderFold] for this screen. Attach [HeaderFold.connection] to whatever scrolls. */
+@Composable
+fun rememberHeaderFold(): HeaderFold {
+    val px = with(LocalDensity.current) { 56.dp.toPx() }
+    return remember(px) { HeaderFold(px) }
 }

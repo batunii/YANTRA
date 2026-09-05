@@ -41,6 +41,9 @@ import ie.napkin.supertasks.ArchivedTask
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
 import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.theme.Yantra
@@ -88,14 +91,20 @@ fun ArchiveScreen(nav: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
-        PageHeader("Archive", onBack = { nav.popBackStack() })
+        val fold = rememberHeaderFold()
+        PageHeader("Archive", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         if (loaded && groups.isEmpty()) {
             ComposedEmpty("Nothing archived yet")
             return@Column
         }
 
-        LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .nestedScroll(fold.connection)
+                .padding(horizontal = PAGE_MARGIN),
+        ) {
             item(key = "why") {
                 Text(
                     "Finished tasks that left your lists. They are still in the repository — putting " +

@@ -61,6 +61,8 @@ import ie.napkin.supertasks.data.sync.RepoCheck
 import ie.napkin.supertasks.data.sync.RepoRef
 import ie.napkin.supertasks.ui.appContainer
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.ButtonTone
@@ -330,17 +332,14 @@ fun SignInScreen(nav: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize().background(y.page).statusBarsPadding()) {
-        val pageScroll = rememberScrollState()
-        // Folds as soon as the page has actually moved. A threshold rather than
-        // `> 0` because a scroll state twitches by a pixel on layout, and a band
-        // that folds and unfolds on its own is the texture the motion law forbids.
-        val collapsed by remember { derivedStateOf { pageScroll.value > 80 } }
-        PageHeader("GitHub", onBack = { nav.popBackStack() }, collapsed = collapsed)
+        val fold = rememberHeaderFold()
+        PageHeader("GitHub", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(pageScroll)
+                .nestedScroll(fold.connection)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(top = 8.dp, bottom = 40.dp),
         ) {

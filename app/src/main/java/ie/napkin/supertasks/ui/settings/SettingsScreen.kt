@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import ie.napkin.supertasks.ui.components.PageHeader
 import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.SectionLabel
@@ -122,17 +124,14 @@ fun SettingsScreen(nav: NavHostController) {
             .background(y.page)
             .statusBarsPadding(),
     ) {
-        val pageScroll = rememberScrollState()
-        // Folds as soon as the page has actually moved. A threshold rather than
-        // `> 0` because a scroll state twitches by a pixel on layout, and a band
-        // that folds and unfolds on its own is the texture the motion law forbids.
-        val collapsed by remember { derivedStateOf { pageScroll.value > 80 } }
-        PageHeader("Settings", onBack = { nav.popBackStack() }, collapsed = collapsed)
+        val fold = rememberHeaderFold()
+        PageHeader("Settings", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(pageScroll)
+                .nestedScroll(fold.connection)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(top = 12.dp, bottom = 40.dp),
         ) {
