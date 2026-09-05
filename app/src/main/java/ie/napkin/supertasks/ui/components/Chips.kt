@@ -139,7 +139,10 @@ private fun chipForKind(def: PropertyDefEntity, v: PropertyValueEntity): ChipDat
 }
 
 fun labelChipFor(label: LabelEntity): ChipData =
-    ChipData(label.id, label.name, label.color?.let { Color(it) }, Icons.AutoMirrored.Filled.Label)
+    ChipData(
+        label.id, label.name, label.color?.let { Color(it) },
+        Icons.AutoMirrored.Filled.Label, isLabel = true,
+    )
 
 fun selectConfig(def: PropertyDefEntity): SelectConfig =
     def.config

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -75,6 +76,8 @@ import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -93,6 +96,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
@@ -118,6 +123,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -132,19 +138,29 @@ import coil.compose.AsyncImage
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.smart.Origin
+import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.ui.components.ChipData
+import ie.napkin.supertasks.ui.components.ChipStatus
+import ie.napkin.supertasks.ui.components.chipStyleFor
 import ie.napkin.supertasks.ui.components.ConfirmDialog
 import ie.napkin.supertasks.ui.components.InlineStyle
 import ie.napkin.supertasks.ui.components.inlinePlain
 import ie.napkin.supertasks.ui.components.InlineTransformation
 import ie.napkin.supertasks.data.format.Links
+import ie.napkin.supertasks.data.label.LabelPalette
 import ie.napkin.supertasks.ui.components.LinkSuggestions
 import ie.napkin.supertasks.ui.components.followLinks
 import ie.napkin.supertasks.ui.components.LocalLinkOpener
 import ie.napkin.supertasks.ui.components.LocalLinkResolver
 import ie.napkin.supertasks.ui.components.inlineAnnotated
 import ie.napkin.supertasks.ui.components.ListGroupRow
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
 import ie.napkin.supertasks.ui.components.NavCircle
+import ie.napkin.supertasks.ui.components.SectionLabel
+import ie.napkin.supertasks.ui.components.RAIL_WIDTH
+import ie.napkin.supertasks.ui.components.PAGE_MEASURE
+import ie.napkin.supertasks.ui.components.paneWidth
 import ie.napkin.supertasks.data.db.BuiltIns
 import ie.napkin.supertasks.ui.components.QuickAddBar
 import ie.napkin.supertasks.ui.components.ElapsedSlot
@@ -172,6 +188,7 @@ import ie.napkin.supertasks.ui.theme.MonoBreadcrumb
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraMotion
 import ie.napkin.supertasks.ui.theme.YantraDisplay
+import ie.napkin.supertasks.ui.theme.YantraMono
 import ie.napkin.supertasks.ui.theme.YantraText
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
@@ -243,6 +260,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     var justCreatedId by remember { mutableStateOf<String?>(null) }
 
     val imeVisible = WindowInsets.isImeVisible
+    val panes = paneWidth()
+    val siblings by vm.siblings.collectAsStateWithLifecycle()
+    val liveHere by vm.liveHere.collectAsStateWithLifecycle()
+    val workspaceName by vm.workspaceName.collectAsStateWithLifecycle()
+    /**
+     * Whether the rail has been put away to give the page the whole window.
+     *
+     * Not remembered across pages on purpose: it is a thing you do to *this* task while you are
+     * working on it, and coming back to a list later expecting the rail and not finding it would
+     * be a setting you never knowingly changed.
+     */
+    var soloed by remember { mutableStateOf(false) }
+    val railShown = panes.isWide && siblings.size > 1 && !soloed
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -360,6 +390,17 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         LocalLinkResolver provides resolveLink,
         LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
     ) {
+    Row(Modifier.fillMaxSize().background(y.page)) {
+    // Two panes only where two panes fit. The rail keeps the list you came from beside the page,
+    // so stepping to the next task is a tap rather than a trip back through the header — which is
+    // the only thing the extra glass is actually good for.
+    if (railShown) {
+        TaskRail(
+            tasks = siblings,
+            currentId = nodeId,
+            onOpen = { id -> if (id != nodeId) nav.navigate(Routes.node(id)) },
+        )
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -382,10 +423,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // changed by the thing it changes.
             collapsed = collapsed || (imeVisible && !titleFocused),
             crumbs = crumbs,
+            workspace = workspaceName,
             metaTotal = taskChildren,
             metaDone = doneChildren,
             onBack = { nav.popBackStack() },
-            onFocus = { nav.navigate(Routes.focus(nodeId)) },
+            // Only where there is a rail to put away. On a phone the page already has the window.
+            onSolo = if (panes.isWide && siblings.size > 1) ({ soloed = !soloed }) else null,
+            soloed = soloed,
+            live = liveHere,
+            onFocus = {
+                // Running already: go to the session rather than to a setup screen offering to
+                // start one that is already going.
+                nav.navigate(if (liveHere != null) Routes.FOCUS_CURRENT else Routes.focus(nodeId))
+            },
             onDelete = { deletingPage = true },
             onRename = vm::renamePage,
             onTitleFocusChanged = { titleFocused = it },
@@ -555,14 +605,20 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             state = listState,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
+                // The column stays a column. Given a tablet's width the page does not take it —
+                // prose set across 1300dp is prose nobody finishes a paragraph of, because the eye
+                // loses the line on the way back. See PAGE_MEASURE.
+                .then(
+                    if (panes.isWide) Modifier.width(PAGE_MEASURE).align(Alignment.CenterHorizontally)
+                    else Modifier.fillMaxWidth()
+                )
                 .nestedScroll(headerScroll),
             // A list card is inset like a card; a document runs to the page edge, with its start
             // inset living inside each block's drag gutter so nothing shifts sideways.
             contentPadding = if (isTask) {
                 PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
             } else {
-                PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp)
             },
         ) {
             itemsIndexed(shown, key = { _, it -> it.id }) { _, child ->
@@ -725,6 +781,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         ?.let { (it.taskCount - it.doneCount).coerceAtLeast(0) } ?: 0,
                     ordinal = ordinals[child.id] ?: 0,
                     pomoCount = pomoCounts[child.id] ?: 0,
+                    // Absent on a page: every row here is already somewhere you can see.
+                    origin = null,
                     inkStrokes = inkPreviews[child.id].orEmpty(),
                     autoFocus = child.type == NodeType.TASK && child.id == justCreatedId,
                     onAutoFocusConsumed = { if (justCreatedId == child.id) justCreatedId = null },
@@ -948,6 +1006,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             )
         }
     }
+    }
 
     }
 
@@ -984,9 +1043,16 @@ private fun PageBand(
     isTask: Boolean,
     collapsed: Boolean,
     crumbs: List<String>,
+    /** The repository this page is in, named. First step of the trail. */
+    workspace: String,
     metaTotal: Int,
     metaDone: Int,
     onBack: () -> Unit,
+    /** Puts the rail away so the page has the whole window. Null where there is no rail. */
+    onSolo: (() -> Unit)?,
+    soloed: Boolean,
+    /** The session running on this page's own task, if there is one. */
+    live: FocusTimer.State?,
     onFocus: () -> Unit,
     onDelete: () -> Unit,
     onRename: (String) -> Unit,
@@ -1035,8 +1101,8 @@ private fun PageBand(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             } else {
-                val segments = remember(crumbs) {
-                    val all = listOf("Workspace") + crumbs
+                val segments = remember(crumbs, workspace) {
+                    val all = listOf(workspace) + crumbs
                     if (all.size <= 3) all else listOf("…") + all.takeLast(2)
                 }
                 // Body face, not tracked mono caps. The trail is a place you can read at a
@@ -1068,14 +1134,59 @@ private fun PageBand(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (isTask) {
+            if (onSolo != null) {
                 NavCircle(
-                    Icons.Default.Timer,
-                    contentDescription = "Focus on this task",
-                    onClick = onFocus,
-                    accent = true,
-                    iconSize = 18.dp,
+                    if (soloed) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
+                    contentDescription = if (soloed) "Show the list beside this page" else "Just this page",
+                    onClick = onSolo,
+                    iconSize = 17.dp,
                 )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (isTask) {
+                if (live != null) {
+                    // The clock, where the work is. A circle cannot hold four digits, so while a
+                    // session is running the control becomes a readout — and stays the same target,
+                    // in the same place, opening the same screen.
+                    //
+                    // It shows what the focus screen shows: a countdown reports what is left, a
+                    // stopwatch what has been given. Two surfaces reading the same session must not
+                    // disagree about the number on it.
+                    val shown = if (live.isOpen) live.elapsedSecs else live.remainingSecs
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(y.accentFill)
+                            .border(1.dp, y.accentBorder, RoundedCornerShape(14.dp))
+                            .clickable(onClick = onFocus)
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Timer,
+                            contentDescription = "Open the running session",
+                            tint = y.accent,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            "%d:%02d".format(shown / 60, shown % 60),
+                            fontFamily = YantraMono,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = 0.5.sp,
+                            color = y.accentText,
+                            modifier = Modifier.padding(start = 5.dp),
+                        )
+                    }
+                } else {
+                    NavCircle(
+                        Icons.Default.Timer,
+                        contentDescription = "Focus on this task",
+                        onClick = onFocus,
+                        accent = true,
+                        iconSize = 18.dp,
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
             }
             Box {
@@ -1259,6 +1370,7 @@ private fun BlockRow(
     childCount: Int,
     ordinal: Int,
     pomoCount: Int,
+    origin: Origin?,
     inkStrokes: List<androidx.ink.strokes.Stroke>,
     autoFocus: Boolean,
     onAutoFocusConsumed: () -> Unit,
@@ -1277,7 +1389,7 @@ private fun BlockRow(
         NodeType.IMAGE -> ImageBlockRow(child, active, onActivate, vm)
         else -> TextualBlockRow(
             child, active, onActivate, onFocusChange, claimCaret, onCaretClaimed, onSplit,
-            onMergeBack, chips, childCount, ordinal, pomoCount, autoFocus, onAutoFocusConsumed,
+            onMergeBack, chips, childCount, ordinal, pomoCount, origin, autoFocus, onAutoFocusConsumed,
             onRename = { vm.rename(child.id, it) },
             onToggleDone = { vm.setDone(child.id, it) },
             onToggleInProgress = { vm.setInProgress(child.id, it) },
@@ -1537,6 +1649,8 @@ internal fun TextualBlockRow(
     childCount: Int,
     ordinal: Int,
     pomoCount: Int,
+    /** Where this task lives — shown only where the screen does not already say. */
+    origin: Origin? = null,
     autoFocus: Boolean,
     onAutoFocusConsumed: () -> Unit,
     onRename: (String) -> Unit,
@@ -1715,9 +1829,12 @@ internal fun TextualBlockRow(
     // While the clock runs the trailing slot belongs to it, and the schedule steps aside rather than
     // sharing the space — effort outranks schedule for exactly as long as effort is being spent.
     val shownChips = if (timing) chips.filterNot { it.defId == BuiltIns.DUE_DEF_ID } else chips
-    // See the note at the call site below.
-    val inlineChips = isTask && !editable && !timing &&
-        shownChips.size + (if (pomoCount > 0) 1 else 0) == 1
+    // A row on a list is two lines, always — the grammar both handoffs specify. It used to be
+    // whatever its contents made it: one chip rode up onto the title line, two or three sat in a
+    // wrapping cloud beneath it, and a long title took a second line of its own. Five tasks in a
+    // day could be five different heights, and a list of them read as a ragged pile rather than a
+    // list. The meta is one line now and it ellipsises; nothing wraps.
+    val inlineChips = false
 
     val titleColor = if (isTask && child.done) y.textDim else y.textPrimary
     // No strikethrough. A finished task is struck through with the ink strike below — a pen mark in
@@ -1896,7 +2013,10 @@ internal fun TextualBlockRow(
                             onOpen = onOpenLink,
                         ),
                         style = style,
-                        maxLines = 2,
+                        // One line on a list, where every row must be the same height and the meta
+                        // line below carries the rest. A document still gets two: there the block
+                        // *is* the content, and truncating what someone wrote would hide it.
+                        maxLines = if (isTask && !editable) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                         onTextLayout = { titleLayout = it },
                         modifier = textMod,
@@ -1994,6 +2114,26 @@ internal fun TextualBlockRow(
                     shownChips.firstOrNull()?.let { PropertyChip(it) } ?: FocusCount(pomoCount)
                 }
             }
+            // Due, at the end of the line the eye is already on. It is the one thing a day list is
+            // scanned for, so it gets the slot the design gives it rather than a place in the queue
+            // of meta below — and it is crimson when it is late, which is the whole message.
+            if (isTask && !editable) {
+                shownChips.firstOrNull { it.defId == BuiltIns.DUE_DEF_ID }?.let { due ->
+                    val late = due.status == ChipStatus.Overdue
+                    Text(
+                        if (late) due.label.removeSuffix(" · overdue") else due.label,
+                        fontFamily = YantraMono,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.W700,
+                        // The chip's own voice: crimson past, accent today, neutral further out.
+                        // Read through chipStyleFor so this slot cannot drift from the chip the
+                        // same date wears anywhere else.
+                        color = chipStyleFor(due).text,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
             // The way in, always available on a task. It carries the child count when there is
             // one, so it doubles as "there is something inside" rather than only "tappable".
             if (isTask) {
@@ -2016,15 +2156,63 @@ internal fun TextualBlockRow(
                 }
             }
         }
-        if (isTask && !inlineChips && (shownChips.isNotEmpty() || pomoCount > 0)) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(start = 35.dp, top = 6.dp),
-            ) {
-                shownChips.forEach { PropertyChip(it) }
-                if (pomoCount > 0) FocusCount(pomoCount)
+        if (isTask && !editable) {
+            // The sub-line, and the design's own grammar for it: the workspace as one short word in
+            // the instrument voice, then the things that are *about* this task, each in the colour
+            // that already means what it is. Character comes from the colour, not from a box drawn
+            // round every value — a row of five chips reads as five buttons.
+            val labels = shownChips.filter { it.isLabel }
+            // What is left after the things a *row* has no room to be useful about.
+            //
+            // The research on this is consistent and it is not "compress harder": a row should
+            // carry what the next decision needs — what the task is, and when it is due — and let
+            // everything else live one tap away on the task itself. Assignee and session count are
+            // real facts and neither of them changes what you do next in a day list, so they go,
+            // and what they were crowding out was the tags.
+            val rest = shownChips.filter { it.defId == BuiltIns.DEADLINE_DEF_ID }
+            // Resolved outside the builder: chipStyleFor is composable, and a label's ink depends
+            // on the theme it is being read on.
+            val labelInks = labels.associate { it.defId to chipStyleFor(it).text }
+            val restInks = rest.associate { it.defId to chipStyleFor(it).text }
+            val meta = buildAnnotatedString {
+                fun sep() { if (length > 0) withStyle(SpanStyle(color = y.textDim)) { append("  ") } }
+                labels.forEach { chip ->
+                    sep()
+                    withStyle(SpanStyle(color = labelInks[chip.defId] ?: y.textMuted)) {
+                        append("#" + chip.label)
+                    }
+                }
+                rest.forEach { chip ->
+                    sep()
+                    withStyle(SpanStyle(color = restInks[chip.defId] ?: y.textMuted)) { append(chip.label) }
+                }
+                // The list last, because it is the least urgent of what is left — but it is on the
+                // line rather than behind an ellipsis now that the row is not also carrying the
+                // workspace, the assignee and a session count.
+                origin?.list?.let { list ->
+                    sep()
+                    // Tinted by the repository it belongs to, when there is more than one. One
+                    // piece of text saying both which list and which workspace, at the width of the
+                    // list name alone.
+                    val ink = origin.workspaceHue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
+                    withStyle(SpanStyle(color = ink ?: y.textDim)) { append(list) }
+                }
             }
+            Text(
+                // A hair space when there is nothing to say, so a bare task is the same height as
+                // a busy one without the box being nailed shut.
+                if (meta.isEmpty()) AnnotatedString("\u2009") else meta,
+                fontFamily = YantraMono,
+                fontSize = 10.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // A line height, not a box height. Clamping the box to 15dp cropped every
+                // descender on it — `#grocery` read as `#groceru` — because a fixed height cuts the
+                // glyphs, not the layout. Setting the line height instead reserves the same space
+                // on an empty row and still leaves room under the baseline for a y.
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(start = 35.dp, top = 4.dp, end = 4.dp),
+            )
         }
     }
 }
@@ -2327,5 +2515,74 @@ private fun LinkedRow(
             )
         }
         Spacer(Modifier.width(12.dp))
+    }
+}
+
+/**
+ * The rail: the tasks either side of this one, on a window wide enough to hold them.
+ *
+ * A list of names and nothing else. It is not a second copy of the day list — no chips, no due
+ * dates, no drag ladder — because everything it could show is already on the page beside it, and a
+ * rail that competes with the page for attention is a rail you end up hiding. Its one job is to
+ * make the next task one tap away.
+ */
+@Composable
+private fun TaskRail(
+    tasks: List<NodeEntity>,
+    currentId: String,
+    onOpen: (String) -> Unit,
+) {
+    val y = Yantra.colors
+    val resolve = LocalLinkResolver.current
+    Column(
+        Modifier
+            .width(RAIL_WIDTH)
+            .fillMaxHeight()
+            .background(y.railBg)
+            .statusBarsPadding(),
+    ) {
+        SectionLabel(
+            "In this list",
+            modifier = Modifier.padding(start = 22.dp, top = 18.dp, bottom = 8.dp),
+        )
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(tasks, key = { it.id }) { task ->
+                val here = task.id == currentId
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        // The page you are on is marked, not selected: it is where you are, and a
+                        // selection would imply it could be deselected.
+                        .background(if (here) y.startedWash else Color.Transparent)
+                        .clickable { onOpen(task.id) }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    YantraCheckbox(
+                        state = when {
+                            task.done -> TaskState.DONE
+                            task.inProgress -> TaskState.IN_PROGRESS
+                            else -> TaskState.OPEN
+                        },
+                        taskId = task.id,
+                        onComplete = {},
+                        onUndo = {},
+                        tempo = LocalCompletionTempo.current,
+                        size = 23.dp,
+                    )
+                    Text(
+                        inlinePlain(task.title.orEmpty(), resolve).ifBlank { "Untitled" },
+                        fontSize = 14.5.sp,
+                        fontWeight = if (here) FontWeight.W700 else FontWeight.W500,
+                        color = if (task.done) y.textDim else y.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 12.dp),
+                    )
+                }
+            }
+        }
     }
 }

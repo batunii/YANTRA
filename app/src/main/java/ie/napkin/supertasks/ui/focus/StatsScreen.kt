@@ -42,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -60,9 +59,14 @@ import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.FocusSessionEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.data.db.counts
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
+import ie.napkin.supertasks.ui.components.LocalCompletionTempo
+import ie.napkin.supertasks.ui.components.TaskState
+import ie.napkin.supertasks.ui.components.YantraCheckbox
+import ie.napkin.supertasks.ui.components.rememberHeaderFold
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import ie.napkin.supertasks.ui.components.NavCircle
 import ie.napkin.supertasks.ui.components.PageHeader
-import ie.napkin.supertasks.ui.components.bhupuraPath
 import ie.napkin.supertasks.ui.components.YantraInk
 import ie.napkin.supertasks.ui.components.SelectChip
 import ie.napkin.supertasks.ui.components.SwitchHereDialog
@@ -94,6 +98,18 @@ data class GroupStat(
     val title: String,
     val sessions: Int,
     val totalSecs: Int,
+    /**
+     * Where the task stands, for the rows that are tasks.
+     *
+     * The one thing a row of this page does not otherwise say. "19h 26m · 4 sessions" is a
+     * measure of effort with no idea whether it landed, and the difference between hours that
+     * finished something and hours that did not is the difference the page exists to show.
+     *
+     * Meaningless for a list or a workspace, which are sums over many tasks and have no state of
+     * their own — those rows draw no glyph at all rather than an invented one.
+     */
+    val done: Boolean = false,
+    val inProgress: Boolean = false,
 )
 
 /**
@@ -252,10 +268,12 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
         // the same questions twice for no new answer.
         val ids = counted.map { it.nodeId }.distinct()
         val taskOf = HashMap<String, Pair<String, String>>()
+        val stateOf = HashMap<String, Pair<Boolean, Boolean>>()
         val listOf = HashMap<String, Pair<String, String>?>()
         ids.forEach { id ->
             val node = container.nodes.byId(id)
             taskOf[id] = id to Links.plain(node?.title.orEmpty()).ifBlank { "Untitled task" }
+            stateOf[id] = (node?.done ?: false) to (node?.inProgress ?: false)
             // The *nearest* list above the task, not the top of the chain. A subtask three deep
             // still belongs to the list its ancestor sits on, and that is the list you would say it
             // was work on. `ancestors` reads root → parent, so the nearest one is the last match.
@@ -269,17 +287,17 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
         val wsNames = container.registry.entries().associate { it.id to it.name }
 
         fun cuts(rows: List<FocusSessionEntity>) = Breakdown(
-            tasks = rollup(rows) { taskOf[it.nodeId] },
+            tasks = rollup(rows, stateOf) { taskOf[it.nodeId] },
             lists = rollup(rows) { listOf[it.nodeId] },
             // A task with no list above it is not counted into any list, deliberately: inventing a
             // bucket for it would make the lists add up to more than the workspace they are in.
             workspaces = rollup(rows) { it.workspaceId to (wsNames[it.workspaceId] ?: "Workspace") },
             tasksInList = rows.groupBy { listOf[it.nodeId]?.first }
                 .filterKeys { it != null }
-                .map { (id, inList) -> id!! to rollup(inList) { taskOf[it.nodeId] } }
+                .map { (id, inList) -> id!! to rollup(inList, stateOf) { taskOf[it.nodeId] } }
                 .toMap(),
             tasksInWorkspace = rows.groupBy { it.workspaceId }
-                .mapValues { (_, inWs) -> rollup(inWs) { taskOf[it.nodeId] } },
+                .mapValues { (_, inWs) -> rollup(inWs, stateOf) { taskOf[it.nodeId] } },
         )
 
         return Stats(
@@ -307,12 +325,17 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
  */
 private fun rollup(
     rows: List<FocusSessionEntity>,
+    state: Map<String, Pair<Boolean, Boolean>> = emptyMap(),
     key: (FocusSessionEntity) -> Pair<String, String>?,
 ): List<GroupStat> =
     rows.mapNotNull { s -> key(s)?.let { it to s } }
         .groupBy({ it.first }, { it.second })
         .map { (id, list) ->
-            GroupStat(id.first, id.second, list.size, list.sumOf { it.actualSecs ?: 0 })
+            val (done, running) = state[id.first] ?: (false to false)
+            GroupStat(
+                id.first, id.second, list.size, list.sumOf { it.actualSecs ?: 0 },
+                done = done, inProgress = running,
+            )
         }
         .sortedByDescending { it.totalSecs }
         .take(8)
@@ -347,17 +370,12 @@ fun StatsScreen(nav: NavHostController) {
             .background(y.page)
             .statusBarsPadding(),
     ) {
-        // Folds once the yantra has gone by, so the screen keeps its name without keeping the band.
-        val listState = rememberLazyListState()
-        val collapsed by remember {
-            derivedStateOf { listState.firstVisibleItemIndex > 0 }
-        }
-        PageHeader("Focus stats", onBack = { nav.popBackStack() }, collapsed = collapsed)
+        val fold = rememberHeaderFold()
+        PageHeader("Focus stats", onBack = { nav.popBackStack() }, collapsed = fold.collapsed)
 
         LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxSize().nestedScroll(fold.connection),
+            contentPadding = PaddingValues(horizontal = PAGE_MARGIN, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item(key = "week-yantra") {
@@ -468,17 +486,13 @@ fun StatsScreen(nav: NavHostController) {
                     )
                 }
             } else {
-                // Against the leader, not against the total. A share of the whole makes every mark
-                // nearly empty the moment the work is spread over a dozen tasks — which is the
-                // ordinary case and the one the column most needs to be readable in.
-                val top = showing.first().totalSecs.coerceAtLeast(1)
                 items(showing, key = { "${cut.name}-${openedKey ?: "all"}-${it.key}" }) { row ->
                     // Inside an opened list or workspace, every row is a task again — so it opens
                     // and starts exactly as the Tasks cut does.
                     val isTask = cut == Cut.TASKS || openedKey != null
                     BreakdownRow(
                         row = row,
-                        fraction = row.totalSecs.toFloat() / top,
+                        isTask = isTask,
                         onOpen = {
                             if (isTask) nav.navigate(Routes.focus(row.key))
                             else { openedKey = row.key; openedTitle = row.title }
@@ -666,7 +680,7 @@ private fun StatCell(
 @Composable
 private fun BreakdownRow(
     row: GroupStat,
-    fraction: Float,
+    isTask: Boolean,
     onOpen: (() -> Unit)?,
     onPlay: (() -> Unit)?,
     running: Boolean,
@@ -680,8 +694,24 @@ private fun BreakdownRow(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ShareMark(fraction, Modifier.size(24.dp))
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+        // The task's own glyph, in its real state — open, on the go, or done. A list or a
+        // workspace has no state to show, so it shows nothing rather than an ornament.
+        if (isTask) {
+            YantraCheckbox(
+                state = when {
+                    row.done -> TaskState.DONE
+                    row.inProgress -> TaskState.IN_PROGRESS
+                    else -> TaskState.OPEN
+                },
+                taskId = row.key,
+                onComplete = {},
+                onUndo = {},
+                tempo = LocalCompletionTempo.current,
+                size = 22.dp,
+                darkTheme = y.isDark,
+            )
+        }
+        Column(Modifier.weight(1f).padding(start = if (isTask) 12.dp else 2.dp)) {
             Text(
                 row.title,
                 fontSize = 14.sp,
@@ -719,30 +749,3 @@ private fun BreakdownRow(
     }
 }
 
-/**
- * The bhupura, filled from the left to [fraction].
- *
- * The frame is always drawn whole and the fill clipped inside it, so every row shows the same mark
- * at the same size and only the ink inside it differs — a gate that lost its corners at 12% would
- * read as a different symbol rather than as a smaller quantity.
- *
- * Neutral outline and accent fill, which is the colour law doing its ordinary job: the frame is
- * structure, and what is filled in is your own effort. Nothing here is a gauge of the bindu, which
- * this deliberately does not draw — the bindu is the centre, not a measure, and a mark this small
- * would turn it into one.
- */
-@Composable
-private fun ShareMark(fraction: Float, modifier: Modifier = Modifier) {
-    val y = Yantra.colors
-    val neutral = YantraInk.neutral(y.isDark)
-    val accent = y.accent
-    Canvas(modifier) {
-        val s = size.minDimension
-        val path = bhupuraPath(s)
-        drawPath(path, color = neutral, alpha = 0.45f, style = Stroke(width = s * 0.055f))
-        val f = fraction.coerceIn(0f, 1f)
-        if (f > 0f) {
-            clipRect(right = s * f) { drawPath(path, color = accent, alpha = 0.9f) }
-        }
-    }
-}

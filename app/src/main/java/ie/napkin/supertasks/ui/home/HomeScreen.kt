@@ -61,6 +61,7 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.NodeType
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
 import ie.napkin.supertasks.ui.components.ComposedEmpty
 import ie.napkin.supertasks.ui.components.PullToSync
 import ie.napkin.supertasks.ui.components.NowPlayer
@@ -202,7 +203,7 @@ fun HomeScreen(nav: NavHostController) {
         PullToSync(Modifier.fillMaxSize().padding(padding)) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 18.dp),
+                contentPadding = PaddingValues(horizontal = PAGE_MARGIN),
             ) {
                 item(key = "greet") {
                     Greeting(

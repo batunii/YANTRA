@@ -13,6 +13,7 @@ import ie.napkin.supertasks.data.db.SubtreeTaskCount
 import ie.napkin.supertasks.data.format.Links
 import ie.napkin.supertasks.data.ink.StrokeCodec
 import ie.napkin.supertasks.data.people.Person
+import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.domain.RunningTask
 import ie.napkin.supertasks.domain.TimingRequest
 import ie.napkin.supertasks.ui.components.ChipData
@@ -112,6 +113,32 @@ class NodePageViewModel(
         }
     }
 
+    /**
+     * The running session, but only when it is **this page's own**.
+     *
+     * Filtered here rather than in the composable so the page cannot accidentally draw somebody
+     * else's clock. A session on another task is not news on this page — showing it in the header
+     * would say that *this* is being timed, which is the one thing the reading has to get right.
+     */
+    val liveHere: StateFlow<FocusTimer.State?> =
+        container.timer.state
+            .map { live -> live?.takeIf { it.nodeId == nodeId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * The repository this page lives in, by name.
+     *
+     * The breadcrumb said the literal word "Workspace" — a label where a name belongs, and on a
+     * device holding more than one repo it was the only part of the trail that could have told you
+     * which. Read from the registry, which is where a workspace's name is; the store knows only
+     * where its files are.
+     */
+    val workspaceName: StateFlow<String> =
+        node.map { current ->
+            val id = current?.workspaceId ?: return@map "Workspace"
+            container.registry.entries().firstOrNull { it.id == id }?.name ?: "Workspace"
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Workspace")
+
     /** Titles of this page's ancestors, root → parent, for the header breadcrumb. */
     val breadcrumb: StateFlow<List<String>> =
         nodes.observe(nodeId)
@@ -123,6 +150,22 @@ class NodePageViewModel(
                     Links.plain(row.title.orEmpty()).takeIf { it.isNotBlank() } ?: "Untitled"
                 }
             }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * The tasks alongside this one — what the rail shows when there is room for a rail.
+     *
+     * The page's siblings, not its children: on a wide window you keep the list you came from in
+     * view and step along it, which is the whole reason two panes are worth the glass. A page with
+     * no parent has no rail, and neither does one whose parent holds no tasks.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val siblings: StateFlow<List<NodeEntity>> =
+        node.flatMapLatest { n ->
+            val parent = n?.parentId
+            if (parent == null) flowOf(emptyList()) else nodes.children(parent)
+        }
+            .map { rows -> rows.filter { it.type == NodeType.TASK } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**

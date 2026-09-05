@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import ie.napkin.supertasks.ui.Routes
+import ie.napkin.supertasks.ui.components.PAGE_MARGIN
 import ie.napkin.supertasks.ui.components.PullToSync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -74,6 +75,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val def by vm.def.collectAsStateWithLifecycle()
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
+    val origins by vm.origins.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val completed by vm.completed.collectAsStateWithLifecycle()
@@ -241,6 +243,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         childCount = childCounts[task.id] ?: 0,
                         ordinal = 0,
                         pomoCount = pomoCounts[task.id] ?: 0,
+                        origin = origins[task.id],
                         autoFocus = false,
                         onAutoFocusConsumed = {},
                         onRename = {},
@@ -261,7 +264,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         PullToSync(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp),
             ) {
                 // Before the results, because it is about whether to believe them. A rule may name
                 // a workspace this device has not added — after a reinstall, most likely, since the
