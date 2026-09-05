@@ -192,4 +192,29 @@ class FilterCompilerTest {
         val orderBy = q.sql.substringAfter("ORDER BY")
         assertTrue(orderBy.contains("IS NULL"))
     }
+
+    @Test
+    fun `a label matches the tag in every workspace, not just the one that minted it`() {
+        // Label ids carry the workspace that made them, so `#extra` is `:label:extra` in Personal
+        // and `<ws>:label:extra` elsewhere. A smart list gathering across repositories has to find
+        // both, or its rule is right and its answer is empty.
+        val q = FilterCompiler.compile(null, Filter.HasLabel(":label:extra"))
+        assertTrue(q.sql.contains("JOIN label l"))
+        assertTrue(q.sql.contains("lower(l.name) = ?"))
+        assertTrue(q.args.contains(":label:extra"))
+        assertTrue(q.args.contains("extra"))
+    }
+
+    @Test
+    fun `a workspace-prefixed label id still resolves to its bare name`() {
+        val q = FilterCompiler.compile(null, Filter.HasLabel("4c08b984-19f5:label:extra"))
+        assertTrue(q.args.contains("extra"))
+    }
+
+    @Test
+    fun `a label name is matched case-insensitively`() {
+        // The id lowercases; the stored name keeps the spelling it was first written with.
+        val q = FilterCompiler.compile(null, Filter.HasLabel(":label:Extra"))
+        assertTrue(q.args.contains("extra"))
+    }
 }
