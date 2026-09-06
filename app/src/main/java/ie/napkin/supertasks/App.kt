@@ -77,6 +77,17 @@ class App : Application() {
                 SessionNotification.CHANNEL_ID, "Running session", NotificationManager.IMPORTANCE_LOW,
             )
         )
+        // Android 16 can lift an ongoing session into a status-bar chip, but not out of a channel
+        // that declares itself unimportant — see SessionNotification.CHANNEL_LIVE_ID. Default
+        // importance, no sound: the system may surface it, and it still never interrupts.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                SessionNotification.CHANNEL_LIVE_ID, "Focus timer", NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+            }
+        )
         // The end of a committed session, which is the one thing the low channel cannot say out
         // loud. Its own channel so that silencing the running status — a reasonable thing to want,
         // and the whole reason that one is LOW — does not also silence the bell that says the

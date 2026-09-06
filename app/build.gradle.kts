@@ -9,6 +9,9 @@ plugins {
 android {
     namespace = "ie.napkin.supertasks"
     compileSdk = 36
+    // Android 16 QPR1. The Live Update APIs the focus notification needs — the promotion setter and
+    // the permission behind it — landed in the minor release, not in 36 proper.
+    compileSdkMinor = 1
 
     defaultConfig {
         applicationId = "ie.napkin.supertasks"

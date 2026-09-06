@@ -29,6 +29,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <!-- Android 16 QPR1's Live Updates: the running session as a chip in the status bar, rather
+         than something you have to pull the shade down to see. Normal permission, no runtime
+         prompt — but the user can still refuse it per app, which canPostPromotedNotifications
+         reports and SessionNotification checks before trading the custom transport for it. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
     <application
         android:name=".App"
         android:allowBackup="true"

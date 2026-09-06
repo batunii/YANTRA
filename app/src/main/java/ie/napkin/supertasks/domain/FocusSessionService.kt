@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -119,6 +120,31 @@ class FocusSessionService : Service() {
                         // notification identical to what is on screen, by construction.
                         startForeground(SessionNotification.build(this@FocusSessionService, state))
                     }
+            }
+            // The meter, moved.
+            //
+            // Everything else in this notification ticks itself: the chronometer is handed a
+            // reference time and the system counts from it, which is why the rest of the file
+            // posts on state *transitions* only. A progress bar has no such trick — `setProgress`
+            // is a number, not a rule — so a bar left alone sits at zero for the whole of a
+            // twenty-five minute session while the clock beside it counts down. That is worse than
+            // having no bar, because it is a bar that is wrong.
+            //
+            // The rule it breaks was written to stop a *dead* process being woken to move pixels.
+            // This process is deliberately alive for exactly as long as the session lasts — that
+            // is what the service is for — so the objection does not apply. Half a minute moves a
+            // 25-minute bar about two percent and keeps the chip's own text honest, at a cost of
+            // fifty posts across a session.
+            //
+            // Only for a promise. A stopwatch has no bar to move and no number to keep true.
+            s.launch {
+                while (true) {
+                    delay(30_000)
+                    val st = container.timer.state.value ?: continue
+                    if (st.isRunning && !st.isFinished && !st.isOpen && !st.isSpent) {
+                        startForeground(SessionNotification.build(this@FocusSessionService, st))
+                    }
+                }
             }
         }
         // Sticky: if the system kills us mid-session it should bring us back, and the collector

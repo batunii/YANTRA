@@ -33,9 +33,13 @@ import kotlinx.coroutines.launch
  * do has been displaced by the app.
  *
  * **The clock is the system's, not ours.** [NotificationCompat.Builder.setUsesChronometer] renders
- * it from a reference time and ticks it itself. Posting a fresh notification every second to move
- * two digits would keep the process awake for the length of every session, and would be the one
- * place in the app where something animates at rest.
+ * it from a reference time and ticks it itself, so the clock costs nothing to keep true and this is
+ * posted on state *transitions* rather than on a timer.
+ *
+ * The one exception is the progress bar a promoted session carries, which has no such trick —
+ * `setProgress` is a number, not a rule — and which [FocusSessionService] therefore re-posts every
+ * half minute. That is not the rule being abandoned: it was written to stop a dead process being
+ * woken to move pixels, and the service holds this one open on purpose.
  *
  * Which *direction* it ticks is the session's own distinction, and this is the surface that used to
  * lose it. [FocusTimer] holds two instruments: a committed session counts down to a promise, an open
@@ -55,6 +59,21 @@ import kotlinx.coroutines.launch
  */
 object SessionNotification {
     const val CHANNEL_ID = "session"
+
+    /**
+     * The running session, on a channel the system will consider promoting.
+     *
+     * A status-bar chip is attention by definition, and Android will not lift a notification out of
+     * a channel whose whole declaration is "do not draw attention" — the low channel [CHANNEL_ID]
+     * exists precisely to say that. A second channel at default importance is the only way to offer
+     * the choice, because a channel's importance belongs to the user once it exists and an app
+     * cannot raise it afterwards.
+     *
+     * Still silent, and that is not a contradiction: importance governs whether the system may
+     * surface this, sound governs whether it interrupts, and a focus timer wants the first without
+     * the second. The channel carries no sound and every post sets `setSilent`.
+     */
+    const val CHANNEL_LIVE_ID = "session_live"
 
     /**
      * The end of a committed session, which is the one moment a focus timer exists for and the one
@@ -97,6 +116,20 @@ object SessionNotification {
      * bitmap is built on state transitions, not on a clock.
      */
     private const val MARK_PX = 192
+
+    /**
+     * Whether the system would actually promote an ongoing notification for this app.
+     *
+     * Off until the person turns it on, in the notification settings for the app. Worth asking
+     * every time rather than caching: it is a switch they can flip while a session is running, and
+     * the next transition should honour it.
+     */
+    fun canPromote(context: Context): Boolean =
+        Build.VERSION.SDK_INT >= 36 &&
+            runCatching {
+                context.getSystemService(android.app.NotificationManager::class.java)
+                    ?.canPostPromotedNotifications() == true
+            }.getOrDefault(false)
 
     fun canNotify(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||
@@ -246,6 +279,119 @@ object SessionNotification {
     }
 
     /**
+     * The running session as a **Live Update** — Android 16's promoted ongoing notification, which
+     * the system lifts out of the shade and into a chip beside the clock.
+     *
+     * This is the pill, and it is not something an app switches on. `hasPromotableCharacteristics`
+     * decides, and it only says yes to a notification shaped a particular way: ongoing, coloured,
+     * and styled as `ProgressStyle` or `CallStyle`. A decorated custom view — the transport with the
+     * bhupura keys — disqualifies it outright, which is the whole trade being made here. The chip is
+     * worth more than buttons the shade already renders as words: it is the difference between a
+     * session you have to pull the shade down to see and one that is simply present.
+     *
+     * The progress bar is what `ProgressStyle` is for, and a committed session has exactly the
+     * denominator it needs. An open stopwatch has none, so it says so — indeterminate — rather than
+     * inventing a fraction.
+     *
+     * `setShortCriticalText` is the chip's own text, and it has room for about half a dozen
+     * characters. Not the clock: the system renders the countdown in the chip itself from `when`.
+     */
+    @androidx.annotation.RequiresApi(36)
+    private fun buildPromoted(context: Context, state: FocusTimer.State, accent: Int): Notification {
+        val nodeId = state.nodeId
+        val b = android.app.Notification.Builder(context, CHANNEL_LIVE_ID)
+            .setSmallIcon(R.drawable.ic_notif_reminder)
+            .setColor(accent)
+            // Deliberately *not* colorized. A colorized notification is disqualified from
+            // promotion outright — which is the opposite of what it looks like, since colorizing
+            // is what a foreground service does to own its row in the shade. The chip takes its
+            // tint from setColor regardless.
+            .setContentTitle(state.nodeTitle.ifBlank { "Untitled" })
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            // Asking is the part that was missing. Shape alone does not earn the chip: the app
+            // declares POST_PROMOTED_NOTIFICATIONS and then requests promotion per notification,
+            // and the system grants it if the shape qualifies and the user has not refused.
+            .setRequestPromotedOngoing(true)
+            // No setSilent on the platform builder — that is a NotificationCompat convenience.
+            // Silence comes from the channel, which carries no sound and no vibration.
+            .setCategory(android.app.Notification.CATEGORY_STOPWATCH)
+            .setVisibility(android.app.Notification.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(android.app.Notification.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context, 0, openIntent(context, nodeId),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
+
+        // A bar only where there is something to be a fraction of.
+        //
+        // A stopwatch was getting an *indeterminate* ProgressStyle, on the reasoning that it has no
+        // denominator — but indeterminate does not mean "unmeasured", it means "waiting", and it
+        // draws the endless sliding bar every app uses to say it is loading something. On a running
+        // stopwatch that is a lie about the app's state, and an ugly one.
+        //
+        // The standard style is promotable too, so an open session keeps the chip and simply has no
+        // bar. Only a promise gets one, because only a promise has an end to be measured against.
+        if (!state.isOpen) {
+            b.setStyle(
+                android.app.Notification.ProgressStyle()
+                    .setProgressSegments(
+                        listOf(
+                            android.app.Notification.ProgressStyle.Segment(state.plannedSecs)
+                                .setColor(accent)
+                        )
+                    )
+                    .setProgress(state.elapsedSecs.coerceIn(0, state.plannedSecs))
+            )
+        }
+
+        when (val f = face(state)) {
+            is Face.Frozen -> b
+                .setUsesChronometer(false)
+                .setShowWhen(false)
+                .setContentText(f.text)
+                .setShortCriticalText("Paused")
+            is Face.Countdown -> b
+                .setWhen(System.currentTimeMillis() + f.secs * 1000L)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+                .setContentText("Focusing · ${(state.plannedSecs + 59) / 60} min")
+                .setShortCriticalText(shortLeft(f.secs))
+            is Face.CountUp -> b
+                .setWhen(System.currentTimeMillis() - f.secs * 1000L)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(false)
+                .setContentText("Stopwatch")
+                .setShortCriticalText(shortLeft(f.secs))
+        }
+
+        fun act(icon: Int, label: String, action: String, target: String) =
+            android.app.Notification.Action.Builder(
+                android.graphics.drawable.Icon.createWithResource(context, icon),
+                label,
+                action(context, action, target, nodeId),
+            ).build()
+
+        if (state.isRunning) b.addAction(act(R.drawable.ic_notif_pause, "Pause", ACTION_PAUSE, "pause"))
+        else b.addAction(act(R.drawable.ic_notif_play, "Resume", ACTION_RESUME, "resume"))
+        b.addAction(act(R.drawable.ic_notif_stop, "Stop", ACTION_STOP, "stop"))
+        b.addAction(act(R.drawable.ic_notif_done, "Done", ACTION_DONE, "done"))
+        return b.build()
+    }
+
+    /** Chip-sized: `24m`, or `1h` once there is one. Six characters is the whole budget. */
+    internal fun shortLeft(secs: Int): String {
+        val s = secs.coerceAtLeast(0)
+        return when {
+            s >= 3600 -> "${s / 3600}h"
+            s >= 60 -> "${s / 60}m"
+            else -> "${s}s"
+        }
+    }
+
+    /**
      * The running session as the lock screen draws it.
      *
      * Built rather than posted, because [FocusSessionService] needs the object itself to hand to
@@ -255,6 +401,18 @@ object SessionNotification {
     fun build(context: Context, state: FocusTimer.State): Notification {
         val nodeId = state.nodeId
         val accent = accentArgb(context)
+        // The chip, but only when there is actually a chip.
+        //
+        // Android 16 can lift an ongoing session into a status-bar pill, and the shape it demands
+        // costs the custom transport: a decorated custom view is disqualified outright, so the
+        // bhupura keys become three words in the system's own row. That is a good trade for a chip
+        // and a bad one for nothing — and whether there is a chip is not the app's decision. It is
+        // a per-app grant the person makes, which `canPostPromotedNotifications` reports and an
+        // app-op behind it enforces. Ungranted, this would have quietly swapped working buttons for
+        // a promotion that never came.
+        if (Build.VERSION.SDK_INT >= 36 && canPromote(context)) {
+            return buildPromoted(context, state, accent)
+        }
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notif_reminder)
             .setColor(accent)
