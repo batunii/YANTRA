@@ -92,6 +92,33 @@ android {
         compose = true
     }
 
+    lint {
+        // A release build that lint has not seen is a release build nobody has checked. The
+        // default already runs the fatal-severity subset on release; this makes the whole run
+        // part of it, and makes the errors stop the build rather than scroll past in a log.
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+        abortOnError = true
+
+        disable += setOf(
+            // androidx.ink 1.0.0 marks MutableStrokeInputBatch.toImmutable as library-group
+            // internal, and there is no public route from a mutable batch to an immutable one —
+            // the ink editor and the stroke codec both need exactly that. Nothing to fix here
+            // until the library exposes it; the alternative is not using the library.
+            "RestrictedApi",
+            // Suggests androidx-ktx extension functions in place of the platform calls. Every one
+            // of these is correct and none of them is a defect; taking forty of them at once would
+            // be a diff about style across files this branch has no other reason to touch.
+            "UseKtx",
+            // Dependency freshness is a decision, not a lint finding, and a beta is the wrong
+            // moment to take a version bump nobody asked for.
+            "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion",
+            // targetSdk 36 is the latest there is. This fires because compileSdkMinor is 1 and
+            // lint compares against 36.1.
+            "OldTargetApi",
+        )
+    }
+
 
     packaging {
         resources {

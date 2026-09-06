@@ -49,6 +49,8 @@ import ie.napkin.supertasks.MainActivity
 import ie.napkin.supertasks.R
 import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.widget.actions.FocusAction
+import ie.napkin.supertasks.domain.sessionClock
+import ie.napkin.supertasks.data.format.Markdown
 
 /**
  * The mark itself, on the home screen.
@@ -180,7 +182,9 @@ private fun BhupuraContent(state: FocusTimer.State?, lastTitle: String?) {
             ) { TransportBindu(live, side) }
             // Below the key: what the clock is *for*. Suppressed on a strip too small to hold a
             // legible line, where a two-character stub of a task name is worse than no name.
-            val title = live?.nodeTitle?.takeIf { it.isNotBlank() } ?: lastTitle
+            // Markers out, for the same reason the focus widget takes them out.
+            val title = (live?.nodeTitle?.takeIf { it.isNotBlank() } ?: lastTitle)
+                ?.let { Markdown.plain(it) }
             if (!title.isNullOrBlank() && side > 120.dp) {
                 Box(
                     modifier = GlanceModifier.fillMaxSize(),
@@ -250,7 +254,7 @@ private fun Clock(state: FocusTimer.State, side: androidx.compose.ui.unit.Dp) {
             setViewVisibility(R.id.focus_clock_frozen, android.view.View.VISIBLE)
             setTextViewText(
                 R.id.focus_clock_frozen,
-                clockText(if (state.isOpen) state.elapsedSecs else state.remainingSecs),
+                sessionClock(if (state.isOpen) state.elapsedSecs else state.remainingSecs),
             )
         }
     }
@@ -313,10 +317,3 @@ private fun TransportBindu(state: FocusTimer.State?, side: androidx.compose.ui.u
     }
 }
 
-/** `M:SS`, or `H:MM:SS` once there is an hour — the same shape the chronometer ticks in. */
-private fun clockText(secs: Int): String {
-    val s = secs.coerceAtLeast(0)
-    val h = s / 3600
-    return if (h > 0) String.format("%d:%02d:%02d", h, (s % 3600) / 60, s % 60)
-    else String.format("%d:%02d", s / 60, s % 60)
-}

@@ -57,6 +57,8 @@ import ie.napkin.supertasks.MainActivity
 import ie.napkin.supertasks.R
 import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.widget.actions.FocusAction
+import ie.napkin.supertasks.domain.sessionClock
+import ie.napkin.supertasks.data.format.Markdown
 
 /**
  * Focus-timer widget. The running clock is a RemoteViews Chronometer embedded via
@@ -224,7 +226,8 @@ private fun HeaderText(text: String, m: FocusMetrics, urgent: Boolean = false) {
 @Composable
 private fun TitleText(text: String, m: FocusMetrics) {
     Text(
-        text.ifBlank { "Focus" },
+        // Emphasis markers out: a widget draws one weight and would otherwise print the asterisks.
+        Markdown.plain(text).ifBlank { "Focus" },
         style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = m.title, fontWeight = FontWeight.Medium),
         maxLines = 1,
     )
@@ -371,7 +374,7 @@ private fun SessionContent(state: FocusTimer.State, m: FocusMetrics) {
             setViewVisibility(R.id.focus_clock_frozen, android.view.View.VISIBLE)
             setTextViewText(
                 R.id.focus_clock_frozen,
-                clock(if (state.isOpen) state.elapsedSecs else state.remainingSecs),
+                sessionClock(if (state.isOpen) state.elapsedSecs else state.remainingSecs),
             )
         }
     }
@@ -430,7 +433,7 @@ private fun FinishedContent(state: FocusTimer.State, m: FocusMetrics) {
         Text(
             // What you gave, rather than a tally of sessions: the number the ledger just recorded
             // is more use than the fact that it recorded one.
-            clock(state.elapsedSecs),
+            sessionClock(state.elapsedSecs),
             style = TextStyle(
                 color = GlanceTheme.colors.primary,
                 fontSize = m.clock.sp,
@@ -445,10 +448,3 @@ private fun FinishedContent(state: FocusTimer.State, m: FocusMetrics) {
     }
 }
 
-/** `M:SS`, or `H:MM:SS` once there is an hour to report — the chronometer's own shape. */
-private fun clock(secs: Int): String {
-    val s = secs.coerceAtLeast(0)
-    val h = s / 3600
-    return if (h > 0) String.format("%d:%02d:%02d", h, (s % 3600) / 60, s % 60)
-    else String.format("%d:%02d", s / 60, s % 60)
-}

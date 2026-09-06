@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ie.napkin.supertasks.domain.RunningTask
+import ie.napkin.supertasks.domain.sessionClock
 import ie.napkin.supertasks.ui.theme.Yantra
 import ie.napkin.supertasks.ui.theme.YantraDisplay
 import ie.napkin.supertasks.ui.theme.YantraMono
@@ -81,13 +82,8 @@ import kotlin.math.absoluteValue
  */
 val LocalNow = staticCompositionLocalOf<StateFlow<List<RunningTask.Now>>> { MutableStateFlow(emptyList()) }
 
-/** `MM:SS`, or `H:MM:SS` once there is an hour to report. Sessions do run that long. */
-fun elapsedLabel(seconds: Int): String {
-    val s = seconds.coerceAtLeast(0)
-    val h = s / 3600
-    return if (h > 0) "%d:%02d:%02d".format(h, (s % 3600) / 60, s % 60)
-    else "%d:%02d".format(s / 60, s % 60)
-}
+/** The running row's clock. See [sessionClock] — the same reading the notification shows. */
+fun elapsedLabel(seconds: Int): String = sessionClock(seconds)
 
 /**
  * Which tasks are on the go.
@@ -96,8 +92,14 @@ fun elapsedLabel(seconds: Int): String {
  * exists separately from [ElapsedSlot]: every task row in the app asks this question, and a value
  * that changed every second would put the entire list on a one-second recomposition loop to answer
  * "still not me".
+ *
+ * The `flow.value` read below is the seed for `collectAsStateWithLifecycle`, not a substitute for
+ * collecting it — the collector underneath is what makes this recompose. Reading it is what stops
+ * the first frame claiming nothing is running while the subscription is still being set up, which
+ * on a cold start into a live session is a visible flicker of the wrong answer.
  */
 @Composable
+@android.annotation.SuppressLint("StateFlowValueCalledInComposition")
 fun startedTaskIds(): Set<String> {
     val flow = LocalNow.current
     val ids by remember(flow) {
@@ -114,6 +116,7 @@ fun startedTaskIds(): Set<String> {
  * the tick, for the same reason.
  */
 @Composable
+@android.annotation.SuppressLint("StateFlowValueCalledInComposition")
 fun timingTaskId(): String? {
     val flow = LocalNow.current
     val id by remember(flow) {
@@ -294,7 +297,8 @@ fun NowPlayer(
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    current.title.ifBlank { "Untitled" },
+                    // One line in a bar: the markers have nothing to become here either.
+                    inlinePlain(current.title).ifBlank { "Untitled" },
                     fontFamily = YantraDisplay,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.W700,

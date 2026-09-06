@@ -3,7 +3,9 @@ package ie.napkin.supertasks
 import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.domain.SessionNotification
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Test
+import java.util.Locale
 
 /**
  * Which way the session's clock runs, on the one surface that used to get it wrong.
@@ -14,6 +16,17 @@ import org.junit.Test
  * about the same session.
  */
 class SessionNotificationFaceTest {
+
+    /**
+     * The clock formats in the device's locale on purpose — it sits beside a platform Chronometer
+     * that does the same, and a notification that changed numeral systems when you paused it would
+     * be the bug. That makes these assertions locale-dependent, so the locale is stated rather than
+     * inherited from whichever machine runs the suite.
+     */
+    @Before
+    fun pinLocale() {
+        Locale.setDefault(Locale.US)
+    }
 
     private fun state(
         planned: Int,

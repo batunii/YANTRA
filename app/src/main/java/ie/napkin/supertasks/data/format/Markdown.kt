@@ -46,6 +46,36 @@ object Markdown {
      */
     fun runs(text: String): List<Run> = runsIn(text, 0, text.length).sortedBy { it.outer.first }
 
+    /**
+     * [text] with its emphasis markers taken out and nothing put in their place.
+     *
+     * For the surfaces that cannot draw emphasis at all — a notification, a widget, the running
+     * player — where the alternative is showing the reader the asterisks. The rendering half of
+     * this lives in `InlineText.stripEmphasis`, which does the same walk and keeps an offset table
+     * because it has link spans to move; here there is nothing to re-anchor, so this is the walk
+     * without the books.
+     *
+     * Only the outermost run of a nesting is unwrapped, matching the renderer exactly: a surface
+     * that strips more than the renderer would is showing a different title from the one the app
+     * shows, which is the failure this is meant to prevent.
+     */
+    fun plain(text: String): String {
+        val runs = runs(text)
+        if (runs.isEmpty()) return text
+        val out = StringBuilder(text.length)
+        var at = 0
+        var lastEnd = -1
+        runs.forEach { run ->
+            if (run.outer.first < lastEnd) return@forEach   // nested inside one already unwrapped
+            out.append(text, at, run.outer.first)
+            out.append(text, run.inner.first, run.inner.last + 1)
+            at = run.outer.last + 1
+            lastEnd = at
+        }
+        out.append(text, at, text.length)
+        return out.toString()
+    }
+
     private fun runsIn(text: String, from: Int, to: Int): List<Run> {
         if (to - from < 3) return emptyList()
         val slice = text.substring(from, to)

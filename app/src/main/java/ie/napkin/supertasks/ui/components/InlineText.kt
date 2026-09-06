@@ -155,11 +155,15 @@ fun inlineAnnotated(
 /**
  * The same reduction with no styling at all, for a widget, a notification or the archive.
  *
- * Deliberately a plain [String] and deliberately in the data layer's terms — see [Links.plain].
- * A surface that cannot render must still be able to say what the task is called.
+ * Deliberately a plain [String] and deliberately in the data layer's terms. A surface that cannot
+ * render must still be able to say what the task is called.
+ *
+ * "The same reduction" was half true until now: this collapsed links and left every emphasis
+ * marker standing, so a task called `*urgent* thing` read as `*urgent* thing` on the one screen
+ * whose whole job was to show it without markup. [inlineAnnotated] does both halves; so does this.
  */
 fun inlinePlain(text: String, resolve: (String) -> String? = { null }): String =
-    Links.plain(text, resolve)
+    Markdown.plain(Links.plain(text, resolve))
 
 /**
  * [text] with its emphasis applied and its markers removed, plus where each original offset landed.

@@ -23,6 +23,7 @@ import ie.napkin.supertasks.ui.theme.resolve
 import ie.napkin.supertasks.widget.ListWidgetProvider
 import ie.napkin.supertasks.widget.WidgetIntents
 import kotlinx.coroutines.launch
+import ie.napkin.supertasks.data.format.Markdown
 
 /**
  * The running session, on the lock screen.
@@ -204,13 +205,15 @@ object SessionNotification {
         else -> Face.Countdown(state.remainingSecs)
     }
 
-    /** `M:SS`, or `H:MM:SS` once there is an hour to report. Matches the chronometer's own shape. */
-    internal fun clock(secs: Int): String {
-        val s = secs.coerceAtLeast(0)
-        val h = s / 3600
-        return if (h > 0) String.format("%d:%02d:%02d", h, (s % 3600) / 60, s % 60)
-        else String.format("%d:%02d", s / 60, s % 60)
-    }
+    /**
+     * The task's name as a notification can show it: emphasis markers taken out, because a shade
+     * row cannot draw them and printing the asterisks is worse than not having them.
+     */
+    private fun title(state: FocusTimer.State): String =
+        Markdown.plain(state.nodeTitle).ifBlank { "Untitled" }
+
+    /** See [sessionClock] — the shape is shared with the widgets and the running row. */
+    internal fun clock(secs: Int): String = sessionClock(secs)
 
     private fun openIntent(context: Context, nodeId: String) =
         Intent(context, MainActivity::class.java).apply {
@@ -255,7 +258,7 @@ object SessionNotification {
     private fun transport(context: Context, state: FocusTimer.State, accent: Int): RemoteViews {
         val nodeId = state.nodeId
         return RemoteViews(context.packageName, R.layout.notification_focus).apply {
-            setTextViewText(R.id.focus_title, state.nodeTitle.ifBlank { "Untitled" })
+            setTextViewText(R.id.focus_title, title(state))
             // The mark lives in the body rather than in the large-icon slot, which the shade
             // reserves space for on the right and which was squeezing this row into a column.
             setImageViewBitmap(
@@ -326,6 +329,12 @@ object SessionNotification {
      * `setShortCriticalText` is the chip's own text, and it has room for about half a dozen
      * characters. Not the clock: the system renders the countdown in the chip itself from `when`.
      */
+    // 36 is the annotation lint can express; setRequestPromotedOngoing below actually needs 36.1,
+    // and the check that establishes it is not a version comparison. canPromote calls
+    // canPostPromotedNotifications, which arrived in the same minor release, inside a runCatching —
+    // so on an Android 16.0 device that call throws NoSuchMethodError, is caught, and this function
+    // is never reached. The version gate and the capability gate are the same gate here.
+    @android.annotation.SuppressLint("NewApi")
     @androidx.annotation.RequiresApi(36)
     private fun buildPromoted(context: Context, state: FocusTimer.State, accent: Int): Notification {
         val nodeId = state.nodeId
@@ -336,7 +345,7 @@ object SessionNotification {
             // promotion outright — which is the opposite of what it looks like, since colorizing
             // is what a foreground service does to own its row in the shade. The chip takes its
             // tint from setColor regardless.
-            .setContentTitle(state.nodeTitle.ifBlank { "Untitled" })
+            .setContentTitle(title(state))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             // Asking is the part that was missing. Shape alone does not earn the chip: the app
@@ -449,7 +458,7 @@ object SessionNotification {
             // which left the transport below a third of the width and wrapped the clock down the
             // page one character at a time. The mark is drawn inside the body instead, and the
             // collapsed row loses nothing — the launcher icon beside it is already a bhupura.
-            .setContentTitle(state.nodeTitle.ifBlank { "Untitled" })
+            .setContentTitle(title(state))
             // No subText. It was carrying the promised length, which is worth saying — but the
             // collapsed row gives the header, the title, the time and the large icon one line
             // between them, and a fifth thing cost the task's own name half its width: the shade
@@ -552,6 +561,7 @@ object SessionNotification {
      * plain notification remains, under the same id, and the service replaces it when one can next
      * be started.
      */
+    @android.annotation.SuppressLint("MissingPermission")   // guarded by canNotify, one line down
     fun show(context: Context, state: FocusTimer.State) {
         if (!canNotify(context)) return
         NotificationManagerCompat.from(context).notify(ID, build(context, state))
@@ -579,6 +589,7 @@ object SessionNotification {
      * Only for sessions that *arrived*. Stopping early is something you did, on purpose, with the
      * phone in your hand; being told about it afterwards would be the app repeating you back.
      */
+    @android.annotation.SuppressLint("MissingPermission")   // guarded by canNotify, one line down
     fun showCompleted(context: Context, title: String, nodeId: String, elapsedSecs: Int) {
         if (!canNotify(context)) return
         val accent = accentArgb(context)
