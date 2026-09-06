@@ -55,6 +55,7 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.FocusSessionEntity
+import ie.napkin.supertasks.ui.components.rememberNotificationPermissionRequest
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.SwitchHereDialog
 import ie.napkin.supertasks.ui.components.durationLabel
@@ -139,6 +140,9 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
         )
     }
 
+    // Held at screen level: a permission launcher must be remembered in composition, not created
+    // inside the click that needs it.
+    val askNotifications = rememberNotificationPermissionRequest()
     val active = timerState
     /** The length chosen for a task that has to take the clock off another. Null when nothing asks. */
     var switchTo by remember { mutableStateOf<Int?>(null) }
@@ -203,6 +207,12 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                         node = requestedNode!!,
                         dayCounts = ownDayCounts,
                         onStart = { secs ->
+                            // Pressing start is the moment the running notification stops being
+                            // hypothetical, so it is the moment to ask for it. Before this, the
+                            // permission was only ever requested by the reminder sheet, and a
+                            // session started on a phone that had never set a reminder ran with
+                            // nothing on the lock screen at all.
+                            askNotifications()
                             if (active != null) switchTo = secs
                             else vm.timer.start(requestedNode!!.id, requestedNode!!.title.orEmpty(), secs)
                         },

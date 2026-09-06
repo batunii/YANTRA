@@ -391,12 +391,23 @@ fun BottomBar(
 ) {
     val stack by LocalNow.current.collectAsStateWithLifecycle()
     val shown = if (showNow && !WindowInsets.isImeVisible) stack else emptyList()
+    // The player's key is the other way a session begins, and every screen that shows a player
+    // shows this one — so asking here covers Home, the smart lists, a task's page and the stats
+    // screen at once, rather than four call sites that would each have to remember.
+    //
+    // A no-op once granted, and once denied: the launcher only fires when the permission is
+    // actually missing, so pressing play repeatedly does not re-ask.
+    val askNotifications = rememberNotificationPermissionRequest()
     Column(modifier.fillMaxWidth()) {
         // The field keeps its own breathing room at the screen edge, and gives most of it back when
         // the player is underneath to catch it.
         capture(if (shown.isEmpty()) 22.dp else 10.dp)
         if (shown.isNotEmpty()) {
-            NowPlayer(stack = shown, onOpen = onOpenNow, onToggleClock = onToggleClock)
+            NowPlayer(
+                stack = shown,
+                onOpen = onOpenNow,
+                onToggleClock = { now -> askNotifications(); onToggleClock(now) },
+            )
         }
     }
 }

@@ -293,14 +293,11 @@ private fun FitsWidth(needs: Dp, content: @Composable () -> Unit) {
 @Composable
 fun rememberReminderPermissionRequest(): () -> Unit {
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    // The notification half is shared now — a focus session needs exactly the same grant, and two
+    // copies of the ask is two places for the SDK check to drift.
+    val notifications = rememberNotificationPermissionRequest()
     return {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        notifications()
         if (Build.VERSION.SDK_INT in 31..32 &&
             !context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
         ) {

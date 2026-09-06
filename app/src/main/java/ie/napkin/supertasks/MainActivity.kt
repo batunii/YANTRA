@@ -21,6 +21,7 @@ import ie.napkin.supertasks.ui.theme.resolve
 import ie.napkin.supertasks.ui.theme.yantraColors
 import ie.napkin.supertasks.widget.WidgetIntents
 import ie.napkin.supertasks.widget.WidgetRefresh
+import ie.napkin.supertasks.domain.FocusSessionService
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -60,6 +61,32 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         targetFrom(intent)?.let { openTarget = it }
+    }
+
+    /**
+     * Reclaims the foreground service for a session that is still running.
+     *
+     * A session can outlive the process, and when the process comes back on its own — `START_STICKY`
+     * after a low-memory kill, a widget tap, a worker — Android refuses to let it start a foreground
+     * service from the background. [FocusSessionService.sync] handles that by falling back to a
+     * plain notification, so the session stays visible and correct; what it cannot do is decide when
+     * the app is next allowed to try again.
+     *
+     * This is that moment, and without it the fallback was permanent: the collector that starts the
+     * service only fires on [ie.napkin.supertasks.domain.FocusTimer] *transitions*, and a restore
+     * produces none, so a session that survived a kill spent the rest of its life on a dismissible
+     * notification with the process back in the cached pool it had just been killed out of.
+     *
+     * Idempotent — a service already in the foreground simply gets another `onStartCommand`.
+     */
+    override fun onStart() {
+        super.onStart()
+        val container = (application as App).container
+        container.appScope.launch {
+            container.timer.restoreIfNeeded()
+            val live = container.timer.state.value?.takeIf { !it.isFinished }
+            if (live != null) FocusSessionService.sync(applicationContext, live = true, state = live)
+        }
     }
 
     /**

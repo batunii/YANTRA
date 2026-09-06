@@ -41,8 +41,39 @@ class FocusTimer(
     ) {
         val isOpen: Boolean get() = plannedSecs <= 0
 
+        /**
+         * A committed session whose moment has passed, but which nothing has closed yet.
+         *
+         * The gap is real and unavoidable: only the in-process ticker or a worker can end a
+         * session, and neither runs when the process is dead. Anything drawing a *live* clock has
+         * to know about it, because a countdown handed to a launcher keeps counting after zero —
+         * it has no idea what it is counting to — and a focus timer reading minus four minutes is
+         * the app claiming something it cannot mean.
+         */
+        val isSpent: Boolean get() = !isOpen && remainingSecs <= 0
+
         /** What to report as "given" — the same number for either instrument. */
         fun actualOrElapsed(): Int = elapsedSecs
+    }
+
+    /**
+     * What a restore found, so a caller can tell the difference between nothing having happened and
+     * a session having *ended* while nobody was running.
+     *
+     * The distinction was invisible before, and it cost the app the one moment a committed session
+     * exists for: a pomodoro whose end passed with the process dead was closed correctly in the
+     * ledger and announced to nobody. [ie.napkin.supertasks.widget.FocusFinalizeWorker] is the
+     * thing that wakes up to notice, and this is how it learns there was something to say.
+     */
+    sealed interface Restored {
+        /** Nothing open, or a session was already live in this process. */
+        data object Nothing : Restored
+
+        /** A session was rebuilt and is counting again. */
+        data object Resumed : Restored
+
+        /** A committed session arrived while we were dead. Its row is now closed. */
+        data class RanOut(val nodeId: String, val nodeTitle: String, val elapsedSecs: Int) : Restored
     }
 
     private val _state = MutableStateFlow<State?>(null)
@@ -59,9 +90,9 @@ class FocusTimer(
      * Pause state is process-bound: a paused session restores as though it never paused, which
      * overcounts rather than undercounts, and is the right way round for a ledger of effort.
      */
-    suspend fun restoreIfNeeded() = restoreMutex.withLock {
-        if (_state.value != null) return@withLock
-        val open = repo.openSession() ?: return@withLock
+    suspend fun restoreIfNeeded(): Restored = restoreMutex.withLock {
+        if (_state.value != null) return@withLock Restored.Nothing
+        val open = repo.openSession() ?: return@withLock Restored.Nothing
         val now = System.currentTimeMillis()
         val elapsed = ((now - open.startedAt) / 1000).toInt()
 
@@ -69,7 +100,13 @@ class FocusTimer(
             val endAt = open.startedAt + open.plannedSecs * 1000L
             if (now >= endAt) {
                 repo.endSession(open.id, open.plannedSecs, FocusOutcome.RAN_OUT)
-                return@withLock
+                return@withLock Restored.RanOut(
+                    nodeId = open.nodeId,
+                    nodeTitle = Links.plain(repo.nodeTitle(open.nodeId).orEmpty()),
+                    // What the ledger just recorded, which is the promise, not the wall clock: the
+                    // session stopped counting when it arrived, however long ago that was.
+                    elapsedSecs = open.plannedSecs,
+                )
             }
         }
         _state.value = State(
@@ -82,6 +119,7 @@ class FocusTimer(
             isRunning = true,
         )
         startTicker()
+        Restored.Resumed
     }
 
     /**
