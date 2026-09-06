@@ -7,3 +7,9 @@ build/
 /captures
 .externalNativeBuild
 .cxx
+
+# The release signing key and its passwords. The .jks is the app's identity — losing it means no
+# further updates can ever be published under it, and committing it means anyone with the repo can
+# publish as Yantra. Back it up out of band; do not track it here.
+/keystore.properties
+*.jks

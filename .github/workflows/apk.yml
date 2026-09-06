@@ -5,7 +5,7 @@ on:
     # Every branch the work actually happens on. It was main and one long-lived branch, which meant
     # the build ran for two of the seven branches this repo has had and silently for none of the
     # rest — a build server that does not run is indistinguishable from a build that passes.
-    branches: [main, UI_Changes, 'feature/**', 'fix/**']
+    branches: [main, UI_Changes, 'feature/**', 'fix/**', 'release/**']
     # Tagging is how you ask for a build you can keep: a tag run also publishes a
     # Release with the APK attached, because run artifacts expire and are only
     # reachable by people who can see the Actions tab.
@@ -19,14 +19,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  debug:
-    name: Debug APK
+  build:
+    name: APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     permissions:
       # Only so a tag build can create its Release; nothing else here writes.
       contents: write
+
+    # Lifted to the job because a step's own `env:` is not in scope for that step's `if:`, and this
+    # is read by one. It is empty for a run that is not entitled to secrets — a fork's pull
+    # request — which is exactly the condition being tested.
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
     steps:
       - uses: actions/checkout@v4
@@ -50,11 +56,58 @@ jobs:
       # place. Gradle would mostly cope, but "mostly" is not what a build server is for: deleting
       # them means every run starts from source and a green build actually means the source
       # compiles.
-      - name: Discard checked-in build outputs
+      # app/build/ used to be checked into this repository, so a fresh checkout arrived with
+      # another machine's intermediates already in place. .gitignore covers it now and nothing is
+      # tracked under it, but a stale working copy on a self-hosted runner would still poison a
+      # build, and starting from source is what makes a green run mean the source compiles.
+      - name: Discard any build outputs
         run: rm -rf app/build
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      # The unit suite, before anything is packaged. A build server that produces an installable
+      # APK from code whose tests fail is telling you the wrong thing twice.
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      # The signing key, when this run is entitled to it. Forks and pull requests get no secrets,
+      # so those runs build the debug variant instead of failing at the signing step — a
+      # contributor's PR should still tell them whether their change compiles and runs.
+      - name: Unpack the signing key
+        id: key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > app/yantra-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=yantra-release.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # Release when it can be signed, debug otherwise. The release variant is the one worth
+      # shipping and worth testing: R8 and resource shrinking take the APK from 38 MB to under 9,
+      # and they are also the only part of the build that can break code that works unminified.
+      # A debug artifact was standing in for it, which meant the shipped APK was the one
+      # configuration nobody had ever run.
+      - name: Assemble
+        id: apk
+        run: |
+          if [ "${{ steps.key.outputs.signed }}" = "true" ]; then
+            ./gradlew :app:assembleRelease --no-daemon --stacktrace
+            echo "path=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "kind=release" >> "$GITHUB_OUTPUT"
+          else
+            ./gradlew :app:assembleDebug --no-daemon --stacktrace
+            echo "path=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "kind=debug" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The key does not outlive the job that needed it. The runner is ephemeral, but a workspace
+      # that still holds a signing key while later steps run arbitrary Gradle plugins is a wider
+      # window than this needs.
+      - name: Shred the signing key
+        if: always()
+        run: rm -f app/yantra-release.jks keystore.properties
 
       # A tag names itself; anything else is identified by the commit it came from.
       - name: Work out what to call this build
@@ -68,25 +121,25 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: yantra-debug-${{ steps.name.outputs.label }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: yantra-${{ steps.apk.outputs.kind }}-${{ steps.name.outputs.label }}
+          path: ${{ steps.apk.outputs.path }}
           # A silently empty artifact is worse than a failed job: it looks like a build you can
           # install.
           if-no-files-found: error
           retention-days: 14
 
       # gh is preinstalled on GitHub runners, so this needs no third-party action in the release
-      # path. "-debug" stays in the filename on purpose: this APK is signed with the debug key, so
-      # it installs and runs but is not a build for distribution, and the name should say so
-      # wherever it ends up.
+      # path. The variant stays in the filename: a debug-signed APK installs and runs but is not a
+      # build for distribution, and whoever finds the file later should be able to tell which one
+      # they have without unzipping it.
       - name: Publish the tagged APK as a Release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             "yantra-$GITHUB_REF_NAME-debug.apk"
+          cp "${{ steps.apk.outputs.path }}" \
+             "yantra-$GITHUB_REF_NAME-${{ steps.apk.outputs.kind }}.apk"
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            "yantra-$GITHUB_REF_NAME-debug.apk"
+            "yantra-$GITHUB_REF_NAME-${{ steps.apk.outputs.kind }}.apk"

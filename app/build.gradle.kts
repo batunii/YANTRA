@@ -1,9 +1,21 @@
+// `java` in a Kotlin build script resolves to Gradle's own java extension, not the package, so the
+// fully-qualified name below has to arrive as an import.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+}
+
+// The release signing key, read from a file that is not in this repository. Absent on a machine
+// that has never been given the key — a checkout can still build and run the debug variant, which
+// is what a contributor needs; only a release build asks for this, and says so if it is missing.
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -15,21 +27,58 @@ android {
 
     defaultConfig {
         applicationId = "ie.napkin.supertasks"
-        minSdk = 26
+        // Android 12. The app was declaring 26 and had been built for 31 the whole time: the theme
+        // every screen is wrapped in is @RequiresApi(S), every widget sizes itself with
+        // targetCellWidth, and the completion haptics ask for primitives that arrived in S. An
+        // install on Android 8 would have found all three at once. Declaring what is true costs
+        // four API levels nobody was served on and buys a build that means something.
+        minSdk = 31
         targetSdk = 36
         versionCode = 3
         versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Every string in this app is a Kotlin literal in English — there is not one
+        // stringResource call in 33k lines. AndroidX does not know that, and was shipping its own
+        // translations for 85 locales into an app that speaks one. When the app grows a second
+        // language this list grows with it.
+        resourceConfigurations += listOf("en")
+    }
+
+    signingConfigs {
+        create("release") {
+            // Configured only when the key is actually present. Declaring an empty config would
+            // hand AGP a storeFile of "null" and fail at packaging with a path error rather than
+            // the thing that is actually wrong, which is that this machine does not have the key.
+            val store = keystoreProperties.getProperty("storeFile")
+            if (store != null) {
+                storeFile = file(store)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // androidx.ink ships libink.so for four architectures and two of them are dead
+            // weight on a phone: x86 and x86_64 exist for emulators, and no Android handset has ever
+            // shipped either. Carrying both cost 3.1 MB of a 9.4 MB APK — a third of the download,
+            // for code that cannot run on the device receiving it.
+            //
+            // Release only, on purpose: debug keeps every ABI so the instrumented suite still runs
+            // on an x86_64 emulator, which is what CI has.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
     }
     compileOptions {
@@ -41,6 +90,21 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+
+    packaging {
+        resources {
+            // JGit needs commons-codec for hex and base64 and drags its whole data payload along.
+            // 234 KB of it — 1,161 files — is Beider-Morse phonetic rules for matching Ashkenazi
+            // and Polish surnames by sound. R8 strips the classes; the rule tables are java
+            // resources, so nothing was removing them.
+            excludes += "org/apache/commons/codec/language/**"
+            // The coroutines debug agent's probe table. It is read by the debugger, which is not
+            // attached to a release build.
+            excludes += "DebugProbesKt.bin"
+            excludes += "kotlin-tooling-metadata.json"
+        }
     }
 }
 
