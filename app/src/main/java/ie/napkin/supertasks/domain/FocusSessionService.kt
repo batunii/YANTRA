@@ -133,10 +133,13 @@ class FocusSessionService : Service() {
             // The rule it breaks was written to stop a *dead* process being woken to move pixels.
             // This process is deliberately alive for exactly as long as the session lasts — that
             // is what the service is for — so the objection does not apply. Half a minute moves a
-            // 25-minute bar about two percent and keeps the chip's own text honest, at a cost of
-            // fifty posts across a session.
+            // 25-minute bar about two percent, at a cost of fifty posts across a session.
             //
-            // Only for a promise. A stopwatch has no bar to move and no number to keep true.
+            // The bar is the whole of the reason. Every other moving thing here ticks itself: the
+            // shade's clock and the status-bar chip both run off `when`, so neither needs this.
+            //
+            // Only for a promise. A stopwatch has no bar, because it has nothing to be a fraction
+            // of, so it is left entirely to the chronometer.
             s.launch {
                 while (true) {
                     delay(30_000)

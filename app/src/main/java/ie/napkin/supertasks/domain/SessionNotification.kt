@@ -377,6 +377,16 @@ object SessionNotification {
             )
         }
 
+        // The chip's text has two sources and they are alternatives, not layers: a short critical
+        // string, or the chronometer the system runs from `when`. Setting the string wins — which
+        // is why the pill sat at "24m" for half a minute at a time, refreshing only when something
+        // re-posted it. A timer whose own chip does not move is the one thing this feature exists
+        // to avoid, so a running session sets no critical text and lets the system tick it: down
+        // to the promise, or up from the start of a stopwatch.
+        //
+        // Paused is the exception and the reason the string is still worth having. There is no
+        // chronometer to run when the clock is stopped, and a chip reading nothing at all would
+        // say less than one reading "Paused".
         when (val f = face(state)) {
             is Face.Frozen -> b
                 .setUsesChronometer(false)
@@ -388,13 +398,11 @@ object SessionNotification {
                 .setUsesChronometer(true)
                 .setChronometerCountDown(true)
                 .setContentText("Focusing · ${(state.plannedSecs + 59) / 60} min")
-                .setShortCriticalText(shortLeft(f.secs))
             is Face.CountUp -> b
                 .setWhen(System.currentTimeMillis() - f.secs * 1000L)
                 .setUsesChronometer(true)
                 .setChronometerCountDown(false)
                 .setContentText("Stopwatch")
-                .setShortCriticalText(shortLeft(f.secs))
         }
 
         fun act(icon: Int, label: String, action: String, target: String) =
@@ -409,16 +417,6 @@ object SessionNotification {
         b.addAction(act(R.drawable.ic_notif_stop, "Stop", ACTION_STOP, "stop"))
         b.addAction(act(R.drawable.ic_notif_done, "Done", ACTION_DONE, "done"))
         return b.build()
-    }
-
-    /** Chip-sized: `24m`, or `1h` once there is one. Six characters is the whole budget. */
-    internal fun shortLeft(secs: Int): String {
-        val s = secs.coerceAtLeast(0)
-        return when {
-            s >= 3600 -> "${s / 3600}h"
-            s >= 60 -> "${s / 60}m"
-            else -> "${s}s"
-        }
     }
 
     /**
