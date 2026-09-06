@@ -83,6 +83,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import ie.napkin.supertasks.ui.theme.YantraColors
 import ie.napkin.supertasks.data.format.Links
+import ie.napkin.supertasks.data.label.LabelPalette
 
 /**
  * Glance-state keys for the configured binding and per-widget settings — see [YantraListWidget]
@@ -124,7 +125,27 @@ data class WidgetRow(
     val deadlinePast: Boolean,      // strictly before today: drives OVERDUE grouping
     val priorityColor: Long?,
     val listName: String?,          // source list, shown on aggregating (smart) widgets
+    /**
+     * The task's labels, as `#name` and the hue each is drawn in.
+     *
+     * Stored colours, not display ones: the widget resolves them against its own light/dark at
+     * render time, the same way the app does, because a widget can be looking at a theme the app
+     * is not.
+     */
+    val labels: List<WidgetLabel> = emptyList(),
+    /**
+     * The repository this row came from, as a colour.
+     *
+     * Null when only one workspace is open — a colour that always means the same thing means
+     * nothing — which is the same rule the smart list screen applies to the hue it prints on a
+     * list name. Here it is a rule down the leading edge instead, because a widget row has no
+     * spare text to carry it and the edge is width nothing else wants.
+     */
+    val workspaceHue: Long? = null,
 )
+
+/** One label on a widget row: what it says and the ink it says it in. */
+data class WidgetLabel(val name: String, val color: Long?)
 
 sealed interface WidgetItem {
     /** [urgent] headers are drawn in the overdue red — the section label is the alarm. */
@@ -195,6 +216,8 @@ internal fun buildRows(
     priorityColors: Map<String, Long>,
     parentTitles: Map<String, String> = emptyMap(),
     hideTodayDue: Boolean = false,
+    labels: Map<String, List<WidgetLabel>> = emptyMap(),
+    workspaceHues: Map<String, Long> = emptyMap(),
 ): List<WidgetRow> {
     val byNode = values.groupBy { it.nodeId }
     val todayStart = todayMidnight()
@@ -217,6 +240,8 @@ internal fun buildRows(
             deadlinePast = deadlineRow?.vDate?.let { it < todayStart } == true,
             priorityColor = prio?.let { priorityColors[it] },
             listName = n.parentId?.let { parentTitles[it] },
+            labels = labels[n.id].orEmpty(),
+            workspaceHue = workspaceHues[n.workspaceId],
         )
     }
 }
@@ -318,6 +343,24 @@ open class YantraListWidget : GlanceAppWidget() {
             ?.let { def -> selectConfig(def).options.mapNotNull { o -> o.color?.let { o.name to it } }.toMap() }
             ?: emptyMap()
 
+        // The repository as a colour, resolved once: workspaces do not open and close while a
+        // widget is on screen, and the widget re-renders from scratch when they do. Null for a
+        // single open repository, by the same rule the smart list screen follows.
+        val openWs = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+        val workspaceHues: Map<String, Long> =
+            if (openWs.size < 2) emptyMap()
+            else openWs.associate { it.id to LabelPalette.defaultFor(it.name) }
+
+        // Two flows folded into one so the combine below stays inside its five-argument overload.
+        val labelFlow = combine(
+            container.db.labelDao().all(),
+            container.db.labelDao().allNodeLabels(),
+        ) { defs, links ->
+            val byId = defs.associateBy { it.id }
+            links.mapNotNull { link -> byId[link.labelId]?.let { link.nodeId to WidgetLabel(it.name, it.color) } }
+                .groupBy({ it.first }, { it.second })
+        }
+
         val titleFlow = container.nodes.observe(nodeId)
         val smartDef = if (isSmart) container.smartLists.defById(nodeId) else null
         if (isSmart && smartDef == null) {
@@ -357,7 +400,8 @@ open class YantraListWidget : GlanceAppWidget() {
                     container.db.propertyDao().valuesForNodes(tasks.map { it.id }, defIds.all),
                     container.nodes.allLists(),
                     doneFlow,
-                ) { node, values, lists, allDone ->
+                    labelFlow,
+                ) { node, values, lists, allDone, labels ->
                     // "Done" has to mean *done today*, or the section fills with anything ever
                     // completed that still matches the date rule and quietly grows forever.
                     // There is no completed_at column, so updatedAt is the proxy: a task
@@ -373,12 +417,14 @@ open class YantraListWidget : GlanceAppWidget() {
                     val rows = buildRows(
                         tasks, values, defIds.due, defIds.deadline, defIds.priority,
                         priorityColors, parentTitles, hideTodayDue = forceToday,
+                        labels = labels, workspaceHues = workspaceHues,
                     )
                     // Capped: the completed section is a record of the day, not an archive, and
                     // it must never push the open work off the widget.
                     val doneRows = buildRows(
                         doneTasks.take(DONE_LIMIT), emptyList(), defIds.due, defIds.deadline,
                         defIds.priority, priorityColors, parentTitles, hideTodayDue = true,
+                        labels = labels, workspaceHues = workspaceHues,
                     )
                     WidgetData(
                         title = Links.plain(node?.title.orEmpty()).ifBlank { if (forceToday) "Today" else "List" },
@@ -630,7 +676,8 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
     // The meta line: the date only when it informs, then the source list. Putting the list name
     // here instead of hard against the right edge stops it competing with the title's baseline,
     // and gives every aggregated row the same two-line shape.
-    val metaParts = listOfNotNull(row.dueLabel, row.deadlineLabel, row.listName)
+    val metaParts = listOfNotNull(row.dueLabel, row.deadlineLabel, row.listName) +
+        row.labels.map { it.name }
     val overdue = row.dueOverdue || row.deadlineOverdue
     // Top-aligned, and the text column takes its own height. Centering a two-line column against
     // a fixed-height checkbox is what let the title and its date paint over each other when the
@@ -639,6 +686,23 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
         modifier = GlanceModifier.fillMaxWidth().padding(vertical = m.rowGap),
         verticalAlignment = Alignment.Top,
     ) {
+        // The repository, as a rule down the leading edge.
+        //
+        // A widget row is two lines of text with no room to spare, so the workspace cannot have a
+        // word — but the edge is width nothing else wants, and a colour there is read without
+        // being looked at. Drawn only when more than one repository is open; a single one makes it
+        // a stripe that always means the same thing, which is decoration. The space is not reserved
+        // when absent, because a rule nobody has is an indent everybody pays for.
+        if (row.workspaceHue != null) {
+            Box(
+                GlanceModifier
+                    .width(3.dp)
+                    .height(m.box)
+                    .cornerRadius(2.dp)
+                    .background(ColorProvider(Color(LabelPalette.display(row.workspaceHue, status.isDark)))),
+            ) {}
+            Spacer(GlanceModifier.width(9.dp))
+        }
         // The task glyph, in the three states a widget can show. Glance has no Canvas, so these are
         // drawables rather than the drawn path — same geometry, same colour law, no choreography.
         // A done task is a bare bindu and keeps no priority tint: the enclosure is what carried
@@ -707,13 +771,32 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
                             ),
                         )
                     }
+                    // Labels, each in its own hue, in the `#name` form the app writes them in.
+                    // They come before the list name for the reason the row's second line exists
+                    // at all: it carries what the task *is*, and where it lives is the weakest
+                    // fact on it. Capped at two — a widget row that ellipsises mid-label has told
+                    // you less than one that stopped at the labels it could finish.
+                    row.labels.take(2).forEach { label ->
+                        Text(
+                            (if (dated != null) " · " else "") + "#" + label.name,
+                            maxLines = 1,
+                            style = TextStyle(
+                                fontSize = m.meta,
+                                fontWeight = FontWeight.Medium,
+                                color = label.color
+                                    ?.let { ColorProvider(Color(LabelPalette.display(it, status.isDark))) }
+                                    ?: GlanceTheme.colors.onSurfaceVariant,
+                            ),
+                        )
+                    }
                     val rest = listOfNotNull(
                         row.deadlineLabel.takeIf { row.dueLabel != null },
                         row.listName,
                     )
                     if (rest.isNotEmpty()) {
                         Text(
-                            (if (dated != null) " · " else "") + rest.joinToString(" · "),
+                            (if (dated != null || row.labels.isNotEmpty()) " · " else "") +
+                                rest.joinToString(" · "),
                             maxLines = 1,
                             style = TextStyle(
                                 fontSize = m.meta,
