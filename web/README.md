@@ -31,8 +31,25 @@ token — but `github.com/login/oauth/access_token` refuses CORS entirely, so a 
 *obtain* one. The sign-in button therefore needs a server-side token exchange; everything after it
 is static.
 
+## What works so far
+
+Read a workspace, walk its lists, open a task as a page, and tick things off. Writes go straight to
+GitHub's Contents API with the blob sha as a precondition, so a write that would clobber something
+the phone committed in the meantime is refused rather than applied — the client has no merge
+machinery and should not pretend to.
+
+Ticking is optimistic: the mark flips immediately and settles on the sha the write returns. If the
+write fails, the row goes back to what the repository actually says, because a tick left showing
+after a failed save is worse than no tick at all.
+
+Not here yet: editing text, adding tasks, reordering, smart-list evaluation, ink, images, the focus
+ledger, and the sign-in button.
+
 ## Running it
 
     npm install
-    npm test        # the format suite
-    npm run dev
+    npm test              # the format and workspace suites
+    npm run dev           # then open /?demo to look around without a token
+
+`?demo` opens a synthetic workspace — no token, no network — which is also how the UI is tested. A
+list is deep-linkable as `#<page-id>`.
