@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Backend } from '../backend'
 import { GitHubError } from '../github/client'
-import { pageText, withTaskStatus, loadWorkspace, tasksOf, topLevel, deviceId } from '../workspace/workspace'
+import { pageText, withTaskStatus, withNewTask, withTaskTitle, loadWorkspace, tasksOf, topLevel, deviceId } from '../workspace/workspace'
 import type { LoadedPage, Workspace } from '../workspace/workspace'
-import type { TaskStatus } from '../format/pageDoc'
+import type { PageDoc, TaskStatus } from '../format/pageDoc'
 import { Bhupura } from './Bhupura'
+import { Inline } from './Inline'
+import { Capture } from './Capture'
 
 export function WorkspaceView({ backend }: { backend: Backend }) {
   const [ws, setWs] = useState<Workspace | null>(null)
@@ -25,33 +27,57 @@ export function WorkspaceView({ backend }: { backend: Backend }) {
 
   useEffect(() => { void load() }, [load])
 
-  const toggle = useCallback(async (page: LoadedPage, index: number, to: TaskStatus) => {
+  /**
+   * Every write goes through here: the edit lands on screen first, then the file.
+   *
+   * Optimistic because a checkbox that waits on a network round trip feels broken even while it is
+   * working — and reverting on failure because the one outcome worse than not writing is a screen
+   * claiming something the repository does not say.
+   */
+  const commit = useCallback(async (
+    page: LoadedPage,
+    next: PageDoc,
+    message: string,
+    key: string,
+  ) => {
     if (saving) return
-    setSaving(`${page.id}:${index}`)
-    const next = withTaskStatus(page.doc, index, to, new Date(), deviceId())
-    // Optimistic: the tick lands instantly and is reconciled by the sha the write returns. A
-    // checkbox that waits for a network round trip feels broken even when it is working.
+    setSaving(key)
     setWs((w) => w && patch(w, { ...page, doc: next }))
     try {
-      const title = titleOf(page.doc.blocks[index])
       const { sha } = await backend.write({
-        path: page.path, sha: page.sha, text: pageText(next),
-        message: `${to === 'done' ? 'Complete' : 'Reopen'} ${title}`,
+        path: page.path, sha: page.sha, text: pageText(next), message,
       })
       setWs((w) => w && patch(w, { ...page, doc: next, sha }))
       setError(null)
     } catch (e) {
-      // Put the old page back. A failed write that leaves the tick showing is the one outcome
-      // worse than not writing at all: the screen would claim something the repository does not.
       setWs((w) => w && patch(w, page))
-      setError(e instanceof GitHubError && e.status === 409
+      const conflict = e instanceof GitHubError && e.status === 409
+      setError(conflict
         ? 'That page changed on GitHub since it loaded — reloading rather than overwriting.'
         : e instanceof Error ? e.message : String(e))
-      if (e instanceof GitHubError && e.status === 409) void load()
+      if (conflict) void load()
+      throw e
     } finally {
       setSaving(null)
     }
   }, [backend, saving, load])
+
+  const toggle = useCallback((page: LoadedPage, index: number, to: TaskStatus) => {
+    const title = titleOf(page.doc.blocks[index])
+    const next = withTaskStatus(page.doc, index, to, new Date(), deviceId())
+    return commit(page, next, `${to === 'done' ? 'Complete' : 'Reopen'} ${title}`, `${page.id}:${index}`)
+      .catch(() => {})
+  }, [commit])
+
+  const add = useCallback((page: LoadedPage, typed: string) => {
+    const { doc } = withNewTask(page.doc, typed, new Date(), deviceId())
+    return commit(page, doc, `Add ${typed}`, `${page.id}:new`)
+  }, [commit])
+
+  const retitle = useCallback((page: LoadedPage, index: number, typed: string) => {
+    const next = withTaskTitle(page.doc, index, typed, new Date(), deviceId())
+    return commit(page, next, `Edit ${typed}`, `${page.id}:${index}`).catch(() => {})
+  }, [commit])
 
   const open_ = (id: string) => { setOpenId(id); history.replaceState(null, '', '#' + id) }
 
@@ -79,16 +105,24 @@ export function WorkspaceView({ backend }: { backend: Backend }) {
 
       <main className="page">
         {error && <p className="error banner">{error}</p>}
-        {open ? <PageBody ws={ws} page={open} onToggle={toggle} saving={saving} onOpen={open_} /> : null}
+        {open ? (
+          <PageBody
+            ws={ws} page={open} saving={saving} onOpen={open_}
+            onToggle={toggle} onRetitle={retitle}
+            onAdd={(typed) => add(open, typed)}
+          />
+        ) : null}
       </main>
     </div>
   )
 }
 
-function PageBody({ ws, page, onToggle, saving, onOpen }: {
+function PageBody({ ws, page, onToggle, onRetitle, onAdd, saving, onOpen }: {
   ws: Workspace
   page: LoadedPage
   onToggle: (p: LoadedPage, i: number, to: TaskStatus) => void
+  onRetitle: (p: LoadedPage, i: number, text: string) => void
+  onAdd: (text: string) => Promise<void>
   saving: string | null
   onOpen: (id: string) => void
 }) {
@@ -119,9 +153,11 @@ function PageBody({ ws, page, onToggle, saving, onOpen }: {
                 >
                   <Bhupura state={b.status} />
                 </button>
-                <span className={b.status === 'done' ? 'title struck' : 'title'}>
-                  {b.title || 'Untitled'}
-                </span>
+                <EditableTitle
+                  text={b.title}
+                  done={b.status === 'done'}
+                  onCommit={(t) => onRetitle(page, i, t)}
+                />
                 <span className="tokens">
                   {b.priority && <em className="tok pri">!{b.priority}</em>}
                   {b.due && <em className="tok due">{b.due.value.kind === 'allDay' ? b.due.value.date : b.due.value.instant.slice(0, 10)}</em>}
@@ -134,15 +170,68 @@ function PageBody({ ws, page, onToggle, saving, onOpen }: {
               </div>
             )
           }
-          if (b.kind === 'heading') return <h2 key={i} style={{ marginLeft: b.indent * 22 }}>{b.text}</h2>
-          if (b.kind === 'bullet') return <p key={i} className="bullet" style={{ marginLeft: b.indent * 22 }}>{b.text}</p>
-          if (b.kind === 'numbered') return <p key={i} className="bullet" style={{ marginLeft: b.indent * 22 }}>{b.text}</p>
+          if (b.kind === 'heading') return <h2 key={i} style={{ marginLeft: b.indent * 22 }}><Inline text={b.text} /></h2>
+          if (b.kind === 'bullet') return <p key={i} className="bullet" style={{ marginLeft: b.indent * 22 }}><Inline text={b.text} /></p>
+          if (b.kind === 'numbered') return <p key={i} className="bullet" style={{ marginLeft: b.indent * 22 }}><Inline text={b.text} /></p>
           if (b.kind === 'ink') return <p key={i} className="placeholder mono">ink — not drawn here yet</p>
           if (b.kind === 'image') return <p key={i} className="placeholder mono">image — not shown here yet</p>
-          return b.text ? <p key={i} className="prose" style={{ marginLeft: b.indent * 22 }}>{b.text}</p> : null
+          return b.text ? <p key={i} className="prose" style={{ marginLeft: b.indent * 22 }}><Inline text={b.text} /></p> : null
         })}
       </div>
+
+      <Capture onAdd={onAdd} busy={saving === `${page.id}:new`} />
     </>
+  )
+}
+
+/**
+ * A title you can click into.
+ *
+ * The edited text goes back through the task parser, so typing `#reading` on the end makes a label
+ * rather than words — which is what the file would decide on the next load regardless. Escape
+ * abandons, Enter and blur commit, and an unchanged title writes nothing at all: a stray click
+ * should not put a commit in someone's history.
+ */
+function EditableTitle({ text, done, onCommit }: {
+  text: string
+  done: boolean
+  onCommit: (text: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(text)
+
+  if (!editing) {
+    return (
+      <span
+        className={done ? 'title struck' : 'title'}
+        onClick={() => { setDraft(text); setEditing(true) }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter') { setDraft(text); setEditing(true) } }}
+      >
+        {text ? <Inline text={text} /> : <span className="untitled">Untitled</span>}
+      </span>
+    )
+  }
+
+  const done_ = () => {
+    setEditing(false)
+    const next = draft.trim()
+    if (next && next !== text) onCommit(next)
+  }
+
+  return (
+    <input
+      className="title editing"
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={done_}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') done_()
+        if (e.key === 'Escape') setEditing(false)
+      }}
+    />
   )
 }
 

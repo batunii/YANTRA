@@ -33,16 +33,21 @@ is static.
 
 ## What works so far
 
-Read a workspace, walk its lists, open a task as a page, and tick things off. Writes go straight to
-GitHub's Contents API with the blob sha as a precondition, so a write that would clobber something
-the phone committed in the meantime is refused rather than applied — the client has no merge
-machinery and should not pretend to.
+The daily loop: read a workspace, walk its lists, open a task as a page, add tasks, retitle them and
+tick them off. Emphasis is rendered rather than shown as asterisks.
 
-Ticking is optimistic: the mark flips immediately and settles on the sha the write returns. If the
-write fails, the row goes back to what the repository actually says, because a tick left showing
-after a failed save is worse than no tick at all.
+Writes go straight to GitHub's Contents API with the blob sha as a precondition, so a write that
+would clobber something the phone committed in the meantime is refused rather than applied — the
+client has no merge machinery and should not pretend to. Every mutation goes through one path that
+applies the edit on screen first, then the file, and puts the old page back if the write fails: a
+tick left showing after a failed save claims something the repository does not say.
 
-Not here yet: editing text, adding tasks, reordering, smart-list evaluation, ink, images, the focus
+Capture and retitle both hand the typed text to the page codec's own parser rather than
+re-implementing the tokens, so `Buy milk #shop !high` is split exactly as a line in a file would be
+— including the rule that keeps the hash in `Buy #2 pencils`.
+
+Not here yet: reordering, smart-list evaluation (they load but render empty — their contents come
+from `meta/smartlists` filters, which needs the filter compiler ported), ink, images, the focus
 ledger, and the sign-in button.
 
 ## Running it

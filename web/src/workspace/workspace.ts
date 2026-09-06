@@ -1,4 +1,4 @@
-import { decode, encode } from '../format/pageCodec'
+import { decode, encode, parseBlock } from '../format/pageCodec'
 import type { Block, PageDoc, TaskStatus } from '../format/pageDoc'
 
 /**
@@ -143,4 +143,50 @@ function localDay(d: Date): string {
 
 export function pageText(doc: PageDoc): string {
   return encode(doc)
+}
+
+/**
+ * A typed line, captured as a task.
+ *
+ * The tokens are not re-implemented here: the line is assembled and handed to the page codec's own
+ * parser, so `Buy milk #shop !high` gets exactly the right-to-left scan a file on disk would get,
+ * including the rule that keeps the hash in "Buy #2 pencils". One parser, one set of surprises.
+ *
+ * `raw` is dropped so the block renders canonically rather than keeping the line it was assembled
+ * from. Both forms round-trip, but only one of them is the shape the Android app writes, and two
+ * spellings of the same task is a diff waiting to happen.
+ */
+export function withNewTask(doc: PageDoc, typed: string, now: Date, device: string, id: string = crypto.randomUUID()): { doc: PageDoc; id: string } {
+  const parsed = parseBlock(`- [ ] ${typed.trim()} ^${id}`)
+  if (parsed.kind !== 'task') throw new Error('capture did not produce a task')
+  const block: Block = { ...parsed, raw: undefined }
+  return {
+    doc: { ...doc, blocks: [...doc.blocks, block], modifiedAt: now.toISOString(), device },
+    id,
+  }
+}
+
+/**
+ * Retitle one task.
+ *
+ * The new text goes back through the parser for the same reason capture does — someone editing a
+ * title to add `#reading` on the end means it as a label, and the file would read it as one on the
+ * next load whatever this function decided.
+ */
+export function withTaskTitle(doc: PageDoc, index: number, typed: string, now: Date, device: string): PageDoc {
+  const blocks = [...doc.blocks]
+  const b = blocks[index]
+  if (!b || b.kind !== 'task') throw new Error(`block ${index} is not a task`)
+  const parsed = parseBlock(`- [ ] ${typed.trim()} ^${b.id}`)
+  if (parsed.kind !== 'task') throw new Error('edit did not produce a task')
+  // Status, and anything the typed text did not mention, stay as they were.
+  blocks[index] = {
+    ...parsed,
+    id: b.id,
+    status: b.status,
+    indent: b.indent,
+    doneAt: b.doneAt,
+    raw: undefined,
+  }
+  return { ...doc, blocks, modifiedAt: now.toISOString(), device }
 }

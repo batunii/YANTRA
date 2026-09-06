@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decode } from '../format/pageCodec'
-import { loadWorkspace, pageText, tasksOf, topLevel, withTaskStatus } from './workspace'
+import { loadWorkspace, pageText, tasksOf, topLevel, withNewTask, withTaskStatus, withTaskTitle } from './workspace'
 import type { PageSource } from './workspace'
 
 const page = (front: string, body = '') => `---\n${front}\n---\n${body}`
@@ -110,5 +110,68 @@ describe('ticking a task', () => {
     const out = pageText(withTaskStatus(doc, tasks[1]!.index, 'done', now, 'd'))
     expect(out).toContain('- [x] two ^b')
     expect(out).toContain('- [ ] one ^a')
+  })
+})
+
+describe('capturing a task', () => {
+  const now = new Date('2026-09-06T10:00:00.000Z')
+  const list = () => decode(fixture['pages/sept.md']!)
+
+  it('appends it to the page and gives it an id', () => {
+    const { doc, id } = withNewTask(list(), 'Buy milk', now, 'web-1', 'fixed-id')
+    expect(id).toBe('fixed-id')
+    const b = doc.blocks[doc.blocks.length - 1]!
+    expect(b.kind === 'task' && b.title).toBe('Buy milk')
+    expect(pageText(doc)).toContain('- [ ] Buy milk ^fixed-id')
+  })
+
+  it('reads trailing tokens out of what was typed, using the file’s own rules', () => {
+    const { doc } = withNewTask(list(), 'Buy milk #shop !high @batunii', now, 'web-1', 'x')
+    const b = doc.blocks[doc.blocks.length - 1]!
+    if (b.kind !== 'task') throw new Error('expected a task')
+    expect(b.title).toBe('Buy milk')
+    expect(b.labels).toEqual(['shop'])
+    expect(b.priority).toBe('high')
+    expect(b.assignee).toBe('batunii')
+  })
+
+  it('keeps a hash that is part of the words, exactly as a file would', () => {
+    const { doc } = withNewTask(list(), 'Buy #2 pencils', now, 'web-1', 'x')
+    const b = doc.blocks[doc.blocks.length - 1]!
+    expect(b.kind === 'task' && b.title).toBe('Buy #2 pencils')
+    expect(b.kind === 'task' && b.labels).toEqual([])
+  })
+
+  it('writes the canonical shape, not the line it was assembled from', () => {
+    // Typed with the label before the id; the file must come out in the app's fixed token order.
+    const { doc } = withNewTask(list(), 'Buy milk #shop', now, 'web-1', 'x')
+    expect(pageText(doc)).toContain('- [ ] Buy milk ^x #shop')
+  })
+
+  it('leaves the rest of the page byte-identical', () => {
+    const { doc } = withNewTask(list(), 'new one', now, 'web-1', 'x')
+    expect(pageText(doc)).toContain('- [ ] a task ^t3')
+  })
+})
+
+describe('retitling a task', () => {
+  const now = new Date('2026-09-06T10:00:00.000Z')
+
+  it('keeps the id, the status and the indent', () => {
+    const doc = decode(fixture['pages/inbox.md']!)
+    const next = withTaskTitle(doc, 1, 'renamed', now, 'web-1')
+    const b = next.blocks[1]!
+    if (b.kind !== 'task') throw new Error('expected a task')
+    expect(b.id).toBe('t2')
+    expect(b.status).toBe('done')
+    expect(b.title).toBe('renamed')
+    expect(pageText(next)).toContain('- [x] renamed ^t2 done:2026-09-01')
+  })
+
+  it('reads tokens out of an edited title too', () => {
+    const doc = decode(fixture['pages/inbox.md']!)
+    const next = withTaskTitle(doc, 0, 'first #later', now, 'web-1')
+    const b = next.blocks[0]!
+    expect(b.kind === 'task' && b.labels).toEqual(['later'])
   })
 })
