@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 
 /**
  * Thin AlarmManager wrapper. Exact delivery matters for reminders, so this prefers
@@ -18,8 +17,12 @@ import android.os.Build
 class ReminderScheduler(private val context: Context) {
     private val am = context.getSystemService(AlarmManager::class.java)
 
-    fun canExact(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+    /**
+     * On 31 and 32 this is the user-revocable SCHEDULE_EXACT_ALARM; from 33 it is USE_EXACT_ALARM,
+     * auto-granted to alarm apps and never withdrawn. Asking either way costs nothing and keeps
+     * one answer to "may this fire on time".
+     */
+    fun canExact(): Boolean = am.canScheduleExactAlarms()
 
     fun schedule(nodeId: String, atMillis: Long) {
         val pi = firePendingIntent(nodeId, atMillis)

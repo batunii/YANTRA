@@ -27,7 +27,6 @@ package ie.napkin.supertasks.ui.components
 
 import ie.napkin.supertasks.ui.theme.Yantra
 import android.content.Context
-import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -144,18 +143,18 @@ fun isReducedMotion(context: Context): Boolean =
  */
 class YantraHaptics(context: Context, var enabled: Boolean = true) {
     private val vibrator: Vibrator? = runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE)
-                    as VibratorManager).defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
+        (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE)
+                as VibratorManager).defaultVibrator
     }.getOrNull()
 
-    private fun primitivesOk(vararg p: Int): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                vibrator?.areAllPrimitivesSupported(*p) == true
+    /**
+     * Whether the motor can play this one, which is a question about the hardware and not about the
+     * platform: LOW_TICK and THUD both arrived in S, and S is the floor now. The guard here used to
+     * read `>= R`, one level short of the constants it was guarding — harmless only because an
+     * Android 11 motor answers no to an id it has never heard of.
+     */
+    private fun primitiveOk(primitive: Int): Boolean =
+        vibrator?.areAllPrimitivesSupported(primitive) == true
 
     /** Swallows anything the vibrator service throws — see the note on the class. */
     private fun buzz(effect: () -> VibrationEffect) {
@@ -165,7 +164,7 @@ class YantraHaptics(context: Context, var enabled: Boolean = true) {
 
     fun tick() {
         if (!enabled) return
-        if (primitivesOk(VibrationEffect.Composition.PRIMITIVE_LOW_TICK)) {
+        if (primitiveOk(VibrationEffect.Composition.PRIMITIVE_LOW_TICK)) {
             buzz {
                 VibrationEffect.startComposition()
                     .addPrimitive(
@@ -179,7 +178,7 @@ class YantraHaptics(context: Context, var enabled: Boolean = true) {
 
     fun thud() {
         if (!enabled) return
-        if (primitivesOk(VibrationEffect.Composition.PRIMITIVE_THUD)) {
+        if (primitiveOk(VibrationEffect.Composition.PRIMITIVE_THUD)) {
             buzz {
                 VibrationEffect.startComposition()
                     .addPrimitive(

@@ -1,7 +1,5 @@
 package ie.napkin.supertasks.ui.theme
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -208,11 +206,15 @@ object YantraMotion {
 
 
 /**
- * Wallpaper seed → OKLCH hue for the Yantra engine. Null when the wallpaper is near-neutral
- * (chroma too low for a meaningful hue) — caller falls back to the stored hue. The light
- * scheme's primary is used only as a stable hue carrier; hue is tone-invariant.
+ * Everything a Yantra screen draws inside: the OKLCH palette for the chosen mode and accent, the
+ * haptics that carry the completion choreography's feel channel, the shared tempo those two agree
+ * on, and a Material theme underneath for the components that still want one.
+ *
+ * The doc that used to sit here described a wallpaper-seed function that was removed — the hue now
+ * comes from the stored accent, not from what is behind the launcher. It also carried a
+ * `@RequiresApi(S)` that outlived its reason and quietly held the whole app to Android 12 while
+ * the manifest advertised Android 8; the manifest now says 31 and the annotation is redundant.
  */
-@RequiresApi(Build.VERSION_CODES.S)
 @Composable
 fun SuperTasksTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,

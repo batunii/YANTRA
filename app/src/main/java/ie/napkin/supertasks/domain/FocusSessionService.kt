@@ -167,14 +167,20 @@ class FocusSessionService : Service() {
      * this; it lives on disk, and [SessionNotification.show] keeps it visible and stoppable.
      */
     private fun startForeground(notification: android.app.Notification): Boolean = runCatching {
-        // specialUse on 29+. There is no foreground-service type for "a timer the user started",
+        // specialUse, because there is no foreground-service type for "a timer the user started"
         // and the alternatives are worse than untyped: dataSync is a lie about the network, and
         // shortService caps at a few minutes, which is shorter than the shortest pomodoro.
+        //
+        // The constant is API 34, and the guard here read `>= 29` — five levels early. On Android
+        // 12 and 13 that handed the framework a type bit it had never heard of, which throws, and
+        // the runCatching below turned the throw into a service that simply never started: the
+        // session kept its notification and lost the process that was meant to hold it open. Below
+        // 34 the answer is 0, which means "whatever the manifest declared" and is exactly right.
         ServiceCompat.startForeground(
             this,
             SessionNotification.ID,
             notification,
-            if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
+            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
         )
     }.isSuccess
 
