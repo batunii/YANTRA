@@ -58,8 +58,9 @@ object SessionMark {
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             color = accent
-            // 1.9 units is the tray icon's weight; the mark should not thin out as it grows.
-            strokeWidth = 1.9f * unit
+            // 1.5 units, which is the launcher mark's weight — the mark should not thin out as it
+            // grows, nor wear a heavier frame here than the icon it sits under.
+            strokeWidth = 1.5f * unit
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
@@ -72,7 +73,7 @@ object SessionMark {
         val bindu = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accent
             style = if (filledBindu) Paint.Style.FILL else Paint.Style.STROKE
-            strokeWidth = 1.6f * unit
+            strokeWidth = 1.3f * unit
             isAntiAlias = true
         }
         val r = if (filledBindu) 3.6f * unit else 3.0f * unit
