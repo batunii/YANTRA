@@ -13,9 +13,6 @@ would still have them.
 Offline-first, single-user, no account required. It runs entirely on the device until you choose to
 point a workspace at a repository.
 
-> The Android package id is still `ie.napkin.supertasks`, from before the app had its name.
-> Renaming it would orphan every installed copy and every placed widget, so it stays.
-
 ---
 
 ## What is in it
@@ -67,7 +64,7 @@ modes (system, light, dark, OLED) and five accents that repaint the app *and* it
 | Filters | kotlinx.serialization JSON → SQL via a small query compiler |
 | Build | AGP 9.2.1, Gradle 9.4.1, minSdk 31, compile/targetSdk 36 (`compileSdkMinor = 1`) |
 
-No Hilt, no fragments — a plain `AppContainer` in [`App.kt`](app/src/main/java/ie/napkin/supertasks/App.kt)
+No Hilt, no fragments — a plain `AppContainer` in [`App.kt`](app/src/main/java/ie/shoonya/yantra/App.kt)
 and one activity with Navigation Compose.
 
 `compileSdkMinor = 1` is load-bearing: the Live Update APIs the focus notification needs landed in

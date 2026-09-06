@@ -1,0 +1,689 @@
+package ie.shoonya.yantra.data.repo
+
+import androidx.room.withTransaction
+import androidx.sqlite.db.SimpleSQLiteQuery
+import ie.shoonya.yantra.data.db.AppDatabase
+import ie.shoonya.yantra.data.capture.CaptureParse
+import ie.shoonya.yantra.data.db.BuiltIns
+import ie.shoonya.yantra.data.db.LabelEntity
+import ie.shoonya.yantra.data.db.NodeEntity
+import ie.shoonya.yantra.data.db.NodeLabelEntity
+import ie.shoonya.yantra.data.db.NodeType
+import ie.shoonya.yantra.data.db.PropertyDefEntity
+import ie.shoonya.yantra.data.db.PropertyValueEntity
+import ie.shoonya.yantra.data.db.SmartListDefEntity
+import ie.shoonya.yantra.data.db.SystemKey
+import ie.shoonya.yantra.data.filter.ApplyOnCreate
+import ie.shoonya.yantra.data.filter.Filter
+import ie.shoonya.yantra.data.filter.FilterCompiler
+import ie.shoonya.yantra.data.filter.completedVariant
+import ie.shoonya.yantra.data.filter.FilterJson
+import ie.shoonya.yantra.data.filter.SortSpec
+import ie.shoonya.yantra.data.filter.workspacesNamed
+import ie.shoonya.yantra.data.filter.deriveApplyOnCreate
+import ie.shoonya.yantra.data.rank.Rank
+import ie.shoonya.yantra.data.format.Block
+import ie.shoonya.yantra.data.format.Bullet
+import ie.shoonya.yantra.data.format.Heading
+import ie.shoonya.yantra.data.format.ImageRef
+import ie.shoonya.yantra.data.format.InkRef
+import ie.shoonya.yantra.data.format.Numbered
+import ie.shoonya.yantra.data.format.Prose
+import ie.shoonya.yantra.data.format.TaskRef
+import ie.shoonya.yantra.data.format.TaskStatus
+import ie.shoonya.yantra.data.workspace.Workspaces
+import ie.shoonya.yantra.data.sync.Change
+import ie.shoonya.yantra.data.workspace.LabelDef
+import ie.shoonya.yantra.data.workspace.SmartListDef
+import ie.shoonya.yantra.data.format.DueSpec
+import ie.shoonya.yantra.data.format.DueValue
+import ie.shoonya.yantra.data.time.localDateOf
+import ie.shoonya.yantra.data.time.localMidnight
+import ie.shoonya.yantra.data.label.LabelPalette
+import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import java.util.UUID
+
+private fun now(): Long = System.currentTimeMillis()
+private fun newId(): String = UUID.randomUUID().toString()
+
+/** Where blocks that were sitting loose on a list get gathered, so nothing is lost. */
+private const val STRAY_NOTES_TASK = "Notes"
+
+/** Title given to a capture list that has to be created; also the pre-[SystemKey] fallback. */
+private const val INBOX_TITLE = "Inbox"
+
+/**
+ * Reads come from the index; **writes go to the files.**
+ *
+ * That asymmetry is the whole architecture. Room is a fast, queryable picture of what the workspace
+ * says, so observing it is exactly right; but nothing may enter it except by being written to a page
+ * first, or the picture would start containing facts the repo does not — and the next reindex would
+ * erase them with no error anywhere.
+ */
+class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
+    private val dao = db.nodeDao()
+
+    fun topLevel() = dao.topLevel()
+    fun allLists() = dao.allLists()
+    fun children(parentId: String) = dao.children(parentId)
+    suspend fun childrenOnce(parentId: String) = dao.childrenOnce(parentId)
+    fun observe(id: String) = dao.observe(id)
+    suspend fun byId(id: String) = dao.byId(id)
+    fun byIds(ids: List<String>) = dao.byIds(ids)
+
+    /**
+     * Somewhere a `[[` link could point, across every open workspace.
+     *
+     * A blank query is not "everything" — it is "the things worth offering before anyone has typed
+     * anything", which SQL's `LIKE '%%'` already answers, ordered by the same rules. So the empty
+     * case needs no branch here and the strip is useful the moment the brackets are typed.
+     */
+    suspend fun searchLinkTargets(query: String, limit: Int = 12) =
+        dao.searchLinkTargets(query.trim(), limit)
+
+    /**
+     * Anywhere a home-screen widget can be pointed — see [ie.shoonya.yantra.data.db.NodeDao].
+     *
+     * A blank query is "the things worth offering before anyone has typed", which `LIKE '%%'`
+     * already answers under the same ordering — so the picker is useful the moment it opens and
+     * needs no separate branch for the empty case.
+     */
+    suspend fun searchBindable(query: String, limit: Int = 40) =
+        dao.searchBindable(query.trim(), limit)
+    fun listTaskCounts() = dao.listTaskCounts()
+    fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
+    fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)
+
+    /**
+     * Stable Today lookup, self-healing for databases whose migration backfill found nothing
+     * (e.g. the list was recreated by hand). Returns null if the user deleted/renamed it —
+     * callers fall back to Home; never recreate it here.
+     */
+    suspend fun todaySmartList(): NodeEntity? =
+        dao.bySystemKey(SystemKey.TODAY)
+            ?: dao.byTypeAndTitle(NodeType.SMART_LIST, "Today")?.also {
+                // Self-heal writes the page, not the row: the key lives in frontmatter, and
+                // stamping only the index would come undone at the next reindex.
+                runCatching { ws.writerFor(it.id).setSystemKey(it.id, SystemKey.TODAY) }
+            }
+
+    /**
+     * The capture list, by stable identity — the single answer to "where does a quick-add go".
+     *
+     * Unlike [todaySmartList] this always returns something: capture is a gesture that must not
+     * fail or ask, so a missing Inbox is created rather than reported. The order matters — key
+     * first, then title, then create — because it is the fallback that used to be the whole
+     * lookup, and doing it top-level-only is what let a grouped or renamed Inbox be duplicated.
+     * Whatever the title match finds adopts the key, so the ambiguity is resolved once.
+     */
+    suspend fun inboxList(): String {
+        dao.bySystemKey(SystemKey.INBOX)?.let { return it.id }
+        dao.byTypeAndTitle(NodeType.LIST, INBOX_TITLE)?.let {
+            // As in [todaySmartList]: the page carries the key, so the page is what gets written.
+            runCatching { ws.writerFor(it.id).setSystemKey(it.id, SystemKey.INBOX) }
+            return it.id
+        }
+        return ws.primary().createTopLevel(NodeType.LIST, INBOX_TITLE, SystemKey.INBOX)
+    }
+
+    /** Create a Home group/banner (organizational container for lists & smart lists). */
+    suspend fun createGroup(title: String, workspaceId: String? = null): String =
+        writerFor(workspaceId).createTopLevel(NodeType.GROUP, title)
+
+    /**
+     * The writer for a workspace a caller has chosen, for the one case with nothing to infer from.
+     *
+     * Everything below the top level routes by its parent ([Workspaces.writerFor]) — a block belongs
+     * to whichever repo its page is in, and there is no choice to make. A list or a group has no
+     * parent, so the workspace is a real decision, and until now it was not one: every top-level
+     * create went to [Workspaces.primary], which is the local workspace by construction. Adding a
+     * second repo gave you no way to put anything in it.
+     *
+     * Null still means primary, for callers with no opinion. The UI always has one.
+     */
+    private fun writerFor(workspaceId: String?) =
+        workspaceId?.let { ws.writer(it) } ?: ws.primary()
+
+    /** Move a list/smart list into a group (or back to top level when [groupId] is null). */
+    suspend fun moveToGroup(id: String, groupId: String?) {
+        ws.writerFor(id).reparent(id, groupId)
+    }
+
+    /** Delete a group but keep its lists — they return to the top level. */
+    suspend fun deleteGroup(id: String) {
+        dao.childrenOnce(id).forEach { ws.writerFor(it.id).reparent(it.id, null) }
+        ws.writerFor(id).removeBlock(id)
+    }
+
+    /** Ancestor chain of [id], ordered root → immediate parent (excludes the node itself). */
+    suspend fun ancestors(id: String): List<NodeEntity> {
+        val chain = ArrayList<NodeEntity>()
+        var cursor = dao.byId(id)?.parentId
+        var guard = 0
+        while (cursor != null && guard++ < 64) {
+            val parent = dao.byId(cursor) ?: break
+            chain.add(parent)
+            cursor = parent.parentId
+        }
+        return chain.asReversed()
+    }
+
+    /**
+     * A block on a page, or a page of its own when there is no parent.
+     *
+     * `afterId` places the new line directly after that one; without it the line is appended. Order
+     * is line position now, so there is no rank to compute — the index derives one on the way back.
+     */
+    suspend fun create(
+        parentId: String?,
+        type: String,
+        title: String?,
+        afterId: String? = null,
+        indent: Int = 0,
+        /** Which repo a *top-level* node is born into. Ignored otherwise — the parent decides. */
+        workspaceId: String? = null,
+    ): String =
+        if (parentId == null) writerFor(workspaceId).createTopLevel(type, title)
+        else ws.writerFor(parentId).addBlock(parentId, type, title, afterId, indent)
+
+
+    /**
+     * Adds a picture to a page.
+     *
+     * The block's payload is the image's own id, not a path and never a `content://` URI — the file
+     * sits beside the page as `<id>.jpg` and travels with the repo. Bytes first, block second, so a
+     * page is never indexed while pointing at a picture that is not there yet.
+     */
+    suspend fun addImage(
+        parentId: String,
+        bytes: ByteArray,
+        afterId: String? = null,
+        indent: Int = 0,
+    ): String {
+        val id = java.util.UUID.randomUUID().toString()
+        val writer = ws.writerFor(parentId)
+        writer.writeImage(id, bytes)
+        writer.addBlock(parentId, NodeType.IMAGE, id, afterId, indent)
+        return id
+    }
+
+    /**
+     * Where an image block's picture lives on disk, or null if the block predates the workspace copy
+     * and still names a `content://` URI.
+     */
+    suspend fun imageFile(nodeId: String): java.io.File? {
+        val node = dao.byId(nodeId) ?: return null
+        val name = node.title.orEmpty()
+        if (name.isEmpty() || name.startsWith("content://")) return null
+        return ws.store(node.workspaceId)?.imageFile(name)?.takeIf { it.exists() }
+    }
+
+    /** Re-files a task under a different list. What the share sheet's "change list" does. */
+    suspend fun moveToList(taskId: String, listId: String) {
+        ws.writerFor(taskId).reparent(taskId, listId)
+    }
+
+    /**
+     * Creates a task from a line of typing, applying whatever the line turned out to say.
+     *
+     * One path, so every capture surface behaves identically — the quick-add bar, the create sheet,
+     * the widget and the share target should not each have their own idea of what "tomorrow" means.
+     *
+     * Ordering is deliberate: the task exists after the first call, so a failure in any of the
+     * property writes afterwards leaves a task with less on it rather than no task at all. Capture is
+     * the thing that must not be lost; a due date is a nicety by comparison.
+     */
+    /**
+     * Where a captured line goes: the list it named, else where it was typed, else nothing.
+     *
+     * A named list wins over wherever this was typed: saying where it goes is the whole point of
+     * saying it. A name the workspace does not have is made, rather than refused — otherwise filing
+     * into a new list means leaving capture to go and create it first, which is the interruption
+     * this whole path exists to remove. The field offers the lists that already match before it
+     * comes to this, so a typo is visible rather than silently made real.
+     */
+    private suspend fun destinationFor(
+        parsed: ie.shoonya.yantra.data.capture.Captured,
+        lists: List<NodeEntity>,
+        parentId: String?,
+    ): String? = parsed.list
+        ?.let { name ->
+            lists.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
+                ?: if (parsed.listIsNew) create(null, NodeType.LIST, name) else null
+        }
+        ?: parentId
+
+    /**
+     * Turns every `[[Call Bob]]` on the line into the id it names, where exactly one task answers.
+     *
+     * **Exactly one.** Two tasks called "Call Bob" is an ordinary Tuesday, and picking either is
+     * how a link comes to point somewhere nobody meant. An ambiguous name is left as the characters
+     * it is, which reads as text and links to nothing — the same bargain a `~list` that matches
+     * nothing already strikes. This is also why resolving by name is safe *here* and refused in the
+     * file format: here a person is watching the words change as they type them.
+     */
+    suspend fun linkIdsFor(text: String): Map<String, String> {
+        val names = CaptureParse.linkNames(text)
+        if (names.isEmpty()) return emptyMap()
+        return names.mapNotNull { name ->
+            val hits = dao.searchLinkTargets(name, limit = 3)
+                .filter { it.title.equals(name, ignoreCase = true) }
+            hits.singleOrNull()?.let { name.lowercase() to it.id }
+        }.toMap()
+    }
+
+    suspend fun captureTask(
+        parentId: String?,
+        text: String,
+        labels: LabelRepository,
+        properties: PropertyRepository,
+        /**
+         * Who may be assigned, per workspace. Null leaves `@name` in the title, which is the right
+         * answer for a caller with no directory to check against — see [Captured.assignee].
+         */
+        people: ie.shoonya.yantra.data.people.People? = null,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    ): String? {
+        // The lists this workspace has, so "~ Groceries" can be matched rather than guessed at.
+        val lists = dao.allListsOnce()
+        val listNames = lists.mapNotNull { it.title }
+
+        // Read twice, and the order is forced rather than lazy. Which people may be assigned is a
+        // question about the *destination* repository, and the destination is not known until the
+        // line has been read far enough to see whether it names a list. So the first pass answers
+        // only "where does this go" — nothing about it depends on people or links — and the second
+        // does the real reading with that answer in hand. Both passes are pure and cheap.
+        val routing = CaptureParse.parse(text, lists = listNames)
+        val destination = destinationFor(routing, lists, parentId)
+        val workspaceId = destination?.let { dao.byId(it)?.workspaceId } ?: ""
+
+        val parsed = CaptureParse.parse(
+            text,
+            lists = listNames,
+            people = people?.loginsFor(workspaceId).orEmpty(),
+            links = linkIdsFor(text),
+        )
+        if (parsed.title.isBlank()) return null
+
+        // A named list wins over wherever this was typed: saying where it goes is the whole point of
+        // saying it. A name the workspace does not have is made, rather than refused — otherwise
+        // filing into a new list means leaving capture to go and create it first, which is the
+        // interruption this whole path exists to remove. The field offers the lists that already
+        // match before it comes to this, so a typo is visible rather than silently made real.
+        val landsIn = destination ?: inboxList()
+
+        val id = create(landsIn, NodeType.TASK, parsed.title)
+
+        parsed.dueAt()?.let { at ->
+            properties.setDue(
+                id,
+                at.atZone(zone).toInstant().toEpochMilli(),
+                hasTime = parsed.time != null,
+                reminderOffsetMin = null,
+            )
+        }
+        parsed.priority?.let { properties.setValue(id, BuiltIns.PRIORITY_DEF_ID, text = it) }
+        parsed.assignee?.let { properties.setValue(id, BuiltIns.ASSIGNEE_DEF_ID, text = it) }
+        parsed.labels.forEach { name -> labels.attach(id, labels.getOrCreate(name).id) }
+        return id
+    }
+
+    /** Fast capture: new task into the Inbox. */
+    suspend fun quickCaptureToInbox(title: String): String =
+        create(inboxList(), NodeType.TASK, title)
+
+    suspend fun rename(id: String, title: String?) =
+        ws.writerFor(id).editBlock(id) { renamed(it, title.orEmpty()) }
+
+    suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id, Change.STRUCTURAL) {
+        // Completion supersedes being started: a finished task is not still being worked on, and
+        // the two were never allowed to be true at once.
+        //
+        // The day is stamped here and cleared on reopening, so a task can never claim to have been
+        // finished on a day it was not — and so the app can finally answer how long something has
+        // been done, which archiving needs and nothing could ask before.
+        it.copy(
+            status = if (done) TaskStatus.DONE else TaskStatus.OPEN,
+            doneAt = if (done) java.time.LocalDate.now() else null,
+        )
+    }
+
+    /** Everything on the go, newest first — see [setInProgress]. */
+    fun inProgress() = dao.inProgress()
+
+    /**
+     * The middle state: picked up, not finished.
+     *
+     * Deliberately **not** limited to one. Having several things on the go is the ordinary shape of
+     * a day, and an app that refuses to record it makes you choose which of your started tasks to
+     * lie about. What there is only one of is the focus session — a clock you commit to — and that
+     * limit lives where the clock does, in [ie.shoonya.yantra.domain.FocusTimer].
+     */
+    suspend fun setInProgress(id: String, inProgress: Boolean) = ws.writerFor(id).editTask(id) {
+        if (it.status == TaskStatus.DONE) it
+        else it.copy(status = if (inProgress) TaskStatus.IN_PROGRESS else TaskStatus.OPEN)
+    }
+
+    /**
+     * Device-local, and therefore the one write that stays in Room.
+     *
+     * Whether a section is folded is about this screen, not about the work. Syncing it would collapse
+     * a list on the laptop because it was collapsed on the phone, so it is deliberately not in the
+     * file — which also means a reindex forgets it, which is the correct amount of memory for it.
+     */
+    suspend fun setCollapsed(id: String, collapsed: Boolean) = dao.setCollapsed(id, collapsed, now())
+
+    suspend fun normalizeIndents(parentId: String) = ws.writerFor(parentId).normalizeIndents(parentId)
+
+    /** Sets a block's visual indentation, then re-clamps the run around it. */
+    suspend fun setIndent(node: NodeEntity, indent: Int) {
+        val parentId = node.parentId ?: return
+        ws.writerFor(node.id).editBlock(node.id) { indented(it, indent.coerceAtLeast(0)) }
+        normalizeIndents(parentId)
+    }
+
+    /** Returns the id the block ends up with — converting to a task mints it a real one. */
+    suspend fun setType(id: String, type: String): String = ws.writerFor(id).convertBlock(id, type)
+
+    suspend fun delete(id: String) = ws.writerFor(id).removeBlock(id)
+
+    suspend fun moveUp(node: NodeEntity) = moveBy(node, -1)
+
+    suspend fun moveDown(node: NodeEntity) = moveBy(node, +1)
+
+    private suspend fun moveBy(node: NodeEntity, delta: Int) {
+        val parentId = node.parentId ?: return
+        val siblings = dao.childrenOnce(parentId)
+        val at = siblings.indexOfFirst { it.id == node.id }
+        val to = at + delta
+        if (at < 0 || to !in siblings.indices) return
+        ws.writerFor(node.id).moveBlock(node.id, to)
+        normalizeIndents(parentId)
+    }
+
+    /** Drops [node] at [toIndex] among its siblings — the commit half of a drag. */
+    suspend fun moveToIndex(node: NodeEntity, toIndex: Int) {
+        val parentId = node.parentId ?: return
+        ws.writerFor(node.id).moveBlock(node.id, toIndex)
+        // A block dragged above the line it was indented under has to come back to a legal depth.
+        normalizeIndents(parentId)
+    }
+
+}
+
+private fun renamed(b: Block, text: String): Block = when (b) {
+    is TaskRef -> b.copy(title = text)
+    is Heading -> b.copy(text = text)
+    is Bullet -> b.copy(text = text)
+    is Numbered -> b.copy(text = text)
+    is Prose -> b.copy(text = text)
+    is ImageRef -> b.copy(uri = text)
+    is InkRef -> b
+}
+
+private fun indented(b: Block, indent: Int): Block = when (b) {
+    is TaskRef -> b.copy(indent = indent)
+    is Heading -> b.copy(indent = indent)
+    is Bullet -> b.copy(indent = indent)
+    is Numbered -> b.copy(indent = indent)
+    is Prose -> b.copy(indent = indent)
+    is ImageRef -> b.copy(indent = indent)
+    is InkRef -> b.copy(indent = indent)
+}
+
+@Serializable
+data class SelectOption(val name: String, val color: Long? = null)
+
+@Serializable
+data class SelectConfig(val options: List<SelectOption> = emptyList())
+
+/**
+ * Property values live on the task's line, so setting one rewrites the page that holds it. The
+ * defs themselves are the workspace registry and are read-only from here.
+ */
+
+class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces) {
+    private val dao = db.propertyDao()
+
+    fun defs() = dao.defs()
+    suspend fun defsOnce() = dao.defsOnce()
+    fun builtInDefs() = dao.builtInDefs()
+    suspend fun builtInDefsOnce() = dao.builtInDefsOnce()
+    fun valuesForNode(nodeId: String) = dao.valuesForNode(nodeId)
+    fun valuesUnder(parentId: String) = dao.valuesUnder(parentId)
+
+
+    /**
+     * Sets one built-in on a task. Which field it becomes is decided by the def, not by the caller,
+     * because the line has a slot per meaning rather than a row per column.
+     */
+    suspend fun setValue(
+        nodeId: String,
+        defId: String,
+        text: String? = null,
+        number: Double? = null,
+        date: Long? = null,
+        bool: Boolean? = null,
+    ) = ws.writerFor(nodeId).editTask(nodeId) { t ->
+        when (defId) {
+            BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = text)
+            BuiltIns.ASSIGNEE_DEF_ID -> t.copy(assignee = text)
+            BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = date?.let { localDateOf(it) })
+            BuiltIns.DUE_DEF_ID -> t.copy(due = date?.let { dueSpec(it, bool == true, number?.toInt()) })
+            else -> t
+        }
+    }
+
+    suspend fun dueDef(): PropertyDefEntity? =
+        dao.builtInDefsOnce().firstOrNull { it.name.equals(BuiltIns.DUE_NAME, ignoreCase = true) }
+
+    /**
+     * Due, in the encoding [BuiltIns] documents: an exact instant when [hasTime], otherwise the
+     * calendar day. The file distinguishes the two natively — a date has no `T` in it — so the
+     * hasTime flag stops being a separate column and becomes a property of the value itself.
+     */
+    suspend fun setDue(nodeId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) =
+        ws.writerFor(nodeId).editTask(nodeId) {
+            it.copy(due = dueSpec(dateMillis, hasTime, reminderOffsetMin))
+        }
+
+    suspend fun setDeadline(nodeId: String, dateMillis: Long) =
+        ws.writerFor(nodeId).editTask(nodeId) { it.copy(deadline = localDateOf(dateMillis)) }
+
+    suspend fun clearValue(nodeId: String, defId: String) = ws.writerFor(nodeId).editTask(nodeId) { t ->
+        when (defId) {
+            BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = null)
+            BuiltIns.ASSIGNEE_DEF_ID -> t.copy(assignee = null)
+            BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = null)
+            BuiltIns.DUE_DEF_ID -> t.copy(due = null)
+            else -> t
+        }
+    }
+
+    private fun dueSpec(millis: Long, hasTime: Boolean, reminderMin: Int?) = DueSpec(
+        if (hasTime) DueValue.At(java.time.Instant.ofEpochMilli(millis))
+        else DueValue.AllDay(localDateOf(millis)),
+        reminderMin,
+    )
+
+}
+
+/**
+ * A label is a name on a task's line and a colour in the workspace registry — two files, two
+ * different reasons. Attaching writes the line; recolouring writes the registry.
+ */
+class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
+    private val dao = db.labelDao()
+
+    fun all() = dao.all()
+    suspend fun allOnce() = dao.allOnce()
+    fun forNode(nodeId: String) = dao.forNode(nodeId)
+    fun forChildrenOf(parentId: String) = dao.forChildrenOf(parentId)
+    fun allNodeLabels() = dao.allNodeLabels()
+
+    /**
+     * Reuses an existing label by name, or registers a new one.
+     *
+     * Matching is case-insensitive because people type tags casually, but the registry's spelling
+     * wins — `#Sync` and `#sync` are one tag, spelled the way it was first written.
+     */
+    suspend fun getOrCreate(name: String, color: Long? = null): LabelEntity {
+        val trimmed = name.trim()
+        dao.byName(trimmed)?.let { return it }
+        val store = ws.primaryStore()
+        val id = "${store.id}:label:${trimmed.lowercase()}"
+        ws.primary().upsertLabel(
+            LabelDef(id = id, name = trimmed, color = color ?: LabelPalette.defaultFor(trimmed))
+        )
+        return dao.byName(trimmed)
+            ?: LabelEntity(id, store.id, trimmed, color, now(), now())
+    }
+
+    suspend fun attach(nodeId: String, labelId: String) {
+        val name = dao.allOnce().firstOrNull { it.id == labelId }?.name ?: return
+        ws.writerFor(nodeId).editTask(nodeId) {
+            if (name in it.labels) it else it.copy(labels = it.labels + name)
+        }
+    }
+
+    suspend fun detach(nodeId: String, labelId: String) {
+        val name = dao.allOnce().firstOrNull { it.id == labelId }?.name ?: return
+        ws.writerFor(nodeId).editTask(nodeId) { it.copy(labels = it.labels - name) }
+    }
+
+    /** Recolour a label. Null clears it back to the neutral chip. */
+    suspend fun setColor(labelId: String, color: Long?) {
+        val existing = dao.allOnce().firstOrNull { it.id == labelId } ?: return
+        ws.primary().upsertLabel(LabelDef(id = labelId, name = existing.name, color = color))
+    }
+
+}
+
+class SmartListRepository(private val db: AppDatabase, private val ws: Workspaces) {
+    private val dao = db.smartListDao()
+    private val nodeDao = db.nodeDao()
+    private val propertyDao = db.propertyDao()
+
+    fun observeDef(nodeId: String) = dao.observe(nodeId)
+    suspend fun defById(nodeId: String) = dao.byId(nodeId)
+
+    /**
+     * Read side: compile filter_json -> SQL and observe. Recompiled per call so relative dates stay fresh.
+     *
+     * Unfenced on purpose. This used to hand the compiler the definition's own workspace, which
+     * meant a rule could only ever see the repo its file happened to sit in — so a task due today in
+     * another workspace could not appear in Today, whatever Today's rule said. The compiler's own
+     * note already knew better: null "spans all of them, which is what a unified Today wants".
+     *
+     * What that fence protected is real — a rule must not quietly gather repos it never meant to —
+     * but it stated the rule in the wrong place. A view that means one workspace says so with
+     * [Filter.InWorkspace], which is legible, editable, and travels with the definition instead of
+     * being inferred from a directory. Scope by containment ([SmartListDefEntity.scopeRootId]) is
+     * unaffected and still implies a workspace, because a subtree cannot cross repos.
+     */
+    fun query(def: SmartListDefEntity): Flow<List<NodeEntity>> {
+        val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
+        val sort = def.sortJson
+            ?.let { FilterJson.decodeFromString(ListSerializer(SortSpec.serializer()), it) }
+            ?: emptyList()
+        val compiled = FilterCompiler.compile(def.scopeRootId, filter, sort, workspaceId = null)
+        return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
+    }
+
+    fun allDefs(): Flow<List<SmartListDefEntity>> = dao.all()
+
+    /**
+     * Workspaces this rule asks about that the device has not added, named where it can be.
+     *
+     * The unavoidable cost of a view that spans repos: it can only answer for the ones present, and
+     * a partial answer that looks complete is the worst outcome available. Reinstalling and adding
+     * back only some of your workspaces is the ordinary way to arrive here, not an edge case — the
+     * registry that lists them is device-local, so a fresh install starts with none of them.
+     */
+    fun absentWorkspaces(def: SmartListDefEntity): List<String> {
+        val named = runCatching {
+            FilterJson.decodeFromString(Filter.serializer(), def.filterJson).workspacesNamed()
+        }.getOrDefault(emptySet())
+        return named.filterNot { ws.isOpen(it) }.sorted()
+    }
+
+    /**
+     * The done counterpart of [query]. A rule like "due today AND not done" excludes completed
+     * tasks by construction, so a smart list cannot report "n of m done" from its own matches — it
+     * has to ask the opposite question too. Null when the rule has no done clause, because then
+     * [query] already returns both halves and the done ones can simply be counted.
+     */
+    fun queryCompleted(def: SmartListDefEntity): Flow<List<NodeEntity>>? {
+        val filter = FilterJson.decodeFromString(Filter.serializer(), def.filterJson)
+        val flipped = completedVariant(filter) ?: return null
+        val compiled = FilterCompiler.compile(def.scopeRootId, flipped, emptyList(), workspaceId = null)
+        return nodeDao.rawNodeQuery(SimpleSQLiteQuery(compiled.sql, compiled.args.toTypedArray()))
+    }
+
+    suspend fun createSmartList(
+        title: String,
+        scopeRootId: String?,
+        filter: Filter,
+        sort: List<SortSpec>,
+        homeParentId: String?,
+        // Personal, explicitly — see Workspaces.personal. A view over repos cannot live inside one
+        // of them, and this must not follow a future workspace switcher the way lists will.
+    ): String = ws.personal().createSmartList(defFor("", scopeRootId, filter, sort, homeParentId), title)
+
+    suspend fun updateSmartList(
+        nodeId: String,
+        scopeRootId: String?,
+        filter: Filter,
+        sort: List<SortSpec>,
+        homeParentId: String?,
+    ) = ws.writerFor(nodeId).updateSmartList(defFor(nodeId, scopeRootId, filter, sort, homeParentId))
+
+    private fun defFor(
+        nodeId: String,
+        scopeRootId: String?,
+        filter: Filter,
+        sort: List<SortSpec>,
+        homeParentId: String?,
+    ): SmartListDef {
+        val applyOnCreate = deriveApplyOnCreate(filter)
+        return SmartListDef(
+            nodeId = nodeId,
+            scopeRootId = scopeRootId,
+            filterJson = FilterJson.encodeToString(Filter.serializer(), filter),
+            sortJson = FilterJson.encodeToString(ListSerializer(SortSpec.serializer()), sort),
+            homeParentId = homeParentId,
+            applyOnCreateJson =
+                if (applyOnCreate.isEmpty()) null
+                else FilterJson.encodeToString(ListSerializer(ApplyOnCreate.serializer()), applyOnCreate),
+        )
+    }
+
+    /**
+     * Write side: the task is added to `home_parent_id`, then the rule's own equality clauses are
+     * stamped onto it so it satisfies the filter it was added through.
+     */
+    suspend fun addTask(def: SmartListDefEntity, title: String): String? {
+        val homeId = def.homeParentId ?: def.scopeRootId ?: return null
+        val writer = ws.writerFor(homeId)
+        val id = writer.addBlock(homeId, NodeType.TASK, title)
+        def.applyOnCreateJson
+            ?.let { FilterJson.decodeFromString(ListSerializer(ApplyOnCreate.serializer()), it) }
+            ?.forEach { p ->
+                // dateRel defers resolution to insert time: a "due today" list stamps the actual
+                // today, not the day the rule was written.
+                writer.editTask(id) { t ->
+                    when (p.defId) {
+                        BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = p.text)
+                        BuiltIns.DUE_DEF_ID -> t.copy(
+                            due = DueSpec(DueValue.AllDay(java.time.LocalDate.now()))
+                        )
+                        BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = java.time.LocalDate.now())
+                        else -> t
+                    }
+                }
+            }
+        return id
+    }
+}

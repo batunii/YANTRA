@@ -12,11 +12,17 @@ This is the app's permanent identity. Play matches uploads by signature and Andr
 sideloaded update signed by a different key, so losing the `.jks` means Yantra can never be updated
 under this identity again — by anyone, ever, including you. Not a lockout that support can undo.
 
+    Subject      CN=Yantra, O=Shoonya, L=Dublin, C=IE
     Alias        yantra
     Algorithm    RSA 4096, SHA384withRSA
-    Valid until  2053 (10,000 days from 2026-09-06)
-    SHA-256      e1:31:a5:9d:9b:a2:8d:d8:90:97:f9:d8:56:83:28:19
-                 76:6d:b2:00:cf:42:7b:e7:06:10:81:b2:d0:fa:0f:8b
+    Valid until  2054 (10,000 days from 2026-09-06)
+    SHA-256      FE:3F:BF:42:1A:A3:F3:FF:43:50:75:D5:FF:A3:AE:F3
+                 E9:7C:23:E7:49:AB:E5:F8:0B:36:17:30:8F:F0:65:24
+
+A first key, generated the same day, carried `O=Napkin` and was discarded when the package became
+`ie.shoonya.yantra`. It had signed nothing that left this machine. A certificate subject is free to
+change right up until the first person installs a build signed with it, and never again — if you are
+ever going to rename anything, rename it before that.
 
 Keep a copy somewhere that is not this laptop. `scripts/stage-key-backup.sh` puts both files and
 this fingerprint into one encrypted archive you can then put anywhere — a password manager

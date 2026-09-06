@@ -1,11 +1,11 @@
 # kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
--keep,includedescriptorclasses class ie.napkin.supertasks.**$$serializer { *; }
--keepclassmembers class ie.napkin.supertasks.** {
+-keep,includedescriptorclasses class ie.shoonya.yantra.**$$serializer { *; }
+-keepclassmembers class ie.shoonya.yantra.** {
     *** Companion;
 }
--keepclasseswithmembers class ie.napkin.supertasks.** {
+-keepclasseswithmembers class ie.shoonya.yantra.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 

@@ -19,14 +19,14 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "ie.napkin.supertasks"
+    namespace = "ie.shoonya.yantra"
     compileSdk = 36
     // Android 16 QPR1. The Live Update APIs the focus notification needs — the promotion setter and
     // the permission behind it — landed in the minor release, not in 36 proper.
     compileSdkMinor = 1
 
     defaultConfig {
-        applicationId = "ie.napkin.supertasks"
+        applicationId = "ie.shoonya.yantra"
         // Android 12. The app was declaring 26 and had been built for 31 the whole time: the theme
         // every screen is wrapped in is @RequiresApi(S), every widget sizes itself with
         // targetCellWidth, and the completion haptics ask for primitives that arrived in S. An

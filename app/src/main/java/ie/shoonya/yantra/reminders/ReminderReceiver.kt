@@ -1,0 +1,112 @@
+package ie.shoonya.yantra.reminders
+
+import android.Manifest
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.res.Configuration
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import ie.shoonya.yantra.App
+import ie.shoonya.yantra.AppContainer
+import ie.shoonya.yantra.MainActivity
+import ie.shoonya.yantra.R
+import ie.shoonya.yantra.data.db.BuiltIns
+import ie.shoonya.yantra.ui.theme.ThemeMode
+import ie.shoonya.yantra.ui.theme.loadThemeController
+import ie.shoonya.yantra.ui.theme.resolve
+import ie.shoonya.yantra.widget.ListWidgetProvider
+import ie.shoonya.yantra.widget.WidgetRefresh
+import kotlinx.coroutines.launch
+import ie.shoonya.yantra.data.format.Links
+
+/** Fires reminder notifications and handles their "Mark done" action. */
+class ReminderReceiver : BroadcastReceiver() {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val nodeId = intent.getStringExtra(Reminders.EXTRA_NODE_ID) ?: return
+        val container = (context.applicationContext as App).container
+        val pending = goAsync()
+        container.appScope.launch {
+            try {
+                when (intent.action) {
+                    Reminders.ACTION_FIRE ->
+                        fire(context, container, nodeId, intent.getLongExtra(Reminders.EXTRA_AT, 0L))
+                    Reminders.ACTION_MARK_DONE -> {
+                        container.nodes.setDone(nodeId, true)
+                        NotificationManagerCompat.from(context).cancel(nodeId.hashCode())
+                        WidgetRefresh.refreshListWidgets(context)
+                    }
+                }
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    private suspend fun fire(context: Context, container: AppContainer, nodeId: String, expectedAt: Long) {
+        // Validate at delivery: the alarm may be stale (task finished/deleted, reminder moved
+        // or cleared after arming) — the DB is the source of truth, not the alarm.
+        val node = container.nodes.byId(nodeId) ?: return
+        if (node.done || node.deletedAt != null) return
+        val dueDefId = container.db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME) ?: return
+        val row = container.db.propertyDao().valuesForNodeOnce(nodeId)
+            .firstOrNull { it.defId == dueDefId } ?: return
+        val offsetMin = row.vNumber ?: return                 // reminder cleared since arming
+        val at = row.vDate ?: return
+        if (at - offsetMin.toLong() * 60_000L != expectedAt) return   // due/offset moved
+
+        // Same contract as a widget tap: MainActivity resolves the extras into a deep link.
+        val tap = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(ListWidgetProvider.EXTRA_OPEN_NODE, nodeId)
+            putExtra(ListWidgetProvider.EXTRA_OPEN_SMART, false)
+            data = Uri.parse("yantra://open/$nodeId")
+        }
+        val done = Intent(context, ReminderReceiver::class.java).apply {
+            action = Reminders.ACTION_MARK_DONE
+            data = Uri.parse("yantra://done/$nodeId")
+            putExtra(Reminders.EXTRA_NODE_ID, nodeId)
+        }
+        // The bhupura in the status bar is tinted by the system from this colour, so a reminder
+        // arrives in whatever ink the user chose for effort — the notification is the app speaking
+        // from outside itself, and it should not be the one place that still says coral.
+        val theme = loadThemeController(context)
+        val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val accent = theme.accent.ink(theme.mode.resolve(systemDark) != ThemeMode.LIGHT)
+
+        val notification = NotificationCompat.Builder(context, Reminders.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notif_reminder)
+            .setColor(accent.toArgb())
+            .setColorized(false)
+            // A notification cannot render a link, so it renders what the link says.
+            .setContentTitle(Links.plain(node.title.orEmpty()).ifBlank { "Reminder" })
+            .setContentText("Reminder")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context, 0, tap,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
+            .addAction(
+                0, "Mark done",
+                PendingIntent.getBroadcast(
+                    context, 0, done,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
+            .build()
+        val canNotify = Build.VERSION.SDK_INT < 33 ||
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (canNotify) NotificationManagerCompat.from(context).notify(nodeId.hashCode(), notification)
+    }
+}

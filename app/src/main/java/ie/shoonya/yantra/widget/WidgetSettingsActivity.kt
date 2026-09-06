@@ -1,0 +1,365 @@
+package ie.shoonya.yantra.widget
+
+import android.appwidget.AppWidgetManager
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.getAppWidgetState
+import androidx.glance.appwidget.state.updateAppWidgetState
+import androidx.glance.state.PreferencesGlanceStateDefinition
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ie.shoonya.yantra.App
+import ie.shoonya.yantra.data.db.NodeEntity
+import ie.shoonya.yantra.data.db.NodeType
+import ie.shoonya.yantra.ui.components.NavCircle
+import ie.shoonya.yantra.ui.components.SectionLabel
+import ie.shoonya.yantra.ui.theme.SuperTasksTheme
+import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.loadThemeController
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.PaddingValues
+
+/**
+ * Settings for one placed widget, opened from the widget's own overflow button.
+ *
+ * Separate from [WidgetConfigActivity], which is the launcher's placement hook: that one exists to
+ * answer "which list?" once and get out of the way, and the Today widget deliberately has no
+ * configure activity at all. This screen is the one you can come back to, so it holds the settings
+ * that are worth changing after the fact — how far the widget lets the wallpaper through, and
+ * whether it reports what you finished.
+ *
+ * Every control writes straight through to Glance state and re-renders the widget: a settings
+ * screen with an Apply button would be a second thing to get wrong, and the widget is visible
+ * behind this one anyway.
+ */
+class WidgetSettingsActivity : ComponentActivity() {
+
+    companion object {
+        const val EXTRA_WIDGET_ID = "ie.shoonya.yantra.widget.WIDGET_ID"
+        const val EXTRA_IS_TODAY = "ie.shoonya.yantra.widget.IS_TODAY"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+
+        val widgetId = intent?.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            ?: AppWidgetManager.INVALID_APPWIDGET_ID
+        val isToday = intent?.getBooleanExtra(EXTRA_IS_TODAY, false) ?: false
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
+            finish()
+            return
+        }
+
+        val container = (application as App).container
+        val theme = loadThemeController(this)
+
+        // Writes go to Glance state (the live render session only reacts to that) on appScope,
+        // so a write survives this activity being finished immediately after a tap.
+        fun apply(edit: (MutablePreferences) -> Unit) {
+            container.appScope.launch {
+                runCatching {
+                    val app = applicationContext
+                    val gid = GlanceAppWidgetManager(app).getGlanceIdBy(widgetId)
+                    updateAppWidgetState(app, gid, edit)
+                    // The instance must match the provider, or the widget re-renders as the
+                    // other variant: TodayWidget resolves the Today list, YantraListWidget
+                    // reads the configured binding.
+                    (if (isToday) TodayWidget() else YantraListWidget()).update(app, gid)
+                }
+            }
+        }
+
+        setContent {
+            SuperTasksTheme(mode = theme.mode) {
+                var opacity by remember { mutableFloatStateOf(ListWidgetDefaults.OPACITY.toFloat()) }
+                var showDone by remember { mutableStateOf(ListWidgetDefaults.SHOW_DONE) }
+                var loaded by remember { mutableStateOf(false) }
+                // Which list the widget is on. Read at open so the current one is *marked*, and
+                // moved the instant a new one is tapped — the write itself is invisible from here
+                // (the widget is behind the launcher, not behind this screen), so without this the
+                // only evidence a tap did anything was going back and looking at the home screen.
+                var boundId by remember { mutableStateOf<String?>(null) }
+                var boundNode by remember { mutableStateOf<NodeEntity?>(null) }
+
+                // Seed the controls from what the widget is actually showing.
+                LaunchedEffect(Unit) {
+                    runCatching {
+                        val gid = GlanceAppWidgetManager(applicationContext).getGlanceIdBy(widgetId)
+                        val prefs = getAppWidgetState(
+                            applicationContext, PreferencesGlanceStateDefinition, gid,
+                        )
+                        opacity = (prefs[ListWidgetKeys.OPACITY] ?: ListWidgetDefaults.OPACITY).toFloat()
+                        showDone = prefs[ListWidgetKeys.SHOW_DONE] ?: ListWidgetDefaults.SHOW_DONE
+                        boundId = prefs[ListWidgetKeys.NODE_ID]
+                    }
+                    // The pre-Glance fallback, for a widget placed before the migration: its
+                    // binding only ever lived in prefs, and it should still show as chosen.
+                    if (boundId == null) boundId = WidgetPrefs.nodeId(applicationContext, widgetId)
+                    loaded = true
+                }
+                // Resolved so a task-bound widget can show what it is on. Re-runs on every pick,
+                // which is what keeps the pinned row honest after the selection moves.
+                LaunchedEffect(boundId) {
+                    boundNode = boundId?.let { container.nodes.byId(it) }
+                }
+
+                SettingsScreen(
+                    isToday = isToday,
+                    enabled = loaded,
+                    opacity = opacity,
+                    showDone = showDone,
+                    onOpacity = { opacity = it },
+                    onOpacitySettled = { apply { prefs -> prefs[ListWidgetKeys.OPACITY] = it.toInt() } },
+                    onShowDone = {
+                        showDone = it
+                        apply { prefs -> prefs[ListWidgetKeys.SHOW_DONE] = it }
+                    },
+                    listsFlow = remember {
+                        container.nodes.topLevel()
+                            .stateIn(container.appScope, SharingStarted.Eagerly, emptyList())
+                    },
+                    allListsFlow = remember {
+                        container.nodes.allLists()
+                            .stateIn(container.appScope, SharingStarted.Eagerly, emptyList())
+                    },
+                    search = { container.nodes.searchBindable(it) },
+                    boundId = boundId,
+                    boundNode = boundNode,
+                    onPickList = { node ->
+                        val smart = node.type == NodeType.SMART_LIST
+                        // Optimistic, and safe to be: the write below cannot meaningfully fail, and
+                        // a selection that waits for a round trip through Glance state reads as an
+                        // unresponsive button.
+                        boundId = node.id
+                        WidgetPrefs.setBinding(this, widgetId, node.id, smart)
+                        apply { prefs ->
+                            prefs[ListWidgetKeys.NODE_ID] = node.id
+                            prefs[ListWidgetKeys.IS_SMART] = smart
+                        }
+                    },
+                    onClose = { finish() },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    isToday: Boolean,
+    enabled: Boolean,
+    opacity: Float,
+    showDone: Boolean,
+    onOpacity: (Float) -> Unit,
+    onOpacitySettled: (Float) -> Unit,
+    onShowDone: (Boolean) -> Unit,
+    listsFlow: kotlinx.coroutines.flow.StateFlow<List<NodeEntity>>,
+    allListsFlow: kotlinx.coroutines.flow.StateFlow<List<NodeEntity>>,
+    search: suspend (String) -> List<NodeEntity>,
+    boundId: String?,
+    boundNode: NodeEntity?,
+    onPickList: (NodeEntity) -> Unit,
+    onClose: () -> Unit,
+) {
+    val y = Yantra.colors
+    val nodes by listsFlow.collectAsStateWithLifecycle()
+    val allLists by allListsFlow.collectAsStateWithLifecycle()
+    var query by remember { mutableStateOf("") }
+    val results = rememberBindableResults(query, search)
+    val smart = remember(nodes) { nodes.filter { it.type == NodeType.SMART_LIST } }
+    val lists = remember(nodes) { nodes.filter { it.type == NodeType.LIST } }
+    val listTitles = remember(allLists) {
+        allLists.associate { it.id to (it.title?.ifBlank { "Untitled" } ?: "Untitled") }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(y.page)
+            .statusBarsPadding(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavCircle(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Close",
+                onClick = onClose,
+                iconSize = 20.dp,
+            )
+            Spacer(Modifier.width(14.dp))
+            Text("Widget settings", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
+        }
+
+        LazyColumn(
+            Modifier.fillMaxWidth().navigationBarsPadding(),
+            contentPadding = PaddingValues(
+                start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item(key = "opacity") {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(y.cardBg, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Opacity",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = y.textPrimary,
+                            )
+                            // The number is the surface's opacity, so the sentence has to run the
+                            // same direction as it: "wallpaper shows through" read backwards
+                            // against a rising percentage.
+                            Text(
+                                "Higher covers more of the wallpaper",
+                                fontSize = 12.sp,
+                                color = y.textMuted,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        Text(
+                            "${opacity.toInt()}%",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.W700,
+                            color = y.accent,
+                        )
+                    }
+                    Slider(
+                        value = opacity,
+                        onValueChange = onOpacity,
+                        onValueChangeFinished = { onOpacitySettled(opacity) },
+                        valueRange = ListWidgetDefaults.MIN_OPACITY.toFloat()..100f,
+                        enabled = enabled,
+                        colors = SliderDefaults.colors(
+                            thumbColor = y.accent,
+                            activeTrackColor = y.accent,
+                            inactiveTrackColor = y.tileBorder,
+                        ),
+                    )
+                }
+            }
+
+            if (isToday) {
+                item(key = "done") {
+                    ToggleCard(
+                        title = "Show what's done",
+                        subtitle = "Today's completed tasks, below the open ones",
+                        checked = showDone,
+                        enabled = enabled,
+                        onChange = onShowDone,
+                    )
+                }
+            }
+
+            // The Today widget is the one that resolves its own list, so there is nothing here to
+            // choose. Everything else can now be pointed at any list, smart list or task — the
+            // same picker the placement screen uses, so changing your mind afterwards offers
+            // exactly what placing it did.
+            if (!isToday) {
+                item(key = "list-label") {
+                    SectionLabel("Shows", modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
+                }
+                item(key = "search") {
+                    WidgetSearchField(query, { query = it }, Modifier.fillMaxWidth())
+                }
+                widgetTargetItems(
+                    results = results,
+                    smartLists = smart,
+                    lists = lists,
+                    listTitles = listTitles,
+                    selectedId = boundId,
+                    // Only when it would otherwise be invisible: a bound list already has a row in
+                    // the sections below, and pinning it too would list it twice.
+                    pinned = boundNode?.takeIf { n ->
+                        lists.none { it.id == n.id } && smart.none { it.id == n.id }
+                    },
+                    onPick = onPickList,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToggleCard(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    val y = Yantra.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(y.cardBg, RoundedCornerShape(18.dp))
+            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = y.textPrimary)
+            Text(
+                subtitle,
+                fontSize = 12.sp,
+                color = y.textMuted,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = y.onAccent,
+                checkedTrackColor = y.accent,
+            ),
+        )
+    }
+}
