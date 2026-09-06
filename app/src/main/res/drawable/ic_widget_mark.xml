@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Notification small icon. Android renders these as a silhouette in a colour it chooses, so the mark
-  has to survive as one flat shape: the bhupura outline with a solid bindu. Drawn in the 28-unit
-  design space scaled to 24dp (24/28 = 0.857) so it is the same geometry as the task glyph rather
-  than a separate tray drawing that could drift from it.
-
-  Stroke 1.5, which is the launcher mark's weight. It drifted anyway: the logo was thinned from 1.9
-  to 1.5 across every variant and this file was left on the old value, so the one place the app
-  appears when it is *not* on screen wore a heavier frame than the icon it sits under.
+  The running session's mark for a widget: the bhupura enclosing a solid bindu — the clock is
+  moving. Same 28-unit geometry as the tray icon, the task glyph and the notification's drawn mark,
+  so the same session looks like itself on every surface it appears on.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"

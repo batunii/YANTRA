@@ -11,9 +11,16 @@ object WidgetRefresh {
         TodayWidget().updateAll(context)
     }
 
-    /** Everything except QuickAdd (static). Called when the app leaves the foreground. */
+    /**
+     * Everything except QuickAdd (static). Called when the app leaves the foreground.
+     *
+     * Every widget that draws a session belongs here. [BhupuraWidget] was missing, and the cost was
+     * not a stale label: its countdown is rendered by the launcher, so a widget nobody re-renders
+     * does not freeze — it keeps counting, straight through zero into negative time.
+     */
     suspend fun refreshAll(context: Context) {
         refreshListWidgets(context)
         FocusWidget().updateAll(context)
+        BhupuraWidget().updateAll(context)
     }
 }

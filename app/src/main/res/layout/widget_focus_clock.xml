@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The focus clock, both ways it can read, in one box.
+
+  Two problems this solves, and they had the same cause. A running session was drawn by a
+  Chronometer in RemoteViews and a paused one by a Glance Text — so the reading changed *typeface*
+  when you pressed pause (Glance's TextStyle has no fontFamily at all, so the mono was silently
+  dropped) and changed size and position with it, which made the clock hop every time the transport
+  was touched.
+
+  Both live here now, identically styled, one visible at a time. The frame is a fixed height so the
+  swap cannot move anything around it either: a control that shifts the thing it controls is a
+  control you have to aim at twice.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <Chronometer
+        android:id="@+id/focus_clock_running"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:fontFamily="@font/space_mono_bold"
+        android:includeFontPadding="false"
+        android:singleLine="true" />
+
+    <TextView
+        android:id="@+id/focus_clock_frozen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:fontFamily="@font/space_mono_bold"
+        android:includeFontPadding="false"
+        android:singleLine="true"
+        android:visibility="gone" />
+</FrameLayout>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The running session's body, under DecoratedCustomViewStyle.
+
+  The standard template draws actions as *words* on a phone — Android stopped drawing their icons in
+  the shade at API 24 — so "Pause  Stop  Done" was three labels in a row that looked like a sentence
+  and not like a transport. A focus session is a thing you start and stop; it should have the
+  controls of one.
+
+  Three things this layout has to get right, each learned the hard way:
+
+  **Text colour comes from the Compat notification appearances, never from `?android:attr`.** A
+  RemoteViews is inflated with our resources but rendered inside the shade, and a theme attribute
+  resolves against the app's theme rather than the host's — which put dark text on the dark shade
+  and made the whole body invisible. `TextAppearance.Compat.Notification.*` exists precisely because
+  the platform has to answer this question for its own templates.
+
+  **The body does not get the full width when there is a large icon.** One UI keeps the right side of
+  an expanded notification for it, and the leftover column was narrow enough that the clock wrapped
+  one character per line. So the mark moved *into* the body, where its size is ours to choose, and
+  the builder no longer sets a large icon at all — the collapsed row still shows a bhupura anyway,
+  because the launcher icon already is one.
+
+  **Nothing here may wrap.** A Chronometer that reflows is worse than no clock at all.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="2dp"
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:id="@+id/focus_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="8dp">
+
+        <!-- The bhupura, drawn in code so it carries the accent and the bindu's state. -->
+        <ImageView
+            android:id="@+id/focus_mark"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="@null" />
+
+        <!--
+          The clock, and only ever one of these two is visible. A system Chronometer ticks itself,
+          which is the whole reason this notification is not re-posted every second — but there is
+          no way to freeze one, so a paused session swaps it for a plain reading rather than leaving
+          a clock running on a timer that is not.
+        -->
+        <Chronometer
+            android:id="@+id/focus_chrono"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:singleLine="true"
+            android:fontFamily="@font/space_mono_bold"
+            android:textSize="24sp"
+            android:includeFontPadding="false"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
+
+        <TextView
+            android:id="@+id/focus_frozen"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:singleLine="true"
+            android:fontFamily="@font/space_mono_bold"
+            android:textSize="24sp"
+            android:includeFontPadding="false"
+            android:visibility="gone"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
+
+        <!--
+          Transparent grounds: the body sits on a surface whose colour we do not choose, and the
+          default ImageButton background renders as a pale disc that belongs to another app's
+          design. The glyph carries the ink; nothing else needs to.
+        -->
+        <ImageButton
+            android:id="@+id/focus_toggle"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="9dp"
+            android:background="@android:color/transparent"
+            android:scaleType="fitCenter"
+            android:contentDescription="@string/focus_notif_toggle" />
+
+        <ImageButton
+            android:id="@+id/focus_stop"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="11dp"
+            android:background="@android:color/transparent"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_notif_stop"
+            android:contentDescription="@string/focus_notif_stop" />
+
+        <ImageButton
+            android:id="@+id/focus_done"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="10dp"
+            android:background="@android:color/transparent"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_notif_done"
+            android:contentDescription="@string/focus_notif_done" />
+    </LinearLayout>
+</LinearLayout>

@@ -99,6 +99,42 @@ interface NodeDao {
     )
     suspend fun searchLinkTargets(query: String, limit: Int = 12): List<NodeEntity>
 
+    /**
+     * Anywhere a widget can be pointed.
+     *
+     * Wider than a list, because a widget is a window onto *something you are working on* and that
+     * is not always a list: a task with subtasks under it is a project, and the home screen is
+     * exactly where you want it. The widget already renders any node's task children — only the
+     * picker was narrower than the machinery behind it.
+     *
+     * The same three stable-id types [searchLinkTargets] settles on, and excluded for the same
+     * reason: a paragraph or a heading has a *positional* id, regenerated on every re-index, so a
+     * widget bound to one would silently come to show whatever line landed in that slot afterwards.
+     * A binding outlives far more re-indexes than a link does, so the argument is stronger here,
+     * not weaker. Groups are left out on a different ground — a group is an organisational banner
+     * with no tasks of its own, so binding one has no honest answer.
+     *
+     * Lists lead: pointing a widget at a list is the ordinary case, and a task match should not
+     * push it under a subtask that happens to share a word.
+     */
+    @Query(
+        """
+        SELECT * FROM node
+        WHERE type IN ('list','smart_list','task')
+          AND deleted_at IS NULL
+          AND title IS NOT NULL AND title != ''
+          AND title LIKE '%' || :query || '%'
+        ORDER BY
+          CASE type WHEN 'smart_list' THEN 0 WHEN 'list' THEN 1 ELSE 2 END,
+          CASE WHEN title LIKE :query || '%' THEN 0 ELSE 1 END,
+          done,
+          length(title),
+          title COLLATE NOCASE
+        LIMIT :limit
+        """
+    )
+    suspend fun searchBindable(query: String, limit: Int = 40): List<NodeEntity>
+
     @Query("SELECT * FROM node WHERE system_key = :key AND deleted_at IS NULL LIMIT 1")
     suspend fun bySystemKey(key: String): NodeEntity?
 

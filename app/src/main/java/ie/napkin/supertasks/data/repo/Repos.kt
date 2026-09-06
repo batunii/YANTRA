@@ -82,6 +82,16 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      */
     suspend fun searchLinkTargets(query: String, limit: Int = 12) =
         dao.searchLinkTargets(query.trim(), limit)
+
+    /**
+     * Anywhere a home-screen widget can be pointed — see [ie.napkin.supertasks.data.db.NodeDao].
+     *
+     * A blank query is "the things worth offering before anyone has typed", which `LIKE '%%'`
+     * already answers under the same ordering — so the picker is useful the moment it opens and
+     * needs no separate branch for the empty case.
+     */
+    suspend fun searchBindable(query: String, limit: Int = 40) =
+        dao.searchBindable(query.trim(), limit)
     fun listTaskCounts() = dao.listTaskCounts()
     fun childCountsUnder(parentId: String) = dao.childCountsUnder(parentId)
     fun childCountsFor(parentIds: List<String>) = dao.childCountsFor(parentIds)

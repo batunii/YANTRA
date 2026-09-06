@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Resume, as a notification action. Filled and round-joined rather than a hairline triangle: these
+  sit at action size next to the bhupura's solid bindu, and an outline glyph beside a filled mark
+  reads as a different family. Same 24-unit space as the rest of the tray set.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M9.5,7.5 L17,12 L9.5,16.5 Z" />
+</vector>

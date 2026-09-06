@@ -19,6 +19,22 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
+    <!-- A running focus session holds the process open, so its notification is undismissable and
+         its buttons still work. See FocusSessionService for why the timer needed one despite being
+         built to survive not existing.
+
+         specialUse, because there is no foreground-service type for "a timer the user started":
+         dataSync would be a lie about the network and shortService caps below the shortest
+         pomodoro. Play requires a written justification for specialUse at submission. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Android 16 QPR1's Live Updates: the running session as a chip in the status bar, rather
+         than something you have to pull the shade down to see. Normal permission, no runtime
+         prompt — but the user can still refuse it per app, which canPostPromotedNotifications
+         reports and SessionNotification checks before trading the custom transport for it. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -203,6 +219,22 @@
         </receiver>
 
         <!--
+            The mark, unframed: a widget that is the bhupura rather than a card containing one.
+            A new provider rather than a change to the focus widget, because a panel and a mark
+            want opposite things — see BhupuraWidget.
+        -->
+        <receiver
+            android:name=".widget.BhupuraWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bhupura_widget_info" />
+        </receiver>
+
+        <!--
             Yantra as somewhere to share to. Translucent and historyless like QuickAdd: it is an
             acknowledgement, not a screen, and the task exists before it draws.
         -->
@@ -232,6 +264,19 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:windowSoftInputMode="adjustResize" />
+
+        <!--
+            The running focus session. Not exported: nothing outside the app has any business
+            starting it, and everything inside starts it through FocusSessionService.sync.
+        -->
+        <service
+            android:name=".domain.FocusSessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="A user-started focus timer: the session must keep counting, stay visible on the lock screen, and remain pausable while the app is in the background." />
+        </service>
 
         <!-- Reminders -->
         <receiver

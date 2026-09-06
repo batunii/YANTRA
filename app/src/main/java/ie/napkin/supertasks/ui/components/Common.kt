@@ -17,6 +17,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import ie.napkin.supertasks.domain.FocusSessionService
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -306,5 +314,41 @@ fun durationLabel(totalSecs: Int): String {
         h > 0 -> "${h}h ${m}m"
         m > 0 -> "${m}m"
         else -> "${totalSecs}s"
+    }
+}
+
+/**
+ * Asks for the notification permission, at the moment the answer starts to matter.
+ *
+ * On 33+ a declared `POST_NOTIFICATIONS` is granted by nobody until it is asked for, and this app
+ * only ever asked when a *reminder* was confirmed. Everything else that speaks from outside the app
+ * inherited that: a focus session on a phone whose owner had never set a reminder posted its
+ * notification into a void, checked the permission, found it missing and returned — silently, and
+ * correctly, and to no visible effect. The running session is the one thing the app does while you
+ * are not looking at it, so it is the last thing that should depend on an unrelated feature having
+ * been used first.
+ *
+ * Contextual, and deliberately not at launch: a permission dialog on first run is a question about
+ * nothing, asked before the person has any reason to say yes.
+ *
+ * Denial is non-fatal everywhere it is used. The session still runs, the ledger still records it,
+ * and the widget — which needs no permission — still shows the clock.
+ */
+@Composable
+fun rememberNotificationPermissionRequest(): () -> Unit {
+    val context = LocalContext.current
+    // The answer matters even when it is yes-after-the-fact: a session started alongside this
+    // dialog has already posted its notification into a permission it did not yet have, and
+    // nothing else will post it again. See FocusSessionService.refresh.
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) FocusSessionService.refresh(context)
+    }
+    return {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 }

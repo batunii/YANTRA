@@ -7,9 +7,24 @@
   demonstrably one shape rather than four drawings of an idea. Here the 28 units are mapped onto the
   adaptive-icon 108dp viewport, inset to the 66dp safe zone: scale 66/28 = 2.357, offset 21dp.
 
-  Colour follows the law — neutral structure for the frame, coral for the bindu, because the centre
-  is where the user's own effort lands. The old mark was a gold compass-rose with a tick in it; it
-  belonged to a palette this app no longer has, and a tick is exactly the gesture the bindu replaced.
+  **The application icon, and the only variant with a neutral bindu.**
+
+  Every other copy of the mark colours its centre, because the bindu is where the user's own effort
+  lands and the accent is what effort looks like. This one cannot, and the reason is structural: the
+  five accent icons are reached through activity-aliases, which are *components*, and a component's
+  enabled state is the one thing about an icon an app may change while installed. The launcher asks
+  the enabled LAUNCHER component for its icon and gets the right accent. Everything that asks the
+  *package* — the notification shade, Settings, the share sheet, recents — gets this file, and
+  `<application android:icon>` is fixed when the APK is built. There is no runtime, shutdown, or
+  reinstall path that repoints it.
+
+  So a coral bindu here was not the brand asserting itself; it was the mark stating an accent the
+  user had not chosen, and stating it beside a notification whose own progress bar was drawn in the
+  accent they had. One notification, two answers. Grey states nothing instead, which is the only
+  thing this file can say that is true for all five.
+
+  The old mark was a gold compass-rose with a tick in it; it belonged to a palette this app no
+  longer has, and a tick is exactly the gesture the bindu replaced.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -29,9 +44,9 @@
             android:strokeLineJoin="round"
             android:pathData="M8,4 L11,4 L11,2 L17,2 L17,4 L20,4 Q24,4 24,8 L24,11 L26,11 L26,17 L24,17 L24,20 Q24,24 20,24 L17,24 L17,26 L11,26 L11,24 L8,24 Q4,24 4,20 L4,17 L2,17 L2,11 L4,11 L4,8 Q4,4 8,4 Z" />
 
-        <!-- the bindu: the centre, and the only coral in the mark -->
+        <!-- the bindu, in the frame's own ink: see the note above on why this one cannot be an accent -->
         <path
-            android:fillColor="#FFE8865F"
+            android:fillColor="#FFB4B2A9"
             android:pathData="M14,10.4 A3.6,3.6 0 1 1 14,17.6 A3.6,3.6 0 1 1 14,10.4 Z" />
     </group>
 </vector>

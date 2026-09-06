@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -55,9 +56,11 @@ import androidx.navigation.NavHostController
 import ie.napkin.supertasks.AppContainer
 import ie.napkin.supertasks.data.db.NodeEntity
 import ie.napkin.supertasks.data.db.FocusSessionEntity
+import ie.napkin.supertasks.ui.components.rememberNotificationPermissionRequest
 import ie.napkin.supertasks.ui.components.SectionLabel
 import ie.napkin.supertasks.ui.components.SwitchHereDialog
 import ie.napkin.supertasks.ui.components.durationLabel
+import ie.napkin.supertasks.ui.Routes
 import ie.napkin.supertasks.ui.container
 import ie.napkin.supertasks.ui.theme.MonoLarge
 import ie.napkin.supertasks.ui.components.NavCircle
@@ -139,6 +142,9 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
         )
     }
 
+    // Held at screen level: a permission launcher must be remembered in composition, not created
+    // inside the click that needs it.
+    val askNotifications = rememberNotificationPermissionRequest()
     val active = timerState
     /** The length chosen for a task that has to take the clock off another. Null when nothing asks. */
     var switchTo by remember { mutableStateOf<Int?>(null) }
@@ -190,6 +196,9 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                     ActiveTimer(
                         state = active,
                         dayCounts = dayCounts,
+                        // Pushed, not replaced: the session is still running and this screen is
+                        // still where you came from, so back belongs here.
+                        onOpenTask = { nav.navigate(Routes.node(active.nodeId)) },
                         onPause = vm.timer::pause,
                         onResume = vm.timer::resume,
                         onComplete = vm.timer::finish,
@@ -202,7 +211,14 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                     TimerSetup(
                         node = requestedNode!!,
                         dayCounts = ownDayCounts,
+                        onOpenTask = { nav.navigate(Routes.node(requestedNode!!.id)) },
                         onStart = { secs ->
+                            // Pressing start is the moment the running notification stops being
+                            // hypothetical, so it is the moment to ask for it. Before this, the
+                            // permission was only ever requested by the reminder sheet, and a
+                            // session started on a phone that had never set a reminder ran with
+                            // nothing on the lock screen at all.
+                            askNotifications()
                             if (active != null) switchTo = secs
                             else vm.timer.start(requestedNode!!.id, requestedNode!!.title.orEmpty(), secs)
                         },
@@ -281,7 +297,12 @@ private fun DurationChip(
 private val PRESETS = listOf(15, 25, 50)
 
 @Composable
-private fun TimerSetup(node: NodeEntity, dayCounts: List<Int>, onStart: (Int) -> Unit) {
+private fun TimerSetup(
+    node: NodeEntity,
+    dayCounts: List<Int>,
+    onOpenTask: () -> Unit,
+    onStart: (Int) -> Unit,
+) {
     val y = Yantra.colors
     var minutes by remember { mutableIntStateOf(25) }
     var picking by remember { mutableStateOf(false) }
@@ -289,18 +310,38 @@ private fun TimerSetup(node: NodeEntity, dayCounts: List<Int>, onStart: (Int) ->
     Column(Modifier.padding(horizontal = 30.dp)) {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Focus on")
-        Text(
-            Links.plain(node.title.orEmpty()).ifBlank { "Untitled task" },
-            fontFamily = YantraDisplay,
-            fontSize = 32.sp,
-            lineHeight = 39.sp,
-            fontWeight = FontWeight.W700,
-            letterSpacing = (-0.4).sp,
-            color = y.textPrimary,
-            modifier = Modifier.padding(top = 10.dp),
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // The headline is the task, so it is also the way to it — the same door the running
+        // session's title opens, on the screen you reach first. Committing to twenty-five minutes
+        // is exactly when you might want to look at what the thing actually involves.
+        Row(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onOpenTask)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                Links.plain(node.title.orEmpty()).ifBlank { "Untitled task" },
+                fontFamily = YantraDisplay,
+                fontSize = 32.sp,
+                lineHeight = 39.sp,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.4).sp,
+                color = y.textPrimary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                // Hugs its text, so the chevron follows the title rather than the screen edge.
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Open as page",
+                tint = y.textMuted,
+                // Scaled to the headline it sits beside, not to the 18dp the body rows use.
+                modifier = Modifier.padding(start = 6.dp).size(26.dp),
+            )
+        }
         // What this task has already had, before you decide what to give it next.
         //
         // The screen listed the sessions and drew none of them, which made it the one focus surface
@@ -413,6 +454,7 @@ private fun TimerSetup(node: NodeEntity, dayCounts: List<Int>, onStart: (Int) ->
 private fun ActiveTimer(
     state: FocusTimer.State,
     dayCounts: List<Int>,
+    onOpenTask: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onComplete: () -> Unit,
@@ -425,16 +467,41 @@ private fun ActiveTimer(
     ) {
         Spacer(Modifier.weight(1f))
         SectionLabel("Focusing", color = y.accentEyebrow)
-        Text(
-            state.nodeTitle.ifBlank { "Untitled task" },
-            fontSize = 16.sp,
-            fontWeight = FontWeight.W700,
-            color = y.textPrimary,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 30.dp, end = 30.dp, top = 8.dp),
-        )
+        // The task's name, and the way back to it.
+        //
+        // This screen names the thing you are working on and was the one place that named it
+        // without letting you reach it — you could start a session from a task and then not open
+        // the task, which is exactly when you want its notes and subtasks. The chevron is the
+        // grammar the node page already uses for "there is a page behind this"; the whole row is
+        // the target, because a name and the mark beside it are one thing to aim at.
+        Row(
+            modifier = Modifier
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onOpenTask)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                state.nodeTitle.ifBlank { "Untitled task" },
+                fontSize = 16.sp,
+                fontWeight = FontWeight.W700,
+                color = y.textPrimary,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                // Not filling: a short title keeps the chevron against its last letter rather than
+                // stranded at the screen edge, and a long one still ellipsises before reaching it.
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Open as page",
+                tint = y.textMuted,
+                modifier = Modifier.padding(start = 2.dp).size(18.dp),
+            )
+        }
         // The focus glyph. Everything it draws is a pure function of the session log: a trikona
         // opens each day, then one ring per session that day, reading outward from the centre. The
         // live session sweeps the track — the one thing in this app allowed to move at rest, one

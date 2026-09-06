@@ -28,6 +28,7 @@ import ie.napkin.supertasks.data.sync.SyncWorker
 import ie.napkin.supertasks.data.sync.GitRepo
 import ie.napkin.supertasks.data.sync.SyncEngine
 import ie.napkin.supertasks.data.sync.TokenRenewal
+import ie.napkin.supertasks.domain.FocusSessionService
 import ie.napkin.supertasks.domain.FocusTimer
 import ie.napkin.supertasks.domain.RunningTask
 import ie.napkin.supertasks.domain.SessionNotification
@@ -59,7 +60,12 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        // Channels first, and this is load-bearing rather than tidy. Constructing the container
+        // starts the collector that revives a live focus session, which posts to a channel and now
+        // also starts a foreground service that must be handed a notification on a channel that
+        // exists. Built the other way round, a process woken with a session already running raced
+        // its own setup — and lost silently, because posting to a channel that is not there yet is
+        // not an error, it is nothing happening.
         val notifications = getSystemService(NotificationManager::class.java)
         notifications.createNotificationChannel(
             NotificationChannel(Reminders.CHANNEL_ID, "Reminders", NotificationManager.IMPORTANCE_HIGH)
@@ -71,6 +77,27 @@ class App : Application() {
                 SessionNotification.CHANNEL_ID, "Running session", NotificationManager.IMPORTANCE_LOW,
             )
         )
+        // Android 16 can lift an ongoing session into a status-bar chip, but not out of a channel
+        // that declares itself unimportant — see SessionNotification.CHANNEL_LIVE_ID. Default
+        // importance, no sound: the system may surface it, and it still never interrupts.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                SessionNotification.CHANNEL_LIVE_ID, "Focus timer", NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+            }
+        )
+        // The end of a committed session, which is the one thing the low channel cannot say out
+        // loud. Its own channel so that silencing the running status — a reasonable thing to want,
+        // and the whole reason that one is LOW — does not also silence the bell that says the
+        // promise you made is up.
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                SessionNotification.CHANNEL_DONE_ID, "Focus complete", NotificationManager.IMPORTANCE_HIGH,
+            )
+        )
+        container = AppContainer(this)
         // Component enabled-states are package state, not app data: a reinstall resets them to the
         // manifest defaults while the stored accent survives in prefs, which would leave a coral
         // icon on an indigo app. Cheap to check and a no-op whenever they already agree.
@@ -584,19 +611,36 @@ class AppContainer(val app: Application) {
                 .distinctUntilChanged()
                 .collect {
                     val s = timer.state.value
-                    if (s != null && s.isRunning && !s.isFinished) {
+                    // Armed only for a session that is *running* and has an end to arrive at.
+                    //
+                    // Both halves of that were wrong. A paused session fell through every branch
+                    // and left the finalizer armed for its original end, so a timer paused at
+                    // twenty minutes was closed as RAN_OUT on schedule regardless — and now that
+                    // the finalizer rings a bell, it would have announced the arrival of a session
+                    // the user had stopped. An open session has no end at all, and was being
+                    // handed a delay of zero: a worker woken two seconds later to discover there
+                    // was nothing to finalize.
+                    if (s != null && s.isRunning && !s.isFinished && !s.isOpen) {
                         FocusFinalizeWorker.schedule(app, s.remainingSecs)
-                    } else if (s == null || s.isFinished) {
+                    } else {
                         FocusFinalizeWorker.cancel(app)
                     }
-                    // Posted on transitions only, for the same reason the widget is: the chronometer
-                    // in the notification ticks itself, so there is nothing per-second to push.
-                    if (s != null && !s.isFinished) {
-                        SessionNotification.show(app, s.nodeTitle, s.nodeId, s.elapsedSecs)
-                    } else {
-                        SessionNotification.clear(app)
+                    // The notification belongs to FocusSessionService now, so this only says
+                    // whether there is a session to hold open; the service builds and rebuilds the
+                    // notification itself. Still transitions only, for the same reason the widget
+                    // is: the chronometer ticks itself, so there is nothing per-second to push.
+                    FocusSessionService.sync(app, live = s != null && !s.isFinished, state = s)
+                    // A committed session that *arrived*. Only the ticker reaches isFinished —
+                    // stopping early clears the state outright — so this rings for the one ending
+                    // the user did not perform themselves, and never repeats a decision back at
+                    // them. The dead-process version of this moment is rung by
+                    // FocusFinalizeWorker, which is the only other thing that can close a session
+                    // nobody was watching.
+                    if (s != null && s.isFinished) {
+                        SessionNotification.showCompleted(app, s.nodeTitle, s.nodeId, s.elapsedSecs)
                     }
                     FocusWidget().updateAll(app)
+                    ie.napkin.supertasks.widget.BhupuraWidget().updateAll(app)
                 }
         }
     }
