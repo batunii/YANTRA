@@ -43,7 +43,7 @@
 
 .row {
   display: flex; align-items: baseline; gap: 10px;
-  padding: 7px 8px; border-radius: 10px; min-height: 38px;
+  padding: 7px 8px 7px 26px; border-radius: 10px; min-height: 38px;
 }
 .row:hover { background: var(--surface); }
 .tick {
@@ -151,3 +151,16 @@
 }
 .tok.where { cursor: pointer; color: var(--text-dim); }
 .tok.where:hover { color: var(--accent); }
+
+/* ---- reordering ---- */
+.grip {
+  flex: none; width: 16px; color: transparent; cursor: grab; user-select: none;
+  font-size: 13px; line-height: 1; align-self: center; margin-left: -18px;
+  border-radius: 4px; text-align: center;
+}
+.row:hover .grip { color: var(--text-muted); }
+.grip:focus-visible { color: var(--accent); outline: 1px solid var(--accent-border); outline-offset: 2px; }
+.block-row.is-dragging { opacity: 0.4; }
+/* Drawn on the hovered row rather than reflowing the list, so the drop target stops moving. */
+.block-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+.block-row.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }

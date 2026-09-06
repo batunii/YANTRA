@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Backend } from '../backend'
 import { GitHubError } from '../github/client'
-import { pageText, withTaskStatus, withNewTask, withTaskTitle, loadWorkspace, resolveSmartList, tasksOf, topLevel, deviceId } from '../workspace/workspace'
+import { pageText, withTaskStatus, withNewTask, withTaskTitle, withBlockMoved, withIndent, loadWorkspace, resolveSmartList, tasksOf, topLevel, deviceId } from '../workspace/workspace'
 import type { LoadedPage, Workspace } from '../workspace/workspace'
 import type { PageDoc, TaskStatus } from '../format/pageDoc'
 import { Bhupura } from './Bhupura'
@@ -74,6 +74,18 @@ export function WorkspaceView({ backend }: { backend: Backend }) {
     return commit(page, doc, `Add ${typed}`, `${page.id}:new`)
   }, [commit])
 
+  const move = useCallback((page: LoadedPage, from: number, to: number) => {
+    if (from === to) return Promise.resolve()
+    const next = withBlockMoved(page.doc, from, to, new Date(), deviceId())
+    return commit(page, next, 'Reorder', `${page.id}:${from}`).catch(() => {})
+  }, [commit])
+
+  const reindent = useCallback((page: LoadedPage, index: number, delta: number) => {
+    const next = withIndent(page.doc, index, delta, new Date(), deviceId())
+    if (next === page.doc) return Promise.resolve()
+    return commit(page, next, delta > 0 ? 'Indent' : 'Outdent', `${page.id}:${index}`).catch(() => {})
+  }, [commit])
+
   const retitle = useCallback((page: LoadedPage, index: number, typed: string) => {
     const next = withTaskTitle(page.doc, index, typed, new Date(), deviceId())
     return commit(page, next, `Edit ${typed}`, `${page.id}:${index}`).catch(() => {})
@@ -110,7 +122,7 @@ export function WorkspaceView({ backend }: { backend: Backend }) {
         ) : open ? (
           <PageBody
             ws={ws} page={open} saving={saving} onOpen={open_}
-            onToggle={toggle} onRetitle={retitle}
+            onToggle={toggle} onRetitle={retitle} onMove={move} onIndent={reindent}
             onAdd={(typed) => add(open, typed)}
           />
         ) : null}
@@ -119,17 +131,70 @@ export function WorkspaceView({ backend }: { backend: Backend }) {
   )
 }
 
-function PageBody({ ws, page, onToggle, onRetitle, onAdd, saving, onOpen }: {
+function PageBody({ ws, page, onToggle, onRetitle, onMove, onIndent, onAdd, saving, onOpen }: {
   ws: Workspace
   page: LoadedPage
   onToggle: (p: LoadedPage, i: number, to: TaskStatus) => void
   onRetitle: (p: LoadedPage, i: number, text: string) => void
+  onMove: (p: LoadedPage, from: number, to: number) => void
+  onIndent: (p: LoadedPage, i: number, delta: number) => void
   onAdd: (text: string) => Promise<void>
   saving: string | null
   onOpen: (id: string) => void
 }) {
   const tasks = tasksOf(page)
   const done = tasks.filter((t) => t.task.status === 'done').length
+  const [dragging, setDragging] = useState<number | null>(null)
+  const [over, setOver] = useState<number | null>(null)
+
+  /**
+   * Drag state lives here rather than on each row, because a drop needs to know both ends of it.
+   * The indicator is drawn on the row being hovered rather than moving the list under the cursor:
+   * a list that reflows mid-drag makes the drop target a moving question.
+   */
+  const rowProps = (i: number) => ({
+    onDragEnd: () => { setDragging(null); setOver(null) },
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setOver(i) },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      if (dragging !== null && dragging !== i) onMove(page, dragging, i)
+      setDragging(null); setOver(null)
+    },
+    className: [
+      'row', 'block-row',
+      dragging === i ? 'is-dragging' : '',
+      over === i && dragging !== null && dragging !== i ? (over > dragging ? 'drop-below' : 'drop-above') : '',
+    ].filter(Boolean).join(' '),
+  })
+
+  /**
+   * Only the grip starts a drag, not the row.
+   *
+   * `draggable` on the row would be fewer lines and would take the row's text with it: a browser
+   * treats a draggable element's contents as the drag payload, so selecting a title becomes
+   * impossible and clicking into the edit field starts a drag instead. The row still receives the
+   * drop; it just does not begin one.
+   */
+  const gripProps = (i: number) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      setDragging(i)
+      e.dataTransfer.effectAllowed = 'move'
+      // Firefox refuses to begin a drag unless something is written to the transfer.
+      e.dataTransfer.setData('text/plain', String(i))
+    },
+  })
+
+  /**
+   * The same moves without a mouse. Alt+arrows reorder, Tab and Shift+Tab change depth — and the
+   * handle is focusable so a keyboard user can find them at all. Drag-and-drop that is the only way
+   * to reorder is drag-and-drop that half the people cannot use.
+   */
+  const keys = (i: number) => (e: React.KeyboardEvent) => {
+    if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); onMove(page, i, i - 1) }
+    else if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); onMove(page, i, i + 1) }
+    else if (e.key === 'Tab') { e.preventDefault(); onIndent(page, i, e.shiftKey ? -1 : +1) }
+  }
 
   return (
     <>
@@ -146,7 +211,20 @@ function PageBody({ ws, page, onToggle, onRetitle, onAdd, saving, onOpen }: {
             const child = b.id ? ws.pages.get(b.id) : undefined
             const hasPage = !!child && child.doc.blocks.length > 0
             return (
-              <div className="row" key={i} style={{ paddingLeft: b.indent * 22 }}>
+              <div
+                key={i}
+                {...rowProps(i)}
+                style={{ paddingLeft: b.indent * 22 }}
+              >
+                <span
+                  className="grip"
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Move ${b.title || 'task'}`}
+                  onKeyDown={keys(i)}
+                  title="Drag, or Alt+↑/↓ to move and Tab to indent"
+                  {...gripProps(i)}
+                >⠿</span>
                 <button
                   className="tick"
                   disabled={saving === `${page.id}:${i}`}

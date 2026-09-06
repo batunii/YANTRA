@@ -257,3 +257,46 @@ export function withTaskTitle(doc: PageDoc, index: number, typed: string, now: D
   }
   return { ...doc, blocks, modifiedAt: now.toISOString(), device }
 }
+
+/**
+ * The one rule indentation obeys: the first line of a page sits flush left, and no line is more
+ * than one step deeper than the line above it. Anything else cannot be read as structure.
+ *
+ * Ported from `WorkspaceWriter.normalizeIndents`. Indent is stored rather than derived, so it does
+ * not stay true on its own — dragging a block to the top, or deleting the line above one, leaves an
+ * indent with nothing to be indented under. Every operation that changes the run ends here.
+ */
+export function normalizeIndents(blocks: Block[]): Block[] {
+  let ceiling = 0
+  return blocks.map((b) => {
+    const fixed = Math.min(Math.max(b.indent, 0), ceiling)
+    ceiling = fixed + 1
+    return fixed === b.indent ? b : { ...b, indent: fixed, raw: undefined }
+  })
+}
+
+/**
+ * Move one block to a new position.
+ *
+ * **One block, not a subtree.** Indentation on this page is layout, not parentage — the Android
+ * note is explicit that indenting "shifts the line on this page and never moves the block into the
+ * one above it", and a task's children live on its own page rather than under it here. So a move
+ * carries exactly the line it was given, and the clamp afterwards puts any indent that has been
+ * left dangling back to a legal depth.
+ */
+export function withBlockMoved(doc: PageDoc, from: number, to: number, now: Date, device: string): PageDoc {
+  if (from === to || from < 0 || from >= doc.blocks.length) return doc
+  const blocks = [...doc.blocks]
+  const [moved] = blocks.splice(from, 1)
+  blocks.splice(Math.min(Math.max(to, 0), blocks.length), 0, moved!)
+  return { ...doc, blocks: normalizeIndents(blocks), modifiedAt: now.toISOString(), device }
+}
+
+/** Indent or outdent one line, then re-clamp the run around it. */
+export function withIndent(doc: PageDoc, index: number, delta: number, now: Date, device: string): PageDoc {
+  const b = doc.blocks[index]
+  if (!b) return doc
+  const blocks = [...doc.blocks]
+  blocks[index] = { ...b, indent: Math.max(0, b.indent + delta), raw: undefined }
+  return { ...doc, blocks: normalizeIndents(blocks), modifiedAt: now.toISOString(), device }
+}

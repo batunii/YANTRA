@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decode } from '../format/pageCodec'
-import { loadWorkspace, pageText, tasksOf, topLevel, withNewTask, withTaskStatus, withTaskTitle } from './workspace'
+import { loadWorkspace, normalizeIndents, pageText, tasksOf, topLevel, withBlockMoved, withIndent, withNewTask, withTaskStatus, withTaskTitle } from './workspace'
 import type { PageSource } from './workspace'
 
 const page = (front: string, body = '') => `---\n${front}\n---\n${body}`
@@ -173,5 +173,80 @@ describe('retitling a task', () => {
     const next = withTaskTitle(doc, 0, 'first #later', now, 'web-1')
     const b = next.blocks[0]!
     expect(b.kind === 'task' && b.labels).toEqual(['later'])
+  })
+})
+
+describe('reordering', () => {
+  const now = new Date('2026-09-06T10:00:00.000Z')
+  const doc = () => decode(page(
+    'id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+    '- [ ] one ^a\n- [ ] two ^b\n- [ ] three ^c\n',
+  ))
+
+  it('moves a line up', () => {
+    const next = withBlockMoved(doc(), 2, 0, now, 'd')
+    expect(next.blocks.map((b) => (b.kind === 'task' ? b.title : ''))).toEqual(['three', 'one', 'two'])
+  })
+
+  it('moves a line down', () => {
+    const next = withBlockMoved(doc(), 0, 2, now, 'd')
+    expect(next.blocks.map((b) => (b.kind === 'task' ? b.title : ''))).toEqual(['two', 'three', 'one'])
+  })
+
+  it('leaves the untouched lines byte-identical', () => {
+    const out = pageText(withBlockMoved(doc(), 0, 2, now, 'd'))
+    expect(out).toContain('- [ ] two ^b')
+    expect(out).toContain('- [ ] three ^c')
+  })
+
+  it('is a no-op when the position does not change', () => {
+    const before = doc()
+    expect(withBlockMoved(before, 1, 1, now, 'd')).toBe(before)
+  })
+
+  it('moves one line, not the indented run under it', () => {
+    // Indentation here is layout, not parentage: a task's children live on its own page.
+    const d = decode(page('id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+      '- [ ] parent ^a\n» - [ ] child ^b\n- [ ] other ^c\n'))
+    const next = withBlockMoved(d, 0, 2, now, 'd')
+    expect(next.blocks.map((b) => (b.kind === 'task' ? b.title : ''))).toEqual(['child', 'other', 'parent'])
+  })
+})
+
+describe('the indent clamp', () => {
+  const now = new Date('2026-09-06T10:00:00.000Z')
+
+  it('pulls the first line flush left', () => {
+    const d = decode(page('id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+      '» - [ ] orphaned indent ^a\n'))
+    expect(normalizeIndents(d.blocks)[0]!.indent).toBe(0)
+  })
+
+  it('never lets a line be more than one step deeper than the one above', () => {
+    const d = decode(page('id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+      '- [ ] a ^1\n» » » - [ ] too deep ^2\n'))
+    expect(normalizeIndents(d.blocks).map((b) => b.indent)).toEqual([0, 1])
+  })
+
+  it('runs after a move, so dragging to the top cannot strand an indent', () => {
+    const d = decode(page('id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+      '- [ ] a ^1\n» - [ ] b ^2\n'))
+    const next = withBlockMoved(d, 1, 0, now, 'dev')
+    expect(next.blocks.map((b) => b.indent)).toEqual([0, 0])
+    expect(pageText(next)).toContain('- [ ] b ^2')
+  })
+
+  it('indents and outdents within the legal depth', () => {
+    const d = decode(page('id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+      '- [ ] a ^1\n- [ ] b ^2\n'))
+    expect(withIndent(d, 1, +1, now, 'dev').blocks[1]!.indent).toBe(1)
+    // The first line has no line to be under, so it stays flush left however hard it is pushed.
+    expect(withIndent(d, 0, +1, now, 'dev').blocks[0]!.indent).toBe(0)
+  })
+
+  it('writes the indent marker back at the depth it ended up', () => {
+    const d = decode(page('id: x\ntype: list\nmodified_at: 2026-09-01T00:00:00Z',
+      '- [ ] a ^1\n- [ ] b ^2\n'))
+    expect(pageText(withIndent(d, 1, +1, now, 'dev'))).toContain('» - [ ] b ^2')
   })
 })

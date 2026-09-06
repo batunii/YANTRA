@@ -56,13 +56,20 @@ says why: a Today quietly missing half your tasks is worse than no Today. Unsupp
 user-defined property, a cross-workspace rule — are collected and reported above the list, which is
 shown short rather than shown wrong.
 
-Not here yet: reordering, ink, images, the focus ledger, and the sign-in button.
+Reordering is a drag on the grip, or Alt+↑/↓ and Tab from the keyboard. It moves **one line**, not a
+subtree: indentation on a page is layout, not parentage — a task's children live on its own page —
+and every structural change re-clamps the run so the first line sits flush left and no line is more
+than one step deeper than the one above it. That is `WorkspaceWriter.normalizeIndents`, and skipping
+it is how dragging a block to the top leaves an indent with nothing to be indented under.
+
+Not here yet: ink, images, the focus ledger, and the sign-in button.
 
 ## Running it
 
     npm install
-    npm test              # the format and workspace suites
+    npm test              # the format, filter and workspace suites
     npm run dev           # then open /?demo to look around without a token
+    npm run test:ui       # drag and keyboard, in a real browser, against /?demo
 
 `?demo` opens a synthetic workspace — no token, no network — which is also how the UI is tested. A
 list is deep-linkable as `#<page-id>`.
