@@ -5,11 +5,14 @@
   A home-screen widget is not a card of ours: it is a tile in the launcher's grid, and since
   Android 12 the platform publishes the radius its own tiles use so that everything on the screen
   agrees. Matching it is the difference between a widget that sits in the grid and one that is
-  pasted on top of it. The v31 copy of this file defers to the system values; these are the
-  fallbacks for older launchers, which have no opinion to defer to.
+  pasted on top of it.
+
+  This used to be two files — hardcoded fallbacks here and a values-v31 copy deferring to the
+  system. With the floor at Android 12 there is nothing left to fall back for, and the second file
+  was a fork of this one that only ever won.
 -->
 <resources>
-    <dimen name="widget_radius">20dp</dimen>
+    <dimen name="widget_radius">@android:dimen/system_app_widget_background_radius</dimen>
     <!-- Anything drawn *inside* the widget: one step tighter, so the nesting reads. -->
-    <dimen name="widget_inner_radius">14dp</dimen>
+    <dimen name="widget_inner_radius">@android:dimen/system_app_widget_inner_radius</dimen>
 </resources>

@@ -38,6 +38,7 @@
     <application
         android:name=".App"
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
@@ -204,11 +205,14 @@
         </receiver>
 
         <!--
-            Named Pomodoro on purpose: a launcher binds each placed widget to this exact component
-            name, so renaming it breaks every widget already on a home screen. See FocusWidget.kt.
+            A launcher binds each placed widget to this exact component name, so renaming this
+            breaks every widget already on a home screen. It was called Pomodoro for exactly that
+            reason, long after the feature was renamed to focus; the application id change in this
+            same commit breaks the bindings anyway, so the name is finally the right one. Renaming
+            it again later will not be free. See FocusWidget.kt.
         -->
         <receiver
-            android:name=".widget.PomodoroWidgetReceiver"
+            android:name=".widget.FocusWidgetReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

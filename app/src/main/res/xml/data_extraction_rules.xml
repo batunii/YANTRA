@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What travels when Android backs this app up or moves it to a new phone.
+
+  Two things must not, and for the same reason: the Keystore key that encrypts a workspace's access
+  token is generated inside the phone's secure hardware and cannot leave it. The ciphertext in
+  yantra_credentials can — and did. A restored install came up holding tokens it had no key for,
+  reporting a signed-in account whose every sync failed, with no way back but to sign in again
+  without being told to. Leaving the file behind means the new phone knows it is signed out, which
+  is true, and says so.
+
+  The workspace clones under files/workspaces are excluded because they are copies. Every one of
+  them has a remote, they run to tens of megabytes, and a restore that re-clones them arrives at
+  the same content by the route that already exists. The Room database is not excluded: it is the
+  app, and for someone who never signed in it is the only copy.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="yantra_credentials.xml" />
+        <exclude domain="file" path="workspaces" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="yantra_credentials.xml" />
+        <exclude domain="file" path="workspaces" />
+    </device-transfer>
+</data-extraction-rules>

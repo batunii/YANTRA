@@ -9,6 +9,6 @@
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:configure="ie.napkin.supertasks.widget.WidgetConfigActivity"
+    android:configure="ie.shoonya.yantra.widget.WidgetConfigActivity"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:description="@string/widget_description" />
