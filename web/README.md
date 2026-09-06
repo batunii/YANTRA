@@ -46,9 +46,17 @@ Capture and retitle both hand the typed text to the page codec's own parser rath
 re-implementing the tokens, so `Buy milk #shop !high` is split exactly as a line in a file would be
 — including the rule that keeps the hash in `Buy #2 pencils`.
 
-Not here yet: reordering, smart-list evaluation (they load but render empty — their contents come
-from `meta/smartlists` filters, which needs the filter compiler ported), ink, images, the focus
-ledger, and the sign-in button.
+Smart lists are evaluated rather than compiled. Android turns a rule into SQL over Room; there is no
+SQL here, so `src/filter/` walks the pages already in memory. Same semantics, different machine —
+which is exactly the kind of second implementation that drifts, so its tests use the rule JSON
+copied verbatim out of a live workspace rather than rules invented to be passed.
+
+**A clause this client cannot answer does not evaluate to false.** Android's own note on smart lists
+says why: a Today quietly missing half your tasks is worse than no Today. Unsupported clauses — a
+user-defined property, a cross-workspace rule — are collected and reported above the list, which is
+shown short rather than shown wrong.
+
+Not here yet: reordering, ink, images, the focus ledger, and the sign-in button.
 
 ## Running it
 

@@ -18,6 +18,7 @@ const files: Record<string, string> = {
     'id: inbox\ntype: list\ntitle: Inbox\nsystem_key: inbox\nmodified_at: 2026-09-06T09:00:00Z',
     [
       '- [ ] Read the format notes ^p-format due:2026-09-08 #reading',
+      '- [ ] Overdue since March ^p-old due:2026-03-01 !high',
       '- [~] Draft the release checklist ^p-release !high @batunii',
       '- [x] Register the GitHub App ^p-ghapp done:2026-09-05',
       '',
@@ -65,13 +66,17 @@ const files: Record<string, string> = {
     'id: p-release\ntype: task\nparent: inbox\nmodified_at: 2026-09-06T09:00:00Z',
     '- [ ] Closed testing, 12 people, 14 days ^p-testing\n',
   ),
+  // The real Today rule, copied out of a live workspace: open tasks due or deadlined by end of
+  // today. Its contents are computed, which is why the page file itself has no blocks.
+  '.yantra/meta/smartlists/today.json': "{\"nodeId\": \"today\", \"filterJson\": \"{\\\"kind\\\": \\\"all\\\", \\\"filters\\\": [{\\\"kind\\\": \\\"type\\\", \\\"value\\\": \\\"task\\\"}, {\\\"kind\\\": \\\"done\\\", \\\"value\\\": false}, {\\\"kind\\\": \\\"any\\\", \\\"filters\\\": [{\\\"kind\\\": \\\"prop\\\", \\\"defId\\\": \\\"builtin-due\\\", \\\"op\\\": \\\"lte\\\", \\\"dateRel\\\": \\\"today_end\\\"}, {\\\"kind\\\": \\\"prop\\\", \\\"defId\\\": \\\"builtin-deadline\\\", \\\"op\\\": \\\"lte\\\", \\\"dateRel\\\": \\\"today_end\\\"}]}]}\", \"sortJson\": \"[{\\\"by\\\": \\\"prop_date\\\", \\\"defId\\\": \\\"builtin-due\\\"}]\", \"homeParentId\": \"inbox\"}",
+
   'pages/p-beta.md': page(
     'id: p-beta\ntype: task\nparent: work\nmodified_at: 2026-09-06T09:00:00Z',
     'A task opened as a page holds anything — notes, headings, other tasks.\n',
   ),
 }
 
-for (const id of ['p-ghapp', 'p-privacy', 'p-key', 'p-pencils', 'p-port', 'p-real', 'p-testing']) {
+for (const id of ['p-ghapp', 'p-privacy', 'p-key', 'p-pencils', 'p-port', 'p-real', 'p-testing', 'p-old']) {
   files[`pages/${id}.md`] = page(`id: ${id}\ntype: task\nmodified_at: 2026-09-06T09:00:00Z`)
 }
 

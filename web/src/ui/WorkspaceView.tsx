@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Backend } from '../backend'
 import { GitHubError } from '../github/client'
-import { pageText, withTaskStatus, withNewTask, withTaskTitle, loadWorkspace, tasksOf, topLevel, deviceId } from '../workspace/workspace'
+import { pageText, withTaskStatus, withNewTask, withTaskTitle, loadWorkspace, resolveSmartList, tasksOf, topLevel, deviceId } from '../workspace/workspace'
 import type { LoadedPage, Workspace } from '../workspace/workspace'
 import type { PageDoc, TaskStatus } from '../format/pageDoc'
 import { Bhupura } from './Bhupura'
@@ -98,14 +98,16 @@ export function WorkspaceView({ backend }: { backend: Backend }) {
             onClick={() => open_(p.id)}
           >
             <span className="list-title">{p.doc.title ?? 'Untitled'}</span>
-            <span className="list-count">{tasksOf(p).filter((t) => t.task.status !== 'done').length || ''}</span>
+            <span className="list-count">{countOf(ws, p) || ''}</span>
           </button>
         ))}
       </nav>
 
       <main className="page">
         {error && <p className="error banner">{error}</p>}
-        {open ? (
+        {open && open.doc.type === 'smart_list' ? (
+          <SmartListBody ws={ws} page={open} onToggle={toggle} saving={saving} onOpen={open_} />
+        ) : open ? (
           <PageBody
             ws={ws} page={open} saving={saving} onOpen={open_}
             onToggle={toggle} onRetitle={retitle}
@@ -233,6 +235,87 @@ function EditableTitle({ text, done, onCommit }: {
       }}
     />
   )
+}
+
+/**
+ * A smart list, which has no contents of its own — it has a rule, and these are what match it now.
+ *
+ * Ticking one writes to the page the task actually lives on, not to this one. There is nothing here
+ * to write to: the whole point of a computed list is that its membership is derived, so a task
+ * leaving it is a side effect of the edit rather than something this screen does.
+ */
+function SmartListBody({ ws, page, onToggle, saving, onOpen }: {
+  ws: Workspace
+  page: LoadedPage
+  onToggle: (p: LoadedPage, i: number, to: TaskStatus) => void
+  saving: string | null
+  onOpen: (id: string) => void
+}) {
+  const { candidates, unsupported, ruleFound } = resolveSmartList(ws, page.id, new Date())
+
+  return (
+    <>
+      <header className="page-head">
+        <p className="mono">Smart view</p>
+        <h1>{page.doc.title ?? 'Untitled'}</h1>
+        <p className="mono">{candidates.length} matching</p>
+      </header>
+
+      {!ruleFound && (
+        <p className="error banner">
+          This list's rule is missing from the workspace, so there is nothing to evaluate. It is not
+          empty — it is unreadable, which is a different thing.
+        </p>
+      )}
+      {unsupported.length > 0 && (
+        <p className="warn banner">
+          Part of this rule cannot be evaluated here yet ({unsupported.join(', ')}), so this list may
+          be missing tasks the phone would show. Shown short rather than shown wrong.
+        </p>
+      )}
+
+      <div className="blocks">
+        {candidates.map(({ task, pageId }, i) => {
+          const home = ws.pages.get(pageId)
+          const index = home?.doc.blocks.indexOf(task) ?? -1
+          return (
+            <div className="row" key={task.id || i}>
+              <button
+                className="tick"
+                disabled={!home || index < 0 || saving === `${pageId}:${index}`}
+                aria-label={`Complete ${task.title}`}
+                onClick={() => home && index >= 0 && onToggle(home, index, task.status === 'done' ? 'open' : 'done')}
+              >
+                <Bhupura state={task.status} />
+              </button>
+              <span className={task.status === 'done' ? 'title struck' : 'title'}>
+                <Inline text={task.title || 'Untitled'} />
+              </span>
+              <span className="tokens">
+                {home?.doc.title && (
+                  <em className="tok where" onClick={() => onOpen(pageId)}>{home.doc.title}</em>
+                )}
+                {task.priority && <em className="tok pri">!{task.priority}</em>}
+                {task.due && <em className="tok due">{task.due.value.kind === 'allDay' ? task.due.value.date : task.due.value.instant.slice(0, 10)}</em>}
+                {task.labels.map((l) => <em className="tok" key={l}>#{l}</em>)}
+              </span>
+            </div>
+          )
+        })}
+        {ruleFound && candidates.length === 0 && (
+          <p className="prose">Nothing matches this rule right now.</p>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** Open tasks in a list; matches in a smart list. */
+function countOf(ws: Workspace, p: LoadedPage): number {
+  if (p.doc.type === 'smart_list') {
+    return resolveSmartList(ws, p.id, new Date()).candidates.filter((c) => c.task.status !== 'done').length
+  }
+  return tasksOf(p).filter((t) => t.task.status !== 'done').length
 }
 
 function patch(ws: Workspace, page: LoadedPage): Workspace {

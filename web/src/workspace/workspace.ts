@@ -1,5 +1,9 @@
 import { decode, encode, parseBlock } from '../format/pageCodec'
 import type { Block, PageDoc, TaskStatus } from '../format/pageDoc'
+import { parseSmartList } from '../filter/filter'
+import type { SmartListDef } from '../filter/filter'
+import { clockFor, evaluate, sortMatches } from '../filter/evaluate'
+import type { Candidate } from '../filter/evaluate'
 
 /**
  * A workspace as this client holds it: every page file, indexed by the id in its frontmatter.
@@ -22,6 +26,8 @@ export interface Workspace {
   name: string
   pages: Map<string, LoadedPage>
   byPath: Map<string, LoadedPage>
+  /** Smart-list rules, by the id of the page that presents them. */
+  smartLists: Map<string, SmartListDef>
 }
 
 /** Where page bytes come from. Abstract so the loader can be tested without a network. */
@@ -31,6 +37,7 @@ export interface PageSource {
 }
 
 const PAGE_RE = /^pages\/[^/]+\.md$/
+const SMART_RE = /^\.yantra\/meta\/smartlists\/[^/]+\.json$/
 const MANIFEST = '.yantra/manifest.json'
 
 export async function loadWorkspace(source: PageSource): Promise<Workspace> {
@@ -62,7 +69,67 @@ export async function loadWorkspace(source: PageSource): Promise<Workspace> {
     byPath.set(e.path, loaded)
   })
 
-  return { name, pages, byPath }
+  // A rule that will not parse is dropped with its list left empty rather than taking the whole
+  // workspace down — but it is the caller's job to notice, which is what `unsupported` is for on
+  // the resolve side.
+  const smartLists = new Map<string, SmartListDef>()
+  const smartFiles = entries.filter((e) => SMART_RE.test(e.path))
+  const smartTexts = await Promise.all(smartFiles.map((e) => source.read(e.path, e.sha)))
+  smartTexts.forEach((text) => {
+    try {
+      const def = parseSmartList(text)
+      smartLists.set(def.nodeId, def)
+    } catch {
+      /* see above */
+    }
+  })
+
+  return { name, pages, byPath, smartLists }
+}
+
+/**
+ * Every task line in the workspace, in a stable order.
+ *
+ * Stable matters: `created` has no field in the file format, so a smart list sorted by it falls
+ * back to this order — and an order that shuffled between loads would reorder someone's Today for
+ * no reason. Pages are walked by path, blocks in the order they appear.
+ */
+export function allTasks(ws: Workspace): Candidate[] {
+  const out: Candidate[] = []
+  let ordinal = 0
+  for (const path of [...ws.byPath.keys()].sort()) {
+    const page = ws.byPath.get(path)!
+    for (const b of page.doc.blocks) {
+      if (b.kind === 'task') out.push({ task: b, pageId: page.id, ordinal: ordinal++ })
+    }
+  }
+  return out
+}
+
+export interface Resolved {
+  candidates: Candidate[]
+  /** Clause kinds this client could not evaluate. Non-empty means the list is not the whole answer. */
+  unsupported: string[]
+  /** False when the page is a smart list whose rule is missing or would not parse. */
+  ruleFound: boolean
+}
+
+/** What a smart list currently contains. Computed, never stored — that is the whole idea. */
+export function resolveSmartList(ws: Workspace, nodeId: string, now: Date): Resolved {
+  const def = ws.smartLists.get(nodeId)
+  if (!def) return { candidates: [], unsupported: [], ruleFound: false }
+  const clock = clockFor(now)
+  const unsupported = new Set<string>()
+  const hits = allTasks(ws).filter((c) => {
+    const r = evaluate(def.filter, c, clock)
+    r.unsupported.forEach((u) => unsupported.add(u))
+    return r.matched
+  })
+  return {
+    candidates: sortMatches(hits, def.sort, clock),
+    unsupported: [...unsupported],
+    ruleFound: true,
+  }
 }
 
 /** The pages a workspace opens at: lists and smart lists that are nobody's child. */
