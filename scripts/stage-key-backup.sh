@@ -25,9 +25,14 @@ done
 
 # The fingerprint travels with the key so a future you can tell, without a Play Console open,
 # whether a recovered .jks is the one the published app was signed with.
-FINGERPRINT=$(keytool -list -v -keystore "$KEY" -alias yantra \
-                  -storepass "$(sed -n 's/^storePassword=//p' "$PROPS")" 2>/dev/null \
-              | sed -n 's/^\s*SHA256: //p')
+DETAILS=$(keytool -list -v -keystore "$KEY" -alias yantra \
+              -storepass "$(sed -n 's/^storePassword=//p' "$PROPS")" 2>/dev/null)
+FINGERPRINT=$(sed -n 's/^\s*SHA256: //p' <<<"$DETAILS")
+SUBJECT=$(sed -n 's/^Owner: //p' <<<"$DETAILS")
+# Read rather than asserted: the first version of this script hardcoded an expiry, and the key was
+# regenerated three hours later with a different one. A backup that describes the key it is not
+# holding is worse than one that describes nothing.
+EXPIRES=$(sed -n 's/.*until: //p' <<<"$DETAILS" | head -1)
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
@@ -42,9 +47,10 @@ keystore.properties    goes back in the repository root
 
 Both are gitignored on purpose. Neither belongs in the repository.
 
+  subject      $SUBJECT
   alias        yantra
   algorithm    RSA 4096, SHA384withRSA
-  valid until  2053
+  valid until  $EXPIRES
   SHA-256      $FINGERPRINT
 
 If this archive is all that survives, that is enough: restore both files to the paths above and
