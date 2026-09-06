@@ -120,16 +120,46 @@ object SessionNotification {
     /**
      * Whether the system would actually promote an ongoing notification for this app.
      *
-     * Off until the person turns it on, in the notification settings for the app. Worth asking
-     * every time rather than caching: it is a switch they can flip while a session is running, and
-     * the next transition should honour it.
+     * Worth asking every time rather than caching: these are switches the person can flip while a
+     * session is running, and the next transition should honour whatever they now say.
      */
     fun canPromote(context: Context): Boolean =
         Build.VERSION.SDK_INT >= 36 &&
             runCatching {
                 context.getSystemService(android.app.NotificationManager::class.java)
                     ?.canPostPromotedNotifications() == true
-            }.getOrDefault(false)
+            }.getOrDefault(false) &&
+            oemHonoursPromotion(context)
+
+    /**
+     * One UI's own gate, which the platform's answer does not include.
+     *
+     * `canPostPromotedNotifications` reports `true` on Samsung whether or not anything will be
+     * drawn, so on its own it is not a question worth asking there. Measured on a Galaxy S24 running
+     * One UI 8: the permission granted, the notification carrying `FLAG_PROMOTED_ONGOING`, and no
+     * chip anywhere — until the user flipped *Developer options → Live notifications for all apps*,
+     * which writes `enable_notification_nowbar_test`, after which it appeared immediately.
+     *
+     * That matters because promotion is not free. The shape it demands forbids a custom view, so
+     * taking it costs the transport keys — a good trade for a chip and a plain loss without one, and
+     * without this check every Samsung user on a current build pays it for nothing.
+     *
+     * `key_now_bar_<package>` is checked too but is not a route in: it is Samsung's own preloaded
+     * list of legacy integrations, keyed for apps that are not installed and missing for third-party
+     * apps that are. It costs one lookup to honour it should Samsung ever add an entry.
+     *
+     * A no-op everywhere else, and a no-op on Samsung the day they default the flag on. Reading
+     * fails closed: on One UI, an unreadable setting keeps the keys rather than gambling them.
+     */
+    private fun oemHonoursPromotion(context: Context): Boolean {
+        if (!Build.MANUFACTURER.equals("samsung", ignoreCase = true)) return true
+        val resolver = context.contentResolver
+        val appKey = "key_now_bar_" + context.packageName.replace('.', '_')
+        return runCatching {
+            android.provider.Settings.Global.getInt(resolver, "enable_notification_nowbar_test", 0) == 1 ||
+                android.provider.Settings.Secure.getInt(resolver, appKey, 0) == 1
+        }.getOrDefault(false)
+    }
 
     fun canNotify(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||
