@@ -1,11 +1,15 @@
 package ie.napkin.supertasks
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.content.res.Configuration
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -22,10 +26,28 @@ import ie.napkin.supertasks.ui.theme.yantraColors
 import ie.napkin.supertasks.widget.WidgetIntents
 import ie.napkin.supertasks.widget.WidgetRefresh
 import ie.napkin.supertasks.domain.FocusSessionService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private var openTarget by mutableStateOf<OpenTarget?>(null)
+
+    /**
+     * The notification permission, asked for on behalf of a session that is already running.
+     *
+     * The in-app starts ask for themselves, at the moment they start. A widget cannot: its key is an
+     * `ActionCallback` with no activity behind it, so a session begun from the home screen has no
+     * way to put a dialog on the screen — and a permission reset by a reinstall then leaves the
+     * session running with its notification silently suppressed and nothing anywhere offering to
+     * fix it. Registered as a field so it exists before onStart, which is where the ask happens.
+     */
+    private val askNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            // The session posted its notification into a permission it did not have; nothing else
+            // will post it again on its own.
+            if (granted) FocusSessionService.refresh(applicationContext)
+        }
 
     /**
      * GitHub's Setup URL, coming back the other way.
@@ -85,7 +107,21 @@ class MainActivity : ComponentActivity() {
         container.appScope.launch {
             container.timer.restoreIfNeeded()
             val live = container.timer.state.value?.takeIf { !it.isFinished }
-            if (live != null) FocusSessionService.sync(applicationContext, live = true, state = live)
+            if (live != null) {
+                FocusSessionService.sync(applicationContext, live = true, state = live)
+                // Only with a session actually running, so this is never a question about nothing:
+                // there is a notification owed right now and it is not being shown. Android stops
+                // showing the dialog of its own accord once it has been refused twice, so this
+                // cannot become a thing that asks every time the app is opened.
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    withContext(Dispatchers.Main) {
+                        runCatching { askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    }
+                }
+            }
         }
     }
 
