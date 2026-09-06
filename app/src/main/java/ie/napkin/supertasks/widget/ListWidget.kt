@@ -445,14 +445,14 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
             .fillMaxSize()
             .appWidgetBackground()
             .background(edge)
-            .cornerRadius(20.dp)
+            .cornerRadius(R.dimen.widget_radius)
             .padding(1.dp),
     ) {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(scrim)
-                .cornerRadius(19.dp)
+                .cornerRadius(R.dimen.widget_radius)
                 .padding(horizontal = m.pad, vertical = m.pad - 3.dp),
         ) {
             Row(
@@ -481,8 +481,14 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                     Box(
                         modifier = GlanceModifier
                             .size(m.addButton)
-                            .background(GlanceTheme.colors.primary.getColor(context).copy(alpha = 0.15f))
-                            .cornerRadius(10.dp)
+                            // The bhupura, as the shape a control sits on — the same key the focus
+                            // widget's transport uses, so a button means the same thing on both.
+                            .background(
+                                imageProvider = ImageProvider(R.drawable.ic_widget_bhupura_solid),
+                                colorFilter = ColorFilter.tint(
+                                    ColorProvider(GlanceTheme.colors.primary.getColor(context).copy(alpha = 0.16f))
+                                ),
+                            )
                             .clickable(
                                 actionStartActivity(quickAddIntent(context, data.nodeId, data.isSmart))
                             ),
@@ -504,7 +510,7 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                 Box(
                     modifier = GlanceModifier
                         .size(m.addButton)
-                        .cornerRadius(10.dp)
+                        .cornerRadius(R.dimen.widget_inner_radius)
                         .clickable(
                             actionStartActivity(settingsIntent(context, widgetId, isToday))
                         ),
@@ -529,15 +535,19 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
             } else {
                 Spacer(GlanceModifier.size(4.dp))
                 LazyColumn {
-                    data.items.forEach { item ->
-                        when (item) {
+                    // Indexed, because the index is needed twice and looking it up by value was
+                    // both quadratic and wrong in principle: `indexOf` finds the first *equal*
+                    // header, so two sections that ever came to share a label would both draw at
+                    // the first one's position and one of them would lose its rule.
+                    data.items.forEachIndexed { index, entry ->
+                        when (entry) {
                             // Headers live in a negative id namespace so they can never collide
                             // with row-id hashes.
-                            is WidgetItem.Header -> item(itemId = -1L - data.items.indexOf(item)) {
+                            is WidgetItem.Header -> item(itemId = -1L - index) {
                                 // A rule above each later section, so the groups read as
                                 // separated bands rather than one list with bold labels in it.
                                 Column {
-                                    if (data.items.indexOf(item) > 0) {
+                                    if (index > 0) {
                                         Box(
                                             GlanceModifier
                                                 .fillMaxWidth()
@@ -550,9 +560,9 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                                         ) {}
                                     }
                                     Text(
-                                        item.label,
+                                        entry.label,
                                         style = TextStyle(
-                                            color = if (item.urgent) ColorProvider(status.overdue)
+                                            color = if (entry.urgent) ColorProvider(status.overdue)
                                                     else GlanceTheme.colors.onSurfaceVariant,
                                             fontSize = m.section,
                                             fontWeight = FontWeight.Bold,
@@ -561,8 +571,8 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                                     )
                                 }
                             }
-                            is WidgetItem.Task -> item(itemId = item.row.id.hashCode().toLong()) {
-                                TaskRow(item.row, status, m)
+                            is WidgetItem.Task -> item(itemId = entry.row.id.hashCode().toLong()) {
+                                TaskRow(entry.row, status, m)
                             }
                         }
                     }

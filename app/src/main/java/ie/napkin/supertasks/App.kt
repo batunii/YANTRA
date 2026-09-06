@@ -629,6 +629,7 @@ class AppContainer(val app: Application) {
                         SessionNotification.showCompleted(app, s.nodeTitle, s.nodeId, s.elapsedSecs)
                     }
                     FocusWidget().updateAll(app)
+                    ie.napkin.supertasks.widget.BhupuraWidget().updateAll(app)
                 }
         }
     }

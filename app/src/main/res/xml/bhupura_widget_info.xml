@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The mark, unframed. Square by default because the bhupura is square; resizable, since it is drawn
+  to whatever side the smaller dimension gives it.
+
+  No configure activity: there is nothing to choose. It shows the running session or the bindu at
+  rest, and that is the whole of it.
+
+  updatePeriodMillis is a safety net only — the countdown inside is a launcher-rendered Chronometer
+  and the widget re-renders on timer transitions, exactly like the focus widget.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="80dp"
+    android:minResizeHeight="80dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:description="@string/widget_bhupura_description" />

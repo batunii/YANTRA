@@ -213,6 +213,22 @@
         </receiver>
 
         <!--
+            The mark, unframed: a widget that is the bhupura rather than a card containing one.
+            A new provider rather than a change to the focus widget, because a panel and a mark
+            want opposite things — see BhupuraWidget.
+        -->
+        <receiver
+            android:name=".widget.BhupuraWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bhupura_widget_info" />
+        </receiver>
+
+        <!--
             Yantra as somewhere to share to. Translucent and historyless like QuickAdd: it is an
             acknowledgement, not a screen, and the task exists before it draws.
         -->

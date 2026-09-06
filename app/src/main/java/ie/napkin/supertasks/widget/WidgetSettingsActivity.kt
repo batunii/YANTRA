@@ -114,6 +114,12 @@ class WidgetSettingsActivity : ComponentActivity() {
                 var opacity by remember { mutableFloatStateOf(ListWidgetDefaults.OPACITY.toFloat()) }
                 var showDone by remember { mutableStateOf(ListWidgetDefaults.SHOW_DONE) }
                 var loaded by remember { mutableStateOf(false) }
+                // Which list the widget is on. Read at open so the current one is *marked*, and
+                // moved the instant a new one is tapped — the write itself is invisible from here
+                // (the widget is behind the launcher, not behind this screen), so without this the
+                // only evidence a tap did anything was going back and looking at the home screen.
+                var boundId by remember { mutableStateOf<String?>(null) }
+                var boundNode by remember { mutableStateOf<NodeEntity?>(null) }
 
                 // Seed the controls from what the widget is actually showing.
                 LaunchedEffect(Unit) {
@@ -124,8 +130,17 @@ class WidgetSettingsActivity : ComponentActivity() {
                         )
                         opacity = (prefs[ListWidgetKeys.OPACITY] ?: ListWidgetDefaults.OPACITY).toFloat()
                         showDone = prefs[ListWidgetKeys.SHOW_DONE] ?: ListWidgetDefaults.SHOW_DONE
+                        boundId = prefs[ListWidgetKeys.NODE_ID]
                     }
+                    // The pre-Glance fallback, for a widget placed before the migration: its
+                    // binding only ever lived in prefs, and it should still show as chosen.
+                    if (boundId == null) boundId = WidgetPrefs.nodeId(applicationContext, widgetId)
                     loaded = true
+                }
+                // Resolved so a task-bound widget can show what it is on. Re-runs on every pick,
+                // which is what keeps the pinned row honest after the selection moves.
+                LaunchedEffect(boundId) {
+                    boundNode = boundId?.let { container.nodes.byId(it) }
                 }
 
                 SettingsScreen(
@@ -143,8 +158,19 @@ class WidgetSettingsActivity : ComponentActivity() {
                         container.nodes.topLevel()
                             .stateIn(container.appScope, SharingStarted.Eagerly, emptyList())
                     },
+                    allListsFlow = remember {
+                        container.nodes.allLists()
+                            .stateIn(container.appScope, SharingStarted.Eagerly, emptyList())
+                    },
+                    search = { container.nodes.searchBindable(it) },
+                    boundId = boundId,
+                    boundNode = boundNode,
                     onPickList = { node ->
                         val smart = node.type == NodeType.SMART_LIST
+                        // Optimistic, and safe to be: the write below cannot meaningfully fail, and
+                        // a selection that waits for a round trip through Glance state reads as an
+                        // unresponsive button.
+                        boundId = node.id
                         WidgetPrefs.setBinding(this, widgetId, node.id, smart)
                         apply { prefs ->
                             prefs[ListWidgetKeys.NODE_ID] = node.id
@@ -168,13 +194,22 @@ private fun SettingsScreen(
     onOpacitySettled: (Float) -> Unit,
     onShowDone: (Boolean) -> Unit,
     listsFlow: kotlinx.coroutines.flow.StateFlow<List<NodeEntity>>,
+    allListsFlow: kotlinx.coroutines.flow.StateFlow<List<NodeEntity>>,
+    search: suspend (String) -> List<NodeEntity>,
+    boundId: String?,
+    boundNode: NodeEntity?,
     onPickList: (NodeEntity) -> Unit,
     onClose: () -> Unit,
 ) {
     val y = Yantra.colors
     val nodes by listsFlow.collectAsStateWithLifecycle()
-    val pickable = remember(nodes) {
-        nodes.filter { it.type == NodeType.LIST || it.type == NodeType.SMART_LIST }
+    val allLists by allListsFlow.collectAsStateWithLifecycle()
+    var query by remember { mutableStateOf("") }
+    val results = rememberBindableResults(query, search)
+    val smart = remember(nodes) { nodes.filter { it.type == NodeType.SMART_LIST } }
+    val lists = remember(nodes) { nodes.filter { it.type == NodeType.LIST } }
+    val listTitles = remember(allLists) {
+        allLists.associate { it.id to (it.title?.ifBlank { "Untitled" } ?: "Untitled") }
     }
 
     Column(
@@ -262,17 +297,30 @@ private fun SettingsScreen(
                 }
             }
 
-            if (!isToday && pickable.isNotEmpty()) {
+            // The Today widget is the one that resolves its own list, so there is nothing here to
+            // choose. Everything else can now be pointed at any list, smart list or task — the
+            // same picker the placement screen uses, so changing your mind afterwards offers
+            // exactly what placing it did.
+            if (!isToday) {
                 item(key = "list-label") {
                     SectionLabel("Shows", modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
                 }
-                items(pickable, key = { it.id }) { node ->
-                    WidgetListRow(
-                        node = node,
-                        smartList = node.type == NodeType.SMART_LIST,
-                        onPick = onPickList,
-                    )
+                item(key = "search") {
+                    WidgetSearchField(query, { query = it }, Modifier.fillMaxWidth())
                 }
+                widgetTargetItems(
+                    results = results,
+                    smartLists = smart,
+                    lists = lists,
+                    listTitles = listTitles,
+                    selectedId = boundId,
+                    // Only when it would otherwise be invisible: a bound list already has a row in
+                    // the sections below, and pinning it too would list it twice.
+                    pinned = boundNode?.takeIf { n ->
+                        lists.none { it.id == n.id } && smart.none { it.id == n.id }
+                    },
+                    onPick = onPickList,
+                )
             }
         }
     }
