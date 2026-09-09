@@ -340,6 +340,29 @@ small enough is a tap, and falls out of the same rule.
 
 ---
 
+## Built
+
+All three phases are in, on `fix/ink-canvas-coords-zoom-selection`. 341 unit tests pass and the
+debug APK assembles. Where the work departed from the plan above:
+
+| Deviation | Why |
+|---|---|
+| **The `Viewport` was built in Phase 0, not Phase 1.** | Phase 0 needs a fixed page-width scale and Phase 1 needs a variable one. Writing the edge conversions for a scale of `width/1000` and then rewriting them for `width/1000 * zoom` would have been the same plumbing twice. Phase 1 became "let the zoom vary and add the pinch", which is what it should have been |
+| **v1 ink is dropped on read, not deleted in a migration pass.** | `readInk` filters unplaceable strokes and `writeInk` rewrites the sidecar whole on the next change, so the file loses them as a consequence of ordinary use. Nothing is destroyed eagerly, nothing renders wrong, and the bytes stay in git until that block is next drawn on |
+| **A third instance of the screen-width assumption turned up.** | `NodePageScreen` sized an ink preview by `inkContentHeight(strokes) * (previewWidth / displayMetrics.widthPixels)` — the same "a document is as wide as this screen" guess as `InkPreview`, in a second place. §A listed two; there were three |
+| **Codec tests are split JVM / instrumented.** | `androidx.ink` is native-backed, so anything holding a real `Stroke` throws `UnsatisfiedLinkError` off-device. Header and version work is JSON and arithmetic and stays on the JVM; round-trips moved to `InkCodecInstrumentedTest` |
+| **`StrokePath` was introduced.** | So the selection geometry — the part with the thresholds in it, the part most worth testing — runs without the ink library. `ShapeRecognizer` already had a `FloatArray` overload for the same reason; this follows it |
+| **A zoom readout replaced double-tap-to-fit.** | A double-tap would have to fight the pen for the same two events. Instead the zoom says what it is and offers to undo itself, and says nothing at all at 100% |
+| **The open-vs-closed crossing mode was dropped, as predicted.** | Relative containment already treats a thin loop as a strike-through, so the extra rule bought nothing |
+
+**One deliberate limit.** The read-only gate *enforces* — every write to a workspace from a newer
+build is refused at `writeBytesAtomically`, the one place they all pass through — but nothing
+**shows** it. An edit into an ahead workspace disappears with only logcat to say why. That is worse
+than a screen that declines to accept the edit and better than writing the wrong unit into someone's
+drawing, and it matches the stance `App.report` already takes: what to show someone about a
+half-readable workspace is a design question, and this does not pretend to have answered it.
+`Workspaces.aheadIds()` exists for whatever does.
+
 ## Decisions taken
 
 | Decision | Choice |

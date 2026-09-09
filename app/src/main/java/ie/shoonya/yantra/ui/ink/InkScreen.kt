@@ -192,8 +192,7 @@ class InkViewModel(
                 if (drawnHere) return@collect
                 held.value = withContext(Dispatchers.Default) {
                     rows.mapNotNull { row ->
-                        runCatching { Held(StrokeItem(row.id, StrokeCodec.decode(row.data)), row.data) }
-                            .getOrNull()
+                        StrokeCodec.decodeOrNull(row.data)?.let { Held(StrokeItem(row.id, it), row.data) }
                     }
                 }
             }
@@ -463,6 +462,14 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
     var page by remember { mutableStateOf(1) }
     var pageCount by remember { mutableStateOf(1) }
     var stylusMode by remember { mutableStateOf(false) }
+    /**
+     * The zoom, as a percentage, and the only way back from one.
+     *
+     * A pinch is easy to do by accident and there is no gesture that undoes it — a double-tap would
+     * have to fight the pen for the same two events. So the zoom says what it is and offers to
+     * undo itself, and says nothing at all while it is 100%.
+     */
+    var zoomPercent by remember { mutableIntStateOf(100) }
     var drawing by remember { mutableStateOf(false) }
     var canvasRef by remember { mutableStateOf<InkCanvas?>(null) }
 
@@ -562,6 +569,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         onViewportChanged = { p, c -> page = p; pageCount = c }
                         onStylusModeChanged = { stylusMode = it }
                         onDrawingChanged = { drawing = it }
+                        onZoomChanged = { zoomPercent = it }
                         onLassoSelection = { ids, cx, bottom ->
                             selection = ids
                             selectionAt = Offset(cx, bottom)
@@ -594,7 +602,10 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     // Recognition belongs to the freehand pen. While you are dragging a shape out
                     // on purpose there is nothing to recognise.
                     canvas.recognizeShapes = snap && mode == InkMode.DRAW
-                    canvas.eraserRadius = with(density) { eraserSize.dp.toPx() }
+                    // Pixels, not document units: the eraser is the size of the thing in your hand,
+                    // so it stays that size on screen while the page zooms beneath it. In du it
+                    // would swallow half a page once you zoomed out.
+                    canvas.eraserRadiusPx = with(density) { eraserSize.dp.toPx() }
                     val f = slot.family
                     val w = if (f == StrokeCodec.FAMILY_HIGHLIGHTER) slot.width * 3f else slot.width
                     canvas.brushProvider = { StrokeCodec.brush(f, slot.color, w) }
@@ -679,6 +690,35 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         canvasRef?.clearSelection()
                     },
                 )
+            }
+
+            if (zoomPercent != 100) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(y.cardBg)
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(13.dp))
+                        .clickable { canvasRef?.fitWidth() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "$zoomPercent%",
+                        fontFamily = YantraMono,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.W700,
+                        color = y.textDim,
+                    )
+                    Text(
+                        "fit",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.W700,
+                        color = y.accent,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
             }
 
             UndoPair(

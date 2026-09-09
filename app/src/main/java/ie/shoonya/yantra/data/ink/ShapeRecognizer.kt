@@ -42,6 +42,9 @@ object ShapeRecognizer {
      */
     private const val CORNER_EPSILON = 0.06f
 
+    /** Smallest diagonal, in document units, that counts as a deliberate shape rather than a mark. */
+    private const val MIN_SHAPE_DU = 40f
+
     /** Recognized shape defined by the drag box (x0,y0)-(x1,y1); line uses the two endpoints. */
     data class Result(
         val kind: ShapeKind,
@@ -87,7 +90,10 @@ object ShapeRecognizer {
         }
         val w = maxX - minX; val h = maxY - minY
         val diag = hypot(w, h)
-        if (diag < 40f || pathLen < 40f) return null   // too small to be an intentional shape
+        // Document units, not pixels. As a pixel threshold this was the one part of the recogniser
+        // that was not a ratio, so the same gesture was "too small to be intentional" on one screen
+        // and a shape on another. 40 du is about 8mm of diagonal on an A4 page, everywhere.
+        if (diag < MIN_SHAPE_DU || pathLen < MIN_SHAPE_DU) return null
 
         val chord = hypot(xs[n - 1] - xs[0], ys[n - 1] - ys[0])
         val closed = chord < 0.28f * diag
