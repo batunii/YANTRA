@@ -484,7 +484,19 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
         Modifier
             .fillMaxSize()
             .background(y.page)
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            // The bottom inset, which this screen drew without.
+            //
+            // The app is edge-to-edge, so without it the page ran under the system's gesture bar —
+            // and so did everything standing on the page. The kit, the undo pair and the selection
+            // bar all sit against the bottom edge, which put them in the strip the system claims:
+            // pressed low enough they were a swipe home rather than a button, and the controls
+            // looked shoved into the very bottom of the screen because they were.
+            //
+            // The whole column is inset rather than each control, so the paper itself also stops
+            // above the bar. Paper you cannot draw on because the system takes the touch first is
+            // not paper, and a page that ends where the drawing area ends is the honest shape.
+            .navigationBarsPadding(),
     ) {
         // header: back · editable name · mode hint
         Row(
