@@ -196,6 +196,7 @@ fun HomeScreen(nav: NavHostController) {
                 HomeTabBar(
                     onCog = { showCreate = true },
                     onStats = { nav.navigate(Routes.STATS) },
+                    onCalendar = { nav.navigate(Routes.CALENDAR) },
                 )
             }
         },
@@ -595,15 +596,20 @@ private fun CreatePanel(
 
 
 @Composable
-private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit) {
+private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit, onCalendar: () -> Unit) {
     val y = Yantra.colors
+    // Three zones rather than four evenly spaced items, so the cog stays in the middle of the bar.
+    // SpaceBetween across four put it at two-thirds, and the cog is the one thing on this bar that
+    // is meant to be found without looking — it is the biggest, the only accented, and now the only
+    // one whose position does not move when something is added beside it.
     Row(
         Modifier.fillMaxWidth().background(y.page).navigationBarsPadding()
-            .padding(start = 40.dp, end = 40.dp, top = 8.dp, bottom = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(start = 30.dp, end = 30.dp, top = 8.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { HomeGlyph(active = true) }
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { HomeGlyph(active = true) }
+        }
         // the cog — quick create
         Box(
             Modifier.size(54.dp)
@@ -612,7 +618,17 @@ private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit) {
                 .clickable(onClick = onCog),
             contentAlignment = Alignment.Center,
         ) { GearMark(Modifier.size(30.dp), tint = y.accent) }
-        Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) { StatsGlyph() }
+        // A calendar is a place you go, not a setting you change, so it belongs on the bar rather
+        // than buried a screen deep — beside stats, since both are ways of looking at what is
+        // already there rather than places to put something new.
+        Row(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) { CalendarGlyph() }
+            Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) { StatsGlyph() }
+        }
     }
 }
 
@@ -658,6 +674,35 @@ private fun StatsGlyph() {
             )
         }
         bar(2f, 8f, y.textDim); bar(8.2f, 12f, y.textDim); bar(14.4f, 16f, y.accent)
+    }
+}
+
+/** A page of a month: a ruled box with today marked. Drawn rather than an icon, like its neighbours. */
+@Composable
+private fun CalendarGlyph() {
+    val y = Yantra.colors
+    Canvas(Modifier.size(20.dp)) {
+        val unit = size.width / 20f
+        val stroke = 1.6f * unit
+        // the sheet
+        drawRoundRect(
+            color = y.textDim,
+            topLeft = Offset(2f * unit, 4f * unit),
+            size = Size(16f * unit, 14f * unit),
+            cornerRadius = CornerRadius(2.5f * unit, 2.5f * unit),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+        )
+        // the two rings it hangs from
+        drawLine(y.textDim, Offset(6.5f * unit, 1.6f * unit), Offset(6.5f * unit, 5f * unit), stroke, StrokeCap.Round)
+        drawLine(y.textDim, Offset(13.5f * unit, 1.6f * unit), Offset(13.5f * unit, 5f * unit), stroke, StrokeCap.Round)
+        // the rule under the header, and today
+        drawLine(y.textDim, Offset(2f * unit, 8.5f * unit), Offset(18f * unit, 8.5f * unit), stroke)
+        drawRoundRect(
+            color = y.accent,
+            topLeft = Offset(5f * unit, 11f * unit),
+            size = Size(4f * unit, 4f * unit),
+            cornerRadius = CornerRadius(1f * unit, 1f * unit),
+        )
     }
 }
 

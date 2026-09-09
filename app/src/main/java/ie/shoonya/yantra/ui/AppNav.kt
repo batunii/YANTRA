@@ -75,6 +75,7 @@ object Routes {
     const val GITHUB = "github"
     const val ADD_WORKSPACE = "workspace/add"
     const val ARCHIVE = "archive"
+    const val CALENDAR = "calendar"
 }
 
 @Composable
@@ -160,6 +161,9 @@ fun AppNav(
         }
         composable(Routes.STATS) {
             StatsScreen(navController)
+        }
+        composable(Routes.CALENDAR) {
+            ie.shoonya.yantra.ui.calendar.CalendarScreen(navController)
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(navController)

@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.db
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -35,6 +36,16 @@ data class NodePomoCount(
 data class ReminderRow(
     val nodeId: String,
     val atMillis: Long,
+)
+
+/** A task with a due date, for the calendar to draw beside the events. */
+data class DueRow(
+    val nodeId: String,
+    val title: String?,
+    val done: Boolean,
+    val dueMillis: Long,
+    /** The `v_bool` encoding on [ie.shoonya.yantra.data.db.BuiltIns]: true when the due has a time. */
+    val hasTime: Boolean,
 )
 
 @Dao
@@ -396,6 +407,26 @@ interface PropertyDao {
     )
     suspend fun activeRemindersOnce(defId: String): List<ReminderRow>
 
+    /**
+     * Tasks due inside `[fromUtc, toUtc)` — the other half of what a calendar day holds.
+     *
+     * Done tasks are kept, unlike [observeActiveReminders], which drops them: a reminder for
+     * something already finished is noise, but a calendar that hides what you completed on Tuesday
+     * is a calendar that cannot be looked back at.
+     */
+    @Query(
+        """
+        SELECT pv.node_id AS nodeId, n.title AS title, n.done AS done,
+               pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime
+          FROM property_value pv JOIN node n ON n.id = pv.node_id
+         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL
+           AND pv.v_date >= :fromUtc AND pv.v_date < :toUtc
+           AND n.deleted_at IS NULL
+         ORDER BY pv.v_date
+        """
+    )
+    fun observeDueInRange(defId: String, fromUtc: Long, toUtc: Long): Flow<List<DueRow>>
+
     @Query("SELECT id FROM property_def WHERE name = :name AND is_built_in = 1 AND deleted_at IS NULL LIMIT 1")
     suspend fun builtInDefIdByName(name: String): String?
 
@@ -640,6 +671,18 @@ interface LabelDao {
     suspend fun setColor(id: String, color: Long?, now: Long)
 }
 
+/**
+ * An event and the title it does not carry.
+ *
+ * [EventEntity] holds times, rule and series; the words live on the node row beside it. Joining in
+ * SQL rather than reading every node and matching in Kotlin — a calendar wants a month, not a
+ * workspace, and the join also drops events whose node has been deleted.
+ */
+data class EventWithTitle(
+    @Embedded val event: EventEntity,
+    val title: String?,
+)
+
 @Dao
 interface EventDao {
 
@@ -661,14 +704,16 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT * FROM event
-         WHERE rrule IS NOT NULL
-            OR (start_utc < :toUtc AND end_utc > :fromUtc)
-            OR (start_utc = end_utc AND start_utc >= :fromUtc AND start_utc < :toUtc)
+        SELECT e.*, n.title AS title
+          FROM event e JOIN node n ON n.id = e.node_id
+         WHERE n.deleted_at IS NULL
+           AND (rrule IS NOT NULL
+                OR (start_utc < :toUtc AND end_utc > :fromUtc)
+                OR (start_utc = end_utc AND start_utc >= :fromUtc AND start_utc < :toUtc))
          ORDER BY start_utc
         """
     )
-    fun inRange(fromUtc: Long, toUtc: Long): Flow<List<EventEntity>>
+    fun inRange(fromUtc: Long, toUtc: Long): Flow<List<EventWithTitle>>
 
     /** Every override and cancellation belonging to a series, for expansion to apply. */
     @Query("SELECT * FROM event WHERE series_id = :seriesId")

@@ -256,13 +256,24 @@ Anything you want to *own*, you make as a YANTRA event.
 
 ## 6. The calendar view
 
-The smallest part, and deliberately last in the plan even though it is the visible one.
-
-- Month, week and day. Month reuses `DueSheet`'s grid geometry rather than growing a second one.
-- Draws occurrences **and** `due:` tasks — the point of putting events in the same format is that
-  one surface shows both.
-- A day with anything on it gets a dot; the day list shows events by time, then undated tasks.
-- Tapping an empty slot creates an event there; tapping one opens it.
+- **A month grid and a day list.** Not the month/week/day trio an earlier draft promised: a week
+  view is a different layout rather than the same one re-parameterised, and it can be added on top
+  of the same view model when there is a reason to. Month plus day answers "what is on the
+  eleventh", which is the question.
+- **`DueSheet` could not be reused after all.** It delegates to Material3's `DatePicker`, and a
+  picker cannot show what is *on* a day. What is shared is the metric — 48dp a cell, seven across —
+  so the two read as the same calendar even though the code is separate.
+- Draws events **and** `due:` tasks in one list, sorted together. The point of putting events in the
+  same format is that one surface shows both, and interleaving two lists in the view is how they end
+  up sorted differently.
+- A day with anything on it gets up to three dots. The day list runs all-day first, then by clock,
+  then tasks with no time of their own — "today" is weaker than "today at three".
+- A repeating event is marked, because only its first occurrence is drawn until expansion lands. An
+  unmarked one would look like a one-off somebody mistyped.
+- The whole content column is width-capped and centred. A seven-column grid stretched across a
+  tablet gives cells the size of playing cards, and capping only the grid left the header and the
+  day list against the left margin, reading as two unrelated screens.
+- Tapping an item opens its page. Tapping an **empty** slot to create an event is Phase 3.
 - Device-calendar events, once §5 lands, draw in the same list marked as not-ours and not editable.
 
 ## 7. Order of work
@@ -273,7 +284,7 @@ Each phase is useful on its own, and each one's guards go in with it.
 |---|---|---|
 | **0** ✅ | `EventRef`, `EventTime`, the `@ ` grammar, codec round-trip tests | Freeze the format before anything reads it. `GIT_WORKSPACES_PLAN.md` §2 is emphatic about this and it was right |
 | **1** ✅ | Indexing events into Room, a bump to version 12 | The view and smart lists query the index, not the files |
-| **2** | The calendar view — month/week/day over events and `due:` tasks | First point the feature is visible |
+| **2** ✅ | The calendar view — month grid and a day list, over events and `due:` tasks | First point the feature is visible |
 | **3** | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
 | **4** | Recurrence: the RRULE subset, windowed expansion, override and cancellation lines | Needs 0–3 stable underneath it |
 | **5** | Device calendar: `READ_CALENDAR`, calendar picker, `Instances` query, overlay in the view | Independent of 0–4; could be built alongside them by someone else |
