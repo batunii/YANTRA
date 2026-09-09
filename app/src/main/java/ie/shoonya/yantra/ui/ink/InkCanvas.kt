@@ -102,7 +102,21 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
      */
     var onMoveSelection: (List<String>, Float, Float) -> Unit = { _, _, _ -> }
 
+    /**
+     * What a one-finger gesture does, and the moment a selection stops being the subject.
+     *
+     * Reaching for the eraser is not an instruction about the strokes you lassoed a moment ago, so
+     * the bar goes with the change. It guards on the old value because the screen assigns this on
+     * every recomposition — an unguarded setter would clear the selection continuously and the bar
+     * would never appear at all.
+     */
     var tool: EditorTool = EditorTool.DRAW
+        set(value) {
+            if (field == value) return
+            field = value
+            dropSelection()
+        }
+
     var shapeKind: ShapeKind = ShapeKind.LINE
     var recognizeShapes: Boolean = false
 
@@ -224,6 +238,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
         dryLayer.invalidate()
         onViewportChanged(viewport.currentPage(), viewport.pages)
         onZoomChanged(viewport.percent())
+        reportCurrentSelection()
     }
 
     // ---- input ----
@@ -243,6 +258,10 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                     return true
                 }
                 panning = false
+                // Drawing over a catch is moving on. Panning and pinching are not — those are ways
+                // of looking at what you caught, often on the way to dragging it — so they leave it
+                // alone and the bar follows the ink instead (see [afterViewportMove]).
+                if (tool != EditorTool.LASSO) dropSelection()
                 onDrawingChanged(true)
                 holdReset(event)
                 endedOnHold = false
@@ -579,6 +598,30 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
     fun clearSelection() {
         dryLayer.selected = emptySet()
         heldSelection = emptySet()
+    }
+
+    /** Drops it *and* says so, so the bar goes with it. */
+    private fun dropSelection() {
+        if (dryLayer.selected.isEmpty() && heldSelection.isEmpty()) return
+        clearSelection()
+        onLassoSelection(emptyList(), 0f, 0f)
+    }
+
+    /**
+     * Re-states where the current selection is, in view space.
+     *
+     * Called whenever the camera moves, because the bar is placed under the strokes it belongs to
+     * and those strokes are in document space: pan without this and the ink slides away while the
+     * bar sits where the ink used to be, which makes it a menu about a spot on the glass.
+     *
+     * Cheap to call redundantly — the ids and the offset compare equal when nothing has moved, so
+     * an unchanged report does not recompose anything.
+     */
+    private fun reportCurrentSelection() {
+        val chosen = dryLayer.selected
+        if (chosen.isEmpty()) return
+        recomputeSelectionBounds()
+        reportSelection(dryLayer.items.map { it.id }.filter { it in chosen })
     }
 
     private fun eraseAt(x: Float, y: Float) {

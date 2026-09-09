@@ -568,7 +568,18 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     InkCanvas(ctx).apply {
                         onViewportChanged = { p, c -> page = p; pageCount = c }
                         onStylusModeChanged = { stylusMode = it }
-                        onDrawingChanged = { drawing = it }
+                        onDrawingChanged = { down ->
+                            drawing = down
+                            // Touching the page puts the kit away. A width slider is a thing you
+                            // set and then stop thinking about, and a column of tools standing on
+                            // the drawing is the drawing you cannot see. Both go on the first
+                            // stroke; the kit stays folded until it is asked for, rather than
+                            // springing back on every lift and moving under the hand.
+                            if (down) {
+                                panel = null
+                                kitFolded = true
+                            }
+                        }
                         onZoomChanged = { zoomPercent = it }
                         onLassoSelection = { ids, cx, bottom ->
                             selection = ids
@@ -636,7 +647,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 // Everything except undo dims while the pen is down.
                 dimmed = drawing,
                 folded = kitFolded,
-                onFold = { kitFolded = !kitFolded },
+                onFold = { kitFolded = !kitFolded; if (kitFolded) panel = null },
                 onSlot = { active = it; mode = InkMode.DRAW },
                 onMode = { mode = it },
                 onSnap = { snap = !snap },
