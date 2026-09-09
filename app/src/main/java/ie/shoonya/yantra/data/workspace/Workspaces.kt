@@ -31,7 +31,10 @@ class Workspaces(
         // An existing directory was scaffolded by whatever build made it, so it is missing every
         // built-in field added since. Filling those in on open is the only migration this format
         // needs: the file is the truth, and the truth simply has one more line in it now.
-        else store.ensureBuiltInProperties()
+        else {
+            store.ensureBuiltInProperties()
+            store.upgradeFormat()
+        }
         stores[id] = store
         writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
         return fresh
@@ -70,6 +73,15 @@ class Workspaces(
     /** Whether this device has the given workspace open. See [Filter.workspacesNamed]. */
     fun isOpen(id: String): Boolean = stores.containsKey(id)
 
+    /**
+     * Workspaces written by a newer build than this one, and so open read-only.
+     *
+     * Reported alongside the other things a rebuild could not make sense of, because that is what
+     * this is from the app's point of view: a workspace it can read and must not write. Nothing
+     * shows it to anyone yet — see [WorkspaceStore.isAhead].
+     */
+    fun aheadIds(): List<String> = stores.values.filter { it.isAhead }.map { it.id }
+
     fun primaryStore(): WorkspaceStore = stores.values.first()
 
     /**
@@ -104,7 +116,14 @@ class Workspaces(
      * a rebuild has failed part-way; the next attempt writes everything again.
      */
     suspend fun reindexAll(): List<String> = stores.values.flatMap { store ->
-        try {
+        // Still indexed, and deliberately: read-only means readable. A workspace from a newer
+        // build that came back empty would look broken rather than protected, and the whole point
+        // is that its files are fine — it is this build's writing that is not to be trusted.
+        val ahead = if (!store.isAhead) emptyList() else listOf(
+            "workspace '${store.id}' is format ${store.formatVersion} and this build reads " +
+                "${WorkspaceStore.FORMAT_VERSION}: it is open read-only and edits will be refused",
+        )
+        ahead + try {
             indexer.rebuild(store)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e     // never a failure — the caller going away must stay cancellation

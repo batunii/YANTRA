@@ -97,6 +97,14 @@ sealed interface KitPanel {
  * so a second pen that differs only by being thicker is a slot spent on a setting. What the marker
  * offers that a wide pen does not is translucent ink that layers, and that is worth a slot.
  */
+/**
+ * The starting kit. Widths are in **document units** — about 0.21mm each on an A4-proportioned page.
+ *
+ * They used to be raw pixels handed straight to `Brush.size`, which made the pen a different
+ * physical thickness on every screen: 2.6px is 0.87dp at 3x density and 1.3dp at 2x. The numbers
+ * barely changed in becoming du — a 1080px phone was already close to 1000 du wide — but they now
+ * mean a thickness rather than a count of somebody's pixels. 2.6 du is roughly a 0.55mm nib.
+ */
 fun defaultSlots(inkColor: Long): List<PenSlot> = listOf(
     PenSlot("PEN", StrokeCodec.FAMILY_PRESSURE_PEN, inkColor, 2.6f),
     // The handoff draws this one in teal. Teal is not one of the app's five drawing colours, and

@@ -183,6 +183,7 @@ import ie.shoonya.yantra.ui.components.TaskState
 import ie.shoonya.yantra.ui.components.YantraCheckbox
 import ie.shoonya.yantra.ui.container
 import ie.shoonya.yantra.ui.ink.InkPreview
+import ie.shoonya.yantra.data.ink.PAGE_WIDTH_DU
 import ie.shoonya.yantra.ui.ink.inkContentHeight
 import ie.shoonya.yantra.ui.theme.MonoBreadcrumb
 import ie.shoonya.yantra.ui.theme.Yantra
@@ -2245,13 +2246,17 @@ private fun InkBlockRow(
                 }
             } else {
                 val density = LocalDensity.current
-                val screenW = LocalContext.current.resources.displayMetrics.widthPixels.toFloat()
                 val previewWPx = with(density) { maxWidth.toPx() }
                 // Height tracks the sketch's full content so the block grows and pushes the
                 // blocks below it down (rather than overlapping them). Clipped so that even a
                 // very tall multi-page sketch never paints past its allotted row height.
+                //
+                // The content height is in document units, so it converts by how many pixels this
+                // preview gives a page-width — which is what InkPreview itself scales by. It used to
+                // divide by this screen's pixel width, back when that was what a document's width
+                // was assumed to be, and so came out wrong on any device that had not drawn it.
                 val heightDp = remember(strokes, previewWPx) {
-                    val contentPx = inkContentHeight(strokes) * (previewWPx / screenW)
+                    val contentPx = inkContentHeight(strokes) * (previewWPx / PAGE_WIDTH_DU)
                     with(density) { contentPx.toDp() }
                 }.coerceIn(64.dp, 2400.dp)
                 Box(Modifier.height(heightDp).clipToBounds()) {

@@ -1,0 +1,78 @@
+/*
+ * The typefaces, from app/src/main/res/font — the same subsets the Android build ships, so the two
+ * clients are set in the same metal. See app/FONTS.md before replacing one: these are cut down to
+ * Latin plus punctuation, and dropping a full upstream file in will quietly add back ~600 KB.
+ *
+ * Bricolage is variable on weight only; the other axes were pinned when it was subset, which is
+ * why one file covers the whole display range.
+ */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('/fonts/bricolage_grotesque.ttf') format('truetype-variations');
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Space Mono';
+  src: url('/fonts/space_mono_regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Space Mono';
+  src: url('/fonts/space_mono_bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+/*
+ * The colour language, carried over from YantraColors.kt.
+ *
+ * The app's rule is that the accent means "your effort" and structure is neutral — so the accent
+ * appears on things you did and things you can do, and nowhere else. Chrome, rules and dividers are
+ * all neutral, which is why this file has one accent and five greys rather than a palette.
+ */
+:root {
+  color-scheme: dark;
+
+  --page: #0d0d0c;
+  --surface: #161615;
+  --surface-2: #1d1d1b;
+  --line: #3a3a37;
+  --text: #eceae4;
+  --text-dim: #a3a099;
+  --text-muted: #6e6c66;
+
+  /* Coral, the default ink. The app offers five; this is the one it ships enabled. */
+  --accent: #e8865f;
+  --accent-fill: rgba(232, 134, 95, 0.14);
+  --accent-border: rgba(232, 134, 95, 0.45);
+
+  --danger: #e24b4a;
+  --radius: 14px;
+
+  --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Space Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input { font: inherit; }
+
+.mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
