@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
         Notifications.shared.onMarkDone = { [weak self] id in self?.write { try self?.writer.setDone(id, true) } }
         reindex()
         timer.wake()
+        sweepArchive()
     }
 
     func reindex() {
@@ -95,6 +96,22 @@ final class AppModel: ObservableObject {
         guard let def = index.smartLists[n.id], let f = def.filter, let flipped = completedVariant(f) else { return [] }
         let v = SmartListDef(nodeId: def.nodeId, scopeRootId: def.scopeRootId, filterJson: FilterJSON.encode(flipped), sortJson: def.sortJson)
         return SmartListQuery.run(v, in: index)
+    }
+
+    // MARK: archive — the threshold is the workspace's, in its manifest; the sweep runs on launch too
+
+    func setArchiveAfterDays(_ days: Int) {
+        guard var m = store.readManifest() else { return }
+        m.archiveAfterDays = days; store.writeManifest(m); objectWillChange.send()
+    }
+
+    @discardableResult
+    func sweepArchive() -> Int {
+        let days = store.readManifest()?.archiveAfterDays ?? 0
+        guard days > 0 else { return 0 }
+        var moved = 0
+        write { moved = try writer.archiveFinished(before: LocalDate.today().adding(days: -days)) { [index] id in index.hasOpenChildren(id) } }
+        return moved
     }
 
     // MARK: focus

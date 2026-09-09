@@ -157,6 +157,31 @@ public final class WorkspaceStore: @unchecked Sendable {
     public func writeSmartList(_ def: SmartListDef) { write(smartDir.appendingPathComponent("\(def.nodeId).json"), Data(FilterJSON.encode(def).utf8)) }
     public func deleteSmartList(_ nodeId: String) { try? fm.removeItem(at: smartDir.appendingPathComponent("\(nodeId).json")) }
 
+    // archive: one archived task LINE per line in archive/<pageId>.md; the task's own page moves to archive/pages/
+    var archiveDir: URL { root.appendingPathComponent("archive") }
+    public func archiveFile(_ pageId: String) -> URL { archiveDir.appendingPathComponent("\(pageId).md") }
+    public func archivedPageFile(_ pageId: String) -> URL { archiveDir.appendingPathComponent("pages/\(pageId).md") }
+    public func archivedPageIds() -> [String] {
+        ((try? fm.contentsOfDirectory(atPath: archiveDir.path)) ?? []).filter { $0.hasSuffix(".md") }.map { String($0.dropLast(3)) }.sorted()
+    }
+    public func readArchivedLines(_ pageId: String) -> [String] {
+        guard let s = try? String(contentsOf: archiveFile(pageId), encoding: .utf8) else { return [] }
+        return s.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+    public func writeArchivedLines(_ pageId: String, _ lines: [String]) {
+        if lines.isEmpty { try? fm.removeItem(at: archiveFile(pageId)); return }
+        write(archiveFile(pageId), Data((lines.joined(separator: "\n") + "\n").utf8))
+    }
+    public func moveToArchive(_ pageId: String) {
+        let from = pageFile(pageId); guard fm.fileExists(atPath: from.path) else { return }
+        try? fm.createDirectory(at: archiveDir.appendingPathComponent("pages"), withIntermediateDirectories: true)
+        try? fm.removeItem(at: archivedPageFile(pageId)); try? fm.moveItem(at: from, to: archivedPageFile(pageId))
+    }
+    public func restoreFromArchive(_ pageId: String) {
+        let from = archivedPageFile(pageId); guard fm.fileExists(atPath: from.path) else { return }
+        try? fm.removeItem(at: pageFile(pageId)); try? fm.moveItem(at: from, to: pageFile(pageId))
+    }
+
     // focus log
     public func appendFocus(_ line: String, month: String) {
         let dir = root.appendingPathComponent(Self.focusDir)

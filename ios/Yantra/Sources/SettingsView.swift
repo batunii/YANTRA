@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import YantraCore
 
 struct SettingsView: View {
@@ -6,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var theme: ThemeController
     @Environment(\.y) private var y
     @Binding var path: NavigationPath
+    @State private var archiveNote: String?
 
     var body: some View {
         ScrollView {
@@ -31,11 +33,34 @@ struct SettingsView: View {
                 YantraButton(label: model.syncing ? "Syncing…" : "Sync now", tone: .quiet, enabled: SyncSettings.repo != nil && !model.syncing) { model.syncInBackground("asked to sync") }
                 row(title: "Add a workspace", subtitle: "Join a repository, or start a shared one", chevron: true)
 
+                SectionLabel(text: "Archive").padding(.top, 28)
+                Text("Finished tasks leave your lists after a while. They stay in the repository and can be brought back — this is about keeping lists short, not deleting anything.")
+                    .font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
+                let days = model.store.readManifest()?.archiveAfterDays ?? 0
+                HStack(spacing: 8) {
+                    ForEach([(0, "Never"), (30, "30 days"), (90, "90 days"), (365, "A year")], id: \.0) { d, label in
+                        SelectChip(label: label, selected: days == d, stretch: true) { model.setArchiveAfterDays(d) }
+                    }
+                }
+                if days > 0 {
+                    YantraButton(label: archiveNote ?? "Archive finished tasks now", tone: .quiet) {
+                        let n = model.sweepArchive(); archiveNote = n == 0 ? "Nothing was old enough yet" : "\(n) moved out of your lists"
+                    }.padding(.top, 8)
+                }
+                let archived = model.writer.archivedCount()
+                if archived > 0 {
+                    Button { path.append(Route.archive) } label: { row(title: "\(archived) archived", subtitle: "See what left, and put any of it back", chevron: true) }.buttonStyle(.plain).padding(.top, 8)
+                }
+
                 SectionLabel(text: "Accent").padding(.top, 28)
                 Text("The ink that means your effort").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 12)
                 HStack(spacing: 14) {
                     ForEach(Accent.allCases, id: \.self) { a in
-                        Button { theme.accentRaw = a.rawValue } label: {
+                        Button {
+                            theme.accentRaw = a.rawValue
+                            // The launcher icon follows the accent, as Android's activity-alias trick does.
+                            UIApplication.shared.setAlternateIconName(a == .coral ? nil : "AppIcon-\(a.rawValue)")
+                        } label: {
                             Circle().fill(a.ink(dark: y.dark)).frame(width: 44, height: 44)
                                 .overlay(Circle().stroke(theme.accent == a ? y.ink : .clear, lineWidth: 2).padding(-4))
                         }.buttonStyle(.plain)

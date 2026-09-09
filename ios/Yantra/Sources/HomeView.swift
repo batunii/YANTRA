@@ -10,6 +10,7 @@ enum Route: Hashable {
     case conformance
     case ink(String)
     case github
+    case archive
 }
 
 struct HomeView: View {
@@ -167,6 +168,8 @@ struct CreateSheet: View {
     @Binding var path: NavigationPath
     @State private var text = ""
     @State private var kind = 0
+    @State private var smart = false
+    @State private var builder = false
     @FocusState private var focused: Bool
     private let kinds = ["Task", "List", "Group"]
 
@@ -177,13 +180,24 @@ struct CreateSheet: View {
             HStack(spacing: 8) {
                 ForEach(0..<3, id: \.self) { i in SelectChip(label: kinds[i], selected: kind == i, stretch: true) { kind = i } }
             }
-            YantraButton(label: kind == 0 ? "Create task" : kind == 1 ? "Create list" : "Create group", tone: .soft, enabled: !text.trimmingCharacters(in: .whitespaces).isEmpty, action: create)
+            if kind == 1 {
+                Toggle(isOn: $smart) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Make this a smart list").font(Face.text(14, .semibold)).foregroundStyle(y.ink)
+                        Text("Auto-updates from conditions you set, instead of a fixed set of tasks").font(Face.text(12)).foregroundStyle(y.muted)
+                    }
+                }.tint(y.accent)
+            }
+            YantraButton(label: kind == 0 ? "Create task" : kind == 1 ? (smart ? "Continue" : "Create list") : "Create group", tone: .soft, enabled: !text.trimmingCharacters(in: .whitespaces).isEmpty) {
+                if kind == 1, smart { builder = true } else { create() }
+            }
             Spacer()
         }
         .padding(22).padding(.top, 12)
         .background(y.cardBg.ignoresSafeArea())
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .onAppear { focused = true }
+        .sheet(isPresented: $builder, onDismiss: { dismiss() }) { SmartListBuilder(path: $path, initialName: text) }
     }
 
     private func create() {

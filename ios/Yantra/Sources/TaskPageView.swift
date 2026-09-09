@@ -18,6 +18,21 @@ struct TaskPageView: View {
     private var crumbs: [Node] { model.index.ancestors(of: nodeId) }
 
     var body: some View {
+        GeometryReader { g in
+            // A width test, not a device test: a tablet in split screen behaves like a phone.
+            let wide = g.size.width >= 840
+            let siblings = node?.parentId.map { model.index.children(of: $0).filter { $0.type == NodeType.task } } ?? []
+            HStack(spacing: 0) {
+                if wide, siblings.count > 1 { TaskRail(siblings: siblings, currentId: nodeId) { path.append(Route.node($0)) }; Rectangle().fill(y.hairline).frame(width: 1) }
+                document.frame(maxWidth: wide ? 720 : .infinity).frame(maxWidth: .infinity)
+            }
+        }
+        .background(y.page.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear { titleDraft = node?.title ?? "" }
+    }
+
+    private var document: some View {
         VStack(spacing: 0) {
             band
             ScrollView {
@@ -38,9 +53,6 @@ struct TaskPageView: View {
             }
             typeBar
         }
-        .background(y.page.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        .onAppear { titleDraft = node?.title ?? "" }
     }
 
     private var band: some View {
@@ -256,24 +268,26 @@ struct PropertyPills: View {
     @Environment(\.y) private var y
     let node: Node
     @State private var dueSheet = false
+    @State private var labelSheet = false
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let due = node.due { pill("Due · " + dueLabel(due), color: isOverdue(node) ? y.overdue : y.due, ghost: false) { dueSheet = true } }
+                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminderMin != nil ? " · 🔔" : ""), color: isOverdue(node) ? y.overdue : y.due, ghost: false) { dueSheet = true } }
                 if let p = node.priority { pill("Priority · " + p, color: y.priority(p) ?? y.secondary, ghost: false) { cyclePriority() } }
-                ForEach(node.labels, id: \.self) { l in pill("#\(l)", color: y.secondary, ghost: false) {} }
+                ForEach(node.labels, id: \.self) { l in
+                    // Tap detaches, as on Android.
+                    pill("#\(l)", color: LabelPalette.color(l, registry: model.index.labels, dark: y.dark), ghost: false) {
+                        model.write { try model.writer.editTask(node.id) { t in var x = t; x.labels.removeAll { $0 == l }; return x } }
+                    }
+                }
                 if node.due == nil { pill("+ Due", color: y.muted, ghost: true) { dueSheet = true } }
                 if node.priority == nil { pill("+ Priority", color: y.muted, ghost: true) { cyclePriority() } }
+                pill("+ Label", color: y.muted, ghost: true) { labelSheet = true }
             }
         }
-        .confirmationDialog("Due", isPresented: $dueSheet, titleVisibility: .visible) {
-            Button("Today") { setDue(.today()) }
-            Button("Tomorrow") { setDue(LocalDate.today().adding(days: 1)) }
-            Button("Next week") { setDue(LocalDate.today().adding(days: 7)) }
-            if node.due != nil { Button("Clear", role: .destructive) { model.write { try model.writer.setDue(node.id, nil) } } }
-        }
+        .sheet(isPresented: $dueSheet) { DueSheet(node: node) }
+        .sheet(isPresented: $labelSheet) { LabelPicker(node: node) }
     }
-    private func setDue(_ d: LocalDate) { model.write { try model.writer.setDue(node.id, DueSpec(.allDay(d))) } }
     private func cyclePriority() {
         let order: [String?] = ["High", "Medium", "Low", nil]
         let i = order.firstIndex(of: node.priority) ?? 3
@@ -327,5 +341,35 @@ struct StrokeCanvas: View {
                 ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: CGFloat(s.header.size) * scale, lineCap: .round, lineJoin: .round))
             }
         }
+    }
+}
+
+/// The list beside the page on a wide window — `TaskRail`. Marked, not selected: the current row
+/// wears the started wash. The glyphs are informational; the page is where you act.
+struct TaskRail: View {
+    @Environment(\.y) private var y
+    let siblings: [Node]
+    let currentId: String
+    let open: (String) -> Void
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                SectionLabel(text: "In this list").padding(.horizontal, 16).padding(.top, 60).padding(.bottom, 8)
+                ForEach(siblings) { n in
+                    Button { open(n.id) } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            YantraCheckbox(state: n.done ? .done : n.inProgress ? .inProgress : .open, size: 23) {}.allowsHitTesting(false)
+                            Text(inlinePlain(n.title ?? "").isEmpty ? "Untitled" : inlinePlain(n.title ?? "")).font(Face.text(14.5, n.id == currentId ? .bold : .medium))
+                                .foregroundStyle(n.done ? y.dim : y.ink).lineLimit(2).multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(n.id == currentId ? y.accentFill.opacity(0.6) : .clear))
+                    }.buttonStyle(.plain)
+                }
+            }.padding(.horizontal, 6)
+        }
+        .frame(width: 340)
+        .background(y.rail)
     }
 }

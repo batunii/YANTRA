@@ -199,6 +199,69 @@ public final class WorkspaceWriter {
         if store.readPage(taskId) != nil { try editPage(taskId) { var p = $0; p.parent = listId; return p } }
     }
 
+    // MARK: smart lists and labels
+
+    public func writeSmartList(_ def: SmartListDef) throws {
+        try guardWritable(); store.writeSmartList(def); onChange(.structural)
+    }
+
+    /// Adds a name to the label registry if it is new; colour stays nil until someone picks one.
+    public func upsertLabel(_ name: String, color: Int64? = nil) throws {
+        try guardWritable()
+        var labels = store.readLabels()
+        if let i = labels.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            if let color, labels[i].color != color { labels[i].color = color } else { return }
+        } else {
+            labels.append(LabelDef(id: "\(store.id):label:\(name.lowercased())", name: name, color: color))
+        }
+        store.writeLabels(labels); onChange(.edit)
+    }
+
+    // MARK: archive — finished tasks leave on a threshold, and can come back
+
+    /// A DONE task finished before `before` with no unfinished children leaves its page: the line is
+    /// appended to archive/<pageId>.md and its own page moves to archive/pages/. Returns how many moved.
+    public func archiveFinished(before: LocalDate, hasUnfinishedChildren: (String) -> Bool) throws -> Int {
+        try guardWritable()
+        var moved = 0
+        for page in store.readPages() {
+            let leaving = page.blocks.compactMap { b -> TaskRef? in
+                guard case let .task(t) = b, t.status == .done, let d = t.doneAt, d < before, !hasUnfinishedChildren(t.id) else { return nil }
+                return t
+            }
+            if leaving.isEmpty { continue }
+            store.writeArchivedLines(page.id, store.readArchivedLines(page.id) + leaving.map { PageCodec.encodeBlock(.task($0)) })
+            for t in leaving { store.moveToArchive(t.id) }
+            let ids = Set(leaving.map(\.id))
+            var p = page
+            p.blocks = p.blocks.filter { if case let .task(t) = $0 { return !ids.contains(t.id) }; return true }
+            p.modifiedAt = Date(); p.device = device
+            store.writePage(p)
+            moved += leaving.count
+        }
+        if moved > 0 { onChange(.structural) }
+        return moved
+    }
+
+    public func restoreArchived(pageId: String, taskIds: Set<String>) throws -> Int {
+        try guardWritable()
+        let archived = store.readArchivedLines(pageId)
+        if archived.isEmpty { return 0 }
+        let decoded = archived.map { ($0, PageCodec.decodeBlock($0)) }
+        let coming = decoded.filter { if case let .task(t) = $0.1 { return taskIds.contains(t.id) }; return false }
+        if coming.isEmpty { return 0 }
+        guard var page = store.readPage(pageId) else { return 0 }
+        page.blocks += coming.map(\.1)
+        page.modifiedAt = Date(); page.device = device
+        store.writePage(page)
+        for (_, b) in coming { if case let .task(t) = b { store.restoreFromArchive(t.id) } }
+        store.writeArchivedLines(pageId, decoded.filter { d in !coming.contains { $0.0 == d.0 } }.map(\.0))
+        onChange(.structural)
+        return coming.count
+    }
+
+    public func archivedCount() -> Int { store.archivedPageIds().reduce(0) { $0 + store.readArchivedLines($1).count } }
+
     public func renamePage(_ id: String, _ title: String) throws {
         try editPage(id) { var p = $0; p.title = title; return p }
     }

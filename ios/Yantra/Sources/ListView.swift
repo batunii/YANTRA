@@ -10,6 +10,7 @@ struct ListView: View {
     let isSmart: Bool
     @State private var capture = ""
     @State private var showDone = false
+    @State private var editingRules = false
 
     private var node: Node? { model.index.nodes[nodeId] }
     private var openRows: [Node] {
@@ -57,6 +58,7 @@ struct ListView: View {
         .background(y.page.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $editingRules) { if let n = node { SmartListBuilder(editing: n, path: $path) } }
     }
 
     private var header: some View {
@@ -66,6 +68,10 @@ struct ListView: View {
                 Spacer()
                 if !isSmart, let n = node {
                     NavCircle(icon: "timer", accent: true) { path.append(Route.focus(n.id)) }
+                } else if isSmart {
+                    Menu { Button("Edit rules") { editingRules = true } } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
+                    }
                 }
             }
             if isSmart {
@@ -169,12 +175,7 @@ struct TaskRow: View {
         }.lineLimit(1)
     }
 
-    private func labelColor(_ name: String) -> Color {
-        // LabelPalette.defaultFor: five hues by name hash. The Android palette hues.
-        let hues: [Double] = [140, 190, 240, 290, 335]
-        let h = hues[abs(name.lowercased().hashValue) % hues.count]
-        return oklch(y.dark ? 0.78 : 0.5, 0.11, h)
-    }
+    private func labelColor(_ name: String) -> Color { LabelPalette.color(name, registry: model.index.labels, dark: y.dark) }
 }
 
 struct QuickAddBar: View {

@@ -42,6 +42,7 @@ struct RootView: View {
                     case .conformance: ConformanceView()
                     case let .ink(id): InkView(path: $path, inkId: id)
                     case .github: SignInView(path: $path)
+                    case .archive: ArchiveView(path: $path)
                     }
                 }
         }
@@ -90,6 +91,7 @@ struct RootView: View {
                 }
                 if r == "settings" { path.append(Route.settings); return }
                 if r == "github" { path.append(Route.github); return }
+                if r == "archive" { path.append(Route.archive); return }
                 if r.hasPrefix("ink:") { path.append(Route.ink(String(r.dropFirst(4)))); return }
                 if r == "stats" { path.append(Route.stats); return }
                 if r.hasPrefix("open:") {
