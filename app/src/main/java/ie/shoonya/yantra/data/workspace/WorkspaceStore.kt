@@ -328,12 +328,21 @@ class WorkspaceStore(
     fun inkFile(id: String): File = File(pagesDir, "$id.ink")
 
     /**
-     * A block's strokes, cached the same way and for a sharper reason.
+     * A block's strokes, exactly as the file holds them.
      *
-     * Stroke blobs are the heaviest thing in a workspace and the least likely to change: a page of
-     * drawings is hundreds of kilobytes that a rebuild used to re-read and re-decode because someone
-     * renamed a task. The returned lists are the *same instances* while the file is unchanged, which
-     * is what lets [Indexer] notice that the ink table does not need rewriting at all.
+     * **Faithful on purpose.** Unplaceable strokes — v1 pixel coordinates, or anything from a format
+     * this build does not know — are dropped where they are *decoded*, by
+     * [ie.shoonya.yantra.data.ink.StrokeCodec.decodeOrNull], not here. Filtering at the read would
+     * make read-then-write lossy, and every write is a whole-file rewrite: a stroke this build
+     * cannot parse would be deleted from the repo by the next edit to a neighbouring stroke. The
+     * format-version gate is supposed to stop a newer file being written at all, and a second lock
+     * on the same door is worth having.
+     *
+     * Cached the same way as a page, and for a sharper reason. Stroke blobs are the heaviest thing
+     * in a workspace and the least likely to change: a page of drawings is hundreds of kilobytes
+     * that a rebuild used to re-read and re-decode because someone renamed a task. The returned
+     * lists are the *same instances* while the file is unchanged, which is what lets [Indexer]
+     * notice that the ink table does not need rewriting at all.
      */
     fun readInk(id: String): List<ByteArray> {
         val f = inkFile(id)
@@ -343,14 +352,7 @@ class WorkspaceStore(
         }
         val stamp = Stamp(f.lastModified(), f.length())
         return inkCache[f.name]?.takeIf { it.stamp == stamp }?.value
-            ?: decodeInk(f.readBytes())
-                // v1 strokes are dropped here rather than deleted from the file: they are pixel
-                // coordinates with no recorded screen width, so they cannot be placed, but they are
-                // also the only copy anyone has. Filtering on read means they never render wrong,
-                // and the sidecar loses them the next time this block is written — which rewrites
-                // the file whole anyway. Until then they stay in the repo, and in its history.
-                .filter { ie.shoonya.yantra.data.ink.StrokeCodec.isPortable(it) }
-                .also { inkCache[f.name] = Cached(stamp, it) }
+            ?: decodeInk(f.readBytes()).also { inkCache[f.name] = Cached(stamp, it) }
     }
 
     fun writeInk(id: String, strokes: List<ByteArray>) {

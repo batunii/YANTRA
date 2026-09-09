@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+          A bare window for view tests to live in. Debug-only, so it is never in a release APK.
+
+          It has to be declared *here* rather than in the androidTest manifest: instrumentation runs
+          against the app's process, and an activity declared in the test APK resolves to
+          `<pkg>.test` and is refused with "Intent in process … resolved to different process".
+        -->
+        <activity
+            android:name="ie.shoonya.yantra.ViewHostActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SuperTasks" />
+    </application>
+</manifest>

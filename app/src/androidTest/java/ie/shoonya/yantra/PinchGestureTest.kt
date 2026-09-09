@@ -1,11 +1,14 @@
 package ie.shoonya.yantra
 
+import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import ie.shoonya.yantra.ui.ink.EditorTool
 import ie.shoonya.yantra.ui.ink.InkCanvas
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,18 +33,34 @@ class PinchGestureTest {
     private val width = 1600
     private val height = 2560
 
+    private var scenario: ActivityScenario<ViewHostActivity>? = null
+
+    @After
+    fun tearDown() {
+        scenario?.close()
+    }
+
+    /**
+     * An [InkCanvas] inside a real window.
+     *
+     * The window is the point. A canvas that has only been measured and laid out by hand looks
+     * entirely correct and then never dispatches a touch to its children — the first version of
+     * this test did exactly that and every assertion passed vacuously against a zoom that had never
+     * been asked to change. The diagnostic below (`eventsReachTheCanvasAtAll`) is what caught it and
+     * is why it stays.
+     */
     private fun canvas(): InkCanvas {
         lateinit var c: InkCanvas
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            c = InkCanvas(InstrumentationRegistry.getInstrumentation().targetContext).apply {
-                tool = EditorTool.LASSO
-                measure(
-                    View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),
-                )
-                layout(0, 0, width, height)
-            }
+        val s = ActivityScenario.launch(ViewHostActivity::class.java)
+        scenario = s
+        s.onActivity { activity ->
+            c = InkCanvas(activity).apply { tool = EditorTool.LASSO }
+            activity.root.addView(
+                c,
+                android.widget.FrameLayout.LayoutParams(width, height),
+            )
         }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         return c
     }
 
@@ -63,7 +82,7 @@ class PinchGestureTest {
         clock += 16
         val e = MotionEvent.obtain(
             downTime, clock, action, pts.size, props, coords,
-            0, 0, 1f, 1f, 0, 0, 0, 0,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
         )
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.dispatchTouchEvent(e) }
         e.recycle()
@@ -99,6 +118,22 @@ class PinchGestureTest {
             c, MotionEvent.ACTION_UP,
             (centreX - end) to centreY, (centreX + end) to centreY,
         )
+    }
+
+    @Test
+    fun eventsReachTheCanvasAtAll() {
+        // The first thing to know when a gesture test fails: is the gesture arriving? A stroke
+        // going down flips onDrawingChanged, which is public, so this separates "the pinch is
+        // wrong" from "nothing was dispatched".
+        val c = canvas()
+        var downs = 0
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            c.onDrawingChanged = { if (it) downs++ }
+        }
+        downTime = 0; clock = 0
+        send(c, MotionEvent.ACTION_DOWN, 800f to 1200f)
+        send(c, MotionEvent.ACTION_UP, 800f to 1200f)
+        assertEquals("ACTION_DOWN never reached the touch handler", 1, downs)
     }
 
     @Test
