@@ -7,6 +7,8 @@ import ie.shoonya.yantra.data.repo.SelectConfig
 import ie.shoonya.yantra.data.repo.SelectOption
 import ie.shoonya.yantra.data.format.PageCodec
 import ie.shoonya.yantra.data.format.PageDoc
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -16,10 +18,24 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 
-/** `.yantra/manifest.json`. [formatVersion] is what makes an older app go read-only on a newer repo. */
+/**
+ * `.yantra/manifest.json`.
+ *
+ * [formatVersion] is what makes an older app go read-only on a newer repo: a build refuses to write
+ * into a workspace whose version is above [WorkspaceStore.FORMAT_VERSION], see [readable]. For that
+ * to work the number has to be *in the file* — with `encodeDefaults = false` the default value was
+ * being omitted, so every manifest said nothing and every reader assumed its own version. Hence
+ * [EncodeDefault], which is the one thing here that is not optional — and a default of 1, not the
+ * current version, because a manifest that lacks the field was written before it existed.
+ *
+ * History: 1 — the original layout; 2 — ink sidecars carry Yantra's own stroke envelope
+ * (`YNK1`, see [ie.shoonya.yantra.data.ink.StrokeEnvelope]) instead of androidx.ink's bytes.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Manifest(
-    val formatVersion: Int = WorkspaceStore.FORMAT_VERSION,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    val formatVersion: Int = 1,
     val name: String,
     val createdAt: Long,
     /** Bumped when history is rewritten, so other devices know to reclone rather than merge. */
@@ -36,7 +52,10 @@ data class Manifest(
      * worst possible moment to do that unasked.
      */
     @SerialName("archive_after_days") val archiveAfterDays: Int = 0,
-)
+) {
+    /** False when this repository was written by a newer app than the one reading it. */
+    val readable: Boolean get() = formatVersion <= WorkspaceStore.FORMAT_VERSION
+}
 
 @Serializable
 data class LabelDef(val id: String, val name: String, val color: Long? = null)
@@ -71,7 +90,11 @@ class WorkspaceStore(
 ) {
 
     companion object {
-        const val FORMAT_VERSION = 1
+        /** The newest workspace format this build reads and writes. See [Manifest]. */
+        const val FORMAT_VERSION = 2
+
+        /** The manifest's path inside the workspace, as git names it. */
+        const val MANIFEST_PATH = ".yantra/manifest.json"
         private const val META = ".yantra"
         private const val PAGES = "pages"
         private const val ARCHIVE = "archive"
@@ -131,7 +154,7 @@ class WorkspaceStore(
     fun scaffold(name: String, now: Long) {
         pagesDir.mkdirs()
         smartDir.mkdirs()
-        writeManifest(Manifest(name = name, createdAt = now))
+        writeManifest(Manifest(formatVersion = FORMAT_VERSION, name = name, createdAt = now))
         writeProperties(builtInProperties())
         writeLabels(emptyList())
     }
@@ -196,6 +219,25 @@ class WorkspaceStore(
 
     fun writeManifest(m: Manifest) =
         manifestFile.write(FilterJson.encodeToString(Manifest.serializer(), m))
+
+    /**
+     * Whether this build may write here. A workspace whose manifest names a format this build does
+     * not know is left exactly as it is: it can still be read, indexed and pulled, so the user sees
+     * the newer device's work, but nothing here rewrites a file it might not fully understand.
+     * A missing or unreadable manifest is *not* read-only — that is the pre-workspaces local store.
+     */
+    val isReadOnly: Boolean get() = readManifest()?.readable == false
+
+    /** Raises the manifest's format version to [version] if it is lower. Never lowers it. */
+    fun ensureFormatVersion(version: Int) {
+        val m = readManifest() ?: return
+        if (m.formatVersion < version) writeManifest(m.copy(formatVersion = version))
+    }
+
+    /** Every ink block that has a sidecar, by block id. */
+    fun inkIds(): List<String> =
+        pagesDir.listFiles { f -> f.isFile && f.name.endsWith(".ink") }
+            ?.map { it.name.removeSuffix(".ink") }?.sorted() ?: emptyList()
 
     // ---- pages ----
 

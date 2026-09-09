@@ -52,6 +52,13 @@ class WorkspaceWriter(
      * must not count — and this is the only place that knows whether one did.
      */
     private val onChange: (Change) -> Unit = {},
+    /**
+     * Told when a write was refused because the workspace is newer than this build, so the app can
+     * say so. The refusal itself is a [WorkspaceReadOnly], which ends the calling coroutine quietly;
+     * without this callback the user would see nothing happen, which is the one outcome worse than
+     * an error.
+     */
+    private val onRefused: (WorkspaceReadOnly) -> Unit = {},
 ) {
     /**
      * One writer at a time.
@@ -62,6 +69,34 @@ class WorkspaceWriter(
      * of these at once — a rename racing an indent change is ordinary.
      */
     private val mutex = Mutex()
+
+    /**
+     * Refuses to write into a workspace a newer app has moved on.
+     *
+     * Checked at the start of every mutation rather than once at open, because the manifest can
+     * change under us: a sync pulls the other device's bump and from that moment this build must
+     * stop writing. Reading stays allowed — the point is to keep showing the user their tasks,
+     * not to hide them. The exception is loud on purpose: a capture that appears to succeed and
+     * is quietly dropped is the one failure this app must never have.
+     */
+    private fun guard() {
+        if (!store.isReadOnly) return
+        val refusal = WorkspaceReadOnly(store.readManifest()?.formatVersion ?: -1)
+        onRefused(refusal)
+        throw refusal
+    }
+
+    /**
+     * Thrown when a workspace's format is newer than this build. Update the app to edit it.
+     *
+     * A [CancellationException], deliberately: the coroutine that asked for the write simply ends,
+     * the way it would if the screen had gone away, rather than taking the process down. The user is
+     * told through [onRefused]; the caller has nothing useful to do with the exception itself.
+     */
+    class WorkspaceReadOnly(val formatVersion: Int) : kotlinx.coroutines.CancellationException(
+        "This workspace was written by a newer Yantra (format $formatVersion, this build reads " +
+            "${WorkspaceStore.FORMAT_VERSION}). Update the app to edit it."
+    )
 
     private fun now() = System.currentTimeMillis()
 
@@ -144,6 +179,7 @@ class WorkspaceWriter(
         change: Change = Change.EDIT,
         transform: (PageDoc) -> PageDoc,
     ): Unit = mutex.withLock {
+        guard()
         val page = loadPage(pageId) ?: return
         val next = transform(page)
 
@@ -166,6 +202,7 @@ class WorkspaceWriter(
     /** A page with no parent: a list, a group, a smart list. Its title lives in its own frontmatter. */
     suspend fun createTopLevel(type: String, title: String?, systemKey: String? = null): String =
         mutex.withLock {
+            guard()
             val id = newId()
             store.writePage(
                 PageDoc(
@@ -215,6 +252,7 @@ class WorkspaceWriter(
         afterId: String? = null,
         indent: Int = 0,
     ): String = mutex.withLock {
+        guard()
         val id = if (type == NodeType.TASK || type == NodeType.INK) newId() else ""
         // A task is only a line until it holds something — this is the moment it earns a document.
         // Without this, the first block added to any task went nowhere at all: no page to load, no
@@ -287,6 +325,7 @@ class WorkspaceWriter(
         val home = homePageOf(nodeId)
         if (home == null) {
             mutex.withLock {
+                guard()
                 store.deletePage(nodeId)
                 refreshIndex(Change.STRUCTURAL)
                 onChange(Change.STRUCTURAL)
@@ -310,6 +349,7 @@ class WorkspaceWriter(
             })
         }
         mutex.withLock {
+            guard()
             store.deletePage(nodeId)
             // Both sidecars a block can own. An image left behind is worse than a stray stroke file:
             // it is a megabyte, it is committed, and nothing on any device refers to it again.
@@ -322,6 +362,7 @@ class WorkspaceWriter(
 
     /** Re-homes a page: its own frontmatter moves, and so does the line that points at it. */
     suspend fun reparent(nodeId: String, newParent: String?) = mutex.withLock {
+        guard()
         val old = homePageOf(nodeId)
         val page = loadPage(nodeId)
         var line: Block? = null
@@ -442,6 +483,7 @@ class WorkspaceWriter(
     /** A smart list is a page with no blocks; its rule lives beside it in the workspace meta. */
     suspend fun createSmartList(def: SmartListDef, title: String, systemKey: String? = null): String =
         mutex.withLock {
+            guard()
             val id = def.nodeId.ifEmpty { newId() }
             store.writePage(
                 PageDoc(
@@ -457,6 +499,7 @@ class WorkspaceWriter(
         }
 
     suspend fun updateSmartList(def: SmartListDef) = mutex.withLock {
+        guard()
         store.writeSmartList(def)
         // Not deferred despite being an edit: changing a rule changes which tasks a list contains,
         // and that list is drawn from the index.
@@ -466,6 +509,7 @@ class WorkspaceWriter(
 
     /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
     suspend fun upsertLabel(label: LabelDef) = mutex.withLock {
+        guard()
         val kept = store.readLabels().filterNot { it.id == label.id }
         store.writeLabels(kept + label)
         // A renamed or recoloured label is visible on every chip carrying it; deferring would leave
@@ -476,6 +520,7 @@ class WorkspaceWriter(
 
     /** One line, appended. Never rewritten — that is what keeps two offline devices from colliding. */
     suspend fun appendFocus(line: String, month: String) = mutex.withLock {
+        guard()
         store.appendFocus(line, month)
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
@@ -491,9 +536,46 @@ class WorkspaceWriter(
      * what lost strokes when several finished at once, each having read before any had written.
      */
     suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
+        guard()
         store.writeInk(nodeId, strokes)
         refreshIndex(Change.INK)
         onChange(Change.INK)
+    }
+
+    /**
+     * Rewrites every sidecar still holding first-format strokes in Yantra's own envelope, and raises
+     * the manifest to format 2 once it has.
+     *
+     * Runs on launch, like the archive sweep, and costs one directory listing when there is nothing
+     * to do. Strokes newer than this build pass through [ie.shoonya.yantra.data.ink.StrokeCodec.upgrade]
+     * untouched, and a stroke that cannot be read at all is kept as it is rather than dropped — a
+     * migration that loses a drawing is worse than no migration.
+     *
+     * The manifest bump is what tells an older app to stop writing here (see [WorkspaceReadOnly]),
+     * and it happens only when there is ink to protect: a workspace with no sketches stays at the
+     * version every build can read.
+     *
+     * Returns how many sidecars were rewritten.
+     */
+    suspend fun migrateLegacyInk(): Int = mutex.withLock {
+        guard()
+        var rewritten = 0
+        store.inkIds().forEach { id ->
+            val strokes = store.readInk(id)
+            if (strokes.none { ie.shoonya.yantra.data.ink.StrokeCodec.isLegacy(it) }) return@forEach
+            val upgraded = strokes.map { s ->
+                runCatching { ie.shoonya.yantra.data.ink.StrokeCodec.upgrade(s) }.getOrDefault(s)
+            }
+            if (upgraded.any { ie.shoonya.yantra.data.ink.StrokeCodec.isLegacy(it) }) return@forEach
+            store.writeInk(id, upgraded)
+            rewritten++
+        }
+        if (rewritten > 0) {
+            store.ensureFormatVersion(2)
+            refreshIndex(Change.INK)
+            onChange(Change.STRUCTURAL)
+        }
+        rewritten
     }
 
     /**
@@ -501,6 +583,7 @@ class WorkspaceWriter(
      * referenced by a page that has already been indexed.
      */
     suspend fun writeImage(id: String, bytes: ByteArray) = mutex.withLock {
+        guard()
         store.writeImage(id, bytes)
         // Committed like ink: a binary blob that arrives occasionally and is worth its own commit
         // rather than being batched behind a burst of typing.
@@ -524,6 +607,7 @@ class WorkspaceWriter(
      * children out of the working set with it, and unfinished work must never leave by accident.
      */
     suspend fun archiveFinished(before: java.time.LocalDate): Int = mutex.withLock {
+        guard()
         var moved = 0
         store.readPages().forEach { page ->
             val leaving = page.blocks.filterIsInstance<TaskRef>().filter { t ->
@@ -561,6 +645,7 @@ class WorkspaceWriter(
      * convenience: an archive you cannot come back from is a delete with a longer name.
      */
     suspend fun restoreArchived(pageId: String, taskIds: Set<String>): Int = mutex.withLock {
+        guard()
         val archived = store.readArchivedLines(pageId)
         if (archived.isEmpty()) return@withLock 0
 

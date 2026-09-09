@@ -57,14 +57,15 @@ chevron opens. No field is stored twice, so nothing can diverge.
 ```
 repo-root/                      (orphan branch: yantra-tasks)
 ├── .yantra/
-│   ├── manifest.json           # format_version, workspace name, created_at, epoch
+│   ├── manifest.json           # formatVersion (enforced; 1 = original, 2 = YNK1 ink), name, createdAt, epoch, archive_after_days
 │   └── meta/
 │       ├── properties.json     # property defs, ids stable and shared (see §3)
 │       ├── labels.json         # label registry: name -> colour
 │       └── smartlists/<id>.json
 ├── pages/
 │   ├── <uuid>.md               # a page
-│   └── <uuid>.ink              # StrokeCodec blob sidecar
+│   ├── <uuid>.ink              # [count][len][stroke]…; each stroke a YNK1 envelope (StrokeEnvelope.kt)
+│   └── <uuid>.jpg              # a downscaled image, named by the block's payload id
 └── pomodoro/
     └── <yyyy-mm>.log           # append-only session lines
 ```

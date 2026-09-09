@@ -19,6 +19,8 @@ class Workspaces(
     private val scope: kotlinx.coroutines.CoroutineScope? = null,
     /** Told about every write, with the workspace it belongs to, so commits can be scheduled. */
     private val onChange: (String, ie.shoonya.yantra.data.sync.Change) -> Unit = { _, _ -> },
+    /** Told when a write is refused because a workspace is newer than this build. */
+    private val onRefused: (String, WorkspaceWriter.WorkspaceReadOnly) -> Unit = { _, _ -> },
 ) {
     private val stores = LinkedHashMap<String, WorkspaceStore>()
     private val writers = LinkedHashMap<String, WorkspaceWriter>()
@@ -33,7 +35,11 @@ class Workspaces(
         // needs: the file is the truth, and the truth simply has one more line in it now.
         else store.ensureBuiltInProperties()
         stores[id] = store
-        writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
+        writers[id] = WorkspaceWriter(
+            store, db, indexer, device, scope,
+            onChange = { onChange(id, it) },
+            onRefused = { onRefused(id, it) },
+        )
         return fresh
     }
 

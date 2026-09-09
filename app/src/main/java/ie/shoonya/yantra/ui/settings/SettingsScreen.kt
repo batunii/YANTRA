@@ -107,6 +107,7 @@ fun SettingsScreen(nav: NavHostController) {
                         id = store.id,
                         name = store.readManifest()?.name ?: "Workspace",
                         slug = container.slugOf(store.id),
+                        readOnly = store.isReadOnly,
                     )
                 }
             }
@@ -169,7 +170,12 @@ fun SettingsScreen(nav: NavHostController) {
             spaces.forEach { space ->
                 SettingRow(
                     title = space.name,
-                    subtitle = space.slug ?: "On this device only",
+                    subtitle = when {
+                        // Another device moved this repository to a format this build does not know.
+                        // Everything still shows; nothing here may change it until the app is updated.
+                        space.readOnly -> "Read-only here — update Yantra to edit"
+                        else -> space.slug ?: "On this device only"
+                    },
                     // Nothing to open yet — the switcher is Phase 5. Showing where each workspace
                     // points is the part that is useful now, and a row that navigated nowhere would
                     // be worse than one that does not pretend to.
@@ -424,7 +430,7 @@ private fun GlyphSample(label: String, initial: TaskState) {
 }
 
 /** One workspace, as the settings list needs it: what it is called and where it points. */
-private data class WorkspaceRow(val id: String, val name: String, val slug: String?)
+private data class WorkspaceRow(val id: String, val name: String, val slug: String?, val readOnly: Boolean = false)
 
 /**
  * A settings line with somewhere to go.

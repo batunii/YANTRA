@@ -1,7 +1,12 @@
 package ie.shoonya.yantra.data.sync
 
+import ie.shoonya.yantra.data.filter.FilterJson
 import ie.shoonya.yantra.data.format.PageCodec
 import ie.shoonya.yantra.data.workspace.WorkspaceStore
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 /**
  * What to do when git cannot decide — GIT_WORKSPACES_PLAN.md §4.
@@ -54,6 +59,12 @@ object ConflictResolver {
         if (remote == null) return Resolution(path, local, "kept the edit over a delete")
 
         if (isLog(path)) return Resolution(path, mergeLog(local, remote), "merged an append-only log")
+
+        if (path == WorkspaceStore.MANIFEST_PATH) {
+            mergeManifest(base, local, remote, device, otherDevice)?.let {
+                return Resolution(path, it, "merged the manifest field by field")
+            }
+        }
 
         if (path.endsWith(".md")) {
             mergePage(base, local, remote)?.let {
@@ -182,6 +193,54 @@ object ConflictResolver {
     private fun modifiedAt(bytes: ByteArray): Long =
         runCatching { PageCodec.decode(bytes.decodeToString()).modifiedAt.toEpochMilli() }
             .getOrDefault(0L)
+
+    /**
+     * The manifest, one field at a time.
+     *
+     * It used to fall under "unmergeable, keep local", and that was the wrong rule for the one file
+     * that coordinates the others. A device that raised `formatVersion` and a device that set
+     * `archive_after_days` in the same window were not disagreeing about anything — yet whichever
+     * rebased second threw the other's change away, and if it was the version bump that lost, a
+     * repository full of new-format ink went on claiming the old version. The fields are
+     * independent, so merge them independently:
+     *
+     *  - a field only one side touched takes that side;
+     *  - `formatVersion` and `epoch` are monotonic — both raised means the higher one, because the
+     *    higher one describes what is actually in the tree by now;
+     *  - anything else both changed goes to the device that sorts higher, the same symmetric rule
+     *    LWW uses, so both machines land on identical bytes without talking.
+     *
+     * Needs the base: without a common ancestor there is no way to tell "changed" from "kept".
+     * Returns null when any side is not a JSON object, and the caller falls through to keep-local.
+     */
+    private fun mergeManifest(
+        base: ByteArray?, local: ByteArray, remote: ByteArray, device: String, otherDevice: String,
+    ): ByteArray? {
+        val b = jsonObject(base ?: return null) ?: return null
+        val l = jsonObject(local) ?: return null
+        val r = jsonObject(remote) ?: return null
+        val keys = LinkedHashSet<String>().apply { addAll(l.keys); addAll(r.keys); addAll(b.keys) }
+        val out = LinkedHashMap<String, JsonElement>()
+        keys.forEach { k ->
+            val bv = b[k]; val lv = l[k]; val rv = r[k]
+            val v: JsonElement? = when {
+                lv == rv -> lv
+                lv == bv -> rv                     // only the remote touched it (or removed it)
+                rv == bv -> lv                     // only the local touched it
+                k in MONOTONIC && lv is JsonPrimitive && rv is JsonPrimitive ->
+                    if ((lv.intOrNull ?: 0) >= (rv.intOrNull ?: 0)) lv else rv
+                device > otherDevice -> lv ?: rv   // both changed; a removal on the winning side stands
+                else -> rv ?: lv
+            }
+            if (v != null) out[k] = v
+        }
+        return FilterJson.encodeToString(JsonObject.serializer(), JsonObject(out)).toByteArray()
+    }
+
+    private val MONOTONIC = setOf("formatVersion", "epoch")
+
+    private fun jsonObject(bytes: ByteArray): JsonObject? =
+        runCatching { FilterJson.parseToJsonElement(bytes.decodeToString()) as? JsonObject }.getOrNull()
 
     /**
      * Both sides' lines, with the last line for any repeated id winning.

@@ -8,7 +8,6 @@ import androidx.ink.strokes.MutableStrokeInputBatch
 import androidx.ink.strokes.Stroke
 import androidx.ink.strokes.StrokeInputBatch
 import androidx.ink.storage.decode
-import androidx.ink.storage.encode
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
@@ -26,11 +25,12 @@ import kotlin.math.sin
 enum class ShapeKind { LINE, RECTANGLE, ELLIPSE, ARROW, TRIANGLE }
 
 /**
- * Ink stays ink: the payload is the Ink API's own serialized StrokeInputBatch (never text),
- * prefixed with a tiny JSON header describing the brush so the stroke can be rebuilt
- * deterministically as Stroke(brush, inputs).
+ * Ink stays ink: the payload is every input point of the stroke (never a picture of it), behind a
+ * tiny JSON header describing the brush, so the stroke can be rebuilt deterministically as
+ * Stroke(brush, inputs). The layout is [StrokeEnvelope]'s and is Yantra's own.
  *
- * Layout: [int32 header length][header JSON utf-8][StrokeInputBatch bytes]
+ * Until 0.3.0 the payload after the header was androidx.ink's serialised StrokeInputBatch. Those
+ * bytes are still read — [decode] and [upgrade] both understand them — but never written again.
  */
 object StrokeCodec {
 
@@ -80,65 +80,112 @@ object StrokeCodec {
         stroke.brush.family == StockBrushes.highlighter() ||
             ((stroke.brush.colorIntArgb ushr 24) and 0xFF) < 0xFF
 
-    fun encode(stroke: Stroke, familyName: String): ByteArray {
-        val header = Header(
-            family = familyName,
-            color = stroke.brush.colorIntArgb.toLong() and 0xFFFFFFFFL,
-            size = stroke.brush.size,
-            epsilon = stroke.brush.epsilon,
-        )
-        val headerBytes = json.encodeToString(Header.serializer(), header).encodeToByteArray()
-        val out = ByteArrayOutputStream()
-        DataOutputStream(out).use { dos ->
-            dos.writeInt(headerBytes.size)
-            dos.write(headerBytes)
-            stroke.inputs.encode(dos)
-        }
-        return out.toByteArray()
+    /** A stroke this build cannot read: newer than it, or not a stroke at all. Skip it, keep the bytes. */
+    class UnsupportedStrokeFormat(kind: StrokeEnvelope.Kind) : IllegalArgumentException("stroke format $kind")
+
+    private fun toolCode(t: InputToolType): Int = when (t) {
+        InputToolType.MOUSE -> StrokeEnvelope.TOOL_MOUSE
+        InputToolType.TOUCH -> StrokeEnvelope.TOOL_TOUCH
+        InputToolType.STYLUS -> StrokeEnvelope.TOOL_STYLUS
+        else -> StrokeEnvelope.TOOL_UNKNOWN
     }
+
+    private fun toolType(code: Int): InputToolType = when (code) {
+        StrokeEnvelope.TOOL_MOUSE -> InputToolType.MOUSE
+        StrokeEnvelope.TOOL_TOUCH -> InputToolType.TOUCH
+        StrokeEnvelope.TOOL_STYLUS -> InputToolType.STYLUS
+        else -> InputToolType.UNKNOWN
+    }
+
+    /** The envelope for a live stroke: brush header plus every input point, in Yantra's own layout. */
+    private fun envelope(stroke: Stroke, familyName: String): StrokeEnvelope.Envelope {
+        val inputs = stroke.inputs
+        val tool = if (inputs.size > 0) toolCode(inputs[0].toolType) else StrokeEnvelope.TOOL_UNKNOWN
+        val points = ArrayList<StrokeEnvelope.Point>(inputs.size)
+        for (i in 0 until inputs.size) {
+            val p = inputs[i]
+            points += StrokeEnvelope.Point(
+                x = p.x, y = p.y,
+                elapsedMillis = p.elapsedTimeMillis.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+                pressure = p.pressure,
+                tiltRadians = p.tiltRadians,
+                orientationRadians = p.orientationRadians,
+                strokeUnitLengthCm = p.strokeUnitLengthCm,
+            )
+        }
+        return StrokeEnvelope.Envelope(
+            header = StrokeEnvelope.Header(
+                family = familyName,
+                color = stroke.brush.colorIntArgb.toLong() and 0xFFFFFFFFL,
+                size = stroke.brush.size,
+                epsilon = stroke.brush.epsilon,
+            ),
+            tool = tool,
+            points = points,
+        )
+    }
+
+    private fun stroke(e: StrokeEnvelope.Envelope): Stroke {
+        val batch = MutableStrokeInputBatch()
+        val tool = toolType(e.tool)
+        e.points.forEach { p ->
+            batch.add(
+                tool, p.x, p.y, p.elapsedMillis.toLong(),
+                p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
+            )
+        }
+        val h = e.header
+        return Stroke(brush = brush(h.family, h.color, h.size, h.epsilon), inputs = batch.toImmutable())
+    }
+
+    /**
+     * Reads either generation into the envelope. Legacy bytes go through androidx.ink's decoder one
+     * last time — that is the only place the old payload is still understood, and it exists so that
+     * a sketch drawn before the format changed can be carried across rather than lost.
+     */
+    private fun read(data: ByteArray): StrokeEnvelope.Envelope = when (val k = StrokeEnvelope.kind(data)) {
+        StrokeEnvelope.Kind.YANTRA -> StrokeEnvelope.decode(data)
+        StrokeEnvelope.Kind.LEGACY -> DataInputStream(ByteArrayInputStream(data)).use { dis ->
+            val headerBytes = ByteArray(dis.readInt())
+            dis.readFully(headerBytes)
+            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
+            val inputs = StrokeInputBatch.decode(dis)
+            val legacy = Stroke(
+                brush = brush(header.family, header.color, header.size, header.epsilon),
+                inputs = inputs,
+            )
+            envelope(legacy, header.family)
+        }
+        StrokeEnvelope.Kind.UNKNOWN -> throw UnsupportedStrokeFormat(k)
+    }
+
+    /** Always writes the current format. */
+    fun encode(stroke: Stroke, familyName: String): ByteArray =
+        StrokeEnvelope.encode(envelope(stroke, familyName))
 
     /**
      * The same stroke, shifted.
      *
-     * Goes through the header rather than through a decoded [Stroke], so the brush comes out the
-     * far side byte-for-byte what it was: family, colour, size and epsilon are copied across
-     * untouched. A stroke that has been moved is the same ink in a different place, and nothing
-     * about how it was drawn should change because it was picked up.
+     * Goes through the envelope rather than through a re-tessellated [Stroke], so the brush comes out
+     * the far side exactly what it was: family, colour, size and epsilon are copied across untouched.
+     * A stroke that has been moved is the same ink in a different place, and nothing about how it was
+     * drawn should change because it was picked up.
      */
-    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray {
-        DataInputStream(ByteArrayInputStream(data)).use { dis ->
-            val headerBytes = ByteArray(dis.readInt())
-            dis.readFully(headerBytes)
-            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
-            val inputs = StrokeInputBatch.decode(dis)
-            val moved = MutableStrokeInputBatch()
-            for (i in 0 until inputs.size) {
-                val p = inputs[i]
-                moved.add(
-                    p.toolType, p.x + dx, p.y + dy, p.elapsedTimeMillis,
-                    p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
-                )
-            }
-            val stroke = Stroke(
-                brush = brush(header.family, header.color, header.size, header.epsilon),
-                inputs = moved.toImmutable(),
-            )
-            return encode(stroke, header.family)
-        }
-    }
+    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray =
+        StrokeEnvelope.encode(read(data).translated(dx, dy))
 
-    fun decode(data: ByteArray): Stroke {
-        DataInputStream(ByteArrayInputStream(data)).use { dis ->
-            val headerBytes = ByteArray(dis.readInt())
-            dis.readFully(headerBytes)
-            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
-            val inputs = StrokeInputBatch.decode(dis)
-            return Stroke(
-                brush = brush(header.family, header.color, header.size, header.epsilon),
-                inputs = inputs,
-            )
-        }
-    }
+    /** Throws [UnsupportedStrokeFormat] for bytes this build cannot read; callers skip those strokes. */
+    fun decode(data: ByteArray): Stroke = stroke(read(data))
+
+    /** True when the bytes are the first format's and would be rewritten by [upgrade]. */
+    fun isLegacy(data: ByteArray): Boolean = StrokeEnvelope.kind(data) == StrokeEnvelope.Kind.LEGACY
+
+    /**
+     * Legacy bytes become current bytes; anything else is returned as it came, including strokes
+     * newer than this build, which must round-trip untouched through a sidecar rewrite.
+     */
+    fun upgrade(data: ByteArray): ByteArray =
+        if (isLegacy(data)) StrokeEnvelope.encode(read(data)) else data
 
     /**
      * Builds a clean vector shape as a StrokeInputBatch spanning the drag box (x0,y0)-(x1,y1).

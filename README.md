@@ -22,9 +22,10 @@ spine. A list's body is its child nodes; opening a task "as a page" renders that
 through the same code that renders a list. Nesting has no special case because there is no
 distinction to special-case.
 
-**Notes are first class** — typed, drawn, or photographed. Ink strokes are stored as the Ink API's
-own serialized `StrokeInputBatch` and rebuilt as real strokes, so a sketch stays a sketch rather
-than becoming a picture of one.
+**Notes are first class** — typed, drawn, or photographed. Ink strokes are stored as every input
+point the pen produced, in a small envelope of Yantra's own (`YNK1`, see `StrokeEnvelope.kt`), and
+rebuilt as real strokes, so a sketch stays a sketch rather than becoming a picture of one — and a
+second platform can read it.
 
 **Focus is a ledger, not a timer.** Every session is persisted start to end with its outcome —
 finished, interrupted, ran out — and survives the process being killed. A running session holds a
@@ -100,7 +101,8 @@ data/db/Daos.kt            children/subtree CTEs, counts, raw smart-list query h
 data/rank/Rank.kt          fractional (LexoRank-style) sibling ordering, base-36 strings
 data/filter/               serializable filter tree, SortSpec, filter_json -> recursive-CTE SQL
 data/format/               Markdown emphasis runs, [[links]], the page codec, inline reduction
-data/ink/StrokeCodec.kt    [header JSON][Ink StrokeInputBatch bytes] envelope; ink stays ink
+data/ink/StrokeEnvelope.kt YNK1: [magic][header JSON][tool][points…]; the portable half, no androidx.ink
+data/ink/StrokeCodec.kt    envelope <-> androidx.ink Stroke; still reads the pre-0.4 StrokeInputBatch bytes
 data/sync/                 JGit repo, sync engine, commit policy, conflict arbitration,
                            GitHub device auth, Keystore-sealed credentials, token renewal
 data/workspace/            registry, store, writer, page mapper, indexer, reconciler
@@ -128,8 +130,13 @@ ui/                        home, node page (universal renderer), smart list, foc
 - **Smart lists are the "real place"** — the read side compiles `filter_json` to SQL (recursive CTE
   only when scoped); the write side inserts into `home_parent_id` and applies
   `apply_on_create_json`, derived from the filter's `=` clauses.
-- **Ink stays ink** — each stroke row stores the Ink API's own serialized `StrokeInputBatch` plus a
-  tiny brush header, rebuilt as `Stroke(brush, inputs)` and re-rendered with `CanvasStrokeRenderer`.
+- **Ink stays ink** — each stroke row stores its input points (x, y, time, pressure, tilt,
+  orientation) plus a tiny brush header, rebuilt as `Stroke(brush, inputs)` and re-rendered with
+  `CanvasStrokeRenderer`. Until 0.3.0 the points were androidx.ink's own serialised batch; those
+  bytes are still read and are rewritten once, on launch, which raises the manifest to format 2.
+- **The format is versioned, and the version is enforced** — a build that meets a workspace newer
+  than it reads and syncs it but refuses to write, and says so. The manifest merges field by field
+  in a conflict, so a version bump on one phone cannot be reverted by an unrelated edit on another.
 - **The session outlives the app** — restored from disk on any process wake, finalized by a worker
   if the process is gone when it ends, and visible on three surfaces that agree with each other
   because they read one clock.

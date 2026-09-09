@@ -190,9 +190,21 @@ class AppContainer(val app: Application) {
      */
     private val indexer = Indexer(db)
 
-    val workspaces = Workspaces(db, indexer, device, appScope) { id, change ->
-        commits[id]?.record(change)
-    }
+    val workspaces = Workspaces(
+        db, indexer, device, appScope,
+        onChange = { id, change -> commits[id]?.record(change) },
+        // A refused write is the one thing that must never pass silently. A toast is blunt, but it
+        // is the only surface guaranteed to exist wherever the write was asked for — a widget, the
+        // share sheet, a notification action — and it says the one useful thing: update the app.
+        onRefused = { id, e ->
+            Log.w("Yantra", "Refused a write to ${id.ifEmpty { "Personal" }}: ${e.message}")
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(
+                    app, "Read-only: this workspace needs a newer Yantra", android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        },
+    )
 
     /** One scheduler per workspace: each repo commits on its own rhythm. */
     private val commits = LinkedHashMap<String, CommitScheduler>()
@@ -308,6 +320,24 @@ class AppContainer(val app: Application) {
         // joins itself waits forever, and everything downstream waits with it — the splash screen
         // holds on this job, so the app never got past its own logo.
         sweep()
+
+        // Ink sidecars written before 0.4.0 hold androidx.ink's bytes, which nothing but this app
+        // on this platform could read. Carry them into the format the repository actually owns, once,
+        // here — where the process is already reading every workspace and nothing else is writing.
+        migrateInk()
+    }
+
+    /**
+     * Rewrites first-format ink in every writable workspace. Idempotent, and free once done.
+     * Failures are logged rather than raised: a sketch that would not convert is left as it was.
+     */
+    private suspend fun migrateInk() = withContext(Dispatchers.IO) {
+        workspaces.all.forEach { store ->
+            if (store.isReadOnly) return@forEach
+            runCatching { workspaces.writer(store.id)?.migrateLegacyInk() ?: 0 }
+                .onSuccess { n -> if (n > 0) Log.i("Yantra", "Rewrote $n ink sidecars in ${store.id.ifEmpty { "Personal" }}") }
+                .onFailure { Log.w("Yantra", "Ink migration skipped for ${store.id}", it) }
+        }
     }
 
     /**
