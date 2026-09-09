@@ -17,6 +17,8 @@ targets:
     platform: iOS
     sources:
       - path: Yantra/Sources
+      - path: Yantra/Fonts
+        buildPhase: resources
       - path: ../conformance
         type: folder
         buildPhase: resources
@@ -26,6 +28,8 @@ targets:
       path: Yantra/Info.plist
       properties:
         CFBundleDisplayName: Yantra
+        UIAppFonts: [bricolage_grotesque.ttf, space_grotesk.ttf, space_mono_regular.ttf, space_mono_bold.ttf]
+        UIUserInterfaceStyle: Dark
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         CFBundleURLTypes:
