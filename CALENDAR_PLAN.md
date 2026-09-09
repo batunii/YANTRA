@@ -1,14 +1,21 @@
 # Calendar and events — implementation plan
 
-Two decisions taken up front, both at the ambitious end:
+Two decisions taken up front:
 
 - **Events are a new first-class block, with recurrence.** Not a calendar view over `due:` dates —
   a thing that has a start and an end, no done state, and lives in the page file like every other
-  block.
-- **Two-way sync with the device calendar.** YANTRA events appear in Google/Samsung and changes come
-  back.
+  block. YANTRA owns these: create, edit, delete, repeat.
+- **The device calendar is read in, never written to.** Google/Samsung events are drawn alongside
+  yours as a backdrop. YANTRA never creates, edits or deletes anything in the provider.
 
-The second is where this can lose data, and §5 says so at length rather than discovering it later.
+**The second decision is what keeps this safe**, and it is worth being explicit about how much it
+removes rather than treating it as a limitation. There is exactly one writer for every piece of
+data: YANTRA owns what is in the repo, the provider owns what is in the provider, and neither
+reaches into the other. Nothing below has to answer "both sides changed, now what" — because one
+side never changes.
+
+An earlier draft of this plan specified two-way sync. What that cost, and what dropping it saves, is
+in §5.
 
 ---
 
@@ -24,12 +31,12 @@ Worth stating precisely, because most of an event is already in the format under
 | Date picker | `DueSheet` already draws a month grid — `CALENDAR_WIDTH = 48.dp * 7 + 12.dp * 2` |
 | Line markers taken | `- [ ]`/`- [x]`/`- [~]` task, `- ` bullet, `# ` heading, `1. ` numbered, `![[ink:id]]`, `![[img:…]]` |
 | Room | version 11, one migration, `exportSchema = true` |
-| Calendar provider | **Nothing.** No `READ_CALENDAR`, no `WRITE_CALENDAR`, no `CalendarContract` anywhere |
+| Calendar provider | **Nothing.** No `READ_CALENDAR`, no `CalendarContract` anywhere. `WRITE_CALENDAR` is never going in |
 
 So: reminders, a date model and a month grid exist. What does not exist is a *span*, a *repeat*, and
 anything outside the repo.
 
-## 2. The three things that make this hard
+## 2. The three things that need care
 
 ### 2.1 An instant is the wrong type for a recurring time
 
@@ -82,9 +89,18 @@ Overrides and cancellations are **their own lines** instead:
 
 Two devices cancelling two different days now add two different lines, and git takes both.
 
-### 2.3 Two-way sync means the same event exists twice
+### 2.3 Two calendars in one view, with one writer each
 
-See §5. It is the bulk of the risk and about half the work.
+Device events and YANTRA events appear in the same list and must be told apart at a glance, ordered
+together, and refreshed on different schedules — the provider changes underneath you, the repo
+changes when you or a sync says so. That is a real amount of view work, but it is not *risk*: a
+device event drawn wrongly is a wrong pixel, not a lost appointment.
+
+One consequence worth taking early: **only YANTRA's own events need recurrence expanded by us.**
+`CalendarContract.Instances` already expands rules, exceptions and cancellations in the provider and
+hands back concrete occurrences for a time range. So §4's expander runs over repo events only, and
+the device side asks a query. This is a large saving and it is only available because we never write
+— an expander good enough to *round-trip* provider recurrence would be a different piece of work.
 
 ## 3. The event block
 
@@ -179,35 +195,53 @@ Guards: a weekly 09:00 event stays 09:00 across a DST boundary in both direction
 `UNTIL` stop it; an override moves exactly one occurrence and no other; two overrides on different
 dates both apply.
 
-## 5. Two-way sync with the device calendar
+## 5. Reading the device calendar
 
-**This is the part that can lose data, and it is worth being blunt about why.** Everything else here
-is additive — a new block type, a new view. This one makes the same event exist in two systems that
-can both edit and both delete it, and the repo's conflict policy (per-file last-writer-wins on
-`modifiedAt`) has no opinion about a change that arrived from outside the repo entirely.
+Read-only, and the boundary is absolute: YANTRA issues no insert, no update, no delete against
+`CalendarContract`, and requests `READ_CALENDAR` only. `WRITE_CALENDAR` is never in the manifest, so
+the strongest guarantee here is one the OS enforces rather than one this code promises.
 
-### What has to be solved
+### What that removes
 
-| Problem | Why it is not obvious |
+Worth listing, because it is most of the original plan:
+
+| Problem two-way sync had | Why it is gone |
 |---|---|
-| **Identity** | A provider event id is local to a device and account; it means nothing in the repo. The mapping YANTRA id ↔ `Events._ID`/`_SYNC_ID` is **device-local** and belongs in Room, not in a file that syncs |
-| **Deletion vs never-created** | "Not in the provider" must be distinguishable from "deleted from the provider", or every sync resurrects what you just deleted. Needs a last-synced snapshot per event, device-local |
-| **Echo suppression** | Writing to the provider fires a `ContentObserver`; reading that back as a remote edit is an infinite loop that rewrites the repo. Every write records its own revision so the observer can ignore it |
-| **Recurrence mapping** | `CalendarContract` models exceptions as separate rows with `ORIGINAL_ID` and `ORIGINAL_INSTANCE_TIME`, and cancellations as `STATUS_CANCELED`. Mapping our override lines to that and back is most of the sync work |
-| **Conflict** | Both sides changed since the last sync. Needs a stated rule, and "last writer wins" needs a clock both sides agree on — the provider's `DIRTY` flag is the closest thing |
-| **Which calendar** | The user picks a writable calendar; `CALENDAR_ACCESS_LEVEL` must be checked, and the choice is device-local |
-| **Permissions** | `READ_CALENDAR` and `WRITE_CALENDAR` are both dangerous permissions, needing a runtime request and a working degraded mode when refused |
+| Identity mapping YANTRA id ↔ provider id, device-local, in Room | Nothing to map back. A provider event is read, drawn and forgotten |
+| Distinguishing "deleted from the provider" from "never created there" | Both are simply "not in this query's results" |
+| Echo suppression, so our own writes are not read back as remote edits | There are no writes to echo |
+| A conflict rule for "both sides changed since last sync" | One writer per side. The question cannot arise |
+| Mapping our override lines onto `ORIGINAL_ID` / `ORIGINAL_INSTANCE_TIME` | Only needed in the write direction |
+| A journal of provider mutations, to describe a bad sync afterwards | No mutations |
+| Two-way recurrence translation | `Instances` expands for us — see §2.3 |
 
-### Sequencing, and a recommendation
+### What is left
 
-**Read-only first, as a shipped checkpoint, before any write is enabled.** Not as a lesser version
-of the feature — as the thing that proves the identity mapping, the recurrence translation and the
-observer plumbing are right while the failure mode is still "a wrong event is drawn on a screen"
-rather than "an event is gone from your calendar and your repo".
+1. **Permission.** `READ_CALENDAR` is a dangerous permission: a runtime request, a clear reason
+   shown before asking, and a calendar view that works perfectly well without it — the overlay is
+   an addition to your own events, never a precondition for them.
+2. **Calendar picker.** Which of the account's calendars to draw, stored **device-locally** — a
+   phone and a tablet signed into different accounts have different answers, and a choice in the
+   repo would make one device's calendars appear on the other as ids that mean nothing.
+3. **Query.** `CalendarContract.Instances.query(cr, projection, beginMs, endMs)` for the visible
+   range, filtered to the chosen calendars. It returns occurrences, so recurrence and its exceptions
+   arrive already resolved.
+4. **Refresh.** A `ContentObserver` on `CalendarContract.CONTENT_URI` re-queries the visible range.
+   Harmless now: it can only cause a redraw.
+5. **Drawing them as not-ours.** Distinct enough that nobody tries to edit one and wonders why it
+   will not save. Tapping one offers to open it in the calendar app that owns it.
 
-Writes go on behind a switch that is off by default, and the first release with writes enabled
-should keep a local journal of every provider mutation it makes, so a bad sync can be described
-after the fact.
+### Why this is not the image mistake
+
+`ARCHITECTURE.md` §A criticises image blocks for holding a device-local `content://` URI that does
+not sync, and it is right to. This is deliberately the same shape and is **not** the same mistake,
+because the difference is ownership. An image you picked is your content and belongs in the repo. A
+Google Calendar event is not yours to own — it lives in an account, is already mirrored to each of
+your devices by its own sync adapter, and copying it into the repo would make a second stale copy of
+something that is not YANTRA's to keep. Drawn as a backdrop, it disappears cleanly when the account
+does, which is correct.
+
+Anything you want to *own*, you make as a YANTRA event.
 
 ## 6. The calendar view
 
@@ -218,7 +252,7 @@ The smallest part, and deliberately last in the plan even though it is the visib
   one surface shows both.
 - A day with anything on it gets a dot; the day list shows events by time, then undated tasks.
 - Tapping an empty slot creates an event there; tapping one opens it.
-- Device-calendar events, once §5 lands, draw in the same list marked as not-ours.
+- Device-calendar events, once §5 lands, draw in the same list marked as not-ours and not editable.
 
 ## 7. Order of work
 
@@ -231,8 +265,7 @@ Each phase is useful on its own, and each one's guards go in with it.
 | **2** | The calendar view — month/week/day over events and `due:` tasks | First point the feature is visible |
 | **3** | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
 | **4** | Recurrence: the RRULE subset, windowed expansion, override and cancellation lines | Needs 0–3 stable underneath it |
-| **5** | Device calendar, **read-only**: permission, calendar picker, overlay in the view | Proves the mapping while nothing can be lost |
-| **6** | Device calendar, **two-way**: writes behind a switch, mutation journal, conflict rule | Last, deliberately |
+| **5** | Device calendar: `READ_CALENDAR`, calendar picker, `Instances` query, overlay in the view | Independent of 0–4; could be built alongside them by someone else |
 
 ## 8. Open questions
 
@@ -241,8 +274,8 @@ Each phase is useful on its own, and each one's guards go in with it.
    no answer and the view needs one before Phase 3.
 2. **Do events archive?** Tasks archive on a threshold after completion. An event is never completed;
    a year-old one is just old. Left alone for now, but a workspace of standups grows forever.
-3. **Attendees are `@name` strings**, the same as `assignee`, and carry no email — which is what
-   `CalendarContract` wants for a real attendee. Two-way sync can round-trip a name; it cannot
-   invite anybody. Worth being explicit that this is not a scheduling feature.
+3. **Attendees are `@name` strings**, the same as `assignee`, and carry no email. Nothing is sent to
+   anybody: an attendee here is a note about who is involved, the same as an assignee on a task.
+   This is not a scheduling feature and should not look like one.
 4. **Timezone display**: does a zoned event show its own zone or the reader's? (Proposal: the
    reader's, with the original noted when they differ.)
