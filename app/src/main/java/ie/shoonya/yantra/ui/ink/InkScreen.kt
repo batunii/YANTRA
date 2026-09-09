@@ -1,5 +1,10 @@
 package ie.shoonya.yantra.ui.ink
 
+import android.app.Activity
+import android.content.ContextWrapper
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -42,6 +47,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,6 +67,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.onSizeChanged
@@ -479,6 +486,8 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
     }
 
     var title by remember(node?.id) { mutableStateOf(node?.title.orEmpty()) }
+
+    FullBleedWhileDrawing()
 
     Column(
         Modifier
@@ -1108,3 +1117,41 @@ private val SHAPE_NAMES = listOf(
     ShapeKind.LINE to "Line", ShapeKind.RECTANGLE to "Box",
     ShapeKind.ELLIPSE to "Oval", ShapeKind.ARROW to "Arrow",
 )
+
+/**
+ * Takes the system's navigation bar off the screen for as long as the sketch is open.
+ *
+ * A page is the one screen where the bottom of the display is worth more to the app than to the
+ * system: the drawing runs to the edge, and the strip along the bottom was both stealing the touches
+ * that landed in it and pushing the kit up out of the corner it belongs in.
+ *
+ * Transient rather than sticky — a swipe from the bottom brings the bar back for a moment without
+ * leaving the sketch or resizing anything. That matters because there is no other way out of a
+ * screen whose own Back button is at the top: hiding the bar permanently would strand anyone
+ * navigating by gesture.
+ *
+ * Put back on the way out, in [DisposableEffect]'s dispose rather than on the Back press, so it is
+ * restored however the screen is left — the header's arrow, the system gesture, or the process
+ * being sent to the background mid-sketch.
+ *
+ * The bar being hidden reports a zero inset, so the `navigationBarsPadding` on the page's column
+ * simply goes to nothing. The two are not alternatives: the padding is what keeps the controls
+ * clear on the devices and settings where the bar cannot be hidden, and during the transient
+ * reveal.
+ */
+@Composable
+private fun FullBleedWhileDrawing() {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    DisposableEffect(view) {
+        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.navigationBars())
+        onDispose { controller?.show(WindowInsetsCompat.Type.navigationBars()) }
+    }
+}
