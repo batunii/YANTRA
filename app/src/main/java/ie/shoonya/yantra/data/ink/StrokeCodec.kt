@@ -137,6 +137,13 @@ object StrokeCodec {
             val headerBytes = ByteArray(dis.readInt())
             dis.readFully(headerBytes)
             val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
+            // Same bar as [decode]. This re-encodes through [encode], which stamps the current
+            // version unconditionally — so a v1 blob coming through here would come out *labelled*
+            // as document units with its pixel coordinates untouched, which is worse than being
+            // refused: it would look portable and be wrong everywhere but the screen that drew it.
+            require(header.v >= VERSION_DU) {
+                "ink stroke is v${header.v} (${header.unit}) — pixel coordinates cannot be moved"
+            }
             val inputs = StrokeInputBatch.decode(dis)
             val moved = MutableStrokeInputBatch()
             for (i in 0 until inputs.size) {

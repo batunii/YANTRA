@@ -21,6 +21,7 @@ import ie.shoonya.yantra.data.ink.PAGE_WIDTH_DU
 import ie.shoonya.yantra.data.ink.ShapeKind
 import ie.shoonya.yantra.data.ink.ShapeRecognizer
 import ie.shoonya.yantra.data.ink.StrokeCodec
+import ie.shoonya.yantra.data.ink.StrokePath
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -234,10 +235,25 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
         afterViewportMove()
     }
 
+    // What the screen was last told, so it is not told again for no reason. Every one of these
+    // callbacks writes Compose state, and a recomposition re-runs the AndroidView update — so an
+    // unchanged report during a pinch costs a frame's worth of work per frame to say nothing.
+    private var lastPage = -1
+    private var lastPages = -1
+    private var lastZoomPercent = -1
+
     private fun afterViewportMove() {
         dryLayer.invalidate()
-        onViewportChanged(viewport.currentPage(), viewport.pages)
-        onZoomChanged(viewport.percent())
+        val page = viewport.currentPage()
+        if (page != lastPage || viewport.pages != lastPages) {
+            lastPage = page; lastPages = viewport.pages
+            onViewportChanged(page, viewport.pages)
+        }
+        val percent = viewport.percent()
+        if (percent != lastZoomPercent) {
+            lastZoomPercent = percent
+            onZoomChanged(percent)
+        }
         reportCurrentSelection()
     }
 
@@ -314,7 +330,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
             MotionEvent.ACTION_POINTER_DOWN -> {
                 // second finger: this gesture becomes a pan and pinch, so cancel any active op
                 activeStrokeId?.let { wetLayer.cancelStroke(it, event) }
-                clearLasso()
+                abandonLasso()
                 activePointerId = null
                 activeStrokeId = null
                 shapeActive = false
@@ -409,7 +425,13 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                 activeStrokeId = null
                 shapeActive = false
                 dryLayer.clearPreview()
-                clearLasso()
+                abandonLasso()
+                // A cancelled drag has to put the carried strokes back down. Leaving these set left
+                // `movingSelection` true with a stale origin, so the *next* lasso gesture took the
+                // carry branch and moved the selection by a delta measured from a gesture that had
+                // already been abandoned — and persisted it.
+                movingSelection = false
+                dryLayer.setMove(0f, 0f)
                 erasing = false
                 panning = false
                 onDrawingChanged(false)
@@ -522,7 +544,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
             dryLayer.selected = heldSelection
             return
         }
-        dryLayer.selected = toggled(scoreLasso().map { it.id })
+        dryLayer.selected = toggled(scoreLasso())
     }
 
     /** The loop's catch, symmetric-differenced against what was already held. */
@@ -535,22 +557,42 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
     /**
      * Which strokes the current loop catches, most-contained first.
      *
-     * See [StrokeCodec.lassoCatch] for the rule. This only assembles the candidates: everything the
-     * loop's own bounding box touches, including strokes that have been drawn but not yet round-
-     * tripped through the view model — a stroke you drew a second ago is a stroke you can select.
+     * See [StrokeCodec.lassoCatch] for the rule. This runs on every few pixels of finger movement,
+     * because the catch is previewed live, so it is careful about what it does per call: the
+     * bounding-box cull uses boxes computed when the stroke set was last set, and the survivors are
+     * scored against paths cached the same way. Extracting a path from a `Stroke` costs two array
+     * allocations and a native read per input point, and doing that for every stroke on the page
+     * before culling — which is what the first version did — made drawing a lasso stall.
+     *
+     * Only committed strokes are candidates. A stroke that has been drawn but not yet round-tripped
+     * through the view model has no id anything else would recognise, so selecting one produced a
+     * catch that could not be moved, deleted or drawn with a halo. The window is a few frames wide;
+     * the honest answer is that it is not selectable until it has an id.
      */
-    private fun scoreLasso(): List<StrokeItem> {
+    private fun scoreLasso(): List<String> {
+        if (lassoX.size < 3) return emptyList()
         val px = lassoX.toFloatArray()
         val py = lassoY.toFloatArray()
-        val candidates = dryLayer.items + dryLayer.extraStrokes.mapIndexed { i, s ->
-            StrokeItem("live-extra-$i", s)
+        var l = Float.MAX_VALUE; var t = Float.MAX_VALUE
+        var r = -Float.MAX_VALUE; var b = -Float.MAX_VALUE
+        for (i in px.indices) {
+            if (px[i] < l) l = px[i]
+            if (px[i] > r) r = px[i]
+            if (py[i] < t) t = py[i]
+            if (py[i] > b) b = py[i]
         }
-        return StrokeCodec.lassoCatch(candidates.map { it.id to it.stroke }, px, py)
-            .map { id -> candidates.first { it.id == id } }
+        val near = ArrayList<StrokePath>()
+        for (i in dryLayer.items.indices) {
+            val box = dryLayer.boxAt(i) ?: continue
+            if (box[0] > r || box[0] + box[2] < l || box[1] > b || box[1] + box[3] < t) continue
+            near += dryLayer.pathAt(i) ?: continue
+        }
+        if (near.isEmpty()) return emptyList()
+        return StrokeCodec.lassoCatchPaths(near, px, py)
     }
 
     private fun commitLasso() {
-        val chosen = if (lassoX.size < 3) heldSelection else toggled(scoreLasso().map { it.id })
+        val chosen = if (lassoX.size < 3) heldSelection else toggled(scoreLasso())
         clearLasso()
         heldSelection = emptySet()
         dryLayer.selected = chosen
@@ -592,6 +634,21 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
     private fun clearLasso() {
         lassoX.clear(); lassoY.clear()
         dryLayer.setLasso(lassoX, lassoY)
+    }
+
+    /**
+     * Drops a loop that was interrupted rather than finished, and un-does what it was previewing.
+     *
+     * The live preview writes the toggled catch straight into the highlight as the loop is drawn,
+     * without telling the screen — the bar is only updated on lift. So a loop that never lifts left
+     * the halo showing one set and the bar holding another, and the bar's Delete acted on the ids it
+     * was holding: it removed the strokes that were *not* lit up. Putting the highlight back to what
+     * it was before the loop started is what makes the two agree again.
+     */
+    private fun abandonLasso() {
+        clearLasso()
+        if (dryLayer.selected != heldSelection) dryLayer.selected = heldSelection
+        heldSelection = emptySet()
     }
 
     /** Drops the highlight — the caller does this when the selection has been acted on or dismissed. */
@@ -778,8 +835,13 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
 
     var items: List<StrokeItem> = emptyList()
         set(value) {
+            // The screen re-runs its AndroidView update on every recomposition and hands the same
+            // list back; recomputing boxes and paths for it would be a full walk of every input
+            // point on the page, per frame, during a pinch.
+            if (field === value) return
             field = value
             itemBoxes = value.map { StrokeCodec.bbox(it.stroke.inputs) }
+            itemPaths = value.map { StrokeCodec.path(it.stroke, it.id) }
             invalidate()
         }
 
@@ -800,6 +862,19 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
      */
     private var itemBoxes: List<FloatArray?> = emptyList()
     private var extraBoxes: List<FloatArray?> = emptyList()
+
+    /**
+     * Each stroke as a bare polyline, for the lasso to score against.
+     *
+     * Cached for the same reason as the boxes and a sharper one: pulling a path out of a `Stroke`
+     * reads every input point across the ink library's native boundary, and the live lasso preview
+     * would otherwise pay for that on every stroke on the page, several times a second.
+     */
+    private var itemPaths: List<StrokePath> = emptyList()
+
+    fun boxAt(i: Int): FloatArray? = itemBoxes.getOrNull(i)
+
+    fun pathAt(i: Int): StrokePath? = itemPaths.getOrNull(i)
 
     /** The loop being drawn, in document space. */
     private var lassoPath: android.graphics.Path? = null

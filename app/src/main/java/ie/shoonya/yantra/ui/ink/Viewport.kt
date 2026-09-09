@@ -113,11 +113,17 @@ class Viewport {
         clamp()
     }
 
-    /** Back to one page across, at the top of the page currently in view. Double-tap lands here. */
+    /**
+     * Back to one page across, without moving up or down the document.
+     *
+     * The vertical position is deliberately left alone. Snapping to the top of the page as well
+     * would mean "fit" did two things, and the one nobody asked for — losing your place — is the one
+     * you would notice. An earlier version assigned `panYDu` to itself around the zoom change, which
+     * read as if it were preserving something the clamp might otherwise take; it is not, the clamp
+     * only ever pulls the pan back inside the document.
+     */
     fun fitWidth() {
-        val wasAt = panYDu
         zoom = 1f
-        panYDu = wasAt
         clamp()
     }
 

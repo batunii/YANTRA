@@ -203,6 +203,27 @@ class PinchGestureTest {
     }
 
     @Test
+    fun aCancelledSelectionDragDoesNotPoisonTheNextGesture() {
+        // The bug: ACTION_CANCEL reset everything about a gesture except `movingSelection` and the
+        // carried offset, so the next lasso took the carry branch and moved the selection by a delta
+        // measured from a gesture that had already been abandoned — and persisted it.
+        val c = canvas()
+        var moves = 0
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            c.onMoveSelection = { _, _, _ -> moves++ }
+        }
+        downTime = 0; clock = 0
+        send(c, MotionEvent.ACTION_DOWN, 500f to 700f)
+        send(c, MotionEvent.ACTION_MOVE, 560f to 760f)
+        send(c, MotionEvent.ACTION_CANCEL, 560f to 760f)
+        // A fresh loop somewhere else entirely.
+        send(c, MotionEvent.ACTION_DOWN, 1100f to 1800f)
+        send(c, MotionEvent.ACTION_MOVE, 1160f to 1860f)
+        send(c, MotionEvent.ACTION_UP, 1160f to 1860f)
+        assertEquals("a cancelled drag must not make the next gesture a move", 0, moves)
+    }
+
+    @Test
     fun zoomIsStillClampedWhenItComesFromFingers() {
         val c = canvas()
         repeat(4) { pinch(c, fromHalfSpan = 100f, factor = 6f) }

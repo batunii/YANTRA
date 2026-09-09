@@ -74,6 +74,17 @@ class InkCoordinatesTest {
     }
 
     @Test
+    fun `an old stroke cannot be moved into a new label either`() {
+        // translate() re-encodes through encode(), which stamps the current version unconditionally.
+        // Without its own version check a v1 blob would come out *labelled* as document units with
+        // its pixel coordinates untouched — portable-looking and wrong everywhere but the screen
+        // that drew it, which is worse than being refused.
+        val v1 = blob("""{"family":"marker","color":4278190080,"size":3.0,"epsilon":0.1}""")
+        val threw = runCatching { StrokeCodec.translate(v1, 10f, 10f) }.isFailure
+        assertTrue("translate should refuse a pixel-coordinate stroke", threw)
+    }
+
+    @Test
     fun `garbage is refused without throwing`() {
         assertNull(StrokeCodec.decodeOrNull(byteArrayOf(1, 2, 3, 4, 5)))
         assertEquals(0, StrokeCodec.version(byteArrayOf(1, 2, 3, 4, 5)))

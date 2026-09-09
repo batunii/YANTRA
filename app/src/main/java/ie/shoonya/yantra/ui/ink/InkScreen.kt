@@ -480,6 +480,17 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
     var drawing by remember { mutableStateOf(false) }
     var canvasRef by remember { mutableStateOf<InkCanvas?>(null) }
 
+    /**
+     * The themed stroke list, built once per actual change rather than once per recomposition.
+     *
+     * `AndroidView`'s update block runs on every recomposition, and this used to build a fresh list
+     * with a fresh `Stroke` per item inside it. The canvas caches a bounding box and a path per
+     * stroke keyed on that list's identity, so a new list every time meant re-walking every input
+     * point on the page — twice — for every frame of a pinch. Remembering it makes the canvas's
+     * identity check work, and the whole chain collapses to nothing when nothing has changed.
+     */
+    val display = remember(strokes, dark) { InkTheme.displayItems(strokes, dark) }
+
     val slot = slots[active]
     fun setSlot(i: Int, change: (PenSlot) -> PenSlot) {
         slots = slots.mapIndexed { at, s -> if (at == i) change(s) else s }
@@ -643,7 +654,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     canvas.brushProvider = { StrokeCodec.brush(f, slot.color, w) }
                     canvas.onStrokeFinished = { stroke -> vm.save(stroke, f) }
                     canvas.onErase = { id -> vm.erase(id) }
-                    canvas.setStrokeItems(InkTheme.displayItems(strokes, dark))
+                    canvas.setStrokeItems(display)
                 },
             )
 

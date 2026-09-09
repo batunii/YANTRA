@@ -209,7 +209,30 @@ class WorkspaceStore(
      * workspace we cannot identify is not a workspace from the future, and treating it as one would
      * make an unrelated parse failure look like "your app is too old".
      */
-    val formatVersion: Int get() = readManifest()?.formatVersion ?: FORMAT_VERSION
+    val formatVersion: Int get() = cachedManifest()?.formatVersion ?: FORMAT_VERSION
+
+    /**
+     * The manifest, parsed at most once per change to it.
+     *
+     * [isAhead] is consulted on every write, and this class already caches page and ink parses
+     * because a rebuild that re-read them was measured in tens of milliseconds per keystroke. A
+     * gate that re-read and re-parsed a JSON file on that same path would have quietly put some of
+     * that back.
+     */
+    private fun cachedManifest(): Manifest? {
+        val f = manifestFile
+        if (!f.exists()) {
+            manifestCache = null
+            return null
+        }
+        val stamp = Stamp(f.lastModified(), f.length())
+        manifestCache?.takeIf { it.stamp == stamp }?.let { return it.value }
+        val parsed = readManifest() ?: return null
+        manifestCache = Cached(stamp, parsed)
+        return parsed
+    }
+
+    private var manifestCache: Cached<Manifest>? = null
 
     /**
      * True when the files were written by a newer build than this one, which makes them read-only.
@@ -241,8 +264,10 @@ class WorkspaceStore(
         return true
     }
 
-    fun writeManifest(m: Manifest) =
+    fun writeManifest(m: Manifest) {
         manifestFile.write(FilterJson.encodeToString(Manifest.serializer(), m))
+        manifestCache = null    // our own write, so evict rather than trust the timestamp
+    }
 
     // ---- pages ----
 
@@ -301,6 +326,7 @@ class WorkspaceStore(
      * and there is no tombstone to carry.
      */
     fun deletePage(id: String, seen: MutableSet<String> = HashSet()) {
+        if (refuseWhenAhead("deletePage($id)")) return
         if (!seen.add(id)) return    // a malformed workspace can name a cycle; do not follow it twice
         runCatching { PageCodec.decode(pageFile(id).readText()) }.getOrNull()?.blocks?.forEach { b ->
             when (b) {
@@ -355,8 +381,26 @@ class WorkspaceStore(
             ?: decodeInk(f.readBytes()).also { inkCache[f.name] = Cached(stamp, it) }
     }
 
+    /**
+     * True when this workspace must not be changed, logged once at the point of refusal.
+     *
+     * For the operations that destroy or move data without writing any bytes, and so never reach
+     * [writeBytesAtomically]: deleting a page and its sidecars, archiving, restoring, dropping a
+     * smart list, appending to the focus log. A workspace from a newer build is one this build does
+     * not fully understand, and deleting someone's page out of a format we cannot read is worse than
+     * writing into it, not better.
+     */
+    private fun refuseWhenAhead(what: String): Boolean {
+        if (!isAhead) return false
+        android.util.Log.w(
+            "Yantra.workspace",
+            "refusing $what: workspace '$id' is format $formatVersion, this build reads $FORMAT_VERSION",
+        )
+        return true
+    }
+
     fun writeInk(id: String, strokes: List<ByteArray>) {
-        if (isAhead) return     // deleting is a write too, and the gate is about all of them
+        if (refuseWhenAhead("writeInk")) return   // an empty list deletes, and that is a change too
         if (strokes.isEmpty()) inkFile(id).delete() else inkFile(id).writeBytesAtomically(encodeInk(strokes))
         inkCache.remove(inkFile(id).name)
     }
@@ -389,6 +433,7 @@ class WorkspaceStore(
         archiveFile(pageId).takeIf { it.exists() }?.readLines()?.filter { it.isNotBlank() }.orEmpty()
 
     fun writeArchivedLines(pageId: String, lines: List<String>) {
+        if (refuseWhenAhead("writeArchivedLines($pageId)")) return
         if (lines.isEmpty()) {
             archiveFile(pageId).delete()
             return
@@ -399,6 +444,7 @@ class WorkspaceStore(
 
     /** Moves a page out of the working set, or back into it. */
     fun moveToArchive(pageId: String) {
+        if (refuseWhenAhead("moveToArchive($pageId)")) return
         val from = pageFile(pageId)
         if (!from.exists()) return
         File(archiveDir, PAGES).mkdirs()
@@ -408,6 +454,7 @@ class WorkspaceStore(
     }
 
     fun restoreFromArchive(pageId: String) {
+        if (refuseWhenAhead("restoreFromArchive($pageId)")) return
         val from = archivedPageFile(pageId)
         if (!from.exists()) return
         from.copyTo(pageFile(pageId), overwrite = true)
@@ -451,6 +498,9 @@ class WorkspaceStore(
     private val legacyFocusDir get() = File(root, LEGACY_FOCUS_DIR)
 
     fun appendFocus(line: String, month: String) {
+        // Appending is a write, and the migration it triggers moves files. Both are changes to a
+        // repository this build has declared it does not understand well enough to touch.
+        if (refuseWhenAhead("appendFocus")) return
         migrateLegacyFocusDir()
         val f = File(focusDir, "$month.log")
         f.parentFile?.mkdirs()
@@ -518,7 +568,10 @@ class WorkspaceStore(
         File(smartDir, "${def.nodeId}.json")
             .write(FilterJson.encodeToString(SmartListDef.serializer(), def))
 
-    fun deleteSmartList(nodeId: String) { File(smartDir, "$nodeId.json").delete() }
+    fun deleteSmartList(nodeId: String) {
+        if (refuseWhenAhead("deleteSmartList($nodeId)")) return
+        File(smartDir, "$nodeId.json").delete()
+    }
 
     // ---- io ----
 
@@ -537,9 +590,11 @@ class WorkspaceStore(
     private fun File.write(text: String) = writeBytesAtomically(text.toByteArray())
 
     private fun File.writeBytesAtomically(bytes: ByteArray) {
-        // The read-only gate, at the one place every write to this workspace passes through —
-        // pages, ink, images, the manifest and the metadata alike. Refusing here rather than at
-        // each of the dozen callers is what makes it impossible to add a thirteenth that forgets.
+        // The read-only gate for everything that puts bytes on disk — pages, ink, images, the
+        // manifest and the metadata alike. It is not the *only* gate: deleting and moving a file
+        // destroy data without writing any bytes and never come through here, so they carry their
+        // own [refuseWhenAhead] check. Claiming this was the single choke point, which an earlier
+        // version of this comment did, is what let archive and delete slip past it.
         //
         // A refusal is logged and dropped rather than thrown: this runs inside coroutines launched
         // from view models, where an exception is a crash on the first keystroke, and crashing is a
