@@ -41,6 +41,7 @@ struct RootView: View {
                     case .settings: SettingsView(path: $path)
                     case .conformance: ConformanceView()
                     case let .ink(id): InkView(path: $path, inkId: id)
+                    case .github: SignInView(path: $path)
                     }
                 }
         }
@@ -66,7 +67,10 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $quickAdd) { CreateSheet(path: $path) }
-        .onChange(of: phase) { _, p in if p == .active { model.wake() } }
+        .onChange(of: phase) { _, p in
+            if p == .active { model.wake(); model.syncInBackground("opened") }
+            if p == .background { model.syncInBackground("leaving app") }
+        }
         .task {
             // `-route open:<id>` / `-route focus` / `-route home` — a launch argument for UI tests and
             // demos, so a screen can be reached without tapping.
@@ -85,6 +89,8 @@ struct RootView: View {
                     return
                 }
                 if r == "settings" { path.append(Route.settings); return }
+                if r == "github" { path.append(Route.github); return }
+                if r.hasPrefix("ink:") { path.append(Route.ink(String(r.dropFirst(4)))); return }
                 if r == "stats" { path.append(Route.stats); return }
                 if r.hasPrefix("open:") {
                     let id = String(r.dropFirst(5))
@@ -95,66 +101,4 @@ struct RootView: View {
             if path.isEmpty, let today = model.index.node(systemKey: SystemKey.today) { path.append(Route.smart(today.id)) }
         }
     }
-}
-
-/// The ink screen, first cut: freehand drawing with PencilKit-free Canvas, stored as YNK1 strokes.
-/// Pen kit, lasso, shapes and the eraser follow.
-struct InkView: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.y) private var y
-    @Binding var path: NavigationPath
-    let inkId: String
-    @State private var strokes: [StrokeEnvelope.Envelope] = []
-    @State private var current: [StrokeEnvelope.Point] = []
-    @State private var startedAt: Date? = nil
-    @State private var loaded = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                NavCircle(icon: "chevron.left") { save(); path.removeLast() }
-                Spacer()
-                Text("1 finger draws").font(Face.text(12)).foregroundStyle(y.dim)
-                Spacer()
-                Button { if !strokes.isEmpty { strokes.removeLast(); save() } } label: {
-                    Image(systemName: "arrow.uturn.backward").font(.system(size: 17, weight: .semibold)).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
-                }.buttonStyle(.plain)
-            }.padding(.horizontal, Layout.pageMargin).padding(.top, 8)
-            ZStack {
-                (y.dark ? oklch(0.152, 0.005, 80) : Color.white)
-                Canvas { ctx, size in
-                    func draw(_ pts: [StrokeEnvelope.Point], _ color: Color, _ width: CGFloat) {
-                        var p = Path()
-                        for (i, q) in pts.enumerated() { let pt = CGPoint(x: CGFloat(q.x), y: CGFloat(q.y)); if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) } }
-                        ctx.stroke(p, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
-                    }
-                    for s in strokes {
-                        var c = Color(argb: s.header.color)
-                        if s.header.color == 0xFF23211C, y.dark { c = Color(argb: 0xFFF1EEE7) }
-                        draw(s.points, c, CGFloat(s.header.size))
-                    }
-                    draw(current, y.dark ? Color(argb: 0xFFF1EEE7) : Color(argb: 0xFF23211C), 2.6)
-                }
-            }
-            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                .onChanged { v in
-                    if startedAt == nil { startedAt = Date(); current = [] }
-                    let t = Int32(Date().timeIntervalSince(startedAt!) * 1000)
-                    current.append(.init(x: Float(v.location.x), y: Float(v.location.y), elapsedMillis: t, pressure: -1, tiltRadians: -1, orientationRadians: -1, strokeUnitLengthCm: 0))
-                }
-                .onEnded { _ in
-                    if current.count > 1 {
-                        strokes.append(.init(header: .init(family: "pressure_pen", color: 0xFF23211C, size: 2.6, epsilon: 0.1), tool: StrokeEnvelope.toolTouch, points: current))
-                        save()
-                    }
-                    current = []; startedAt = nil
-                })
-            .clipShape(RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 12).padding(.vertical, 10)
-        }
-        .background(y.page.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        .onAppear { if !loaded { strokes = model.store.readInk(inkId).compactMap { try? StrokeEnvelope.decode($0) }; loaded = true } }
-    }
-
-    private func save() { model.write { try model.writer.writeInk(inkId, strokes.map { StrokeEnvelope.encode($0) }) } }
 }

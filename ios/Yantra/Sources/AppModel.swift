@@ -35,6 +35,17 @@ final class AppModel: ObservableObject {
     /// share sheet) may have written files or moved the session.
     func wake() { reindex(); timer.wake() }
 
+    /// Sync observes; it never participates in a write. Runs on open, on leaving, and on request.
+    @Published private(set) var syncing = false
+    func syncInBackground(_ reason: String) {
+        guard SyncSettings.repo != nil, !syncing else { return }
+        syncing = true
+        Task {
+            let r = await SyncSettings.syncNow(store: store, message: reason)
+            await MainActor.run { syncing = false; if r.pulled { reindex() } }
+        }
+    }
+
     // MARK: writes, each surfacing a refusal rather than crashing
 
     @Published var refusal: String?
@@ -48,25 +59,30 @@ final class AppModel: ObservableObject {
     func toggleDone(_ n: Node) { write { try writer.setDone(n.id, !n.done) } }
     func toggleInProgress(_ n: Node) { write { try writer.setInProgress(n.id, !n.inProgress) } }
 
-    /// Quick capture into a list, or into a smart list's home with its apply-on-create values.
-    func capture(_ title: String, into target: Node?) {
-        let t = title.trimmingCharacters(in: .whitespaces)
+    /// Quick capture: the grammar reads dates, times, #labels, !priority and ~list off the line; a smart
+    /// list's apply-on-create values fill in what its rule needs. Capture is never blocked.
+    func capture(_ raw: String, into target: Node?) {
+        let listNames = index.children(of: nil).filter { $0.type == NodeType.list }
+        let parsed = CaptureParse.parse(raw, lists: listNames.map { inlinePlain($0.title ?? "") })
+        let t = parsed.title.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return }
         write {
-            if let target, target.type == NodeType.smartList, let def = index.smartLists[target.id] {
-                let home = def.homeParentId ?? def.scopeRootId ?? index.node(systemKey: SystemKey.inbox)?.id
-                guard let home else { return }
-                var due: DueSpec? = nil, priority: String? = nil
-                for a in def.applyOnCreate {
-                    if a.defId == BuiltIns.due, a.dateRel == .todayStart { due = DueSpec(.allDay(.today())) }
-                    if a.defId == BuiltIns.priority, let p = a.text { priority = p }
-                }
-                _ = try writer.addBlock(to: home, type: NodeType.task, text: t, due: due, priority: priority)
-            } else {
-                let home = target?.id ?? index.node(systemKey: SystemKey.inbox)?.id
-                guard let home else { return }
-                _ = try writer.addBlock(to: home, type: NodeType.task, text: t)
+            var home: String?
+            var due = parsed.due(), priority = parsed.priority
+            if let name = parsed.list {
+                if let l = listNames.first(where: { inlinePlain($0.title ?? "").caseInsensitiveCompare(name) == .orderedSame }) { home = l.id }
+                else if parsed.listIsNew { home = try writer.createTopLevel(type: NodeType.list, title: name) }
             }
+            if home == nil, let target, target.type == NodeType.smartList, let def = index.smartLists[target.id] {
+                home = def.homeParentId ?? def.scopeRootId ?? index.node(systemKey: SystemKey.inbox)?.id
+                for a in def.applyOnCreate {
+                    if a.defId == BuiltIns.due, a.dateRel == .todayStart, due == nil { due = DueSpec(.allDay(.today())) }
+                    if a.defId == BuiltIns.priority, let p = a.text, priority == nil { priority = p }
+                }
+            }
+            if home == nil { home = target?.id ?? index.node(systemKey: SystemKey.inbox)?.id }
+            guard let home else { return }
+            _ = try writer.addBlock(to: home, type: NodeType.task, text: t, due: due, priority: priority, labels: parsed.labels)
         }
     }
 

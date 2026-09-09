@@ -17,12 +17,18 @@ struct SettingsView: View {
                 HStack(spacing: 8) { ForEach(ThemeMode.allCases, id: \.self) { m in SelectChip(label: m.rawValue, selected: theme.mode == m, stretch: true) { theme.modeRaw = m.rawValue } } }
 
                 SectionLabel(text: "GitHub").padding(.top, 28).padding(.bottom, 10)
-                row(title: "Not signed in", subtitle: "Sync across devices, and share a list with other people", chevron: true)
+                Button { path.append(Route.github) } label: {
+                    row(title: SyncSettings.login ?? "Not signed in",
+                        subtitle: SyncSettings.login != nil ? "Signed in — tap to manage" : "Sync across devices, and share a list with other people", chevron: true)
+                }.buttonStyle(.plain)
 
                 SectionLabel(text: "Workspaces").padding(.top, 28)
                 Text("Each one is a repository. Today spans all of them.").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
                 row(title: model.store.readManifest()?.name ?? "Workspace",
-                    subtitle: model.store.isReadOnly ? "Read-only here — update Yantra to edit" : "On this device only", chevron: false)
+                    subtitle: model.store.isReadOnly ? "Read-only here — update Yantra to edit" : (SyncSettings.repo?.slug ?? "On this device only"), chevron: false)
+                SectionLabel(text: "Sync").padding(.top, 28)
+                Text(SyncSettings.lastStatus ?? "Every change is saved to a file and committed on its own").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
+                YantraButton(label: model.syncing ? "Syncing…" : "Sync now", tone: .quiet, enabled: SyncSettings.repo != nil && !model.syncing) { model.syncInBackground("asked to sync") }
                 row(title: "Add a workspace", subtitle: "Join a repository, or start a shared one", chevron: true)
 
                 SectionLabel(text: "Accent").padding(.top, 28)

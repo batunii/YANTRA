@@ -115,3 +115,32 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(try JSONValue.parse(text).compact(), text)
     }
 }
+
+// MARK: - capture grammar
+
+extension ConformanceTests {
+    struct CaptureCase: Decodable {
+        let input: String; let lists: [String]; let people: [String]
+        let title: String; let date: String?; let time: String?; let labels: [String]; let priority: String?; let assignee: String?
+        let list: String?; let listIsNew: Bool; let spans: [String]
+    }
+    struct CaptureFixture: Decodable { let today: String; let cases: [CaptureCase] }
+
+    func testCaptureGrammarMatchesAndroid() throws {
+        let f = try JSONDecoder().decode(CaptureFixture.self, from: fixture("capture/cases.json"))
+        let today = LocalDate(f.today)!
+        for c in f.cases {
+            // `now` pinned to noon so "a time with no day" resolves the same way as on the machine that wrote the fixture.
+            let got = CaptureParse.parse(c.input, today: today, now: .init(hour: 12, minute: 0), lists: c.lists, people: c.people)
+            XCTAssertEqual(got.title, c.title, c.input)
+            XCTAssertEqual(got.date?.description, c.date, c.input)
+            XCTAssertEqual(got.time.map { String(format: "%02d:%02d", $0.hour, $0.minute) }, c.time, c.input)
+            XCTAssertEqual(got.labels, c.labels, c.input)
+            XCTAssertEqual(got.priority, c.priority, c.input)
+            XCTAssertEqual(got.assignee, c.assignee, c.input)
+            XCTAssertEqual(got.list, c.list, c.input)
+            XCTAssertEqual(got.listIsNew, c.listIsNew, c.input)
+            XCTAssertEqual(got.spans.map { "\($0.kind.rawValue):\($0.range.location)-\($0.range.location + $0.range.length)" }, c.spans, c.input)
+        }
+    }
+}

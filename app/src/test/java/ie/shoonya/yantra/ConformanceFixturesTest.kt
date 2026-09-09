@@ -130,6 +130,61 @@ class ConformanceFixturesTest {
         }
     }
 
+    // ---- capture grammar ----
+
+    @Serializable data class CaptureCase(val input: String, val lists: List<String> = emptyList(), val people: List<String> = emptyList(),
+        val title: String, val date: String?, val time: String?, val labels: List<String>, val priority: String?, val assignee: String?,
+        val list: String?, val listIsNew: Boolean, val spans: List<String>)
+    @Serializable data class CaptureFixture(val today: String, val cases: List<CaptureCase>)
+
+    @Test
+    fun capture() {
+        // A fixed Wednesday, so weekday arithmetic is the same on every machine that runs this.
+        val today = java.time.LocalDate.of(2026, 9, 9)
+        val inputs: List<Triple<String, List<String>, List<String>>> = listOf(
+            Triple("buy milk today", emptyList(), emptyList()),
+            Triple("call the vet tomorrow", emptyList(), emptyList()),
+            Triple("standup wednesday", emptyList(), emptyList()),
+            Triple("review next monday", emptyList(), emptyList()),
+            Triple("dinner 6pm", emptyList(), emptyList()),
+            Triple("dinner 6:30pm", emptyList(), emptyList()),
+            Triple("standup 9 am", emptyList(), emptyList()),
+            Triple("shift 12am", emptyList(), emptyList()),
+            Triple("lunch 12pm", emptyList(), emptyList()),
+            Triple("dinner 18:30", emptyList(), emptyList()),
+            Triple("fix the sink #home #urgent", emptyList(), emptyList()),
+            Triple("ship it !high", emptyList(), emptyList()),
+            Triple("ship it !med", emptyList(), emptyList()),
+            Triple("buy milk tomorrow 6pm #home !high", emptyList(), emptyList()),
+            Triple("presents 25/12", emptyList(), emptyList()),
+            Triple("thing 2027-01-03", emptyList(), emptyList()),
+            Triple("thing 4 sep", emptyList(), emptyList()),
+            Triple("thing sep 4", emptyList(), emptyList()),
+            Triple("taxes 4 march", emptyList(), emptyList()),
+            Triple("think about the roadmap", emptyList(), emptyList()),
+            Triple("today", emptyList(), emptyList()),
+            Triple("#home", emptyList(), emptyList()),
+            Triple("issue C#100 is open", emptyList(), emptyList()),
+            Triple("do it !soon", emptyList(), emptyList()),
+            Triple("buy 18 eggs", emptyList(), emptyList()),
+            Triple("call 25:99", emptyList(), emptyList()),
+            Triple("thing 31/2", emptyList(), emptyList()),
+            Triple("~ Errands tomorrow", emptyList(), emptyList()),
+            Triple("get bread ~groceries", listOf("Groceries", "Work trips"), emptyList()),
+            Triple("plan the trip ~ work trips ~ friday", listOf("Groceries", "Work trips"), emptyList()),
+            Triple("ask @batunii about it", emptyList(), listOf("batunii")),
+            Triple("ask @nobody about it", emptyList(), listOf("batunii")),
+            Triple("~5 mins of stretching", emptyList(), emptyList()),
+        )
+        golden("capture/cases.json") {
+            CaptureFixture(today.toString(), inputs.map { (input, lists, people) ->
+                val c = ie.shoonya.yantra.data.capture.CaptureParse.parse(input, today, lists, people)
+                CaptureCase(input, lists, people, c.title, c.date?.toString(), c.time?.toString(), c.labels, c.priority, c.assignee,
+                    c.list, c.listIsNew, c.spans.map { "${it.kind.name.lowercase()}:${it.range.first}-${it.range.last + 1}" })
+            })
+        }
+    }
+
     // ---- manifest merge ----
 
     @Serializable data class MergeCase(val name: String, val base: String?, val local: String, val remote: String, val device: String, val otherDevice: String, val merged: String, val reason: String)

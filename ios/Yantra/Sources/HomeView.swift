@@ -9,6 +9,7 @@ enum Route: Hashable {
     case settings
     case conformance
     case ink(String)
+    case github
 }
 
 struct HomeView: View {

@@ -1,0 +1,531 @@
+{
+    "today": "2026-09-09",
+    "cases": [
+        {
+            "input": "buy milk today",
+            "lists": [],
+            "people": [],
+            "title": "buy milk",
+            "date": "2026-09-09",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:9-14"
+            ]
+        },
+        {
+            "input": "call the vet tomorrow",
+            "lists": [],
+            "people": [],
+            "title": "call the vet",
+            "date": "2026-09-10",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:13-21"
+            ]
+        },
+        {
+            "input": "standup wednesday",
+            "lists": [],
+            "people": [],
+            "title": "standup",
+            "date": "2026-09-16",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:8-17"
+            ]
+        },
+        {
+            "input": "review next monday",
+            "lists": [],
+            "people": [],
+            "title": "review",
+            "date": "2026-09-21",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:7-18"
+            ]
+        },
+        {
+            "input": "dinner 6pm",
+            "lists": [],
+            "people": [],
+            "title": "dinner",
+            "date": "2026-09-09",
+            "time": "18:00",
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "time:7-10"
+            ]
+        },
+        {
+            "input": "dinner 6:30pm",
+            "lists": [],
+            "people": [],
+            "title": "dinner",
+            "date": "2026-09-09",
+            "time": "18:30",
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "time:7-13"
+            ]
+        },
+        {
+            "input": "standup 9 am",
+            "lists": [],
+            "people": [],
+            "title": "standup",
+            "date": "2026-09-10",
+            "time": "09:00",
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "time:8-12"
+            ]
+        },
+        {
+            "input": "shift 12am",
+            "lists": [],
+            "people": [],
+            "title": "shift",
+            "date": "2026-09-10",
+            "time": "00:00",
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "time:6-10"
+            ]
+        },
+        {
+            "input": "lunch 12pm",
+            "lists": [],
+            "people": [],
+            "title": "lunch",
+            "date": "2026-09-10",
+            "time": "12:00",
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "time:6-10"
+            ]
+        },
+        {
+            "input": "dinner 18:30",
+            "lists": [],
+            "people": [],
+            "title": "dinner",
+            "date": "2026-09-09",
+            "time": "18:30",
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "time:7-12"
+            ]
+        },
+        {
+            "input": "fix the sink #home #urgent",
+            "lists": [],
+            "people": [],
+            "title": "fix the sink",
+            "date": null,
+            "time": null,
+            "labels": [
+                "home",
+                "urgent"
+            ],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "label:13-18",
+                "label:19-26"
+            ]
+        },
+        {
+            "input": "ship it !high",
+            "lists": [],
+            "people": [],
+            "title": "ship it",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": "High",
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "priority:8-13"
+            ]
+        },
+        {
+            "input": "ship it !med",
+            "lists": [],
+            "people": [],
+            "title": "ship it",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": "Medium",
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "priority:8-12"
+            ]
+        },
+        {
+            "input": "buy milk tomorrow 6pm #home !high",
+            "lists": [],
+            "people": [],
+            "title": "buy milk",
+            "date": "2026-09-10",
+            "time": "18:00",
+            "labels": [
+                "home"
+            ],
+            "priority": "High",
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:9-17",
+                "time:18-21",
+                "label:22-27",
+                "priority:28-33"
+            ]
+        },
+        {
+            "input": "presents 25/12",
+            "lists": [],
+            "people": [],
+            "title": "presents",
+            "date": "2026-12-25",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:9-14"
+            ]
+        },
+        {
+            "input": "thing 2027-01-03",
+            "lists": [],
+            "people": [],
+            "title": "thing",
+            "date": "2027-01-03",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:6-16"
+            ]
+        },
+        {
+            "input": "thing 4 sep",
+            "lists": [],
+            "people": [],
+            "title": "thing",
+            "date": "2027-09-04",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:6-11"
+            ]
+        },
+        {
+            "input": "thing sep 4",
+            "lists": [],
+            "people": [],
+            "title": "thing",
+            "date": "2027-09-04",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:6-11"
+            ]
+        },
+        {
+            "input": "taxes 4 march",
+            "lists": [],
+            "people": [],
+            "title": "taxes",
+            "date": "2027-03-04",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "date:6-13"
+            ]
+        },
+        {
+            "input": "think about the roadmap",
+            "lists": [],
+            "people": [],
+            "title": "think about the roadmap",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "today",
+            "lists": [],
+            "people": [],
+            "title": "today",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "#home",
+            "lists": [],
+            "people": [],
+            "title": "#home",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "issue C#100 is open",
+            "lists": [],
+            "people": [],
+            "title": "issue C#100 is open",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "do it !soon",
+            "lists": [],
+            "people": [],
+            "title": "do it !soon",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "buy 18 eggs",
+            "lists": [],
+            "people": [],
+            "title": "buy 18 eggs",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "call 25:99",
+            "lists": [],
+            "people": [],
+            "title": "call 25:99",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "thing 31/2",
+            "lists": [],
+            "people": [],
+            "title": "thing 31/2",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "~ Errands tomorrow",
+            "lists": [],
+            "people": [],
+            "title": "~ Errands tomorrow",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "get bread ~groceries",
+            "lists": [
+                "Groceries",
+                "Work trips"
+            ],
+            "people": [],
+            "title": "get bread",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": "Groceries",
+            "listIsNew": false,
+            "spans": [
+                "list:10-20"
+            ]
+        },
+        {
+            "input": "plan the trip ~ work trips ~ friday",
+            "lists": [
+                "Groceries",
+                "Work trips"
+            ],
+            "people": [],
+            "title": "plan the trip ~",
+            "date": "2026-09-11",
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": "Work trips",
+            "listIsNew": false,
+            "spans": [
+                "list:14-26",
+                "date:29-35"
+            ]
+        },
+        {
+            "input": "ask @batunii about it",
+            "lists": [],
+            "people": [
+                "batunii"
+            ],
+            "title": "ask about it",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": "batunii",
+            "list": null,
+            "listIsNew": false,
+            "spans": [
+                "assignee:4-12"
+            ]
+        },
+        {
+            "input": "ask @nobody about it",
+            "lists": [],
+            "people": [
+                "batunii"
+            ],
+            "title": "ask @nobody about it",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        },
+        {
+            "input": "~5 mins of stretching",
+            "lists": [],
+            "people": [],
+            "title": "~5 mins of stretching",
+            "date": null,
+            "time": null,
+            "labels": [],
+            "priority": null,
+            "assignee": null,
+            "list": null,
+            "listIsNew": false,
+            "spans": []
+        }
+    ]
+}
