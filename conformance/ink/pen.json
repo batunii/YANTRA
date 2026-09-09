@@ -1,0 +1,64 @@
+{
+    "family": "pressure_pen",
+    "color": 4280492316,
+    "size": 2.6,
+    "epsilon": 0.1,
+    "tool": 3,
+    "points": [
+        {
+            "x": 10.0,
+            "y": 20.0,
+            "elapsedMillis": 0,
+            "pressure": 0.4,
+            "tiltRadians": -1.0,
+            "orientationRadians": -1.0,
+            "strokeUnitLengthCm": 0.0
+        },
+        {
+            "x": 13.5,
+            "y": 18.75,
+            "elapsedMillis": 8,
+            "pressure": 0.45000002,
+            "tiltRadians": 0.3,
+            "orientationRadians": 1.2,
+            "strokeUnitLengthCm": 0.0
+        },
+        {
+            "x": 17.0,
+            "y": 17.5,
+            "elapsedMillis": 16,
+            "pressure": 0.5,
+            "tiltRadians": 0.3,
+            "orientationRadians": 1.2,
+            "strokeUnitLengthCm": 0.0
+        },
+        {
+            "x": 20.5,
+            "y": 16.25,
+            "elapsedMillis": 24,
+            "pressure": 0.55,
+            "tiltRadians": 0.3,
+            "orientationRadians": 1.2,
+            "strokeUnitLengthCm": 0.0
+        },
+        {
+            "x": 24.0,
+            "y": 15.0,
+            "elapsedMillis": 32,
+            "pressure": 0.6,
+            "tiltRadians": 0.3,
+            "orientationRadians": 1.2,
+            "strokeUnitLengthCm": 0.0
+        },
+        {
+            "x": 27.5,
+            "y": 13.75,
+            "elapsedMillis": 40,
+            "pressure": 0.65,
+            "tiltRadians": 0.3,
+            "orientationRadians": 1.2,
+            "strokeUnitLengthCm": 0.0
+        }
+    ],
+    "file": "pen.ynk1"
+}

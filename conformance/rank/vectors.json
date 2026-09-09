@@ -1,0 +1,222 @@
+{
+    "alphabet": "0123456789abcdefghijklmnopqrstuvwxyz",
+    "first": "i",
+    "cases": [
+        {
+            "a": null,
+            "b": null,
+            "result": "i"
+        },
+        {
+            "a": null,
+            "b": "i",
+            "result": "9"
+        },
+        {
+            "a": "i",
+            "b": null,
+            "result": "r"
+        },
+        {
+            "a": "i",
+            "b": "j",
+            "result": "ii"
+        },
+        {
+            "a": "i",
+            "b": "i1",
+            "result": "i0i"
+        },
+        {
+            "a": "a",
+            "b": "b",
+            "result": "ai"
+        },
+        {
+            "a": "az",
+            "b": "b",
+            "result": "azi"
+        },
+        {
+            "a": "zz",
+            "b": null,
+            "result": "zzi"
+        },
+        {
+            "a": null,
+            "b": "1",
+            "result": "0i"
+        },
+        {
+            "a": "0z",
+            "b": "1",
+            "result": "0zi"
+        },
+        {
+            "a": "i",
+            "b": "i01",
+            "result": "i00i"
+        },
+        {
+            "a": "hz",
+            "b": "i",
+            "result": "hzi"
+        },
+        {
+            "a": "ii",
+            "b": "ij",
+            "result": "iii"
+        },
+        {
+            "a": null,
+            "b": null,
+            "result": "i"
+        },
+        {
+            "a": "i",
+            "b": null,
+            "result": "r"
+        },
+        {
+            "a": "r",
+            "b": null,
+            "result": "v"
+        },
+        {
+            "a": "v",
+            "b": null,
+            "result": "x"
+        },
+        {
+            "a": "x",
+            "b": null,
+            "result": "y"
+        },
+        {
+            "a": "y",
+            "b": null,
+            "result": "z"
+        },
+        {
+            "a": "z",
+            "b": null,
+            "result": "zi"
+        },
+        {
+            "a": "zi",
+            "b": null,
+            "result": "zr"
+        },
+        {
+            "a": "zr",
+            "b": null,
+            "result": "zv"
+        },
+        {
+            "a": "zv",
+            "b": null,
+            "result": "zx"
+        },
+        {
+            "a": "zx",
+            "b": null,
+            "result": "zy"
+        },
+        {
+            "a": "zy",
+            "b": null,
+            "result": "zz"
+        },
+        {
+            "a": "zz",
+            "b": null,
+            "result": "zzi"
+        },
+        {
+            "a": "zzi",
+            "b": null,
+            "result": "zzr"
+        },
+        {
+            "a": "zzr",
+            "b": null,
+            "result": "zzv"
+        },
+        {
+            "a": "zzv",
+            "b": null,
+            "result": "zzx"
+        },
+        {
+            "a": "zzx",
+            "b": null,
+            "result": "zzy"
+        },
+        {
+            "a": "zzy",
+            "b": null,
+            "result": "zzz"
+        },
+        {
+            "a": "zzz",
+            "b": null,
+            "result": "zzzi"
+        },
+        {
+            "a": "zzzi",
+            "b": null,
+            "result": "zzzr"
+        },
+        {
+            "a": "i",
+            "b": "r",
+            "result": "m"
+        },
+        {
+            "a": "m",
+            "b": "r",
+            "result": "o"
+        },
+        {
+            "a": "o",
+            "b": "r",
+            "result": "p"
+        },
+        {
+            "a": "p",
+            "b": "r",
+            "result": "q"
+        },
+        {
+            "a": "q",
+            "b": "r",
+            "result": "qi"
+        },
+        {
+            "a": "qi",
+            "b": "r",
+            "result": "qr"
+        },
+        {
+            "a": "qr",
+            "b": "r",
+            "result": "qv"
+        },
+        {
+            "a": "qv",
+            "b": "r",
+            "result": "qx"
+        },
+        {
+            "a": "qx",
+            "b": "r",
+            "result": "qy"
+        },
+        {
+            "a": "qy",
+            "b": "r",
+            "result": "qz"
+        }
+    ],
+    "neverEndsInZero": true
+}

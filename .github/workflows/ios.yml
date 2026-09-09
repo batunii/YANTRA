@@ -1,0 +1,40 @@
+name: iOS
+
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'release/**']
+    paths: ['ios/**', 'conformance/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', 'conformance/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: YantraCore conformance
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # The package reads ../../conformance by path, so the golden files the Android job checks
+      # are the ones this job checks. If they disagree, one of the two apps is wrong about bytes.
+      - run: swift test
+        working-directory: ios/YantraCore
+
+  app:
+    name: App builds for the simulator
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+        working-directory: ios
+      - run: >
+          xcodebuild -project Yantra.xcodeproj -scheme Yantra
+          -destination 'generic/platform=iOS Simulator' -configuration Debug
+          CODE_SIGNING_ALLOWED=NO build
+        working-directory: ios

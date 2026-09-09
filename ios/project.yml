@@ -1,0 +1,41 @@
+# xcodegen spec — `xcodegen generate` in this directory produces Yantra.xcodeproj.
+# The project file is generated, not committed: this spec is the truth, the way the
+# Android build files are for app/.
+name: Yantra
+options:
+  bundleIdPrefix: ie.shoonya
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+packages:
+  YantraCore:
+    path: YantraCore
+targets:
+  Yantra:
+    type: application
+    platform: iOS
+    sources:
+      - path: Yantra/Sources
+      - path: ../conformance
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: YantraCore
+    info:
+      path: Yantra/Info.plist
+      properties:
+        CFBundleDisplayName: Yantra
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleURLTypes:
+          - CFBundleURLName: ie.shoonya.yantra
+            CFBundleURLSchemes: [yantra]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra
+        SWIFT_VERSION: "5.10"
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"

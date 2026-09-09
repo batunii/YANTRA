@@ -1,0 +1,115 @@
+{
+    "path": ".yantra/manifest.json",
+    "cases": [
+        {
+            "name": "independent-edits/a",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "remote": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "a",
+            "otherDevice": "b",
+            "merged": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "independent-edits/b",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "remote": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "b",
+            "otherDevice": "a",
+            "merged": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "both-raise-version/a",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":3,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "remote": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "a",
+            "otherDevice": "b",
+            "merged": "{\"formatVersion\":3,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "both-raise-version/b",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":3,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "remote": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "b",
+            "otherDevice": "a",
+            "merged": "{\"formatVersion\":3,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "both-change-same-field/a",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":7}",
+            "remote": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "device": "a",
+            "otherDevice": "b",
+            "merged": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "both-change-same-field/b",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":7}",
+            "remote": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "device": "b",
+            "otherDevice": "a",
+            "merged": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":7}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "new-field-each-side/a",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0,\"inkFormat\":\"ynk1\"}",
+            "remote": "{\"formatVersion\":1,\"name\":\"renamed\",\"createdAt\":1,\"epoch\":2,\"archive_after_days\":0,\"colour\":\"coral\"}",
+            "device": "a",
+            "otherDevice": "b",
+            "merged": "{\"formatVersion\":1,\"name\":\"renamed\",\"createdAt\":1,\"epoch\":2,\"archive_after_days\":0,\"inkFormat\":\"ynk1\",\"colour\":\"coral\"}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "new-field-each-side/b",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0,\"inkFormat\":\"ynk1\"}",
+            "remote": "{\"formatVersion\":1,\"name\":\"renamed\",\"createdAt\":1,\"epoch\":2,\"archive_after_days\":0,\"colour\":\"coral\"}",
+            "device": "b",
+            "otherDevice": "a",
+            "merged": "{\"formatVersion\":1,\"name\":\"renamed\",\"createdAt\":1,\"epoch\":2,\"archive_after_days\":0,\"inkFormat\":\"ynk1\",\"colour\":\"coral\"}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "one-side-removes-field/a",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1}",
+            "remote": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "a",
+            "otherDevice": "b",
+            "merged": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "one-side-removes-field/b",
+            "base": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1}",
+            "remote": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "b",
+            "otherDevice": "a",
+            "merged": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1}",
+            "reason": "merged the manifest field by field"
+        },
+        {
+            "name": "no-base/a",
+            "base": null,
+            "local": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "remote": "{\"formatVersion\":2,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":0}",
+            "device": "a",
+            "otherDevice": "b",
+            "merged": "{\"formatVersion\":1,\"name\":\"tasks\",\"createdAt\":1,\"epoch\":1,\"archive_after_days\":30}",
+            "reason": "kept the local side of an unmergeable file"
+        }
+    ]
+}
