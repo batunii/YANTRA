@@ -16,13 +16,6 @@ func oklch(_ l: Double, _ c: Double, _ hueDeg: Double) -> Color {
     return Color(red: srgb(r), green: srgb(g), blue: srgb(bl))
 }
 
-extension Color {
-    init(argb: UInt32) {
-        self.init(red: Double((argb >> 16) & 0xFF) / 255, green: Double((argb >> 8) & 0xFF) / 255,
-                  blue: Double(argb & 0xFF) / 255, opacity: Double((argb >> 24) & 0xFF) / 255)
-    }
-}
-
 enum ThemeMode: String, CaseIterable { case system = "System", dark = "Dark", oled = "OLED", light = "Light" }
 
 /// The five accents, a closed set. The accent moves only the effort layer.
@@ -86,8 +79,8 @@ struct YantraColors {
 
 /// Persisted theme choice — the same two prefs Android keeps (mode + accent), default Dark + Coral.
 final class ThemeController: ObservableObject {
-    @AppStorage("theme_mode") var modeRaw: String = ThemeMode.dark.rawValue
-    @AppStorage("theme_accent") var accentRaw: String = Accent.coral.rawValue
+    @AppStorage("theme_mode", store: AppGroup.defaults) var modeRaw: String = ThemeMode.dark.rawValue
+    @AppStorage("theme_accent", store: AppGroup.defaults) var accentRaw: String = Accent.coral.rawValue
     var mode: ThemeMode { ThemeMode(rawValue: modeRaw) ?? .dark }
     var accent: Accent { Accent(rawValue: accentRaw) ?? .coral }
     func colors(systemDark: Bool) -> YantraColors {

@@ -1,31 +1,5 @@
 import SwiftUI
 
-/// The mark: a gated square from a 28-unit design space. One path; the checkbox, the focus glyph,
-/// widgets and the icon all draw this. The centre point is the bindu.
-func bhupuraPath(_ s: CGFloat) -> Path {
-    let u = s / 28
-    var p = Path()
-    p.move(to: CGPoint(x: 8 * u, y: 4 * u))
-    p.addLine(to: CGPoint(x: 11 * u, y: 4 * u)); p.addLine(to: CGPoint(x: 11 * u, y: 2 * u))
-    p.addLine(to: CGPoint(x: 17 * u, y: 2 * u)); p.addLine(to: CGPoint(x: 17 * u, y: 4 * u))
-    p.addLine(to: CGPoint(x: 20 * u, y: 4 * u))
-    p.addQuadCurve(to: CGPoint(x: 24 * u, y: 8 * u), control: CGPoint(x: 24 * u, y: 4 * u))
-    p.addLine(to: CGPoint(x: 24 * u, y: 11 * u)); p.addLine(to: CGPoint(x: 26 * u, y: 11 * u))
-    p.addLine(to: CGPoint(x: 26 * u, y: 17 * u)); p.addLine(to: CGPoint(x: 24 * u, y: 17 * u))
-    p.addLine(to: CGPoint(x: 24 * u, y: 20 * u))
-    p.addQuadCurve(to: CGPoint(x: 20 * u, y: 24 * u), control: CGPoint(x: 24 * u, y: 24 * u))
-    p.addLine(to: CGPoint(x: 17 * u, y: 24 * u)); p.addLine(to: CGPoint(x: 17 * u, y: 26 * u))
-    p.addLine(to: CGPoint(x: 11 * u, y: 26 * u)); p.addLine(to: CGPoint(x: 11 * u, y: 24 * u))
-    p.addLine(to: CGPoint(x: 8 * u, y: 24 * u))
-    p.addQuadCurve(to: CGPoint(x: 4 * u, y: 20 * u), control: CGPoint(x: 4 * u, y: 24 * u))
-    p.addLine(to: CGPoint(x: 4 * u, y: 17 * u)); p.addLine(to: CGPoint(x: 2 * u, y: 17 * u))
-    p.addLine(to: CGPoint(x: 2 * u, y: 11 * u)); p.addLine(to: CGPoint(x: 4 * u, y: 11 * u))
-    p.addLine(to: CGPoint(x: 4 * u, y: 8 * u))
-    p.addQuadCurve(to: CGPoint(x: 8 * u, y: 4 * u), control: CGPoint(x: 4 * u, y: 4 * u))
-    p.closeSubpath()
-    return p
-}
-
 enum TaskGlyphState { case open, inProgress, done }
 
 /// The task glyph, three states. Open = bhupura in neutral outline; in progress = accent ring

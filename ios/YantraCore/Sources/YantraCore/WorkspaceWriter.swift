@@ -186,6 +186,19 @@ public final class WorkspaceWriter {
         onChange(.edit)
     }
 
+    /// Re-homes a task line onto another list's page (its own page, if any, moves parent too).
+    public func moveTask(_ taskId: String, toList listId: String) throws {
+        guard let (home, i) = locate(taskId: taskId), home != listId else { return }
+        var line: Block?
+        try editPage(home, change: .structural) { page in
+            var p = page; guard i < p.blocks.count else { return p }
+            line = p.blocks[i]; p.blocks.remove(at: i); return p
+        }
+        guard let moved = line else { return }
+        try editPage(listId, change: .structural) { var p = $0; p.blocks.append(moved.strippingRaw); return p }
+        if store.readPage(taskId) != nil { try editPage(taskId) { var p = $0; p.parent = listId; return p } }
+    }
+
     public func renamePage(_ id: String, _ title: String) throws {
         try editPage(id) { var p = $0; p.title = title; return p }
     }

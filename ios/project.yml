@@ -11,12 +11,26 @@ options:
 packages:
   YantraCore:
     path: YantraCore
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    # Manual, ad-hoc: on the simulator this passes the entitlements file through untouched. Automatic
+    # signing filters entitlements against the team's capabilities and a free team has no App Groups,
+    # which silently emptied the .xcent and left the widgets unable to see the workspace.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    PROVISIONING_PROFILE_SPECIFIER: ""
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
 targets:
   Yantra:
     type: application
     platform: iOS
     sources:
       - path: Yantra/Sources
+      - path: Shared
       - path: Yantra/Fonts
         buildPhase: resources
       - path: ../conformance
@@ -24,6 +38,14 @@ targets:
         buildPhase: resources
     dependencies:
       - package: YantraCore
+      - target: YantraWidgets
+        embed: true
+      - target: YantraShare
+        embed: true
+    entitlements:
+      path: Yantra/Yantra.entitlements
+      properties:
+        com.apple.security.application-groups: [group.ie.shoonya.yantra]
     info:
       path: Yantra/Info.plist
       properties:
@@ -32,14 +54,71 @@ targets:
         UIUserInterfaceStyle: Dark
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: false
         CFBundleURLTypes:
           - CFBundleURLName: ie.shoonya.yantra
             CFBundleURLSchemes: [yantra]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra
-        SWIFT_VERSION: "5.10"
-        CODE_SIGN_STYLE: Automatic
-        TARGETED_DEVICE_FAMILY: "1,2"
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+
+  YantraWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Shared
+      - path: Yantra/Fonts
+        buildPhase: resources
+    dependencies:
+      - package: YantraCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    entitlements:
+      path: Widgets/Widgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.ie.shoonya.yantra]
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Yantra
+        UIAppFonts: [bricolage_grotesque.ttf, space_grotesk.ttf, space_mono_regular.ttf, space_mono_bold.ttf]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra.widgets
+        SKIP_INSTALL: YES
+
+  YantraShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Share
+      - path: Shared
+      - path: Yantra/Fonts
+        buildPhase: resources
+    dependencies:
+      - package: YantraCore
+    entitlements:
+      path: Share/Share.entitlements
+      properties:
+        com.apple.security.application-groups: [group.ie.shoonya.yantra]
+    info:
+      path: Share/Info.plist
+      properties:
+        CFBundleDisplayName: Add to Yantra
+        UIAppFonts: [bricolage_grotesque.ttf, space_grotesk.ttf, space_mono_regular.ttf, space_mono_bold.ttf]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra.share
+        SKIP_INSTALL: YES

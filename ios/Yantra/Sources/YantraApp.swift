@@ -20,6 +20,8 @@ struct RootView: View {
     @EnvironmentObject var theme: ThemeController
     @Environment(\.colorScheme) private var scheme
     @State private var path = NavigationPath()
+    @State private var quickAdd = false
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         let y = theme.colors(systemDark: scheme == .dark)
@@ -59,9 +61,12 @@ struct RootView: View {
             switch url.host {
             case "open": if let id = url.pathComponents.dropFirst().first { path.append(model.index.nodes[id]?.type == NodeType.smartList ? Route.smart(id) : Route.node(id)) }
             case "focus": path.append(Route.focus(nil))
+            case "quickadd": quickAdd = true
             default: break
             }
         }
+        .sheet(isPresented: $quickAdd) { CreateSheet(path: $path) }
+        .onChange(of: phase) { _, p in if p == .active { model.wake() } }
         .task {
             // `-route open:<id>` / `-route focus` / `-route home` — a launch argument for UI tests and
             // demos, so a screen can be reached without tapping.
@@ -71,6 +76,14 @@ struct RootView: View {
                 if r == "home" { return }
                 if r == "focus" { path.append(Route.focus(nil)); return }
                 if r.hasPrefix("focus:") { path.append(Route.focus(String(r.dropFirst(6)))); return }
+                if r.hasPrefix("start:") {   // start:<id>:<secs> — begin a session, for demos
+                    let parts = r.dropFirst(6).split(separator: ":")
+                    if parts.count == 2, let n = model.index.nodes[String(parts[0])], let secs = Int(parts[1]) {
+                        Task { _ = await Notifications.shared.requestPermission() }
+                        model.timer.start(nodeId: n.id, title: n.title ?? "", plannedSecs: secs); path.append(Route.focus(nil))
+                    }
+                    return
+                }
                 if r == "settings" { path.append(Route.settings); return }
                 if r == "stats" { path.append(Route.stats); return }
                 if r.hasPrefix("open:") {

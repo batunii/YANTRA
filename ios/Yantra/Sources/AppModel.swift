@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import WidgetKit
 import YantraCore
 
 /// The app's one container — `AppContainer` on Android. Owns the local workspace, its writer, the
@@ -14,25 +15,25 @@ final class AppModel: ObservableObject {
     let timer: FocusTimer
 
     init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("workspaces/local", isDirectory: true)
-        store = WorkspaceStore(root: base, id: "")
-        writer = WorkspaceWriter(store: store, device: UIDevice.current.name.lowercased().replacingOccurrences(of: " ", with: "-"))
-        if !store.exists {
-            store.scaffold(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000))
-            WorkspaceSeeder.seed(store)
-        }
+        (store, writer) = AppGroup.openWorkspace()
         timer = FocusTimer()
-        timer.ledger = self
         writer.onChange = { [weak self] _ in Task { @MainActor in self?.reindex() } }
+        Notifications.shared.install()
+        Notifications.shared.onMarkDone = { [weak self] id in self?.write { try self?.writer.setDone(id, true) } }
         reindex()
-        timer.restoreIfNeeded()
+        timer.wake()
     }
 
     func reindex() {
         index = WorkspaceIndex.read(store)
         sessions = FocusLedger.read(store)
+        Notifications.shared.syncReminders(index)
+        WidgetCenter.shared.reloadAllTimelines()
     }
+
+    /// Called when the app comes to the foreground: another process (a widget, the island, the
+    /// share sheet) may have written files or moved the session.
+    func wake() { reindex(); timer.wake() }
 
     // MARK: writes, each surfacing a refusal rather than crashing
 
@@ -85,8 +86,9 @@ final class AppModel: ObservableObject {
     func sessions(for nodeId: String) -> [FocusSession] { sessions.filter { $0.nodeId == nodeId && $0.actualSecs != nil } }
 }
 
-/// The live session — `FocusTimer.kt`. Written to the ledger at start, so it survives the process;
-/// pause is deliberately not persisted.
+/// The live session — `FocusTimer.kt`, over the shared `LiveSession` record so the Live Activity and
+/// widget intents, which run in another process, see the same clock. The ledger row was written at
+/// start; pause lives only in the shared scratch state, not in the repository.
 @MainActor
 final class FocusTimer: ObservableObject {
     struct State: Equatable {
@@ -98,75 +100,53 @@ final class FocusTimer: ObservableObject {
         var progress: Double { isOpen ? min(Double(elapsedSecs) / 3600, 1) : plannedSecs == 0 ? 0 : Double(plannedSecs - remainingSecs) / Double(plannedSecs) }
     }
     @Published private(set) var state: State?
-    weak var ledger: AppModel?
     private var ticker: Timer?
+    /// A finished session shown until dismissed, as Android keeps `isFinished` on screen.
+    private var finished: State?
+
+    init() { tick(); wake() }
 
     func start(nodeId: String, title: String, plannedSecs: Int) {
-        if let s = state, !s.isFinished { end(FocusOutcome.interrupted) }
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let s = FocusSession(id: UUID().uuidString.lowercased(), nodeId: nodeId, startedAt: now, plannedSecs: plannedSecs)
-        append(s)
-        state = State(sessionId: s.id, nodeId: nodeId, nodeTitle: inlinePlain(title), plannedSecs: plannedSecs, remainingSecs: plannedSecs, elapsedSecs: 0, isRunning: true)
-        tick()
+        finished = nil
+        SessionCommands.start(nodeId: nodeId, title: title, plannedSecs: plannedSecs)
+        afterChange()
+    }
+    func pause() { SessionCommands.pause(); afterChange() }
+    func resume() { SessionCommands.resume(); afterChange() }
+    func finish() { finished = nil; SessionCommands.stop(); afterChange() }
+    func abandon() { finished = nil; SessionCommands.stop(); afterChange() }
+    func dismissFinished() { finished = nil; refresh() }
+
+    private func afterChange() {
+        FocusActivity.sync()
+        Notifications.shared.scheduleBell(for: LiveSession.load())
+        WidgetCenter.shared.reloadAllTimelines()
+        refresh()
     }
 
-    func pause() { state?.isRunning = false }
-    func resume() { if state?.isFinished == false { state?.isRunning = true } }
-    func finish() { end(FocusOutcome.stopped) }
-    func abandon() { end(FocusOutcome.interrupted) }
-    func dismissFinished() { if state?.isFinished == true { state = nil; ticker?.invalidate() } }
-
-    private func end(_ outcome: String) {
-        guard let s = state else { return }
-        ticker?.invalidate()
-        if !s.isFinished { close(s, actual: s.elapsedSecs, outcome: outcome) }
-        state = nil
+    /// Re-reads the shared record; closes a session that ran out while nobody was running.
+    func wake() {
+        if let s = LiveSession.load(), s.isSpent {
+            finished = State(sessionId: s.sessionId, nodeId: s.nodeId, nodeTitle: s.title, plannedSecs: s.plannedSecs, remainingSecs: 0, elapsedSecs: s.plannedSecs, isRunning: false, isFinished: true)
+            _ = SessionCommands.settleIfSpent()
+            FocusActivity.sync()
+        }
+        refresh()
     }
 
-    private func close(_ s: State, actual: Int, outcome: String) {
-        guard let model = ledger, let row = model.sessions.first(where: { $0.id == s.sessionId }) else { return }
-        append(FocusLedger.settle(row, actualSecs: actual, outcome: outcome, now: Int64(Date().timeIntervalSince1970 * 1000)))
-    }
-
-    private func append(_ s: FocusSession) {
-        ledger?.write { try ledger?.writer.appendFocus(s.line, month: s.monthKey) }
+    private func refresh() {
+        if let s = LiveSession.load() {
+            if s.isSpent { wake(); return }
+            state = State(sessionId: s.sessionId, nodeId: s.nodeId, nodeTitle: s.title, plannedSecs: s.plannedSecs,
+                          remainingSecs: s.remaining(), elapsedSecs: s.elapsed(), isRunning: !s.isPaused)
+        } else {
+            state = finished
+        }
     }
 
     private func tick() {
         ticker?.invalidate()
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, var s = self.state, s.isRunning, !s.isFinished else { return }
-                s.elapsedSecs += 1
-                if !s.isOpen {
-                    s.remainingSecs -= 1
-                    if s.remainingSecs <= 0 {
-                        s.remainingSecs = 0; s.isRunning = false; s.isFinished = true
-                        self.state = s
-                        self.close(s, actual: s.plannedSecs, outcome: FocusOutcome.ranOut)
-                        self.ticker?.invalidate()
-                        return
-                    }
-                }
-                self.state = s
-            }
-        }
-    }
-
-    /// Rebuilds the live session from the ledger on a cold start — the mechanism that makes the
-    /// session outlive the process on both platforms.
-    func restoreIfNeeded() {
-        guard state == nil, let model = ledger, let open = model.sessions.last(where: { $0.endedAt == nil }) else { return }
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let elapsed = Int((nowMs - open.startedAt) / 1000)
-        let title = model.index.nodes[open.nodeId]?.title ?? ""
-        if open.plannedSecs > 0, nowMs >= open.startedAt + Int64(open.plannedSecs) * 1000 {
-            append(FocusLedger.settle(open, actualSecs: open.plannedSecs, outcome: FocusOutcome.ranOut, now: nowMs))
-            return
-        }
-        state = State(sessionId: open.id, nodeId: open.nodeId, nodeTitle: inlinePlain(title), plannedSecs: open.plannedSecs,
-                      remainingSecs: max(open.plannedSecs - elapsed, 0), elapsedSecs: elapsed, isRunning: true)
-        tick()
+        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh() } }
     }
 }
 
