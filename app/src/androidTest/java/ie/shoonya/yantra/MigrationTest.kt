@@ -115,8 +115,18 @@ class MigrationTest {
         // the next open. What matters is that the table arrives, that it is keyed to node, and that
         // adding it does not cost anything already indexed.
         helper.createDatabase(DB, 11).use { db ->
-            db.insertNode("list-1", "list", "Inbox")
-            db.insertNode("task-1", "task", "A task", parent = "list-1")
+            // Columns named in full: [insertNode] writes the v1 shape, and by 11 the table has
+            // grown workspace_id, in_progress and indent, all NOT NULL.
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('list-1', '', NULL, 'list', 'Inbox', 'i', 0, 0, 0, 0, 1000, 1000)"
+            )
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('task-1', '', 'list-1', 'task', 'A task', 'j', 0, 0, 0, 0, 1000, 1000)"
+            )
         }
         helper.runMigrationsAndValidate(DB, 12, true, *ALL).use { db ->
             assertEquals(2, db.count("SELECT COUNT(*) FROM node"))
