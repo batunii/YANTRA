@@ -16,6 +16,15 @@ object NodeType {
     const val INK = "ink"
     const val IMAGE = "image"
     const val SMART_LIST = "smart_list"
+
+    /**
+     * Something that happens at a time — see [ie.shoonya.yantra.data.format.EventRef].
+     *
+     * Deliberately **not** in [TEXTUAL]. Those types convert freely between each other because a
+     * line of text is all any of them holds; an event also holds a span, and there is nothing
+     * honest to invent when a paragraph is asked to become one.
+     */
+    const val EVENT = "event"
     const val GROUP = "group"   // a Home banner grouping lists & smart lists (organizational only)
 
     /**

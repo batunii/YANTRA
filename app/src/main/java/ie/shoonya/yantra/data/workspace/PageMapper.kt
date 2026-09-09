@@ -4,6 +4,7 @@ import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.data.db.PropertyValueEntity
+import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.Block
 import ie.shoonya.yantra.data.format.Bullet
 import ie.shoonya.yantra.data.format.DueSpec
@@ -140,6 +141,7 @@ object PageMapper {
         is Prose -> NodeType.PARAGRAPH
         is InkRef -> NodeType.INK
         is ImageRef -> NodeType.IMAGE
+        is EventRef -> NodeType.EVENT
     }
 
     private fun titleOf(b: Block): String? = when (b) {
@@ -149,6 +151,7 @@ object PageMapper {
         is Numbered -> b.text
         is Prose -> b.text
         is ImageRef -> b.uri
+        is EventRef -> b.title
         is InkRef -> null
     }
 

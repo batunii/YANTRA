@@ -883,6 +883,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             when {
                 caret == null -> vm.addBlock(type, "") { id -> caretTarget = id }
                 caret.type == type -> caretTarget = caret.id
+                // An event carries a time a text block has no way to hold, which is the same
+                // reason ink and image insert rather than convert. Those two never reach this
+                // branch because they are not text fields and cannot hold the caret; an event
+                // renders as an ordinary line and can, so it has to say so here. Converting would
+                // drop the time with no error anywhere, and the line would come back as a note
+                // that used to be a meeting.
+                caret.type == NodeType.EVENT ->
+                    vm.addBlock(type, "", afterId = caret.id) { id -> caretTarget = id }
                 // Becoming a task mints the line a real id, so the row the caret was in is about
                 // to be a different row. Follow the id the conversion reports rather than the one
                 // it started with, or the keyboard drops on every Task tap.

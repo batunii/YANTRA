@@ -169,6 +169,7 @@ object ConflictResolver {
         is ie.shoonya.yantra.data.format.TaskRef -> b.copy(raw = null)
         is ie.shoonya.yantra.data.format.InkRef -> b.copy(raw = null)
         is ie.shoonya.yantra.data.format.ImageRef -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.EventRef -> b.copy(raw = null)
     }
 
     private fun decode(bytes: ByteArray) =

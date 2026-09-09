@@ -1,7 +1,11 @@
 package ie.shoonya.yantra.data.format
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeParseException
 
 /**
@@ -109,6 +113,14 @@ object PageCodec {
         // end of the line — which any editor, any linter and most git hooks will strip. The line
         // then came back as a bullet, so a task you made and did not type into changed into
         // something else behind your back. A checkbox is a checkbox whether or not it says anything.
+        // `@ ` cannot collide with the checkbox or with a bullet, so order here is only for reading.
+        if (rest.startsWith(EVENT_MARKER)) {
+            parseEvent(rest.drop(EVENT_MARKER.length), indent, raw)?.let { return it }
+            // A `@ ` line whose time makes no sense is not an event and must not be silently
+            // dropped; it falls through to prose holding exactly what was written, which is what
+            // this parser does with everything it cannot classify.
+        }
+
         val marker = TASK_MARKER.find(rest)
         if (marker != null) {
             val status = when (marker.groupValues[1]) {
@@ -136,6 +148,9 @@ object PageCodec {
 
     /** `- [ ]`, `- [x]`, `- [~]`, each with or without a following space. See [parseBlock]. */
     private val TASK_MARKER = Regex("""^- \[([ xX~])] ?""")
+
+    /** An event line. See [EventRef] for why it is not `* `. */
+    const val EVENT_MARKER = "@ "
 
     private val NUMBERED = Regex("""^\d+\.\s+(.*)$""")
     private val INK = Regex("""^!\[\[ink:([^\]]+)]]$""")
@@ -204,6 +219,140 @@ object PageCodec {
             raw = raw,
         )
     }
+
+    /**
+     * `@ <when> <title> <tokens…>`.
+     *
+     * The when comes **first**, unlike a task's `due:`, for two reasons: a line that opens with its
+     * time reads like a calendar, and a file of events sorts and greps by time without a parser. It
+     * is always exactly one whitespace-free word, so the split is unambiguous.
+     *
+     * Everything after it is scanned right to left for tokens, the same way and for the same reason
+     * as [parseTask]: "Coffee with #2" keeps its title, because the scan stops at the first word
+     * that is not a token rather than guessing from the left.
+     *
+     * Returns null for a when-slot that will not parse, so the caller can fall back to prose. A `@ `
+     * line this build cannot read is somebody's text, not an error to swallow.
+     */
+    private fun parseEvent(body: String, indent: Int, raw: String): EventRef? {
+        val trimmed = body.trim()
+        if (trimmed.isEmpty()) return null
+        val whenWord = trimmed.substringBefore(' ')
+        val time = parseWhen(whenWord) ?: return null
+
+        val words = trimmed.removePrefix(whenWord).trim().split(" ").filter { it.isNotEmpty() }.toMutableList()
+        var id = ""
+        var rrule: String? = null
+        var series: SeriesRef? = null
+        var cancelled = false
+        var location: String? = null
+        var reminder: Int? = null
+        var priority: String? = null
+        val labels = ArrayList<String>()
+        val attendees = ArrayList<String>()
+
+        while (words.isNotEmpty()) {
+            val w = words.last()
+            val consumed = when {
+                w.contains(Links.CLOSE) -> false
+                w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); true }
+                w.startsWith("rrule:") -> { rrule = w.removePrefix("rrule:").takeIf { it.isNotEmpty() }; rrule != null }
+                w.startsWith("series:") -> parseSeries(w.removePrefix("series:"))?.also { series = it } != null
+                w == "cancelled" -> { cancelled = true; true }
+                w.startsWith("loc:") -> { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }; location != null }
+                w.startsWith("remind:") -> { reminder = w.removePrefix("remind:").toIntOrNull(); reminder != null }
+                w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
+                w.startsWith("@") && w.length > 1 -> { attendees += w.drop(1); true }
+                w.startsWith("#") && w.length > 1 -> { labels += w.drop(1); true }
+                else -> false
+            }
+            if (!consumed) break
+            words.removeAt(words.size - 1)
+        }
+
+        return EventRef(
+            id = id,
+            title = words.joinToString(" "),
+            time = time,
+            rrule = rrule,
+            series = series,
+            cancelled = cancelled,
+            location = location,
+            reminderMin = reminder,
+            labels = labels.reversed(),      // scanned right to left
+            attendees = attendees.reversed(),
+            priority = priority,
+            indent = indent,
+            raw = raw,
+        )
+    }
+
+    /** `s1` or `s1@2026-10-28T09:00`. The bare form means "the occurrence at this line's own start". */
+    private fun parseSeries(token: String): SeriesRef? {
+        if (token.isEmpty()) return null
+        val at = token.indexOf('@')
+        if (at < 0) return SeriesRef(token)
+        val id = token.take(at)
+        if (id.isEmpty()) return null
+        val original = parseLocal(token.drop(at + 1)) ?: return null
+        return SeriesRef(id, original)
+    }
+
+    /**
+     * The when-slot: an ISO-8601 instant-or-interval, in local time.
+     *
+     * | Written | Means |
+     * |---|---|
+     * | `2026-09-11` | all day, that day |
+     * | `2026-09-11/2026-09-13` | all day, the 11th to the 13th **inclusive** |
+     * | `2026-09-11T14:00` | a moment |
+     * | `2026-09-11T14:00/PT1H` | an hour from then |
+     * | `2026-09-11T14:00/2026-09-11T15:30` | until then |
+     * | `2026-09-11T14:00[Europe/Dublin]/PT1H` | the same, pinned to a zone |
+     *
+     * All-day spans are inclusive in the text and exclusive in [EventTime], because the inclusive
+     * reading is what a person writing "the 11th to the 13th" means and the exclusive one is what
+     * arithmetic wants. This function is the seam.
+     *
+     * The split on `/` has to happen *outside* the zone brackets: `Europe/Dublin` contains one.
+     */
+    private fun parseWhen(token: String): EventTime? {
+        val (head, zone) = splitZone(token) ?: return null
+        val slash = head.indexOf('/')
+        val startText = if (slash < 0) head else head.take(slash)
+        val tailText = if (slash < 0) null else head.drop(slash + 1)
+        val allDay = !startText.contains('T')
+
+        val start = parseLocal(startText) ?: return null
+        val end: LocalDateTime = when {
+            tailText == null ->
+                if (allDay) start.plusDays(1) else start        // a day, or a moment
+            tailText.startsWith("P") ->
+                runCatching { start.plus(Duration.parse(tailText)) }.getOrNull() ?: return null
+            else -> {
+                val parsed = parseLocal(tailText) ?: return null
+                // Inclusive last day in the text, exclusive end in the model.
+                if (allDay) parsed.plusDays(1) else parsed
+            }
+        }
+        if (end.isBefore(start)) return null
+        return EventTime(start = start, end = end, zone = zone, allDay = allDay)
+    }
+
+    /** Peels a trailing `[Zone/Id]`, returning the rest and the zone. Null zone when absent. */
+    private fun splitZone(token: String): Pair<String, ZoneId?>? {
+        val open = token.indexOf('[')
+        if (open < 0) return token to null
+        val close = token.indexOf(']', open)
+        if (close < 0) return null
+        val zone = runCatching { ZoneId.of(token.substring(open + 1, close)) }.getOrNull() ?: return null
+        return (token.take(open) + token.drop(close + 1)) to zone
+    }
+
+    /** `2026-09-11` (midnight) or `2026-09-11T14:00`. */
+    private fun parseLocal(s: String): LocalDateTime? =
+        if (s.contains('T')) runCatching { LocalDateTime.parse(s) }.getOrNull()
+        else parseDate(s)?.atStartOfDay()
 
     /** `2026-08-26`, `2026-08-26T09:00:00Z`, either optionally suffixed `+r<minutes>`. */
     private fun parseDue(token: String): DueSpec? {
@@ -284,11 +433,12 @@ object PageCodec {
         is TaskRef -> b.copy(raw = null)
         is InkRef -> b.copy(raw = null)
         is ImageRef -> b.copy(raw = null)
+        is EventRef -> b.copy(raw = null)
     }
 
     /** Prose and headings breathe; consecutive list items do not. */
     private fun needsBlankBefore(prev: Block, next: Block): Boolean {
-        val listish = { b: Block -> b is TaskRef || b is Bullet || b is Numbered }
+        val listish = { b: Block -> b is TaskRef || b is Bullet || b is Numbered || b is EventRef }
         return !(listish(prev) && listish(next))
     }
 
@@ -319,6 +469,7 @@ object PageCodec {
             is InkRef -> "![[ink:${block.id}]]"
             is ImageRef -> "![[image:${block.uri}]]"
             is TaskRef -> renderTask(block)
+            is EventRef -> renderEvent(block)
         }
     }
 
@@ -346,6 +497,57 @@ object PageCodec {
         t.labels.forEach { append(" #").append(it) }
         t.assignee?.let { append(" @").append(it) }
     }
+
+    private fun renderEvent(e: EventRef): String = buildString {
+        append(EVENT_MARKER.trimEnd())
+        append(' ').append(renderWhen(e.time))
+        if (e.title.isNotEmpty()) append(' ').append(e.title)
+        // Fixed order, for the reason renderTask gives: two devices holding the same event must
+        // produce the same bytes, or every sync looks like a change.
+        if (e.id.isNotEmpty()) append(" ^").append(e.id)
+        e.rrule?.let { append(" rrule:").append(it) }
+        e.series?.let { s ->
+            append(" series:").append(s.id)
+            // The bare form means "the occurrence at this line's own start", so an override that
+            // moved somewhere else has to say which occurrence it replaces, and a cancellation
+            // sitting on its original start does not.
+            s.originalStart?.takeIf { it != e.time.start }?.let { append('@').append(renderLocal(it)) }
+        }
+        if (e.cancelled) append(" cancelled")
+        e.location?.let { append(" loc:").append(it) }
+        e.reminderMin?.let { append(" remind:").append(it) }
+        e.priority?.let { append(" !").append(it) }
+        e.labels.forEach { append(" #").append(it) }
+        e.attendees.forEach { append(" @").append(it) }
+    }
+
+    /**
+     * The inverse of [parseWhen], preferring a duration over an explicit end.
+     *
+     * A meeting that moves keeps its length, and a diff shows one changed field instead of two.
+     * Somebody who wrote an explicit end by hand keeps it regardless: [rawStillDescribes] re-parses
+     * their line, gets the same event back, and writes their bytes rather than these.
+     */
+    private fun renderWhen(t: EventTime): String {
+        val zoneSuffix = t.zone?.let { "[$it]" }.orEmpty()
+        if (t.allDay) {
+            val lastDay = t.end.toLocalDate().minusDays(1)      // exclusive in the model, inclusive in the text
+            val head = t.start.toLocalDate().toString()
+            return if (lastDay <= t.start.toLocalDate()) head + zoneSuffix
+            else "$head$zoneSuffix/$lastDay"
+        }
+        val head = renderLocal(t.start) + zoneSuffix
+        if (t.isInstantaneous) return head
+        return "$head/${t.duration.toIsoString()}"
+    }
+
+    /** `2026-09-11T14:00`, dropping seconds when they are zero — the common case and less to read. */
+    private fun renderLocal(d: LocalDateTime): String =
+        if (d.second == 0 && d.nano == 0) d.truncatedTo(java.time.temporal.ChronoUnit.MINUTES).toString()
+        else d.toString()
+
+    /** `PT1H30M`, and `PT0S` never appears because an instantaneous event renders without a tail. */
+    private fun Duration.toIsoString(): String = this.toString()
 
     private fun renderDue(d: DueSpec): String {
         val body = when (val v = d.value) {

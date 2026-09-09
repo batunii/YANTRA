@@ -1,7 +1,10 @@
 package ie.shoonya.yantra.data.format
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 /**
  * A page, as it exists in the repo — see GIT_WORKSPACES_PLAN.md §2.
@@ -109,3 +112,77 @@ data class TaskRef(
 data class InkRef(val id: String, override val indent: Int = 0, override val raw: String? = null) : Block
 
 data class ImageRef(val uri: String, override val indent: Int = 0, override val raw: String? = null) : Block
+
+/**
+ * When an event happens.
+ *
+ * **Local date-time and a zone, deliberately not an [Instant].** An instant is a point on the
+ * timeline, which is right for "remind me at this moment" and wrong for anything that repeats: a
+ * standup at 09:00 every weekday is 09:00 *local*, and expanding a rule from instants moves it by an
+ * hour at every DST boundary while the wall clock stays put. See CALENDAR_PLAN.md §2.1.
+ *
+ * [zone] being null means **floating** — "09:00 wherever you are". A birthday and a personal
+ * reminder are floating; a meeting with someone in another country is not. `CalendarContract` draws
+ * the same distinction, so this is not an invention.
+ *
+ * [end] is **exclusive**, so a duration is `end - start` with no off-by-one. All-day events are
+ * written in the file with an *inclusive* last date, because that is what somebody reading the line
+ * means by "the 11th to the 13th"; the codec converts, and [PageCodec] is where that seam lives.
+ */
+data class EventTime(
+    val start: LocalDateTime,
+    val end: LocalDateTime,
+    val zone: ZoneId? = null,
+    val allDay: Boolean = false,
+) {
+    val duration: Duration get() = Duration.between(start, end)
+
+    /** True for a moment rather than a span — a reminder-shaped event. */
+    val isInstantaneous: Boolean get() = start == end
+}
+
+/**
+ * The occurrence of a repeating event that this line replaces.
+ *
+ * [originalStart] identifies *which* occurrence, and is the start the rule would have produced —
+ * not where the override moved it to. Null means "the occurrence starting at this line's own start",
+ * which is the common case for a cancellation and keeps that line short.
+ */
+data class SeriesRef(val id: String, val originalStart: LocalDateTime? = null)
+
+/**
+ * Something that happens, as opposed to something to be done.
+ *
+ * An event has a span and no done state — it is not finished, it simply passes. That is why it is
+ * not a [TaskRef] with extra fields and not a checkbox variant: there is no box to tick.
+ *
+ * Written `@ <when> <title> ^<id> <tokens…>`. The marker is `@ ` rather than `* ` because a leading
+ * asterisk is a bullet in every markdown editor there is, and a bullet somebody types by hand must
+ * not become a meeting — the same argument [PageCodec] already makes about the checkbox.
+ *
+ * [cancelled] only means anything alongside [series]: it is how one occurrence of a repeat is
+ * removed without rewriting the series line, which two devices cancelling two different days would
+ * otherwise collide on. See CALENDAR_PLAN.md §2.2.
+ */
+data class EventRef(
+    val id: String,
+    val title: String,
+    val time: EventTime,
+    /** RFC 5545 subset — see CALENDAR_PLAN.md §4. Stored verbatim, including rules we cannot expand. */
+    val rrule: String? = null,
+    val series: SeriesRef? = null,
+    val cancelled: Boolean = false,
+    val location: String? = null,
+    /** Minutes *before* the start; negative means after. Null is no reminder. Matches [DueSpec]. */
+    val reminderMin: Int? = null,
+    val labels: List<String> = emptyList(),
+    /**
+     * Who is involved, as `@name` — the same strings [TaskRef.assignee] uses, and carrying no more
+     * than a name. Nothing is sent to anybody; this is a note about who, not an invitation.
+     */
+    val attendees: List<String> = emptyList(),
+    val priority: String? = null,
+    override val indent: Int = 0,
+    override val raw: String? = null,
+) : Block
+

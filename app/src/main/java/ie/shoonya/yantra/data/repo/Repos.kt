@@ -22,6 +22,7 @@ import ie.shoonya.yantra.data.filter.SortSpec
 import ie.shoonya.yantra.data.filter.workspacesNamed
 import ie.shoonya.yantra.data.filter.deriveApplyOnCreate
 import ie.shoonya.yantra.data.rank.Rank
+import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.Block
 import ie.shoonya.yantra.data.format.Bullet
 import ie.shoonya.yantra.data.format.Heading
@@ -420,6 +421,7 @@ private fun renamed(b: Block, text: String): Block = when (b) {
     is Numbered -> b.copy(text = text)
     is Prose -> b.copy(text = text)
     is ImageRef -> b.copy(uri = text)
+    is EventRef -> b.copy(title = text)
     is InkRef -> b
 }
 
@@ -430,6 +432,7 @@ private fun indented(b: Block, indent: Int): Block = when (b) {
     is Numbered -> b.copy(indent = indent)
     is Prose -> b.copy(indent = indent)
     is ImageRef -> b.copy(indent = indent)
+    is EventRef -> b.copy(indent = indent)
     is InkRef -> b.copy(indent = indent)
 }
 

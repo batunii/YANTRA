@@ -2,6 +2,7 @@ package ie.shoonya.yantra.data.workspace
 
 import ie.shoonya.yantra.data.db.AppDatabase
 import ie.shoonya.yantra.data.db.NodeType
+import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.Block
 import ie.shoonya.yantra.data.format.Bullet
 import ie.shoonya.yantra.data.format.Heading
@@ -406,6 +407,7 @@ class WorkspaceWriter(
                 is Numbered -> b.text
                 is Prose -> b.text
                 is ImageRef -> b.uri
+                is EventRef -> b.title
                 is InkRef -> ""
             }
             // A task that already has an identity keeps it: converting a task to a task is a no-op,
@@ -425,6 +427,7 @@ class WorkspaceWriter(
         is Prose -> b.copy(indent = indent)
         is InkRef -> b.copy(indent = indent)
         is ImageRef -> b.copy(indent = indent)
+        is EventRef -> b.copy(indent = indent)
     }
 
     /**

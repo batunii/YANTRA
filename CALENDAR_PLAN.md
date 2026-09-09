@@ -127,21 +127,32 @@ the device side asks a query. This is a large saving and it is only available be
 
 | Form | Means |
 |---|---|
-| `09:00-09:15` | today's date on the page's own day, or the series' date; times are local |
+| `2026-09-11` | all-day, that day |
+| `2026-09-11/2026-09-13` | all-day, the 11th to the 13th **inclusive** |
+| `2026-09-11T14:00` | a moment |
 | `2026-09-11T14:00/PT1H` | start plus ISO-8601 duration |
 | `2026-09-11T14:00/2026-09-11T15:30` | explicit end |
-| `2026-09-11` | all-day |
-| `2026-09-11/2026-09-13` | all-day, spanning |
-| `…T14:00[Europe/Dublin]` | zoned; absent means floating |
+| `2026-09-11T14:00[Europe/Dublin]/PT1H` | zoned; absent means floating |
+
+**A bare `09:00-09:15` was dropped during Phase 0.** An earlier draft allowed it, with the date
+coming from "the page's own day" — but a page has no day, so on a standalone event that form has no
+date at all and the rule could not be stated without inventing one. Every when-slot carries a full
+date, which also makes a file of events sort and grep by time without a parser.
 
 Duration rather than end-time is preferred on render: a 1-hour meeting that moves stays 1 hour, and
-a diff shows one changed field instead of two.
+a diff shows one changed field instead of two. A hand-written explicit end survives anyway —
+`rawStillDescribes` re-parses the line, gets the same event, and writes the bytes already there.
+
+All-day spans are **inclusive in the text and exclusive in the model**, because the inclusive
+reading is what somebody writing "the 11th to the 13th" means and the exclusive one is what
+arithmetic wants. `PageCodec` is the seam and the tests pin both sides.
 
 ### Tokens
 
 Reused from the task line wherever the meaning is identical, so there is one thing to learn:
-`^id`, `#label`, `@assignee` (attendees), `!priority`. New: `rrule:`, `series:`, `loc:`, `+r<min>`
-for a reminder (already the `due:` spelling).
+`^id`, `#label`, `@attendee`, `!priority`. New: `rrule:`, `series:`, `loc:`, `cancelled`, and
+`remind:<min>` — a standalone token rather than the `due:` line's `+r<min>` suffix, which only made
+sense appended to a value.
 
 ### Model
 
@@ -260,7 +271,7 @@ Each phase is useful on its own, and each one's guards go in with it.
 
 | Phase | What | Why here |
 |---|---|---|
-| **0** | `EventRef`, `EventTime`, the `@ ` grammar, codec round-trip tests | Freeze the format before anything reads it. `GIT_WORKSPACES_PLAN.md` §2 is emphatic about this and it was right |
+| **0** ✅ | `EventRef`, `EventTime`, the `@ ` grammar, codec round-trip tests | Freeze the format before anything reads it. `GIT_WORKSPACES_PLAN.md` §2 is emphatic about this and it was right |
 | **1** | Indexing events into Room, a bump to version 12 | The view and smart lists query the index, not the files |
 | **2** | The calendar view — month/week/day over events and `due:` tasks | First point the feature is visible |
 | **3** | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
