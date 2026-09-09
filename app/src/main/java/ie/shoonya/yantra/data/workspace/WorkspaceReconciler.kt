@@ -31,6 +31,7 @@ data class WorkspaceIndex(
     val defs: List<PropertyDefEntity> = emptyList(),
     val smartLists: List<SmartListDefEntity> = emptyList(),
     val ink: List<InkStrokeEntity> = emptyList(),
+    val events: List<ie.shoonya.yantra.data.db.EventEntity> = emptyList(),
     val focus: List<FocusSessionEntity> = emptyList(),
     val problems: List<String> = emptyList(),
 )
@@ -88,6 +89,7 @@ object WorkspaceReconciler {
         val values = ArrayList<PropertyValueEntity>()
         val links = ArrayList<LabelLink>()
         val ink = ArrayList<InkStrokeEntity>()
+        val events = ArrayList<ie.shoonya.yantra.data.db.EventEntity>()
 
         mapped.forEach { m ->
             val parent = m.page.parentId
@@ -121,6 +123,7 @@ object WorkspaceReconciler {
             values += m.values
             links += m.labels
             ink += strokesFor(store, m, stamp, problems, ws)
+            events += m.events
         }
 
         val labels = resolveLabels(store, links, stamp, ws)
@@ -155,6 +158,7 @@ object WorkspaceReconciler {
                 )
             },
             ink = ink,
+            events = events,
             // Every node, not only the pages. A session belongs to whatever you focused on, and
             // most tasks never own a page — a page exists only once a task holds something. Checking
             // against page ids therefore threw away the sessions of every plain task: appended to the

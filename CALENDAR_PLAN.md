@@ -272,13 +272,34 @@ Each phase is useful on its own, and each one's guards go in with it.
 | Phase | What | Why here |
 |---|---|---|
 | **0** ✅ | `EventRef`, `EventTime`, the `@ ` grammar, codec round-trip tests | Freeze the format before anything reads it. `GIT_WORKSPACES_PLAN.md` §2 is emphatic about this and it was right |
-| **1** | Indexing events into Room, a bump to version 12 | The view and smart lists query the index, not the files |
+| **1** ✅ | Indexing events into Room, a bump to version 12 | The view and smart lists query the index, not the files |
 | **2** | The calendar view — month/week/day over events and `due:` tasks | First point the feature is visible |
 | **3** | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
 | **4** | Recurrence: the RRULE subset, windowed expansion, override and cancellation lines | Needs 0–3 stable underneath it |
 | **5** | Device calendar: `READ_CALENDAR`, calendar picker, `Instances` query, overlay in the view | Independent of 0–4; could be built alongside them by someone else |
 
-## 8. Open questions
+## 8. What the index holds
+
+`event`, one row per event node, keyed to it and cascading on delete so a removed page cannot leave
+its events behind.
+
+**[start_local] and [zone] are the truth; [start_utc]/[end_utc] are a convenience** — derived by
+resolving the local time in the event's zone, or in *this device's* zone when it is floating. A
+floating event therefore indexes to different instants on a phone in Dublin and a tablet in Tokyo,
+which is correct rather than a bug: floating means local, and the index is rebuilt per device from
+files that both agree on.
+
+`EventDao.inRange` is a **candidate** query, not an answer. Three clauses: the ordinary overlap; a
+moment (`start == end`), whose empty span the overlap test would hide; and every recurring event
+regardless of its own span, because the row holds only the first occurrence and a weekly standup
+begun in September must come back when November is asked for. Deciding which occurrences actually
+land in the window is expansion's job — Phase 4 — not SQL's.
+
+An event with an explicit `^id` keeps it, exactly as a task does, and that is load-bearing: an
+override names its series by id, and a derived id is a line number that changes the moment anything
+is inserted above. A series renumbered by an unrelated edit would come apart.
+
+## 9. Open questions
 
 1. **Whose event is it?** An event on a page belongs to that page. Does a calendar-created event with
    no obvious home go to Inbox, to a dated page, or to a dedicated `calendar/` area? The format has

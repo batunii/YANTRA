@@ -302,6 +302,54 @@ data class InkStrokeEntity(
 }
 
 /**
+ * An event's own fields, beside the node row that carries its title and position.
+ *
+ * A separate table rather than [PropertyValueEntity] rows, which is where a task's due date lives.
+ * A due date is one value; an event is a span, a zone, an all-day flag, a rule and a series
+ * reference, and half of those want to be indexed columns so a month can be asked for in one query.
+ *
+ * **[startLocal] and [zone] are the truth; [startUtc] and [endUtc] are a convenience.** The local
+ * time is what the file says, and it is what a repeating event has to be expanded from — see
+ * CALENDAR_PLAN.md §2.1. The UTC pair exists only so a range query is a comparison rather than a
+ * parse, and it is derived by resolving the local time in [zone], or in *this device's* zone when
+ * that is null. A floating event therefore indexes differently on a phone in Dublin and a tablet in
+ * Tokyo, which is not a bug: floating means local, and the index is rebuilt per device from files
+ * that both agree on.
+ *
+ * A recurring event's span is only its **first** occurrence. Range queries have to include
+ * `rrule IS NOT NULL` rows whatever their span until expansion lands — see [EventDao.inRange].
+ */
+@Entity(
+    tableName = "event",
+    foreignKeys = [
+        ForeignKey(entity = NodeEntity::class, parentColumns = ["id"], childColumns = ["node_id"], onDelete = ForeignKey.CASCADE)
+    ],
+    indices = [
+        Index(value = ["workspace_id", "start_utc"], name = "idx_event_start"),
+        Index(value = ["series_id"], name = "idx_event_series"),
+    ]
+)
+data class EventEntity(
+    @PrimaryKey @ColumnInfo(name = "node_id") val nodeId: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
+    /** ISO local date-time, exactly as the file spells it. Authoritative. */
+    @ColumnInfo(name = "start_local") val startLocal: String,
+    /** Exclusive, so a duration is a subtraction. See [ie.shoonya.yantra.data.format.EventTime]. */
+    @ColumnInfo(name = "end_local") val endLocal: String,
+    /** Null is floating — "09:00 wherever you are". */
+    val zone: String? = null,
+    @ColumnInfo(name = "all_day") val allDay: Boolean = false,
+    @ColumnInfo(name = "start_utc") val startUtc: Long,
+    @ColumnInfo(name = "end_utc") val endUtc: Long,
+    val rrule: String? = null,
+    @ColumnInfo(name = "series_id") val seriesId: String? = null,
+    @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
+    val cancelled: Boolean = false,
+    val location: String? = null,
+    @ColumnInfo(name = "reminder_min") val reminderMin: Int? = null,
+)
+
+/**
  * A user-created tag: freely create, attach/detach per task, and delete — no schema ceremony.
  * This is the one open-ended, user-extensible mechanism; [PropertyDefEntity] is reserved for the
  * fixed built-in fields (Priority/Due) and is never user-extended.

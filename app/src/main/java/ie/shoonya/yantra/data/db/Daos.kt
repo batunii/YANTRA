@@ -641,6 +641,47 @@ interface LabelDao {
 }
 
 @Dao
+interface EventDao {
+
+    @Query("SELECT * FROM event WHERE node_id = :nodeId")
+    suspend fun byId(nodeId: String): EventEntity?
+
+    /**
+     * Everything that might fall in `[fromUtc, toUtc)`.
+     *
+     * Three clauses, and each earns its place. The first is the ordinary overlap test. The second
+     * catches a **moment** — an event with no duration, where `start == end` makes the overlap test
+     * empty and would hide a reminder-shaped event sitting exactly on the boundary. The third
+     * returns every **recurring** event regardless of its own span, because the row holds only the
+     * first occurrence: a weekly standup that began in September has to come back when November is
+     * asked for, and deciding which of its occurrences actually land in the window is expansion's
+     * job, not SQL's.
+     *
+     * So this is a *candidate* query. The caller expands and filters. See CALENDAR_PLAN.md §4.
+     */
+    @Query(
+        """
+        SELECT * FROM event
+         WHERE rrule IS NOT NULL
+            OR (start_utc < :toUtc AND end_utc > :fromUtc)
+            OR (start_utc = end_utc AND start_utc >= :fromUtc AND start_utc < :toUtc)
+         ORDER BY start_utc
+        """
+    )
+    fun inRange(fromUtc: Long, toUtc: Long): Flow<List<EventEntity>>
+
+    /** Every override and cancellation belonging to a series, for expansion to apply. */
+    @Query("SELECT * FROM event WHERE series_id = :seriesId")
+    suspend fun overridesOf(seriesId: String): List<EventEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(events: List<EventEntity>)
+
+    @Query("DELETE FROM event WHERE workspace_id = :ws")
+    suspend fun clearEvents(ws: String)
+}
+
+@Dao
 interface InkDao {
 
     @Query("SELECT * FROM ink_stroke WHERE node_id = :nodeId AND deleted_at IS NULL ORDER BY rank")

@@ -76,6 +76,7 @@ class Indexer(private val db: AppDatabase) {
         val labels = db.labelDao()
         val smart = db.smartListDao()
         val ink = db.inkDao()
+        val events = db.eventDao()
 
         // Scoped: one database holds every workspace, so an unscoped wipe here would erase the
         // other repos rather than refresh this one.
@@ -98,6 +99,7 @@ class Indexer(private val db: AppDatabase) {
         val defsChanged = was?.defs != index.defs
         val smartChanged = was?.smartLists != index.smartLists
         val inkChanged = !sameInk(was?.ink, index.ink)
+        val eventsChanged = was?.events != index.events
         val focusChanged = was?.focus != index.focus
 
         // Everything above points at node, so its rows can only be replaced once the dependents are
@@ -106,7 +108,7 @@ class Indexer(private val db: AppDatabase) {
         // constraint is deferred to the end of the transaction, by which point the same node ids are
         // back and it holds again.
         val leavingDependents = nodesChanged &&
-            !(valuesChanged && linksChanged && inkChanged && focusChanged)
+            !(valuesChanged && linksChanged && inkChanged && focusChanged && eventsChanged)
         if (leavingDependents) {
             db.openHelper.writableDatabase.execSQL("PRAGMA defer_foreign_keys = TRUE")
         }
@@ -116,6 +118,7 @@ class Indexer(private val db: AppDatabase) {
         if (valuesChanged) props.clearValues(workspaceId)
         if (smartChanged) smart.clearSmartLists(workspaceId)
         if (inkChanged) ink.clearStrokes(workspaceId)
+        if (eventsChanged) events.clearEvents(workspaceId)
         if (focusChanged) db.focusDao().clearSessions(workspaceId)
         if (nodesChanged) nodes.clearNodes(workspaceId)
 
@@ -133,6 +136,7 @@ class Indexer(private val db: AppDatabase) {
         if (linksChanged) labels.attachAll(index.nodeLabels)
         if (smartChanged) smart.insertAll(index.smartLists)
         if (inkChanged) ink.insertAll(index.ink)
+        if (eventsChanged) events.insertAll(index.events)
         if (focusChanged) db.focusDao().insertAll(index.focus)
 
         last[workspaceId] = index

@@ -412,3 +412,29 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `idx_focus_node` ON `focus_session` (`node_id`, `started_at`)")
     }
 }
+
+/**
+ * Events get a table of their own — CALENDAR_PLAN.md §7 phase 1.
+ *
+ * Creating rather than backfilling: the index is rebuilt from files on the next open, and every
+ * event that exists is a line in a page waiting to be read. There is nothing in the old database to
+ * carry forward, because until now there was nothing that could hold one.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `event` (" +
+                "`node_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, " +
+                "`start_local` TEXT NOT NULL, `end_local` TEXT NOT NULL, " +
+                "`zone` TEXT, `all_day` INTEGER NOT NULL, " +
+                "`start_utc` INTEGER NOT NULL, `end_utc` INTEGER NOT NULL, " +
+                "`rrule` TEXT, `series_id` TEXT, `series_original` TEXT, " +
+                "`cancelled` INTEGER NOT NULL, `location` TEXT, `reminder_min` INTEGER, " +
+                "PRIMARY KEY(`node_id`), " +
+                "FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_start` ON `event` (`workspace_id`, `start_utc`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_series` ON `event` (`series_id`)")
+    }
+}
+

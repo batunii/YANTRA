@@ -15,6 +15,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_6_7
 import ie.shoonya.yantra.data.db.MIGRATION_7_8
 import ie.shoonya.yantra.data.db.MIGRATION_8_9
 import ie.shoonya.yantra.data.db.MIGRATION_10_11
+import ie.shoonya.yantra.data.db.MIGRATION_11_12
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -42,7 +43,7 @@ class MigrationTest {
 
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
     )
 
     @get:Rule
@@ -55,7 +56,7 @@ class MigrationTest {
 
     private companion object {
         const val DB = "migration-test.db"
-        const val LATEST = 11
+        const val LATEST = 12
     }
 
     private fun SupportSQLiteDatabase.scalar(sql: String): String? =
@@ -107,6 +108,32 @@ class MigrationTest {
     }
 
     // ---- per-migration data behaviour ----
+
+    @Test
+    fun migration11to12_addsAnEmptyEventTableWithoutDisturbingNodes() {
+        // Nothing to backfill: an event is a line in a page, and the index is rebuilt from files on
+        // the next open. What matters is that the table arrives, that it is keyed to node, and that
+        // adding it does not cost anything already indexed.
+        helper.createDatabase(DB, 11).use { db ->
+            db.insertNode("list-1", "list", "Inbox")
+            db.insertNode("task-1", "task", "A task", parent = "list-1")
+        }
+        helper.runMigrationsAndValidate(DB, 12, true, *ALL).use { db ->
+            assertEquals(2, db.count("SELECT COUNT(*) FROM node"))
+            assertEquals(0, db.count("SELECT COUNT(*) FROM event"))
+            // The cascade is what keeps a deleted page from leaving its events behind.
+            db.execSQL(
+                "INSERT INTO event (node_id, workspace_id, start_local, end_local, all_day, " +
+                    "start_utc, end_utc, cancelled) VALUES " +
+                    "('task-1', '', '2026-09-11T14:00', '2026-09-11T15:00', 0, 1000, 2000, 0)"
+            )
+            assertEquals(1, db.count("SELECT COUNT(*) FROM event"))
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("DELETE FROM node WHERE id = 'task-1'")
+            assertEquals(0, db.count("SELECT COUNT(*) FROM event"))
+        }
+    }
+
 
     @Test
     fun migration2to3_claimsTheOldestTodaySmartList() {
