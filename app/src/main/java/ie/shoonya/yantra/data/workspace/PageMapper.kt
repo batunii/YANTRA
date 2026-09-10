@@ -207,6 +207,7 @@ object PageMapper {
                 },
                 vBool = !allDay,
                 vNumber = due.reminderMin?.toDouble(),
+                vDurationMin = due.duration?.toMinutes()?.toInt(),
                 updatedAt = ts,
             )
         }

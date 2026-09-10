@@ -438,3 +438,15 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+/**
+ * A due date can now last a while — CALENDAR_PLAN.md §10.
+ *
+ * Nullable and unbackfilled: every task that exists is a moment until somebody blocks out time for
+ * it, and a default of zero would be a claim nobody made.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `property_value` ADD COLUMN `v_duration_min` INTEGER")
+    }
+}
+

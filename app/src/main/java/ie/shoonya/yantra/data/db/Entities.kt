@@ -156,6 +156,15 @@ data class PropertyValueEntity(
     @ColumnInfo(name = "v_number") val vNumber: Double? = null,
     @ColumnInfo(name = "v_date") val vDate: Long? = null,    // epoch millis: comparable + indexable
     @ColumnInfo(name = "v_bool") val vBool: Boolean? = null,
+    /**
+     * How long a dated value lasts, in minutes. Null for a moment.
+     *
+     * A column of its own rather than another meaning piled onto `v_number`, which already carries
+     * the reminder offset on this very def. Two numbers on one row cannot share one column, and
+     * encoding both into it would be the kind of cleverness that reads fine and then loses a
+     * reminder the first time somebody blocks out an hour.
+     */
+    @ColumnInfo(name = "v_duration_min") val vDurationMin: Int? = null,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
 

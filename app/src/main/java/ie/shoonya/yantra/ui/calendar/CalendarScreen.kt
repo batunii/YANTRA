@@ -60,7 +60,13 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 
-private val MONTH_LABEL = DateTimeFormatter.ofPattern("MMMM yyyy")
+/**
+ * Short, and one line.
+ *
+ * The full month name wrapped to three lines once the M/W/D switcher joined the bar — a phone is
+ * only so wide, and the heading is the part that can give without anything being lost.
+ */
+private val MONTH_LABEL = DateTimeFormatter.ofPattern("MMM yyyy")
 private val DAY_LABEL = DateTimeFormatter.ofPattern("EEEE d MMMM")
 private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -91,6 +97,7 @@ fun CalendarScreen(nav: NavHostController) {
     val selected by vm.selected.collectAsStateWithLifecycle()
     val days by vm.days.collectAsStateWithLifecycle()
     val items by vm.selectedItems.collectAsStateWithLifecycle()
+    val mode by vm.mode.collectAsStateWithLifecycle()
     val y = Yantra.colors
 
     // null = closed. Editing carries the event it opened on; creating carries nothing.
@@ -115,19 +122,39 @@ fun CalendarScreen(nav: NavHostController) {
         ) {
         MonthBar(
             month = month,
-            onPrev = { vm.show(month.minusMonths(1)) },
-            onNext = { vm.show(month.plusMonths(1)) },
+            mode = mode,
+            onMode = vm::setMode,
+            onPrev = { vm.step(-1) },
+            onNext = { vm.step(1) },
             onToday = { vm.today() },
         )
 
-        MonthGrid(
-            month = month,
-            selected = selected,
-            days = days,
-            onSelect = vm::select,
-            modifier = Modifier.padding(horizontal = PAGE_MARGIN),
-        )
+        when (mode) {
+            CalendarMode.MONTH -> MonthGrid(
+                month = month,
+                selected = selected,
+                days = days,
+                onSelect = vm::select,
+                modifier = Modifier.padding(horizontal = PAGE_MARGIN),
+            )
+            CalendarMode.WEEK -> WeekTimeline(
+                week = TimelineLayout.weekOf(selected),
+                days = days,
+                selected = selected,
+                onSelectDay = vm::select,
+                onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            )
+            CalendarMode.DAY -> DayTimeline(
+                day = selected,
+                items = items,
+                onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
+                onEmptyTap = { at -> sheet = EventSheetTarget(null, null, at) },
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            )
+        }
 
+        if (mode == CalendarMode.MONTH) {
         Spacer(Modifier.height(8.dp))
         Row(
             Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 6.dp),
@@ -166,19 +193,10 @@ fun CalendarScreen(nav: NavHostController) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(items, key = { it.nodeId + it.sortKey }) { item ->
-                    DayRow(item) {
-                        // An event opens where it can be changed; a task opens the page it lives
-                        // on, which is where everything else about a task already is.
-                        if (item is DayItem.Event) {
-                            scope.launch {
-                                vm.eventFor(item.nodeId)?.let { sheet = EventSheetTarget(item.nodeId, it) }
-                            }
-                        } else {
-                            nav.navigate(Routes.node(item.nodeId))
-                        }
-                    }
+                    DayRow(item) { openItem(item, vm, scope, nav) { t -> sheet = t } }
                 }
             }
+        }
         }
         }
     }
@@ -187,6 +205,7 @@ fun CalendarScreen(nav: NavHostController) {
         EventSheet(
             initial = target.event,
             day = selected,
+            atTime = target.at,
             onSave = { vm.save(target.nodeId, it) },
             onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
             onDismiss = { sheet = null },
@@ -198,10 +217,38 @@ fun CalendarScreen(nav: NavHostController) {
 private data class EventSheetTarget(
     val nodeId: String?,
     val event: ie.shoonya.yantra.data.format.EventRef?,
+    val at: java.time.LocalTime? = null,
 )
 
+/**
+ * An event opens where it can be changed; a task opens the page it lives on.
+ *
+ * A task's time is one of many things about it and the rest of them are on its page, so sending a
+ * tap to a sheet that could only edit the hour would be the wrong half of the task.
+ */
+private fun openItem(
+    item: DayItem,
+    vm: CalendarViewModel,
+    scope: kotlinx.coroutines.CoroutineScope,
+    nav: NavHostController,
+    open: (EventSheetTarget) -> Unit,
+) {
+    if (item is DayItem.Event) {
+        scope.launch { vm.eventFor(item.nodeId)?.let { open(EventSheetTarget(item.nodeId, it)) } }
+    } else {
+        nav.navigate(Routes.node(item.nodeId))
+    }
+}
+
 @Composable
-private fun MonthBar(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit, onToday: () -> Unit) {
+private fun MonthBar(
+    month: YearMonth,
+    mode: CalendarMode,
+    onMode: (CalendarMode) -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onToday: () -> Unit,
+) {
     val y = Yantra.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 4.dp),
@@ -209,11 +256,37 @@ private fun MonthBar(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit, o
     ) {
         Text(
             month.atDay(1).format(MONTH_LABEL),
-            fontSize = 17.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.W700,
             color = y.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        // A real touch target each. Sized to the letter, these came out about 22dp wide and flush
+        // against each other — half the 48dp minimum, and three of them in a row where a miss lands
+        // on the neighbour rather than on nothing.
+        CalendarMode.entries.forEach { m ->
+            val on = m == mode
+            Box(
+                Modifier
+                    .padding(horizontal = 2.dp)
+                    .size(width = 36.dp, height = 34.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .then(if (on) Modifier.background(y.accentFill) else Modifier)
+                    .clickable { onMode(m) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    m.name.take(1),
+                    fontFamily = YantraMono,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.W700,
+                    color = if (on) y.accentText else y.textDim,
+                )
+            }
+        }
+        Spacer(Modifier.width(4.dp))
         Text(
             "Today",
             fontSize = 12.sp,
@@ -222,7 +295,7 @@ private fun MonthBar(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit, o
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
                 .clickable(onClick = onToday)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
         )
         NavCircle(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", onPrev, iconSize = 18.dp)
         Spacer(Modifier.width(6.dp))

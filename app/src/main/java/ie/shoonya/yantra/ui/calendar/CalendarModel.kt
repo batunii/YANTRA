@@ -40,6 +40,8 @@ sealed interface DayItem {
         val at: LocalDateTime,
         val hasTime: Boolean,
         val done: Boolean,
+        /** Minutes blocked out for it, or null for a moment. What makes it drawable to scale. */
+        val durationMin: Int? = null,
         override val sortKey: Long,
     ) : DayItem
 }
@@ -121,6 +123,7 @@ object CalendarBucketer {
                 at = at,
                 hasTime = t.hasTime,
                 done = t.done,
+                durationMin = t.durationMin,
                 // An undated-within-the-day task sorts after everything timed, because "today" is
                 // weaker than "today at three" and a list that mixes them reads as if it were not.
                 sortKey = if (t.hasTime) at.toLocalTime().toNanoOfDay() else Long.MAX_VALUE,

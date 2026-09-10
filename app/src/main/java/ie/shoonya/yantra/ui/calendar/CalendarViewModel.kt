@@ -33,6 +33,12 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     private val _month = MutableStateFlow(YearMonth.now())
     val month: StateFlow<YearMonth> = _month.asStateFlow()
 
+    /** Month, week or day — the same data, three amounts of detail. */
+    private val _mode = MutableStateFlow(CalendarMode.MONTH)
+    val mode: StateFlow<CalendarMode> = _mode.asStateFlow()
+
+    fun setMode(m: CalendarMode) { _mode.value = m }
+
     private val _selected = MutableStateFlow(LocalDate.now())
     val selected: StateFlow<LocalDate> = _selected.asStateFlow()
 
@@ -55,6 +61,20 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     fun today() {
         _month.value = YearMonth.now()
         _selected.value = LocalDate.now()
+    }
+
+    /**
+     * Steps by whatever the current view is a view *of* — a month, a week, or a day.
+     *
+     * The arrows mean "next one of these", not "next month" regardless of what is on screen, which
+     * is what makes them usable in the week view rather than a way to lose your place.
+     */
+    fun step(forward: Int) {
+        when (_mode.value) {
+            CalendarMode.MONTH -> show(_month.value.plusMonths(forward.toLong()))
+            CalendarMode.WEEK -> select(_selected.value.plusWeeks(forward.toLong()))
+            CalendarMode.DAY -> select(_selected.value.plusDays(forward.toLong()))
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -136,3 +156,6 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             )
         }
 }
+
+/** How much of the calendar is on screen. */
+enum class CalendarMode { MONTH, WEEK, DAY }

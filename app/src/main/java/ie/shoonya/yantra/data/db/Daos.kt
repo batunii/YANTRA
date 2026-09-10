@@ -46,6 +46,8 @@ data class DueRow(
     val dueMillis: Long,
     /** The `v_bool` encoding on [ie.shoonya.yantra.data.db.BuiltIns]: true when the due has a time. */
     val hasTime: Boolean,
+    /** Minutes the task is blocked out for, or null for a moment. Drawn to scale on a timeline. */
+    val durationMin: Int? = null,
 )
 
 @Dao
@@ -417,7 +419,8 @@ interface PropertyDao {
     @Query(
         """
         SELECT pv.node_id AS nodeId, n.title AS title, n.done AS done,
-               pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime
+               pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime,
+               pv.v_duration_min AS durationMin
           FROM property_value pv JOIN node n ON n.id = pv.node_id
          WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL
            AND pv.v_date >= :fromUtc AND pv.v_date < :toUtc

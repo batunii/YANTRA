@@ -354,18 +354,35 @@ object PageCodec {
         if (s.contains('T')) runCatching { LocalDateTime.parse(s) }.getOrNull()
         else parseDate(s)?.atStartOfDay()
 
-    /** `2026-08-26`, `2026-08-26T09:00:00Z`, either optionally suffixed `+r<minutes>`. */
+    /**
+     * `2026-08-26`, `2026-08-26T09:00:00Z`, either optionally carrying a length and a reminder:
+     * `due:2026-08-26T09:00:00Z/PT1H+r15`.
+     *
+     * The `/PT1H` tail is the same ISO interval the event when-slot uses, deliberately — a task
+     * blocked out from nine to ten and a meeting from nine to ten are the same shape on a timeline,
+     * and two spellings for one idea is one more than anybody should have to learn.
+     *
+     * A length on an all-day task is refused rather than kept: "all of Tuesday, for one hour" does
+     * not mean anything, and storing it would leave the timeline to decide what it meant.
+     */
     private fun parseDue(token: String): DueSpec? {
         val at = token.indexOf("+r")
-        val body = if (at >= 0) token.take(at) else token
+        val head = if (at >= 0) token.take(at) else token
         val reminder = if (at >= 0) token.drop(at + 2).toIntOrNull() else null
         if (at >= 0 && reminder == null) return null
+
+        val slash = head.indexOf('/')
+        val body = if (slash < 0) head else head.take(slash)
+        val duration = if (slash < 0) null else
+            runCatching { Duration.parse(head.drop(slash + 1)) }.getOrNull() ?: return null
+
         val value = if (body.contains('T')) {
             runCatching { Instant.parse(body) }.getOrNull()?.let { DueValue.At(it) }
         } else {
             parseDate(body)?.let { DueValue.AllDay(it) }
         }
-        return value?.let { DueSpec(it, reminder) }
+        if (value is DueValue.AllDay && duration != null) return null
+        return value?.let { DueSpec(it, reminder, duration) }
     }
 
     private fun parseDate(s: String): LocalDate? =
@@ -554,6 +571,9 @@ object PageCodec {
             is DueValue.AllDay -> v.date.toString()
             is DueValue.At -> v.instant.toString()
         }
-        return if (d.reminderMin == null) body else "$body+r${d.reminderMin}"
+        // Length before reminder, always: the reminder's `+r` is a suffix on the whole thing, and
+        // two devices holding the same task must produce the same bytes or every sync is a diff.
+        val withLength = if (d.duration == null) body else "$body/${d.duration}"
+        return if (d.reminderMin == null) withLength else "$withLength+r${d.reminderMin}"
     }
 }

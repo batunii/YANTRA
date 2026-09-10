@@ -86,12 +86,14 @@ private val REMINDERS: List<Pair<String, Int?>> = listOf(
 fun EventSheet(
     initial: EventRef?,
     day: LocalDate,
+    /** Where the tap landed on a timeline, if that is how this was opened. */
+    atTime: LocalTime? = null,
     onSave: (EventRef) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val y = Yantra.colors
-    val start0 = initial?.time?.start ?: day.atTime(defaultHour(), 0)
+    val start0 = initial?.time?.start ?: day.atTime(atTime ?: LocalTime.of(defaultHour(), 0))
 
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
     var allDay by remember { mutableStateOf(initial?.time?.allDay ?: false) }

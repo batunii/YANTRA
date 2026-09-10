@@ -52,8 +52,22 @@ sealed interface DueValue {
     data class At(val instant: Instant) : DueValue
 }
 
-/** [reminderMin] is minutes *before* the due moment; negative means after. Null is no reminder. */
-data class DueSpec(val value: DueValue, val reminderMin: Int? = null)
+/**
+ * When a task is for, how long it is expected to take, and whether to say anything beforehand.
+ *
+ * [reminderMin] is minutes *before* the due moment; negative means after. Null is no reminder.
+ *
+ * [duration] is what makes a task drawable on a timeline beside an event — the "time blocking" every
+ * calendar app means by the phrase: a task from 14:00 to 15:00 is a block an hour tall, not a dot.
+ * It is null for an all-day task and for one that is merely *at* a time, because a moment and a span
+ * are different claims and only one of them can be drawn to scale. Blocks overlap freely; nothing
+ * here reserves anything.
+ */
+data class DueSpec(
+    val value: DueValue,
+    val reminderMin: Int? = null,
+    val duration: java.time.Duration? = null,
+)
 
 /**
  * One line of a page.
