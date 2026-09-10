@@ -31,6 +31,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +93,10 @@ fun CalendarScreen(nav: NavHostController) {
     val items by vm.selectedItems.collectAsStateWithLifecycle()
     val y = Yantra.colors
 
+    // null = closed. Editing carries the event it opened on; creating carries nothing.
+    var sheet by remember { mutableStateOf<EventSheetTarget?>(null) }
+    val scope = rememberCoroutineScope()
+
     Column(
         Modifier
             .fillMaxSize()
@@ -120,13 +129,28 @@ fun CalendarScreen(nav: NavHostController) {
         )
 
         Spacer(Modifier.height(8.dp))
-        Text(
-            selected.format(DAY_LABEL),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.W700,
-            color = y.textDim,
-            modifier = Modifier.padding(horizontal = PAGE_MARGIN, vertical = 6.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                selected.format(DAY_LABEL),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.W700,
+                color = y.textDim,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "+ Event",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.W700,
+                color = y.accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { sheet = EventSheetTarget(null, null) }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
 
         if (items.isEmpty()) {
             Text(
@@ -142,13 +166,39 @@ fun CalendarScreen(nav: NavHostController) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(items, key = { it.nodeId + it.sortKey }) { item ->
-                    DayRow(item) { nav.navigate(Routes.node(item.nodeId)) }
+                    DayRow(item) {
+                        // An event opens where it can be changed; a task opens the page it lives
+                        // on, which is where everything else about a task already is.
+                        if (item is DayItem.Event) {
+                            scope.launch {
+                                vm.eventFor(item.nodeId)?.let { sheet = EventSheetTarget(item.nodeId, it) }
+                            }
+                        } else {
+                            nav.navigate(Routes.node(item.nodeId))
+                        }
+                    }
                 }
             }
         }
         }
     }
+
+    sheet?.let { target ->
+        EventSheet(
+            initial = target.event,
+            day = selected,
+            onSave = { vm.save(target.nodeId, it) },
+            onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
+            onDismiss = { sheet = null },
+        )
+    }
 }
+
+/** What the sheet is open on: an existing event, or nothing at all for a new one. */
+private data class EventSheetTarget(
+    val nodeId: String?,
+    val event: ie.shoonya.yantra.data.format.EventRef?,
+)
 
 @Composable
 private fun MonthBar(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit, onToday: () -> Unit) {

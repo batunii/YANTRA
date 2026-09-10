@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -91,4 +92,47 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun dueDefId() = container.db.propertyDao().observeBuiltInDefIdByName(BuiltIns.DUE_NAME)
+
+    /**
+     * Saves an event, creating it on the Inbox when it is new.
+     *
+     * The Inbox is where this app already puts a thing captured with no home — the same answer
+     * quick-add gives — rather than inventing a `calendar/` area the file format has no notion of.
+     * An event made from a page belongs to that page; one made from a month belongs nowhere in
+     * particular, and "nowhere in particular" already has a name here.
+     */
+    fun save(existingId: String?, event: ie.shoonya.yantra.data.format.EventRef) {
+        viewModelScope.launch {
+            if (existingId == null) {
+                val page = container.nodes.inboxList()
+                container.workspaces.writerFor(page).addEvent(page, event)
+            } else {
+                container.workspaces.writerFor(existingId).editEvent(existingId) { event.copy(id = existingId) }
+            }
+        }
+    }
+
+    fun delete(nodeId: String) {
+        viewModelScope.launch { container.workspaces.writerFor(nodeId).removeBlock(nodeId) }
+    }
+
+    /** The event behind a day-list row, for the sheet to open on. */
+    suspend fun eventFor(nodeId: String): ie.shoonya.yantra.data.format.EventRef? =
+        container.db.eventDao().byId(nodeId)?.let { row ->
+            val title = container.nodes.byId(nodeId)?.title.orEmpty()
+            ie.shoonya.yantra.data.format.EventRef(
+                id = row.nodeId,
+                title = title,
+                time = ie.shoonya.yantra.data.format.EventTime(
+                    start = java.time.LocalDateTime.parse(row.startLocal),
+                    end = java.time.LocalDateTime.parse(row.endLocal),
+                    zone = row.zone?.let { java.time.ZoneId.of(it) },
+                    allDay = row.allDay,
+                ),
+                rrule = row.rrule,
+                cancelled = row.cancelled,
+                location = row.location,
+                reminderMin = row.reminderMin,
+            )
+        }
 }

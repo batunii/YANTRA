@@ -54,12 +54,24 @@ class ReminderReceiver : BroadcastReceiver() {
         // or cleared after arming) — the DB is the source of truth, not the alarm.
         val node = container.nodes.byId(nodeId) ?: return
         if (node.done || node.deletedAt != null) return
-        val dueDefId = container.db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME) ?: return
-        val row = container.db.propertyDao().valuesForNodeOnce(nodeId)
-            .firstOrNull { it.defId == dueDefId } ?: return
-        val offsetMin = row.vNumber ?: return                 // reminder cleared since arming
-        val at = row.vDate ?: return
-        if (at - offsetMin.toLong() * 60_000L != expectedAt) return   // due/offset moved
+
+        // Two kinds of thing arm an alarm, and each validates against its own row. Without this an
+        // event's reminder was armed and then dropped in silence: the Due lookup below found no
+        // property value for it and returned, so the alarm fired into nothing.
+        val event = container.db.eventDao().byId(nodeId)
+        val isEvent = event != null
+        if (isEvent) {
+            if (event!!.cancelled) return                     // an absence has nothing to announce
+            val offsetMin = event.reminderMin ?: return       // reminder cleared since arming
+            if (event.startUtc - offsetMin.toLong() * 60_000L != expectedAt) return
+        } else {
+            val dueDefId = container.db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME) ?: return
+            val row = container.db.propertyDao().valuesForNodeOnce(nodeId)
+                .firstOrNull { it.defId == dueDefId } ?: return
+            val offsetMin = row.vNumber ?: return             // reminder cleared since arming
+            val at = row.vDate ?: return
+            if (at - offsetMin.toLong() * 60_000L != expectedAt) return   // due/offset moved
+        }
 
         // Same contract as a widget tap: MainActivity resolves the extras into a deep link.
         val tap = Intent(context, MainActivity::class.java).apply {
@@ -87,7 +99,7 @@ class ReminderReceiver : BroadcastReceiver() {
             .setColorized(false)
             // A notification cannot render a link, so it renders what the link says.
             .setContentTitle(Links.plain(node.title.orEmpty()).ifBlank { "Reminder" })
-            .setContentText("Reminder")
+            .setContentText(if (isEvent) eventWhen(event!!) else "Reminder")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
@@ -97,16 +109,29 @@ class ReminderReceiver : BroadcastReceiver() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
             )
-            .addAction(
-                0, "Mark done",
-                PendingIntent.getBroadcast(
-                    context, 0, done,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            // An event has no done state — it happens, it is not finished — so it gets no button
+            // that claims otherwise. Offering one would write `done` onto a node whose line has no
+            // checkbox to show it.
+            .apply {
+                if (!isEvent) addAction(
+                    0, "Mark done",
+                    PendingIntent.getBroadcast(
+                        context, 0, done,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    )
                 )
-            )
+            }
             .build()
         val canNotify = Build.VERSION.SDK_INT < 33 ||
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         if (canNotify) NotificationManagerCompat.from(context).notify(nodeId.hashCode(), notification)
+    }
+
+    /** "14:00" for a timed event, or the plain word for one that owns the whole day. */
+    private fun eventWhen(e: ie.shoonya.yantra.data.db.EventEntity): String {
+        if (e.allDay) return "All day"
+        val start = runCatching { java.time.LocalDateTime.parse(e.startLocal) }.getOrNull()
+            ?: return "Reminder"
+        return start.toLocalTime().toString()
     }
 }

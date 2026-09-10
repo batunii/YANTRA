@@ -719,6 +719,34 @@ interface EventDao {
     @Query("SELECT * FROM event WHERE series_id = :seriesId")
     suspend fun overridesOf(seriesId: String): List<EventEntity>
 
+    /**
+     * Armed reminders on events, in the shape [ReminderRow] already uses.
+     *
+     * The instant is computed in SQL the same way the Due query does it — start minus the offset in
+     * minutes, so a negative offset means after — and for the same reason: one expression the
+     * scheduler can trust rather than two places that must agree about the sign.
+     *
+     * A cancelled occurrence carries no reminder: it is an absence, and an alarm for something that
+     * is not happening is the worst kind of notification.
+     */
+    @Query(
+        """
+        SELECT e.node_id AS nodeId, e.start_utc - e.reminder_min * 60000 AS atMillis
+          FROM event e JOIN node n ON n.id = e.node_id
+         WHERE e.reminder_min IS NOT NULL AND e.cancelled = 0 AND n.deleted_at IS NULL
+        """
+    )
+    fun observeEventReminders(): Flow<List<ReminderRow>>
+
+    @Query(
+        """
+        SELECT e.node_id AS nodeId, e.start_utc - e.reminder_min * 60000 AS atMillis
+          FROM event e JOIN node n ON n.id = e.node_id
+         WHERE e.reminder_min IS NOT NULL AND e.cancelled = 0 AND n.deleted_at IS NULL
+        """
+    )
+    suspend fun eventRemindersOnce(): List<ReminderRow>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(events: List<EventEntity>)
 

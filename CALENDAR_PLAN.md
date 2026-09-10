@@ -285,7 +285,7 @@ Each phase is useful on its own, and each one's guards go in with it.
 | **0** ✅ | `EventRef`, `EventTime`, the `@ ` grammar, codec round-trip tests | Freeze the format before anything reads it. `GIT_WORKSPACES_PLAN.md` §2 is emphatic about this and it was right |
 | **1** ✅ | Indexing events into Room, a bump to version 12 | The view and smart lists query the index, not the files |
 | **2** ✅ | The calendar view — month grid and a day list, over events and `due:` tasks | First point the feature is visible |
-| **3** | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
+| **3** ✅ | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
 | **4** | Recurrence: the RRULE subset, windowed expansion, override and cancellation lines | Needs 0–3 stable underneath it |
 | **5** | Device calendar: `READ_CALENDAR`, calendar picker, `Instances` query, overlay in the view | Independent of 0–4; could be built alongside them by someone else |
 
@@ -312,9 +312,10 @@ is inserted above. A series renumbered by an unrelated edit would come apart.
 
 ## 9. Open questions
 
-1. **Whose event is it?** An event on a page belongs to that page. Does a calendar-created event with
-   no obvious home go to Inbox, to a dated page, or to a dedicated `calendar/` area? The format has
-   no answer and the view needs one before Phase 3.
+1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
+   captured with no home — the same answer quick-add gives — rather than a `calendar/` area the
+   format has no notion of. An event made from a page belongs to that page; one made from a month
+   belongs nowhere in particular, and "nowhere in particular" already had a name here.
 2. **Do events archive?** Tasks archive on a threshold after completion. An event is never completed;
    a year-old one is just old. Left alone for now, but a workspace of standups grows forever.
 3. **Attendees are `@name` strings**, the same as `assignee`, and carry no email. Nothing is sent to

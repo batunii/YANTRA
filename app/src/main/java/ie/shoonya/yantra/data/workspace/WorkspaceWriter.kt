@@ -233,6 +233,37 @@ class WorkspaceWriter(
         if (id.isNotEmpty()) id else PageMapper.blockId(pageId, blocks.indexOf(block))
     }
 
+    /**
+     * Adds an event to [pageId], minting it an id.
+     *
+     * Separate from [addBlock] because an event cannot be built from a string: it has a span, and
+     * [blockOf] has nothing to make one out of. The id is minted rather than positional for the same
+     * reason a task's is — an override names its series by id, a reminder is armed against it, and a
+     * positional id changes the moment a line is inserted above.
+     */
+    suspend fun addEvent(pageId: String, event: EventRef, afterId: String? = null): String =
+        mutex.withLock {
+            val id = event.id.ifEmpty { newId() }
+            ensurePage(pageId)
+            val page = loadPage(pageId) ?: return@withLock ""
+            val block = event.copy(id = id, raw = null)
+            val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
+            val blocks = page.blocks.toMutableList()
+            if (afterId != null && at >= 0) blocks.add(at + 1, block) else blocks += block
+
+            store.writePage(page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device))
+            refreshIndex(Change.STRUCTURAL)
+            onChange(Change.STRUCTURAL)
+            id
+        }
+
+    /** [transform] applied only if the block is an event; other kinds are left alone. */
+    suspend fun editEvent(
+        nodeId: String,
+        change: Change = Change.EDIT,
+        transform: (EventRef) -> EventRef,
+    ) = editBlock(nodeId, change) { if (it is EventRef) transform(it) else it }
+
     /** Applies [transform] to whichever block on whichever page carries [nodeId]. */
     suspend fun editBlock(
         nodeId: String,
@@ -628,9 +659,17 @@ class WorkspaceWriter(
         else -> Prose(text, indent)
     }
 
+    /**
+     * The id a block is known by, and it has to agree with [PageMapper.toRows] exactly.
+     *
+     * An event carries its own `^id` there, so it has to carry it here too — otherwise the index
+     * files an event under `s1` while every edit looks for it at `page~3`, and nothing that goes
+     * through [editBlock] ever finds one.
+     */
     private fun blockIdOf(b: Block, pageId: String, all: List<Block>, index: Int = -1): String =
         when (b) {
             is TaskRef -> b.id.ifEmpty { PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b)) }
+            is EventRef -> b.id.ifEmpty { PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b)) }
             is InkRef -> b.id
             else -> PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b))
         }
