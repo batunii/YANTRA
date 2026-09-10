@@ -33,6 +33,17 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     private val _month = MutableStateFlow(YearMonth.now())
     val month: StateFlow<YearMonth> = _month.asStateFlow()
 
+    /**
+     * How many days the multi-day view shows — seven on a tablet, three on a phone.
+     *
+     * Set by the screen, which is the only thing that knows how wide it is. A seven-column week on a
+     * phone gives each day about fifty pixels, which fits a coloured sliver and no words.
+     */
+    var daysOnScreen: Int = 7
+        private set
+
+    fun setDaysOnScreen(count: Int) { daysOnScreen = count }
+
     /** Month, week or day — the same data, three amounts of detail. */
     private val _mode = MutableStateFlow(CalendarMode.MONTH)
     val mode: StateFlow<CalendarMode> = _mode.asStateFlow()
@@ -72,7 +83,9 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     fun step(forward: Int) {
         when (_mode.value) {
             CalendarMode.MONTH -> show(_month.value.plusMonths(forward.toLong()))
-            CalendarMode.WEEK -> select(_selected.value.plusWeeks(forward.toLong()))
+            // Steps by however many days are on screen, so the arrows move you exactly one
+            // screenful whether that is a week or three days.
+            CalendarMode.WEEK -> select(_selected.value.plusDays((forward * daysOnScreen).toLong()))
             CalendarMode.DAY -> select(_selected.value.plusDays(forward.toLong()))
         }
     }
@@ -158,4 +171,6 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 }
 
 /** How much of the calendar is on screen. */
-enum class CalendarMode { MONTH, WEEK, DAY }
+enum class CalendarMode(val label: String) {
+    MONTH("Month"), WEEK("Week"), DAY("Day");
+}

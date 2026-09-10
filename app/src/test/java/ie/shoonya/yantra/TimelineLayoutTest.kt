@@ -206,6 +206,30 @@ class TimelineLayoutTest {
     }
 
     @Test
+    fun `three days start where you are, not on Monday`() {
+        // A short span is a window you push along. Snapping it to Monday would put the day you
+        // selected at the far side of the screen, or off it.
+        val span = TimelineLayout.span(LocalDate.parse("2026-09-11"), 3)   // a Friday
+        assertEquals(
+            listOf("2026-09-11", "2026-09-12", "2026-09-13").map(LocalDate::parse),
+            span,
+        )
+    }
+
+    @Test
+    fun `seven days still snap to the week they fall in`() {
+        // A week has edges; a rolling seven days starting on a Wednesday is not one.
+        assertEquals(
+            TimelineLayout.weekOf(LocalDate.parse("2026-09-11")),
+            TimelineLayout.span(LocalDate.parse("2026-09-11"), 7),
+        )
+        assertEquals(
+            java.time.DayOfWeek.MONDAY,
+            TimelineLayout.span(LocalDate.parse("2026-09-11"), 7).first().dayOfWeek,
+        )
+    }
+
+    @Test
     fun `a Monday is the start of its own week`() {
         assertEquals(
             LocalDate.parse("2026-09-07"),

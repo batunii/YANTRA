@@ -40,6 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +70,24 @@ import java.time.format.TextStyle
  * only so wide, and the heading is the part that can give without anything being lost.
  */
 private val MONTH_LABEL = DateTimeFormatter.ofPattern("MMM yyyy")
+private val DAY_HEADING = DateTimeFormatter.ofPattern("EEE d MMM")
+private val WEEK_END = DateTimeFormatter.ofPattern("d MMM")
+
+/**
+ * What is on screen, said out loud.
+ *
+ * The month name alone was fine while a month was all there was; in the day view it left nothing on
+ * screen saying *which* day you were looking at, which is the one thing a day view has to answer.
+ */
+private fun heading(mode: CalendarMode, month: java.time.YearMonth, selected: LocalDate, days: Int): String =
+    when (mode) {
+        CalendarMode.MONTH -> month.atDay(1).format(MONTH_LABEL)
+        CalendarMode.DAY -> selected.format(DAY_HEADING)
+        CalendarMode.WEEK -> {
+            val span = TimelineLayout.span(selected, days)
+            "${span.first().dayOfMonth}–${span.last().format(WEEK_END)}"
+        }
+    }
 private val DAY_LABEL = DateTimeFormatter.ofPattern("EEEE d MMMM")
 private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -81,6 +102,9 @@ private val TIME = DateTimeFormatter.ofPattern("HH:mm")
  * 48dp a cell is the metric `DueSheet`'s picker already uses, so the two read as the same calendar.
  */
 private val CONTENT_MAX_WIDTH = 460.dp
+
+/** Where a screen stops being a phone. The usual breakpoint, and where seven columns start to fit. */
+private val TABLET_WIDTH = 600.dp
 private val CELL_HEIGHT = 52.dp
 
 /**
@@ -100,6 +124,12 @@ fun CalendarScreen(nav: NavHostController) {
     val mode by vm.mode.collectAsStateWithLifecycle()
     val y = Yantra.colors
 
+    // Seven days need room; a phone has not got it. Measured from the window rather than from
+    // Configuration.screenWidthDp, which lint asks us not to read in a composable.
+    val widthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val daysAcross = if (widthDp >= TABLET_WIDTH) 7 else 3
+    LaunchedEffect(daysAcross) { vm.setDaysOnScreen(daysAcross) }
+
     // null = closed. Editing carries the event it opened on; creating carries nothing.
     var sheet by remember { mutableStateOf<EventSheetTarget?>(null) }
     val scope = rememberCoroutineScope()
@@ -112,7 +142,12 @@ fun CalendarScreen(nav: NavHostController) {
             .navigationBarsPadding(),
     ) {
         // The header is chrome and spans the screen; everything below it is content and is capped.
-        PageHeader("Calendar", onBack = { nav.popBackStack() })
+        // The switcher lives in the header's actions, not in the row below it. Down there it left
+        // the heading about forty pixels and "Thu 10 Sep" came out as "T…"; up here it sits in
+        // space the title bar already had spare.
+        PageHeader("Calendar", onBack = { nav.popBackStack() }) {
+            ModeSwitch(mode = mode, days = daysAcross, onMode = vm::setMode)
+        }
 
         Column(
             Modifier
@@ -122,8 +157,9 @@ fun CalendarScreen(nav: NavHostController) {
         ) {
         MonthBar(
             month = month,
+            selected = selected,
             mode = mode,
-            onMode = vm::setMode,
+            days = daysAcross,
             onPrev = { vm.step(-1) },
             onNext = { vm.step(1) },
             onToday = { vm.today() },
@@ -138,7 +174,7 @@ fun CalendarScreen(nav: NavHostController) {
                 modifier = Modifier.padding(horizontal = PAGE_MARGIN),
             )
             CalendarMode.WEEK -> WeekTimeline(
-                week = TimelineLayout.weekOf(selected),
+                week = TimelineLayout.span(selected, daysAcross),
                 days = days,
                 selected = selected,
                 onSelectDay = vm::select,
@@ -243,8 +279,9 @@ private fun openItem(
 @Composable
 private fun MonthBar(
     month: YearMonth,
+    selected: LocalDate,
     mode: CalendarMode,
-    onMode: (CalendarMode) -> Unit,
+    days: Int,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onToday: () -> Unit,
@@ -255,7 +292,7 @@ private fun MonthBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            month.atDay(1).format(MONTH_LABEL),
+            heading(mode, month, selected, days),
             fontSize = 16.sp,
             fontWeight = FontWeight.W700,
             color = y.textPrimary,
@@ -263,30 +300,6 @@ private fun MonthBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        // A real touch target each. Sized to the letter, these came out about 22dp wide and flush
-        // against each other — half the 48dp minimum, and three of them in a row where a miss lands
-        // on the neighbour rather than on nothing.
-        CalendarMode.entries.forEach { m ->
-            val on = m == mode
-            Box(
-                Modifier
-                    .padding(horizontal = 2.dp)
-                    .size(width = 36.dp, height = 34.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .then(if (on) Modifier.background(y.accentFill) else Modifier)
-                    .clickable { onMode(m) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    m.name.take(1),
-                    fontFamily = YantraMono,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.W700,
-                    color = if (on) y.accentText else y.textDim,
-                )
-            }
-        }
-        Spacer(Modifier.width(4.dp))
         Text(
             "Today",
             fontSize = 12.sp,
@@ -469,6 +482,47 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
                 tint = y.textDim,
                 modifier = Modifier.size(14.dp),
             )
+        }
+    }
+}
+
+/** Month, week or day — one pill with three segments, in the header's actions. */
+@Composable
+private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> Unit) {
+    val y = Yantra.colors
+    // One pill with three segments, rather than three loose letters. It reads as a single
+    // control with a current state, it is narrower than three separate chips, and every segment
+    // is a real touch target — the letters alone were about 22dp wide and flush against each
+    // other, so a miss landed on the neighbour rather than on nothing.
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(y.cardBg)
+            .padding(2.dp),
+    ) {
+        CalendarMode.entries.forEach { m ->
+            val on = m == mode
+            Box(
+                Modifier
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(if (on) Modifier.background(y.accentFill) else Modifier)
+                    .clickable { onMode(m) },
+                contentAlignment = Alignment.Center,
+            ) {
+                // Sized to its word rather than to a guess: "Month" does not fit a 38dp box,
+                // and a segment that clips its own label is worse than a cryptic letter.
+                Text(
+                    // The segment says what it will actually show. "Week" on a phone that gives you
+                    // three days is a label that lies about the button underneath it.
+                    if (m == CalendarMode.WEEK && days < 7) "$days days" else m.label,
+                    fontSize = 11.sp,
+                    fontWeight = if (on) FontWeight.W700 else FontWeight.W500,
+                    color = if (on) y.accentText else y.textMuted,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                )
+            }
         }
     }
 }

@@ -310,7 +310,48 @@ An event with an explicit `^id` keeps it, exactly as a task does, and that is lo
 override names its series by id, and a derived id is a line number that changes the moment anything
 is inserted above. A series renumbered by an unrelated edit would come apart.
 
-## 9. Open questions
+## 10. Blocking, and the day and week views
+
+"Blocking" here is the sense TickTick and Notion Calendar use, not exclusivity: a task with a start
+and a length is drawn on a timeline beside an event, and **things overlap freely**. Nothing reserves
+anything — the job is to show the clash, not to prevent it.
+
+- **A task's `due:` can carry a length**, spelled as the same ISO interval the event when-slot uses:
+  `due:2026-09-11T14:00:00Z/PT1H+r15`. Two spellings for one idea is one more than anybody should
+  have to learn. A length on an all-day task is refused rather than stored.
+- **`property_value` gains `v_duration_min`** rather than another meaning piled onto `v_number`,
+  which already carries the reminder offset on that same row.
+- **Overlaps share the width**, decided per connected run rather than per pair — a block can need
+  its own column because of something it does not itself touch, and a pairwise decision gives a
+  layout that jumps as you scroll past the middle item. `TimelineLayout` is pure and tested.
+- **An all-day bar** takes what a ruler cannot honestly draw: all-day things, undated tasks, and
+  anything crossing midnight. The same split TickTick makes.
+- **Three days on a phone, seven on a tablet.** A seven-column week on a phone gives each day about
+  fifty pixels — a coloured sliver with no room for a word. Seven snaps to the Monday of its week
+  because a week has edges; three does not, because it is a window you push along and anchoring it
+  would throw the selected day to the far side of the screen. The segment names what it shows, so a
+  phone says "3 days" rather than lying with "Week".
+- Deciding that removed the need for a second layout mode: an earlier version cascaded overlapping
+  blocks once columns got too narrow to hold a word, and two staggered blocks read as one smeared
+  block with their labels run together.
+
+### The look
+
+The first version was crude and drawn as such — worth recording so it is not rebuilt that way.
+
+- The hour grid was **twenty-four bordered boxes**. A border draws a *rectangle*, so every hour got
+  a line down both sides as well as across it, and the day read as a spreadsheet. It is one canvas
+  of hairlines now, with a fainter half-hour rule.
+- Blocks had a **1dp outline on top of the outlined grid** — two competing rectangles. They have a
+  soft fill and a 3dp spine down the left instead, which is how a calendar says "this one is mine"
+  without drawing a second box.
+- The **mode switcher** was three loose 22dp letters, flush against each other, at half the 48dp
+  minimum. It is one segmented pill in the page header's actions — down in the bar it left the
+  heading forty pixels and "Thu 10 Sept" came out as "T…".
+- The **heading** now says what is on screen: a month, a range, or a day. In the day view there had
+  been nothing at all naming the day.
+
+## 11. Open questions
 
 1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
    captured with no home — the same answer quick-add gives — rather than a `calendar/` area the

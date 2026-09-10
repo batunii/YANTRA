@@ -1,6 +1,12 @@
 package ie.shoonya.yantra.ui.calendar
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,11 +44,12 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.LocalDate
 import java.time.LocalTime
 
-private val HOUR_HEIGHT = 52.dp
+private val HOUR_HEIGHT = 60.dp
 
 /** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
-private val RULER_WIDTH = 42.dp
+
+private val RULER_WIDTH = 36.dp
 
 /**
  * A day drawn to scale: an hour ruler with blocks laid over it.
@@ -75,7 +82,7 @@ fun DayTimeline(
         Row(Modifier.fillMaxWidth().verticalScroll(scroll)) {
             HourRuler()
             BoxWithConstraints(Modifier.weight(1f)) {
-                HourLines()
+                HourGrid()
                 // Underneath the blocks, deliberately. Tapping bare ruler makes something there —
                 // the quickest way to block out an hour is to point at the hour — but drawn last it
                 // would cover the whole column and swallow every tap meant for a block.
@@ -105,6 +112,7 @@ fun WeekTimeline(
 ) {
     val y = Yantra.colors
     val laid = week.map { TimelineLayout.forDay(days[it].orEmpty(), it) }
+    val sep = y.tileBorder.copy(alpha = 0.45f)
     val scroll = rememberScrollState()
     val density = LocalDensity.current
     LaunchedEffect(week.first()) {
@@ -163,9 +171,16 @@ fun WeekTimeline(
                 BoxWithConstraints(
                     Modifier
                         .weight(1f)
-                        .border(width = 0.5.dp, color = y.tileBorder.copy(alpha = 0.4f)),
+                        // A hairline between days, on one side only. Borders on every column drew
+                        // two lines between each pair and boxed the week into a table.
+                        .drawWithContent {
+                            drawContent()
+                            if (i > 0) drawLine(
+                                sep, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1f,
+                            )
+                        },
                 ) {
-                    HourLines()
+                    HourGrid()
                     NowLine(d)
                     laid[i].blocks.forEach { block ->
                         BlockChip(block, maxWidth, compact = true) { onOpen(block.item) }
@@ -184,12 +199,14 @@ private fun HourRuler() {
             Box(Modifier.height(HOUR_HEIGHT).fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
                 if (hour > 0) {
                     Text(
-                        "%02d".format(hour),
-                        fontFamily = YantraMono,
-                        fontSize = 9.sp,
+                        // No leading zero. "9" is a time; "09" is a field in a form.
+                        "$hour",
+                        fontSize = 10.sp,
                         color = y.textDim,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.padding(end = 6.dp).offset(y = (-5).dp),
+                        // Lifted half a line so the number straddles its own hour rule rather than
+                        // floating in the middle of the hour above it.
+                        modifier = Modifier.padding(end = 8.dp).offset(y = (-7).dp),
                     )
                 }
             }
@@ -197,17 +214,29 @@ private fun HourRuler() {
     }
 }
 
+/**
+ * The hours, as hairlines.
+ *
+ * One canvas rather than twenty-four bordered boxes. A `border` draws a *rectangle*, so the old
+ * version put a line down both sides of every hour as well as across it — which is why the day read
+ * as a spreadsheet rather than as a ruler. A calendar wants one line per hour and nothing else.
+ */
 @Composable
-private fun HourLines() {
+private fun HourGrid() {
     val y = Yantra.colors
-    Column {
-        repeat(24) {
-            Box(
-                Modifier
-                    .height(HOUR_HEIGHT)
-                    .fillMaxWidth()
-                    .border(width = 0.5.dp, color = y.tileBorder.copy(alpha = 0.35f)),
-            )
+    val hour = y.tileBorder.copy(alpha = 0.5f)
+    val half = y.tileBorder.copy(alpha = 0.18f)
+    Canvas(Modifier.fillMaxWidth().height(HOUR_HEIGHT * 24)) {
+        val h = size.height / 24f
+        for (i in 0..24) {
+            val at = h * i
+            if (i in 1..23) drawLine(hour, Offset(0f, at), Offset(size.width, at), strokeWidth = 1f)
+            // A half-hour hint, faint enough to be felt rather than read — it is what makes a
+            // 30-minute block legible as half of the hour it sits in.
+            if (i < 24) {
+                val mid = at + h / 2f
+                drawLine(half, Offset(0f, mid), Offset(size.width, mid), strokeWidth = 1f)
+            }
         }
     }
 }
@@ -218,13 +247,13 @@ private fun NowLine(day: LocalDate) {
     if (day != LocalDate.now()) return
     val y = Yantra.colors
     val minute = LocalTime.now().toSecondOfDay() / 60
-    Box(
-        Modifier
-            .offset(y = HOUR_HEIGHT * (minute / 60f))
-            .fillMaxWidth()
-            .height(1.5.dp)
-            .background(y.accent),
-    )
+    Row(
+        Modifier.offset(y = HOUR_HEIGHT * (minute / 60f) - 3.dp).fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(y.accent))
+        Box(Modifier.fillMaxWidth().height(1.5.dp).background(y.accent))
+    }
 }
 
 @Composable
@@ -237,39 +266,51 @@ private fun BlockChip(
     val y = Yantra.colors
     val item = block.item
     val isEvent = item is DayItem.Event
+    // Always side by side.
+    //
+    // An earlier version cascaded overlapping blocks once the columns got too narrow to hold a
+    // word, which is what a seven-day week on a phone does to them. Showing three days on a phone
+    // and seven only where there is room removed that case, and with it the reason for a second
+    // layout mode — two staggered blocks read as one smeared block, and their labels ran together.
     val width = laneWidth / block.columns
+    val x = width * block.column
     val height = HOUR_HEIGHT * ((block.endMinute - block.startMinute) / 60f)
 
-    Box(
+    // A soft fill and a spine down the left, no outline. An outlined block on an outlined grid is
+    // two competing rectangles; the spine is what every calendar uses to say "this one is mine"
+    // without drawing a second box around it.
+    Row(
         Modifier
-            .offset(x = width * block.column, y = HOUR_HEIGHT * (block.startMinute / 60f))
+            .offset(x = x, y = HOUR_HEIGHT * (block.startMinute / 60f))
             .width(width)
             .height(height)
-            .padding(horizontal = 1.dp, vertical = 1.dp)
-            .clip(RoundedCornerShape(6.dp))
-            // An event is filled; a task is outlined. The two are equally real on the timeline and
-            // one of them can still be ticked off, so they should not look identical.
+            .padding(end = 4.dp, bottom = 2.dp)
+            .clip(RoundedCornerShape(7.dp))
             .background(if (isEvent) y.accentFill else y.cardBg)
-            .border(1.dp, if (isEvent) y.accentBorder else y.tileBorder, RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .clickable(onClick = onClick),
     ) {
-        Column {
+        Box(
+            Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(if (isEvent) y.accent else y.textDim.copy(alpha = 0.5f)),
+        )
+        Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
             Text(
                 item.title,
-                fontSize = if (compact) 8.sp else 11.sp,
+                fontSize = if (compact) 9.sp else 12.sp,
                 fontWeight = FontWeight.W600,
+                lineHeight = if (compact) 11.sp else 14.sp,
                 color = if (isEvent) y.accentText else y.textPrimary,
                 maxLines = if (height > HOUR_HEIGHT) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
                 textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
             )
-            if (!compact && height > HOUR_HEIGHT * 0.6f) {
+            if (!compact && height > HOUR_HEIGHT * 0.7f) {
                 Text(
-                    "%02d:%02d".format(block.startMinute / 60, block.startMinute % 60),
-                    fontFamily = YantraMono,
-                    fontSize = 9.sp,
-                    color = if (isEvent) y.accentText.copy(alpha = 0.75f) else y.textMuted,
+                    "%d:%02d".format(block.startMinute / 60, block.startMinute % 60),
+                    fontSize = 10.sp,
+                    color = if (isEvent) y.accentText.copy(alpha = 0.7f) else y.textMuted,
                 )
             }
         }

@@ -142,9 +142,19 @@ object TimelineLayout {
     }
 
     /** The days of the week [day] falls in, Monday first — matching [monthGrid]. */
-    fun weekOf(day: java.time.LocalDate): List<java.time.LocalDate> {
-        val monday = day.minusDays((day.dayOfWeek.value - 1).toLong())
-        return (0 until 7).map { monday.plusDays(it.toLong()) }
+    fun weekOf(day: java.time.LocalDate): List<java.time.LocalDate> = span(day, 7)
+
+    /**
+     * The [count] days on screen beside [day].
+     *
+     * Seven **snaps to the Monday** of the week it falls in, because a week is a thing with edges
+     * and one that started on a Wednesday would be a rolling seven days pretending to be one. Fewer
+     * than seven does not snap: three days is a window you push along, not a unit with a start, and
+     * anchoring it to Monday would make the selected day jump to the far side of the screen.
+     */
+    fun span(day: java.time.LocalDate, count: Int): List<java.time.LocalDate> {
+        val first = if (count >= 7) day.minusDays((day.dayOfWeek.value - 1).toLong()) else day
+        return (0 until count).map { first.plusDays(it.toLong()) }
     }
 }
 
