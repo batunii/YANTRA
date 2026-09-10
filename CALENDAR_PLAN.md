@@ -351,7 +351,94 @@ The first version was crude and drawn as such — worth recording so it is not r
 - The **heading** now says what is on screen: a month, a range, or a day. In the day view there had
   been nothing at all naming the day.
 
-## 11. Open questions
+## 11. Sittings: a task on the calendar, and focus on top of it
+
+The question this answers: *what does it mean to put a task on the calendar?* The answer taken here
+is the one that makes the feature worth having — **it means "I am going to work on this then"**, it
+can happen more than once, and it is where a focus session runs.
+
+### Why `due:` with a length is not enough
+
+§10 gave a task's `due:` an optional length, which draws it as one block. That covers the simple
+case and stops there: a task you mean to sit down to twice has **two** intentions and one due date,
+and there is nowhere to put the second. Stretching `due:` to a list of spans would also make the
+deadline and the plan the same field, so moving a working session would move the deadline.
+
+### A sitting is its own line
+
+```
+- [ ] Write the deck ^t1 due:2026-09-12
+@ 2026-09-11T14:00/PT2H ^s1 for:t1
+@ 2026-09-12T09:00/PT1H ^s2 for:t1
+```
+
+A `for:<taskId>` token on an event line means *this block is time set aside for that task*. It reuses
+the event grammar entirely — a sitting **is** an event, with a referent.
+
+Consequences, each of them a reason for the shape:
+
+- **No title.** A sitting with a title would store the task's name twice, and the format's own rule
+  is that nothing is stored in two places. It draws with the task's title, read through `for:`.
+- **Two devices can plan different sittings** and git takes both, because they are separate lines —
+  the same argument as §2.2's overrides.
+- **Ticking the task off does not delete them.** They are a record of what you meant to do, and a
+  week of them is the honest answer to "where did that go".
+- **The task's own `due:` stops drawing as a block** once it has sittings, and draws as a deadline
+  marker in the all-day bar instead. Otherwise the plan appears twice.
+
+### Focus, planned and actual
+
+`FocusSessionEntity` already carries `nodeId`, `startedAt`, `endedAt` and `actualSecs`, and is already
+indexed per workspace. **The "what I actually did" half of this exists today and nothing draws it.**
+
+So the calendar gets two layers over the same hours:
+
+| Layer | Where it comes from | What it says |
+|---|---|---|
+| **Planned** | `for:` sittings, and events | what you meant to do |
+| **Actual** | `focus_session` rows | what you did |
+
+Drawn together: the sitting as a block, the actual session as a solid inset bar within (or beside)
+it. A sitting you never started is an outline with nothing in it; one you overran shows the bar
+running past the block's foot. That comparison is the whole point, and it is the thing no
+general-purpose calendar can do because it does not know what you were working on.
+
+Starting focus from a sitting is then the obvious gesture: the block already names the task, so the
+play button on it starts the clock the app already has, through the existing `TimingRequest` so that
+"something else is already running" is asked the same way it is asked everywhere else.
+
+**Actual sessions are drawn, never edited.** A log of what happened is not a thing to drag around,
+and the focus log is append-only for that reason.
+
+### Open
+
+1. Does an actual session with **no** sitting draw at all? (Proposal: yes, faintly — you did the
+   work whether or not you planned it, and a calendar that only shows the plan flatters you.)
+2. Does starting focus **create** a sitting retroactively? (Proposal: no. The actual layer already
+   records it, and inventing a plan after the fact is how a planner starts lying to you.)
+3. Should a sitting carry its own reminder, or inherit the task's?
+
+## 12. Moving things about
+
+None of this exists yet, and its absence is what makes the timeline feel like a picture rather than
+a plan.
+
+| Gesture | What it does | Notes |
+|---|---|---|
+| **Drag a block** | Moves it in time — and between days in the multi-day view | Snap to 15 minutes. The write is `editEvent`/`editTask`, already there |
+| **Drag its lower edge** | Changes its length | Needs a handle big enough to hit without moving the block |
+| **Drag on empty ruler** | Creates a block over the dragged range | The tap-to-create from §7 phase 3 is the degenerate case of this |
+| **Drag a task in** | From the day list, or from a list screen, onto the ruler | This is the "blocking" gesture people mean; it writes a `for:` sitting |
+| **Long-press a block** | Delete / start focus / open the task | |
+
+Two things to get right, both of which are about the file rather than the finger:
+
+- **Write on drop, not during the drag.** A drag is dozens of frames and each write is a whole-file
+  rewrite plus a reindex; only the final position is a decision.
+- **Snap, and say so.** Fifteen minutes, with the time shown while dragging. A block that lands at
+  14:07 because that is where a thumb was is a block nobody chose.
+
+## 13. Open questions
 
 1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
    captured with no home — the same answer quick-add gives — rather than a `calendar/` area the
