@@ -168,7 +168,74 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 reminderMin = row.reminderMin,
             )
         }
+
+    /**
+     * Moves a block to a new start, keeping its length.
+     *
+     * A drag says where a thing now begins; how long it takes is not what the finger was saying, so
+     * the end travels with the start rather than being recomputed from where the thumb let go.
+     */
+    fun moveTo(nodeId: String, start: java.time.LocalDateTime) {
+        viewModelScope.launch {
+            val writer = container.workspaces.writerFor(nodeId)
+            val event = container.db.eventDao().byId(nodeId)
+            if (event != null) {
+                val length = java.time.Duration.between(
+                    java.time.LocalDateTime.parse(event.startLocal),
+                    java.time.LocalDateTime.parse(event.endLocal),
+                )
+                writer.editEvent(nodeId) { e ->
+                    e.copy(time = e.time.copy(start = start, end = start.plus(length)), raw = null)
+                }
+            } else {
+                writer.editTask(nodeId) { t -> t.copy(due = t.due?.movedTo(start, zone), raw = null) }
+            }
+        }
+    }
+
+    /** Changes how long a block lasts. The start stays where it is. */
+    fun resizeTo(nodeId: String, end: java.time.LocalDateTime) {
+        viewModelScope.launch {
+            val writer = container.workspaces.writerFor(nodeId)
+            val event = container.db.eventDao().byId(nodeId)
+            if (event != null) {
+                writer.editEvent(nodeId) { e ->
+                    e.copy(time = e.time.copy(end = maxOf(end, e.time.start)), raw = null)
+                }
+            } else {
+                writer.editTask(nodeId) { t ->
+                    val spec = t.due ?: return@editTask t
+                    val from = spec.startLocal(zone) ?: return@editTask t
+                    val mins = java.time.Duration.between(from, end).toMinutes()
+                    if (mins <= 0) t
+                    else t.copy(due = spec.copy(duration = java.time.Duration.ofMinutes(mins)), raw = null)
+                }
+            }
+        }
+    }
 }
+
+/**
+ * The same due date, moved to a new moment.
+ *
+ * An all-day due becomes a timed one when it is dragged onto an hour — putting it on the ruler at
+ * half past two *is* saying it has a time now, and leaving it all-day would silently ignore the
+ * drag.
+ */
+private fun ie.shoonya.yantra.data.format.DueSpec.movedTo(
+    start: java.time.LocalDateTime,
+    zone: ZoneId,
+): ie.shoonya.yantra.data.format.DueSpec = copy(
+    value = ie.shoonya.yantra.data.format.DueValue.At(start.atZone(zone).toInstant()),
+)
+
+/** Where a due date sits in local time, or null for a value that has no moment. */
+private fun ie.shoonya.yantra.data.format.DueSpec.startLocal(zone: ZoneId): java.time.LocalDateTime? =
+    when (val v = value) {
+        is ie.shoonya.yantra.data.format.DueValue.At ->
+            java.time.LocalDateTime.ofInstant(v.instant, zone)
+        is ie.shoonya.yantra.data.format.DueValue.AllDay -> v.date.atStartOfDay()
+    }
 
 /** How much of the calendar is on screen. */
 enum class CalendarMode(val label: String) {

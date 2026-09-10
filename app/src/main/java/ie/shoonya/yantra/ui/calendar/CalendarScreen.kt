@@ -186,6 +186,14 @@ fun CalendarScreen(nav: NavHostController) {
                 items = items,
                 onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
                 onEmptyTap = { at -> sheet = EventSheetTarget(null, null, at) },
+                onMove = vm::moveTo,
+                onResize = vm::resizeTo,
+                // A dragged-out range opens the sheet already the right length, rather than
+                // creating something silently — a block you did not name is a block you will not
+                // recognise tomorrow.
+                onCreateRange = { from, to ->
+                    sheet = EventSheetTarget(null, null, from.toLocalTime(), java.time.Duration.between(from, to))
+                },
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
             )
         }
@@ -242,6 +250,7 @@ fun CalendarScreen(nav: NavHostController) {
             initial = target.event,
             day = selected,
             atTime = target.at,
+            length = target.length,
             onSave = { vm.save(target.nodeId, it) },
             onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
             onDismiss = { sheet = null },
@@ -254,6 +263,8 @@ private data class EventSheetTarget(
     val nodeId: String?,
     val event: ie.shoonya.yantra.data.format.EventRef?,
     val at: java.time.LocalTime? = null,
+    /** The length a drag asked for, if that is how this was opened. */
+    val length: java.time.Duration? = null,
 )
 
 /**

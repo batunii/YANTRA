@@ -88,6 +88,8 @@ fun EventSheet(
     day: LocalDate,
     /** Where the tap landed on a timeline, if that is how this was opened. */
     atTime: LocalTime? = null,
+    /** How long a drag on the ruler asked for. */
+    length: Duration? = null,
     onSave: (EventRef) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -101,7 +103,8 @@ fun EventSheet(
     var time by remember { mutableStateOf(start0.toLocalTime()) }
     var length by remember {
         mutableStateOf(
-            initial?.time?.takeIf { !it.allDay }?.duration?.takeIf { !it.isZero } ?: Duration.ofHours(1)
+            initial?.time?.takeIf { !it.allDay }?.duration?.takeIf { !it.isZero }
+                ?: length ?: Duration.ofHours(1)
         )
     }
     var location by remember { mutableStateOf(initial?.location.orEmpty()) }
