@@ -12,8 +12,23 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 
-/** How much of the day view the day itself gets when the rail is beside it. */
-const val DAY_SHARE = 0.75f
+/**
+ * How much the day itself gets when the rail is under it.
+ *
+ * Three quarters left the rail two rows deep, which is a list you scroll rather than one you read.
+ * What the rail costs here is *height*, and a timeline can give some: an empty afternoon still looks
+ * empty at three fifths of a screen, which is the whole reason to draw one.
+ */
+const val DAY_SHARE_STACKED = 0.6f
+
+/**
+ * And when it is beside the day instead.
+ *
+ * Left alone at three quarters, because what the rail wants side by side is *width*, and a quarter
+ * of a tablet is already more of that than a task title needs. Widening it here would take from the
+ * day to buy nothing.
+ */
+const val DAY_SHARE_WIDE = 0.75f
 
 /** What a sitting is worth when a single tap placed it and nobody said how long. */
 val SITTING_LENGTH: Duration = Duration.ofHours(1)
@@ -21,11 +36,13 @@ val SITTING_LENGTH: Duration = Duration.ofHours(1)
 /**
  * The day, and the tasks waiting for a place in it — CALENDAR_PLAN.md §13A.
  *
- * Three quarters timeline, one quarter rail — **and which quarter depends on the screen**. A phone
- * splits top and bottom, so the rail gets the full width and its four shelves fit across it; a
- * tablet splits left and right, where there is width to spare and stacking would waste it. Sliced
- * the other way on a phone, the rail came out about ninety points wide: shelf names clipped at the
- * edge and task titles wrapping to three lines, which is a list you cannot read to choose from.
+ * Timeline and rail, and **which way the screen is cut depends on the screen**. A phone splits top
+ * and bottom, so the rail gets the full width and its four shelves fit across it; a tablet splits
+ * left and right, where there is width to spare and stacking would waste it. Sliced the other way on
+ * a phone, the rail came out about ninety points wide: shelf names clipped at the edge and task
+ * titles wrapping to three lines, which is a list you cannot read to choose from.
+ *
+ * The shares differ with the cut — see [DAY_SHARE_STACKED] and [DAY_SHARE_WIDE].
  *
  * The rail is what a calendar page is otherwise missing: a task with no date cannot be drawn on a
  * calendar at all, which is precisely the task most in need of being given a time.
@@ -103,18 +120,18 @@ fun DayWithRail(
 
     if (sideBySide) {
         Row(modifier) {
-            timeline(Modifier.weight(if (railOpen) DAY_SHARE else 1f))
+            timeline(Modifier.weight(if (railOpen) DAY_SHARE_WIDE else 1f))
             if (railOpen) {
                 RailDivider()
-                rail(Modifier.weight(1f - DAY_SHARE).padding(top = 4.dp))
+                rail(Modifier.weight(1f - DAY_SHARE_WIDE).padding(top = 4.dp))
             }
         }
     } else {
         Column(modifier) {
-            timeline(Modifier.weight(if (railOpen) DAY_SHARE else 1f))
+            timeline(Modifier.weight(if (railOpen) DAY_SHARE_STACKED else 1f))
             if (railOpen) {
                 RailDividerHorizontal()
-                rail(Modifier.weight(1f - DAY_SHARE).padding(top = 6.dp))
+                rail(Modifier.weight(1f - DAY_SHARE_STACKED).padding(top = 6.dp))
             }
         }
     }
