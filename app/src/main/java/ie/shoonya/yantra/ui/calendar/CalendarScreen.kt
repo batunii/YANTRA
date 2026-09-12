@@ -210,6 +210,9 @@ fun CalendarScreen(nav: NavHostController) {
                 shelf = shelf,
                 armed = armed,
                 railOpen = railOpen,
+                // Stacked on a phone, beside the day on a tablet — the same breakpoint that decides
+                // three days against seven, and for the same reason.
+                sideBySide = widthDp >= TABLET_WIDTH,
                 onShelf = vm::setShelf,
                 onArm = vm::arm,
                 onOpenTask = { nav.navigate(Routes.node(it)) },

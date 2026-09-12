@@ -1,5 +1,6 @@
 package ie.shoonya.yantra.ui.calendar
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -20,9 +21,14 @@ val SITTING_LENGTH: Duration = Duration.ofHours(1)
 /**
  * The day, and the tasks waiting for a place in it — CALENDAR_PLAN.md §13A.
  *
- * Three quarters timeline, one quarter rail. The rail is what a calendar page is otherwise missing:
- * a task with no date cannot be drawn on a calendar at all, which is precisely the task most in need
- * of being given a time.
+ * Three quarters timeline, one quarter rail — **and which quarter depends on the screen**. A phone
+ * splits top and bottom, so the rail gets the full width and its four shelves fit across it; a
+ * tablet splits left and right, where there is width to spare and stacking would waste it. Sliced
+ * the other way on a phone, the rail came out about ninety points wide: shelf names clipped at the
+ * edge and task titles wrapping to three lines, which is a list you cannot read to choose from.
+ *
+ * The rail is what a calendar page is otherwise missing: a task with no date cannot be drawn on a
+ * calendar at all, which is precisely the task most in need of being given a time.
  *
  * **Arm, then place.** Tapping a task lifts it; the next tap on an hour puts it there. Drag between
  * two independently scrolling surfaces is the accelerator and it is the one gesture here that can
@@ -39,6 +45,8 @@ fun DayWithRail(
     shelf: RailBucket,
     armed: RailTask?,
     railOpen: Boolean,
+    /** Side by side rather than stacked. True where there is width to spare — see the class note. */
+    sideBySide: Boolean,
     onShelf: (RailBucket) -> Unit,
     onArm: (RailTask?) -> Unit,
     /** The task itself, reached from the rail without arming it. */
@@ -54,7 +62,10 @@ fun DayWithRail(
     onResize: (String, LocalDateTime) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier) {
+    // One set of callbacks, two arrangements. The wiring is the feature; which way the screen is cut
+    // is a question about the screen, so the two are kept apart rather than the whole thing written
+    // out twice with one `Row` changed to a `Column`.
+    val timeline: @Composable (Modifier) -> Unit = { mod ->
         DayTimeline(
             day = day,
             items = items,
@@ -75,23 +86,36 @@ fun DayWithRail(
                 if (held != null) onSit(held.nodeId, from, Duration.between(from, to))
                 else onMark(from, to)
             },
-            modifier = Modifier
-                .weight(if (railOpen) DAY_SHARE else 1f)
-                .padding(horizontal = 8.dp),
+            modifier = mod.padding(horizontal = 8.dp),
         )
-        if (railOpen) {
-            RailDivider()
-            TaskRail(
-                shelves = shelves,
-                shelf = shelf,
-                armed = armed?.nodeId,
-                onShelf = onShelf,
-                onArm = onArm,
-                onOpen = onOpenTask,
-                modifier = Modifier
-                    .weight(1f - DAY_SHARE)
-                    .padding(start = 8.dp, end = 6.dp, top = 4.dp),
-            )
+    }
+    val rail: @Composable (Modifier) -> Unit = { mod ->
+        TaskRail(
+            shelves = shelves,
+            shelf = shelf,
+            armed = armed?.nodeId,
+            onShelf = onShelf,
+            onArm = onArm,
+            onOpen = onOpenTask,
+            modifier = mod.padding(horizontal = 8.dp),
+        )
+    }
+
+    if (sideBySide) {
+        Row(modifier) {
+            timeline(Modifier.weight(if (railOpen) DAY_SHARE else 1f))
+            if (railOpen) {
+                RailDivider()
+                rail(Modifier.weight(1f - DAY_SHARE).padding(top = 4.dp))
+            }
+        }
+    } else {
+        Column(modifier) {
+            timeline(Modifier.weight(if (railOpen) DAY_SHARE else 1f))
+            if (railOpen) {
+                RailDividerHorizontal()
+                rail(Modifier.weight(1f - DAY_SHARE).padding(top = 6.dp))
+            }
         }
     }
 }

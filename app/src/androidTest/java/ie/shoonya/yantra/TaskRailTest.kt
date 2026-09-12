@@ -61,8 +61,14 @@ class TaskRailTest {
         var opened: String? = null
     }
 
-    /** The rail beside the day, wired the way the screen wires it, with the arming state held here. */
-    private fun show(tasks: List<RailTask>): Recorder {
+    /**
+     * The rail and the day, wired the way the screen wires it, with the arming state held here.
+     *
+     * [sideBySide] is the screen's own choice — stacked on a phone, beside the day on a tablet — and
+     * it is a parameter here because the gesture has to survive both. The test device is a phone, so
+     * the side-by-side case would otherwise never be driven at all.
+     */
+    private fun show(tasks: List<RailTask>, sideBySide: Boolean = false): Recorder {
         val rec = Recorder()
         rule.setContent {
             SuperTasksTheme {
@@ -75,6 +81,7 @@ class TaskRailTest {
                     shelf = shelf,
                     armed = armed,
                     railOpen = true,
+                    sideBySide = sideBySide,
                     onShelf = { shelf = it; armed = null },
                     onArm = { armed = it },
                     onOpenTask = { rec.opened = it },
@@ -93,8 +100,14 @@ class TaskRailTest {
 
     /** The whole feature in one gesture: lift a task off the rail, put it on an hour. */
     @Test
-    fun tapATaskThenTapAnHourAndTheSittingExists() {
-        val rec = show(listOf(task("t1", due = day.toString())))
+    fun tapATaskThenTapAnHourAndTheSittingExists() = tapThenPlace(sideBySide = false)
+
+    /** The same gesture with the rail beside the day rather than under it. */
+    @Test
+    fun tapATaskThenTapAnHourWorksSideBySideToo() = tapThenPlace(sideBySide = true)
+
+    private fun tapThenPlace(sideBySide: Boolean) {
+        val rec = show(listOf(task("t1", due = day.toString())), sideBySide = sideBySide)
 
         rule.onNodeWithTag("rail:t1").performClick()
         // The rail says what it is now waiting for, and says it only while it is true.
