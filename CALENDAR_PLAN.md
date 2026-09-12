@@ -438,7 +438,74 @@ Two things to get right, both of which are about the file rather than the finger
 - **Snap, and say so.** Fifteen minutes, with the time shown while dragging. A block that lands at
   14:07 because that is where a thumb was is a block nobody chose.
 
-## 13. Open questions
+## 13. Getting a task onto the calendar
+
+Two ways in, both kept, because they answer different moments. One is "I have a list and a day to
+fill"; the other is "I have a gap and I want to know what fits in it".
+
+### A. The split: a day and a rail beside it
+
+Three quarters timeline, one quarter tasks. The rail is what the calendar page is missing today —
+a task with no date is invisible on a calendar, which is precisely the task most in need of one.
+
+**The rail is a set of buckets you page between**, not a search:
+
+| Bucket | What it holds | Why it earns a place |
+|---|---|---|
+| **Today** | due today | what you already said you would do |
+| **Soon** | a deadline inside the next few days | what is about to become today's problem |
+| **Undated** | no due, no deadline | the backlog. The one a calendar normally cannot see at all |
+| **Everything else** | has dates, but none of the above | scheduled further out, or overdue and not yet faced |
+
+Pick one up, drop it on an hour, and that writes **one sitting**. No sheet, no naming step: a
+sitting has no name by design — it draws with the task's title — so the objection in §12 to creating
+blocks silently does not apply to it. What you dropped is what you meant.
+
+The rail is also the answer to a constraint §12 glossed over: you cannot drag onto a day that is not
+on screen. The rail sits beside **one** day, and that day is the one you are filling.
+
+### B. Full screen: mark the time, then say what it is for
+
+Timeline edge to edge. Drag out a region, and the app asks what goes in it — the same bucketed list,
+as a sheet over the marked range. Pick a task and the sitting exists.
+
+This is the inverse gesture and it suits the opposite mood: not "where does this task go" but "I have
+two free hours on Thursday afternoon — what should be in them?" It also works one-handed, and it is
+the only one of the two that fits a phone in portrait without the rail squeezing the day.
+
+### When the time comes
+
+The bar at the bottom of the screen already holds **everything on the go, newest first**, and
+`TasksRepository.setInProgress` is explicit that the middle state is deliberately not limited to one:
+*"Having several things on the go is the ordinary shape of a day."* A sitting starting is exactly
+that shape, so this feature is mostly a matter of pointing existing parts at each other.
+
+1. **The sitting's start puts the task in the bar**, ready, with its play button — not running.
+2. **The bar orders by sitting, not by recency.** A task whose sitting is happening *now* comes
+   first. Newest-first is a reasonable default with nothing better to go on; a sitting is something
+   better to go on.
+3. **Press play** and focus starts, through the existing `TimingRequest` so that "something else is
+   already running" is asked the way it is asked everywhere else. **This** is the moment the task
+   becomes `- [~]`, because that is the moment you actually picked it up.
+
+**The one thing not to do is flip `- [~]` at the sitting's start**, and the research is clear about
+why. The Reclaim objection does not apply — nothing here records time you did not spend, because
+play is still yours to press. But the Teams objection does: a status set by a clock and cleared by
+nothing accumulates. A sitting that passes while you are in a meeting would leave a task marked
+picked-up that you never touched, in a file that syncs to your other devices and commits to git.
+
+Microsoft's presence has exactly this complaint against it — "In a meeting" for three hours whatever
+you are doing — and Adobe Workfront refuses to let its "Work On It" button set a status at all,
+because people press it when a task *arrives* rather than when they start, which skews the record.
+If a deliberate button press is judged too weak a signal to write a status against, a clock tick is
+weaker.
+
+So: **the bar carries the readiness, the file carries the fact.** You get the thing you actually
+asked for — the task waiting there with a play button when its time comes — without a synced file
+claiming you did something you have not done yet. If a sitting passes untouched, the only trace is
+§11's empty outline on the timeline, which is a record of the plan rather than an accusation.
+
+## 14. Open questions
 
 1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
    captured with no home — the same answer quick-add gives — rather than a `calendar/` area the
