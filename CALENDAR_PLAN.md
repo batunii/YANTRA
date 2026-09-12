@@ -505,7 +505,49 @@ asked for — the task waiting there with a play button when its time comes — 
 claiming you did something you have not done yet. If a sitting passes untouched, the only trace is
 §11's empty outline on the timeline, which is a record of the plan rather than an accusation.
 
-## 14. Open questions
+## 14. Build order
+
+Written before starting, because most of the cost in a feature like this is discovering an
+integration point halfway through. Each step is separately verifiable, and the risky ones are named.
+
+| # | Step | Verified by |
+|---|---|---|
+| 1 | `for:` on the event line — `EventRef.forTaskId`, parse and render | JVM codec round-trip |
+| 2 | `event.for_node_id`, migration 13→14, mapper writes it | Migration replay on device |
+| 3 | A sitting resolves its title from the task it points at | JVM, through the DAO projection |
+| 4 | Sittings draw as sittings and open the task | Compose UI test |
+| 5 | The rail: four buckets, pure, then the UI beside the day | JVM for the buckets |
+| 6 | Putting a task on the day — from the rail, and from a marked range | Compose UI test |
+| 7 | A sitting's start puts the task in the bar, ready and first | JVM for the ordering |
+| 8 | Play starts focus and writes `- [~]` | on device |
+
+### The integration points that will bite
+
+- **A sitting has no title of its own, and `EventWithTitle` joins the wrong node.** That projection
+  takes `node.title` for the *event's* node, which for a sitting is empty by design. It needs a
+  second `LEFT JOIN` through `for_node_id`, and the calendar has to prefer that title. Getting this
+  wrong shows up as a day full of blocks labelled "Event".
+- **The bar is shared.** It is fed by `TasksRepository.inProgress()` and drawn on several screens.
+  Adding "ready, not started" items changes what the bar *means*, so the readiness has to be a
+  separate source combined at the view model rather than a second meaning stuffed into `inProgress`.
+- **Drag between two scrollables is the fragile part.** A rail that scrolls and a timeline that
+  scrolls, with a drag crossing between them, is the one interaction here that can fail on a real
+  finger while passing a test. **Tap-to-arm is the guaranteed path** — tap a task in the rail, it
+  lifts, tap an hour — and drag is the accelerator layered on top. Ship the reliable one first.
+- **`EventSheet` must not offer a sitting a title field.** It has no title; it borrows one. Opening a
+  sitting should offer time, length, reminder, *Open the task*, and *Remove from calendar* — never a
+  bare "Delete", which reads as deleting the task.
+- **Deleting the task must take future sittings and leave past ones.** The cascade already deletes
+  an event row with its node; a sitting's *referent* going away is a different question, and an
+  orphaned `for:` must degrade to an ordinary event rather than vanish or crash.
+
+### Deliberately not in this pass
+
+Recurrence on sittings, dragging a sitting between days in the multi-day view, and the actual-focus
+layer from §11. The last is close — `focus_session` already has the times — but drawing it before
+you can make a sitting would be drawing the answer to a question nobody can ask yet.
+
+## 15. Open questions
 
 1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
    captured with no home — the same answer quick-add gives — rather than a `calendar/` area the
