@@ -141,10 +141,14 @@ fun CalendarScreen(nav: NavHostController) {
     val rail by vm.rail.collectAsStateWithLifecycle()
     val shelf by vm.shelf.collectAsStateWithLifecycle()
     val armed by vm.armed.collectAsStateWithLifecycle()
-    // Open on a screen with room for it, shut on one without. Both are reachable either way — the
-    // day is the thing being filled, and a rail that squeezed it to a strip would be the wrong
-    // trade on a phone held in one hand.
-    var railOpen by remember(daysAcross) { mutableStateOf(widthDp >= TABLET_WIDTH) }
+    // Open, on every screen. The rail is what the day view is *for* — a calendar can only draw what
+    // already has a date, so the task most in need of a time is the one it cannot show, and a rail
+    // you have to go and find does not answer that. An earlier version opened it only on a tablet,
+    // which meant the phone showed the same day it always had.
+    //
+    // The toggle stays, because the full-width day is the right shape for reading a busy one and
+    // for the mark-then-pick gesture — see §13B.
+    var railOpen by remember { mutableStateOf(true) }
 
     Column(
         Modifier

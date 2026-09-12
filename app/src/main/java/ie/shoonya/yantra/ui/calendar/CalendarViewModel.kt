@@ -45,8 +45,15 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setDaysOnScreen(count: Int) { daysOnScreen = count }
 
-    /** Month, week or day — the same data, three amounts of detail. */
-    private val _mode = MutableStateFlow(CalendarMode.MONTH)
+    /**
+     * Month, week or day — the same data, three amounts of detail.
+     *
+     * Opens on the **day**, because that is the one you can work in: it draws to scale, it takes a
+     * task from the rail, and it is where a sitting gets made. A month answers "when is that thing"
+     * and is one tap away for it; landing there meant the calendar opened on the only view that
+     * cannot be planned in.
+     */
+    private val _mode = MutableStateFlow(CalendarMode.DAY)
     val mode: StateFlow<CalendarMode> = _mode.asStateFlow()
 
     fun setMode(m: CalendarMode) { _mode.value = m }
