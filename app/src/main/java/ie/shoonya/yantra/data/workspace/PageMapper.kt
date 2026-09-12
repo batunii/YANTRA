@@ -184,6 +184,7 @@ object PageMapper {
             startUtc = e.time.start.atZone(resolve).toInstant().toEpochMilli(),
             endUtc = e.time.end.atZone(resolve).toInstant().toEpochMilli(),
             rrule = e.rrule,
+            forNodeId = e.forTaskId,
             seriesId = e.series?.id,
             // The bare `series:s1` form means "the occurrence at this line's own start", so the
             // index writes that start rather than a null the reader would have to know to fill in.

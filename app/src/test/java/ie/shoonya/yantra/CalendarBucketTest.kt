@@ -6,6 +6,7 @@ import ie.shoonya.yantra.ui.calendar.CalendarBucketer
 import ie.shoonya.yantra.ui.calendar.DayItem
 import ie.shoonya.yantra.ui.calendar.monthGrid
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -49,7 +50,12 @@ class CalendarBucketTest {
         from: String = "2026-09-01",
         to: String = "2026-10-01",
     ) = CalendarBucketer.bucket(
-        events, tasks, titles, LocalDate.parse(from), LocalDate.parse(to), dublin,
+        events = events,
+        tasks = tasks,
+        titles = titles,
+        from = LocalDate.parse(from),
+        toExclusive = LocalDate.parse(to),
+        zone = dublin,
     )
 
     private fun dueAt(id: String, local: String, hasTime: Boolean, done: Boolean = false) = DueRow(
@@ -167,6 +173,36 @@ class CalendarBucketTest {
         val bad = event("bad", "not-a-time", "also-not")
         val good = event("good", "2026-09-11T14:00", "2026-09-11T15:00")
         assertEquals(setOf(LocalDate.parse("2026-09-11")), bucket(listOf(bad, good)).keys)
+    }
+
+    // ---- sittings ----
+
+    @Test
+    fun `a sitting is drawn as the task it is for`() {
+        val sitting = event("s1", "2026-09-11T14:00", "2026-09-11T16:00")
+            .copy(forNodeId = "t1")
+        val item = CalendarBucketer.bucket(
+            events = listOf(sitting),
+            tasks = emptyList(),
+            // The view model resolves this through the DAO's LEFT JOIN on for_node_id; here it is
+            // handed in the same way, which is the contract that matters.
+            titles = mapOf("s1" to "Write the deck"),
+            sittingOf = mapOf("s1" to "t1"),
+            from = LocalDate.parse("2026-09-01"),
+            toExclusive = LocalDate.parse("2026-10-01"),
+            zone = dublin,
+        ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+        assertEquals("Write the deck", item.title)
+        assertEquals("t1", item.forTaskId)
+    }
+
+    @Test
+    fun `an ordinary event is not a sitting`() {
+        val item = bucket(
+            listOf(event("e1", "2026-09-11T14:00", "2026-09-11T15:00")),
+            titles = mapOf("e1" to "Design review"),
+        ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+        assertNull(item.forTaskId)
     }
 
     // ---- the grid ----

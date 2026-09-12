@@ -314,6 +314,11 @@ private fun BlockChip(
     val y = Yantra.colors
     val item = block.item
     val isEvent = item is DayItem.Event
+    // A sitting is neither of the other two and has to read as neither — CALENDAR_PLAN.md §11. An
+    // appointment is something the world put in your day, so it wears the accent fill. A due task is
+    // a deadline landing at an hour, so it is quiet. A sitting is time you gave to your own work:
+    // the body of a task, the spine of an effort.
+    val sitting = item is DayItem.Event && item.forTaskId != null
     // Always side by side.
     //
     // An earlier version cascaded overlapping blocks once the columns got too narrow to hold a
@@ -347,7 +352,7 @@ private fun BlockChip(
             .testTag("block:${block.item.nodeId}")
             .padding(end = 4.dp, bottom = 2.dp)
             .clip(RoundedCornerShape(7.dp))
-            .background(if (isEvent) y.accentFill else y.cardBg)
+            .background(if (isEvent && !sitting) y.accentFill else y.cardBg)
             .then(
                 if (onDrag == null) Modifier else Modifier.pointerInput(block.item.nodeId, block.startMinute) {
                     // The gesture keeps its own running state.
@@ -412,7 +417,7 @@ private fun BlockChip(
             Modifier
                 .width(3.dp)
                 .fillMaxHeight()
-                .background(if (isEvent) y.accent else y.textDim.copy(alpha = 0.5f)),
+                .background(if (isEvent || sitting) y.accent else y.textDim.copy(alpha = 0.5f)),
         )
         Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
             Text(
@@ -420,7 +425,7 @@ private fun BlockChip(
                 fontSize = if (compact) 9.sp else 12.sp,
                 fontWeight = FontWeight.W600,
                 lineHeight = if (compact) 11.sp else 14.sp,
-                color = if (isEvent) y.accentText else y.textPrimary,
+                color = if (isEvent && !sitting) y.accentText else y.textPrimary,
                 maxLines = if (height > HOUR_HEIGHT) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
                 textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
@@ -432,7 +437,7 @@ private fun BlockChip(
                         if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else "",
                     fontSize = 10.sp,
                     fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
-                    color = if (isEvent) y.accentText.copy(alpha = 0.85f) else y.textMuted,
+                    color = if (isEvent && !sitting) y.accentText.copy(alpha = 0.85f) else y.textMuted,
                 )
             }
         }

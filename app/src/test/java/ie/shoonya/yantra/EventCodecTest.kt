@@ -177,6 +177,52 @@ class EventCodecTest {
         )
     }
 
+    // ---- sittings ----
+
+    @Test
+    fun `a sitting points at the task it is time for`() {
+        val e = roundTrip("@ 2026-09-12T14:00/PT2H ^s1 for:t1")
+        assertEquals("t1", e.forTaskId)
+        assertEquals("", e.title)      // it borrows the task's; it does not keep one
+    }
+
+    @Test
+    fun `a sitting with a title keeps it, because dropping it would lose somebody's words`() {
+        // Nothing in the app writes one, but a hand-edited file may, and the parser's job is not to
+        // have opinions about that.
+        assertEquals("Deck, second go", roundTrip("@ 2026-09-12T14:00/PT2H Deck, second go ^s1 for:t1").title)
+    }
+
+    @Test
+    fun `an ordinary event has no referent`() {
+        assertNull(roundTrip("@ 2026-09-11T14:00/PT1H Design review ^e1").forTaskId)
+    }
+
+    @Test
+    fun `for and rrule and a reminder coexist`() {
+        val e = roundTrip("@ 2026-09-12T09:00/PT1H ^s2 rrule:FREQ=WEEKLY for:t1 remind:5")
+        assertEquals("t1", e.forTaskId)
+        assertEquals("FREQ=WEEKLY", e.rrule)
+        assertEquals(5, e.reminderMin)
+    }
+
+    @Test
+    fun `a task and its two sittings survive a whole-page round trip`() {
+        val page = """
+            |---
+            |id: p1
+            |type: list
+            |modified_at: 2026-09-12T10:00:00Z
+            |---
+            |- [ ] Write the deck ^t1 due:2026-09-18
+            |@ 2026-09-12T14:00/PT2H ^s1 for:t1
+            |@ 2026-09-13T09:00/PT1H ^s2 for:t1
+        """.trimMargin() + "\n"
+        val doc = PageCodec.decode(page)
+        assertEquals(listOf("t1", "t1"), doc.blocks.filterIsInstance<EventRef>().map { it.forTaskId })
+        assertEquals(page, PageCodec.encode(doc))
+    }
+
     // ---- not events ----
 
     @Test

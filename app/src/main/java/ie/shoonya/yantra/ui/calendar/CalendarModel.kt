@@ -31,6 +31,8 @@ sealed interface DayItem {
         /** True when this is one line of a repeat — the screen marks it, see [CalendarDays]. */
         val repeating: Boolean,
         val cancelled: Boolean,
+        /** The task this block is time for, when it is a sitting rather than an appointment. */
+        val forTaskId: String? = null,
         override val sortKey: Long,
     ) : DayItem
 
@@ -74,6 +76,8 @@ object CalendarBucketer {
          * this stays a function of its arguments.
          */
         titles: Map<String, String>,
+        /** Sitting node id → the task it is for. */
+        sittingOf: Map<String, String> = emptyMap(),
         from: LocalDate,
         toExclusive: LocalDate,
         zone: ZoneId,
@@ -105,6 +109,7 @@ object CalendarBucketer {
                         location = e.location,
                         repeating = e.rrule != null,
                         cancelled = false,
+                        forTaskId = sittingOf[e.nodeId],
                         // All-day first, then by clock. A day reads top to bottom as it happens.
                         sortKey = if (e.allDay) Long.MIN_VALUE else start.toLocalTime().toNanoOfDay(),
                     )

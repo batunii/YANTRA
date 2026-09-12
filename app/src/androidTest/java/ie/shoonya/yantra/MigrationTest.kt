@@ -17,6 +17,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_8_9
 import ie.shoonya.yantra.data.db.MIGRATION_10_11
 import ie.shoonya.yantra.data.db.MIGRATION_11_12
 import ie.shoonya.yantra.data.db.MIGRATION_12_13
+import ie.shoonya.yantra.data.db.MIGRATION_13_14
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -44,7 +45,7 @@ class MigrationTest {
 
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+        MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
     )
 
     @get:Rule
@@ -57,7 +58,7 @@ class MigrationTest {
 
     private companion object {
         const val DB = "migration-test.db"
-        const val LATEST = 13
+        const val LATEST = 14
     }
 
     private fun SupportSQLiteDatabase.scalar(sql: String): String? =
@@ -109,6 +110,35 @@ class MigrationTest {
     }
 
     // ---- per-migration data behaviour ----
+
+    @Test
+    fun migration13to14_letsAnEventSayWhichTaskItIsFor() {
+        helper.createDatabase(DB, 13).close()
+        helper.runMigrationsAndValidate(DB, 14, true, *ALL).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('t1', '', NULL, 'task', 'Write the deck', 'i', 0, 0, 0, 0, 1, 1)"
+            )
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('s1', '', NULL, 'event', '', 'j', 0, 0, 0, 0, 1, 1)"
+            )
+            db.execSQL(
+                "INSERT INTO event (node_id, workspace_id, start_local, end_local, all_day, " +
+                    "start_utc, end_utc, cancelled, for_node_id) VALUES " +
+                    "('s1', '', '2026-09-12T14:00', '2026-09-12T16:00', 0, 1000, 2000, 0, 't1')"
+            )
+            assertEquals(1, db.count("SELECT COUNT(*) FROM event WHERE for_node_id = 't1'"))
+            // No foreign key on purpose: a sitting outliving its task is a stale reference, not a
+            // corrupt one, and it should leave a plain block behind rather than take the row down.
+            db.execSQL("PRAGMA foreign_keys = ON")
+            db.execSQL("DELETE FROM node WHERE id = 't1'")
+            assertEquals(1, db.count("SELECT COUNT(*) FROM event WHERE node_id = 's1'"))
+        }
+    }
+
 
     @Test
     fun migration11to12_addsAnEmptyEventTableWithoutDisturbingNodes() {

@@ -242,7 +242,7 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
-    val running = RunningTask(timer, nodes, appScope)
+    val running = RunningTask(timer, nodes, appScope, db.eventDao().openSittings())
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 

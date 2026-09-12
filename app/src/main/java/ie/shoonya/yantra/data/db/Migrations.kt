@@ -450,3 +450,16 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+/**
+ * Sittings: an event can say which task it is time for — CALENDAR_PLAN.md §11.
+ *
+ * Nullable, unbackfilled, and unconstrained. Nothing existing is a sitting, and a reference to a
+ * task that has gone should leave a plain block behind rather than delete it.
+ */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `for_node_id` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_for` ON `event` (`for_node_id`)")
+    }
+}
+

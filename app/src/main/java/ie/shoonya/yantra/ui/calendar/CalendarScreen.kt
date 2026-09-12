@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -132,7 +134,17 @@ fun CalendarScreen(nav: NavHostController) {
 
     // null = closed. Editing carries the event it opened on; creating carries nothing.
     var sheet by remember { mutableStateOf<EventSheetTarget?>(null) }
+    // A range marked on an empty day, waiting to be told what goes in it — CALENDAR_PLAN.md §13B.
+    var marked by remember { mutableStateOf<ClosedRange<java.time.LocalDateTime>?>(null) }
     val scope = rememberCoroutineScope()
+
+    val rail by vm.rail.collectAsStateWithLifecycle()
+    val shelf by vm.shelf.collectAsStateWithLifecycle()
+    val armed by vm.armed.collectAsStateWithLifecycle()
+    // Open on a screen with room for it, shut on one without. Both are reachable either way — the
+    // day is the thing being filled, and a rail that squeezed it to a strip would be the wrong
+    // trade on a phone held in one hand.
+    var railOpen by remember(daysAcross) { mutableStateOf(widthDp >= TABLET_WIDTH) }
 
     Column(
         Modifier
@@ -153,13 +165,19 @@ fun CalendarScreen(nav: NavHostController) {
             Modifier
                 .fillMaxWidth()
                 .wrapContentWidth(Alignment.CenterHorizontally)
-                .widthIn(max = CONTENT_MAX_WIDTH),
+                // A month is a fixed amount of information and stretching it gives cells the size
+                // of playing cards. A timeline is not: an hour with three things in it wants every
+                // pixel there is, and the rail beside it wants a quarter of a real width rather
+                // than a quarter of 460dp.
+                .widthIn(max = if (mode == CalendarMode.MONTH) CONTENT_MAX_WIDTH else Dp.Unspecified),
         ) {
         MonthBar(
             month = month,
             selected = selected,
             mode = mode,
             days = daysAcross,
+            railOpen = railOpen,
+            onRail = { railOpen = !railOpen },
             onPrev = { vm.step(-1) },
             onNext = { vm.step(1) },
             onToday = { vm.today() },
@@ -181,20 +199,23 @@ fun CalendarScreen(nav: NavHostController) {
                 onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
             )
-            CalendarMode.DAY -> DayTimeline(
+            CalendarMode.DAY -> DayWithRail(
                 day = selected,
                 items = items,
+                shelves = rail,
+                shelf = shelf,
+                armed = armed,
+                railOpen = railOpen,
+                onShelf = vm::setShelf,
+                onArm = vm::arm,
+                onOpenTask = { nav.navigate(Routes.node(it)) },
                 onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
-                onEmptyTap = { at -> sheet = EventSheetTarget(null, null, at) },
+                onNewEvent = { at -> sheet = EventSheetTarget(null, null, at) },
+                onMark = { from, to -> marked = from..to },
+                onSit = vm::createSitting,
                 onMove = vm::moveTo,
                 onResize = vm::resizeTo,
-                // A dragged-out range opens the sheet already the right length, rather than
-                // creating something silently — a block you did not name is a block you will not
-                // recognise tomorrow.
-                onCreateRange = { from, to ->
-                    sheet = EventSheetTarget(null, null, from.toLocalTime(), java.time.Duration.between(from, to))
-                },
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                modifier = Modifier.weight(1f),
             )
         }
 
@@ -251,10 +272,105 @@ fun CalendarScreen(nav: NavHostController) {
             day = selected,
             atTime = target.at,
             length = target.length,
+            forTitle = target.forTitle,
+            onOpenTask = target.event?.forTaskId?.let { id -> { nav.navigate(Routes.node(id)) } },
             onSave = { vm.save(target.nodeId, it) },
             onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
             onDismiss = { sheet = null },
         )
+    }
+
+    marked?.let { range ->
+        PickForRange(
+            shelves = rail,
+            shelf = shelf,
+            onShelf = vm::setShelf,
+            from = range.start,
+            to = range.endInclusive,
+            onTask = { task ->
+                vm.createSitting(task.nodeId, range.start, java.time.Duration.between(range.start, range.endInclusive))
+                marked = null
+            },
+            onEvent = {
+                sheet = EventSheetTarget(
+                    null, null, range.start.toLocalTime(),
+                    java.time.Duration.between(range.start, range.endInclusive),
+                )
+                marked = null
+            },
+            onDismiss = { marked = null },
+        )
+    }
+}
+
+private val MARKED_RANGE = DateTimeFormatter.ofPattern("HH:mm")
+
+/**
+ * Mark the time, then say what it is for — CALENDAR_PLAN.md §13B.
+ *
+ * The inverse of the rail, and it suits the opposite mood: not "where does this task go" but "I have
+ * two free hours on Thursday afternoon, what should be in them?". The same four buckets, because a
+ * second way of listing the same tasks is a second thing to learn.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun PickForRange(
+    shelves: Map<RailBucket, List<ie.shoonya.yantra.data.db.RailTask>>,
+    shelf: RailBucket,
+    onShelf: (RailBucket) -> Unit,
+    from: java.time.LocalDateTime,
+    to: java.time.LocalDateTime,
+    onTask: (ie.shoonya.yantra.data.db.RailTask) -> Unit,
+    onEvent: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val y = Yantra.colors
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.page) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding(),
+        ) {
+            Text(
+                "${from.format(MARKED_RANGE)}–${to.format(MARKED_RANGE)}",
+                fontFamily = YantraMono,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.W700,
+                letterSpacing = 1.sp,
+                color = y.accent,
+            )
+            Text(
+                "What is this time for?",
+                fontSize = 19.sp,
+                fontWeight = FontWeight.W700,
+                color = y.textPrimary,
+                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
+            )
+            // The same control as the rail, so the two ways in are two moods rather than two
+            // interfaces. Armed is null throughout: here a tap *is* the answer, so there is no
+            // intermediate state to hold and nothing to un-arm.
+            TaskRail(
+                shelves = shelves,
+                shelf = shelf,
+                armed = null,
+                onShelf = onShelf,
+                onArm = { it?.let(onTask) },
+                onOpen = { },
+                modifier = Modifier.weight(1f, fill = false).padding(bottom = 4.dp),
+            )
+            RailDividerHorizontal()
+            Text(
+                "Something else — make an event",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.W600,
+                color = y.accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onEvent)
+                    .padding(vertical = 14.dp),
+            )
+        }
     }
 }
 
@@ -265,6 +381,8 @@ private data class EventSheetTarget(
     val at: java.time.LocalTime? = null,
     /** The length a drag asked for, if that is how this was opened. */
     val length: java.time.Duration? = null,
+    /** The title a sitting borrows, resolved before the sheet opens. */
+    val forTitle: String? = null,
 )
 
 /**
@@ -281,7 +399,12 @@ private fun openItem(
     open: (EventSheetTarget) -> Unit,
 ) {
     if (item is DayItem.Event) {
-        scope.launch { vm.eventFor(item.nodeId)?.let { open(EventSheetTarget(item.nodeId, it)) } }
+        scope.launch {
+            val event = vm.eventFor(item.nodeId) ?: return@launch
+            // A sitting opens on its own terms, not the task's: the thing you tapped was a piece of
+            // time, and moving or giving it back is what you came to do. The task is one row away.
+            open(EventSheetTarget(item.nodeId, event, forTitle = event.forTaskId?.let { vm.titleOf(it) }))
+        }
     } else {
         nav.navigate(Routes.node(item.nodeId))
     }
@@ -293,6 +416,8 @@ private fun MonthBar(
     selected: LocalDate,
     mode: CalendarMode,
     days: Int,
+    railOpen: Boolean,
+    onRail: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onToday: () -> Unit,
@@ -311,6 +436,23 @@ private fun MonthBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        // Only on the day, because only the day has a rail. Shown as a state rather than an
+        // icon: "Tasks" lit means they are beside you, unlit means the day has the screen.
+        if (mode == CalendarMode.DAY) {
+            Text(
+                "Tasks",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.W700,
+                color = if (railOpen) y.accentText else y.textMuted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .then(if (railOpen) Modifier.background(y.accentFill) else Modifier)
+                    .clickable(onClick = onRail)
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .testTag("railToggle"),
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         Text(
             "Today",
             fontSize = 12.sp,

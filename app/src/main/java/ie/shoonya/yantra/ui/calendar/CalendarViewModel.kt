@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.shoonya.yantra.AppContainer
 import ie.shoonya.yantra.data.db.BuiltIns
+import ie.shoonya.yantra.data.db.RailTask
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -109,9 +110,11 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             combine(events, tasks) { e, t ->
                 CalendarBucketer.bucket(
                     events = e.map { it.event },
+                    // A sitting is drawn as its task, and tapping it should reach the task.
+                    sittingOf = e.mapNotNull { row -> row.event.forNodeId?.let { row.event.nodeId to it } }.toMap(),
                     tasks = t,
                     // The title comes down with the row, joined from node — see [EventWithTitle].
-                    titles = e.mapNotNull { row -> row.title?.let { row.event.nodeId to it } }.toMap(),
+                    titles = e.mapNotNull { row -> row.displayTitle?.let { row.event.nodeId to it } }.toMap(),
                     from = from,
                     toExclusive = toExclusive,
                     zone = zone,
@@ -125,6 +128,92 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun dueDefId() = container.db.propertyDao().observeBuiltInDefIdByName(BuiltIns.DUE_NAME)
+
+    private fun deadlineDefId() =
+        container.db.propertyDao().observeBuiltInDefIdByName(BuiltIns.DEADLINE_NAME)
+
+    // ---- the rail: tasks waiting for a time — CALENDAR_PLAN.md §13 ----
+
+    /** Which shelf of the rail is showing. */
+    private val _shelf = MutableStateFlow(RailBucket.TODAY)
+    val shelf: StateFlow<RailBucket> = _shelf.asStateFlow()
+
+    fun setShelf(b: RailBucket) { _shelf.value = b }
+
+    /**
+     * The task the rail is holding up, waiting for a time — null when it is holding nothing.
+     *
+     * Tap-to-arm rather than drag, for the reason §14 names: a drag between two independently
+     * scrolling surfaces is the one gesture here that can pass a test and fail a real finger. This
+     * one cannot be dropped.
+     */
+    private val _armed = MutableStateFlow<RailTask?>(null)
+    val armed: StateFlow<RailTask?> = _armed.asStateFlow()
+
+    fun arm(task: RailTask?) { _armed.value = task }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val rail: StateFlow<Map<RailBucket, List<RailTask>>> =
+        combine(dueDefId(), deadlineDefId()) { due, deadline -> due to deadline }
+            .flatMapLatest { (due, deadline) ->
+                // Both ids are per-install UUIDs and arrive through a Flow, so a fresh install that
+                // has not finished seeding shows an empty rail rather than a wrong one.
+                if (due == null || deadline == null) flowOf(emptyList())
+                else container.db.propertyDao().railTasks(due, deadline)
+            }
+            // Bucketed against the real today, not the day on screen: the rail answers "what is
+            // waiting", which does not change because you paged forward to November.
+            .map { tasks -> railShelves(tasks, LocalDate.now(), zone) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /**
+     * Blocks out [length] from [start] for a task — one sitting, no sheet.
+     *
+     * No naming step, deliberately: a sitting has no title of its own, it draws with the task's, so
+     * the objection in §12 to creating blocks silently does not apply. What you dropped is what you
+     * meant.
+     *
+     * It is written on **the task's own page**, right under the task. Two devices reading that file
+     * see the plan beside the thing it is a plan for, and a page deleted takes its sittings with it
+     * rather than leaving them pointing at nothing.
+     */
+    fun createSitting(taskId: String, start: java.time.LocalDateTime, length: java.time.Duration) {
+        viewModelScope.launch {
+            val page = pageOf(taskId) ?: container.nodes.inboxList()
+            container.workspaces.writerFor(page).addEvent(
+                pageId = page,
+                event = ie.shoonya.yantra.data.format.EventRef(
+                    id = "",
+                    title = "",
+                    time = ie.shoonya.yantra.data.format.EventTime(
+                        start = start,
+                        end = start.plus(length),
+                        zone = null,
+                        allDay = false,
+                    ),
+                    forTaskId = taskId,
+                    // At the time, not before it. A sitting is not an appointment you have to travel
+                    // to — the notification *is* the moment, and it arrives alongside the task
+                    // appearing on the bar with its play button.
+                    reminderMin = 0,
+                ),
+                afterId = taskId.takeIf { pageOf(it) == page },
+            )
+            _armed.value = null
+        }
+    }
+
+    /** The list a node lives on, climbing past any task it is nested under. */
+    private suspend fun pageOf(nodeId: String): String? {
+        var at = container.db.nodeDao().byId(nodeId)?.parentId
+        var hops = 0
+        while (at != null && hops++ < 16) {
+            val node = container.db.nodeDao().byId(at) ?: return null
+            if (node.type == ie.shoonya.yantra.data.db.NodeType.LIST) return node.id
+            at = node.parentId
+        }
+        return null
+    }
 
     /**
      * Saves an event, creating it on the Inbox when it is new.
@@ -166,8 +255,15 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 cancelled = row.cancelled,
                 location = row.location,
                 reminderMin = row.reminderMin,
+                // Carried, and it has to be: the sheet saves whatever it was handed, so dropping
+                // this here would quietly turn a sitting into an ordinary untitled event the first
+                // time anybody nudged its start time.
+                forTaskId = row.forNodeId,
             )
         }
+
+    /** A node's title, for the sheet to say whose time a sitting is. */
+    suspend fun titleOf(nodeId: String): String? = container.nodes.byId(nodeId)?.title
 
     /**
      * Moves a block to a new start, keeping its length.

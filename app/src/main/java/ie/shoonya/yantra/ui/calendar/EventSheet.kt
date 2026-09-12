@@ -90,11 +90,19 @@ fun EventSheet(
     atTime: LocalTime? = null,
     /** How long a drag on the ruler asked for. */
     length: Duration? = null,
+    /** The title of the task a sitting is time for — CALENDAR_PLAN.md §11. Null for an appointment. */
+    forTitle: String? = null,
+    /** Opens that task. Offered only when there is one. */
+    onOpenTask: (() -> Unit)? = null,
     onSave: (EventRef) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val y = Yantra.colors
+    // A sitting has no title of its own by design — it borrows the task's — so the sheet must not
+    // offer a field for one. A blank box above somebody's task would look like a name waiting to be
+    // typed, and typing in it would put a second title on a thing that already has one.
+    val sitting = initial?.forTaskId != null
     val start0 = initial?.time?.start ?: day.atTime(atTime ?: LocalTime.of(defaultHour(), 0))
 
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
@@ -124,24 +132,51 @@ fun EventSheet(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            BasicTextField(
-                value = title,
-                onValueChange = { title = it },
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
-                cursorBrush = SolidColor(y.accent),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                decorationBox = { inner ->
-                    Box {
-                        if (title.isEmpty()) {
-                            Text("New event", fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.textMuted)
-                        }
-                        inner()
+            if (sitting) {
+                Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+                    Text(
+                        "TIME FOR",
+                        fontFamily = YantraMono,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.W700,
+                        letterSpacing = 1.2.sp,
+                        color = y.textMuted,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        forTitle?.ifBlank { null } ?: title.ifBlank { "a task" },
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.W700,
+                        color = y.textPrimary,
+                    )
+                }
+                if (onOpenTask != null) {
+                    SheetRow("Open the task", onClick = { onOpenTask(); onDismiss() }) {
+                        Text("\u203a", fontSize = 16.sp, color = y.accent)
                     }
-                },
-            )
+                }
+            } else {
+                BasicTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
+                    cursorBrush = SolidColor(y.accent),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    decorationBox = { inner ->
+                        Box {
+                            if (title.isEmpty()) {
+                                Text("New event", fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.textMuted)
+                            }
+                            inner()
+                        }
+                    },
+                )
+            }
 
-            SheetRow("All day") {
+            // An all-day sitting is a claim to the whole day rather than time set aside in it, and
+            // a place is a property of an appointment. Neither is what a sitting is for.
+            if (!sitting) SheetRow("All day") {
                 Switch(checked = allDay, onCheckedChange = { allDay = it })
             }
             SheetRow("Date", onClick = { showDate = true }) {
@@ -176,7 +211,7 @@ fun EventSheet(
                     }
                 }
             }
-            SheetRow("Where") {
+            if (!sitting) SheetRow("Where") {
                 BasicTextField(
                     value = location,
                     onValueChange = { location = it },
@@ -200,7 +235,13 @@ fun EventSheet(
             ) {
                 if (onDelete != null) {
                     TextButton(onClick = { onDelete(); onDismiss() }) {
-                        Text("Delete", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+                        Text(
+                            // Removing a sitting gives the time back; it does not touch the task.
+                            // A bare "Delete" over somebody's work is a sentence they would read
+                            // the wrong way, and only once.
+                            if (sitting) "Remove from calendar" else "Delete",
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
                 Spacer(Modifier.width(0.dp))

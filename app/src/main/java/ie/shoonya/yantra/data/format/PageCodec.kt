@@ -243,6 +243,7 @@ object PageCodec {
         val words = trimmed.removePrefix(whenWord).trim().split(" ").filter { it.isNotEmpty() }.toMutableList()
         var id = ""
         var rrule: String? = null
+        var forTask: String? = null
         var series: SeriesRef? = null
         var cancelled = false
         var location: String? = null
@@ -257,6 +258,7 @@ object PageCodec {
                 w.contains(Links.CLOSE) -> false
                 w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); true }
                 w.startsWith("rrule:") -> { rrule = w.removePrefix("rrule:").takeIf { it.isNotEmpty() }; rrule != null }
+                w.startsWith("for:") -> { forTask = w.removePrefix("for:").takeIf { it.isNotEmpty() }; forTask != null }
                 w.startsWith("series:") -> parseSeries(w.removePrefix("series:"))?.also { series = it } != null
                 w == "cancelled" -> { cancelled = true; true }
                 w.startsWith("loc:") -> { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }; location != null }
@@ -275,6 +277,7 @@ object PageCodec {
             title = words.joinToString(" "),
             time = time,
             rrule = rrule,
+            forTaskId = forTask,
             series = series,
             cancelled = cancelled,
             location = location,
@@ -523,6 +526,7 @@ object PageCodec {
         // produce the same bytes, or every sync looks like a change.
         if (e.id.isNotEmpty()) append(" ^").append(e.id)
         e.rrule?.let { append(" rrule:").append(it) }
+        e.forTaskId?.let { append(" for:").append(it) }
         e.series?.let { s ->
             append(" series:").append(s.id)
             // The bare form means "the occurrence at this line's own start", so an override that

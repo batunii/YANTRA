@@ -184,6 +184,15 @@ data class EventRef(
     val time: EventTime,
     /** RFC 5545 subset — see CALENDAR_PLAN.md §4. Stored verbatim, including rules we cannot expand. */
     val rrule: String? = null,
+    /**
+     * The task this block is time set aside for — a **sitting**. See CALENDAR_PLAN.md §11.
+     *
+     * A sitting is an ordinary event with a referent, which is why it is a token here rather than a
+     * block type of its own: it wants everything an event already has. It carries no [title]; it
+     * draws with the task's, because storing the name twice would give you two places to rename it
+     * from and one of them would go stale.
+     */
+    val forTaskId: String? = null,
     val series: SeriesRef? = null,
     val cancelled: Boolean = false,
     val location: String? = null,

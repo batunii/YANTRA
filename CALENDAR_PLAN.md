@@ -512,29 +512,44 @@ integration point halfway through. Each step is separately verifiable, and the r
 
 | # | Step | Verified by |
 |---|---|---|
-| 1 | `for:` on the event line — `EventRef.forTaskId`, parse and render | JVM codec round-trip |
-| 2 | `event.for_node_id`, migration 13→14, mapper writes it | Migration replay on device |
-| 3 | A sitting resolves its title from the task it points at | JVM, through the DAO projection |
-| 4 | Sittings draw as sittings and open the task | Compose UI test |
-| 5 | The rail: four buckets, pure, then the UI beside the day | JVM for the buckets |
-| 6 | Putting a task on the day — from the rail, and from a marked range | Compose UI test |
-| 7 | A sitting's start puts the task in the bar, ready and first | JVM for the ordering |
-| 8 | Play starts focus and writes `- [~]` | on device |
+| 1 | ✅ `for:` on the event line — `EventRef.forTaskId`, parse and render | JVM codec round-trip |
+| 2 | ✅ `event.for_node_id`, migration 13→14, mapper writes it | Migration replay on device |
+| 3 | ✅ A sitting resolves its title from the task it points at | JVM, through the DAO projection |
+| 4 | ✅ Sittings draw as sittings and open on their own terms | `EventSheet`, `BlockChip` |
+| 5 | ✅ The rail: four buckets, pure, then the UI beside the day | `RailBucketTest` |
+| 6 | ✅ Putting a task on the day — from the rail, and from a marked range | `TaskRailTest` |
+| 7 | ✅ A sitting's start puts the task in the bar, ready and first | `RunningStackTest` |
+| 8 | ✅ Play starts focus and writes `- [~]` | already wired; `App.kt` marks on session start |
+
+### What the build actually taught
+
+Three things the plan had not decided, decided by meeting them:
+
+- **A sitting lives on its task's own page**, not the Inbox, written directly under the task. Two
+  devices reading the file see the plan beside the thing it is a plan for, and a page deleted takes
+  its sittings with it rather than leaving them pointing at nothing.
+- **A sitting carries `remind:0`.** It is not an appointment you travel to; the notification *is* the
+  moment, and it arrives as the task appears on the bar with its play button. No second alarm kind
+  was needed — `ReminderManager` already arms events, and `ReminderReceiver` now resolves a sitting's
+  words and its deep link through the task it is for.
+- **One row, one target.** The rail's rows carried a chevron for opening the task. In a rail a
+  quarter of a phone wide, a 22dp button beside a 37dp title is not two targets — it is one target
+  with a trap in it, and the UI test caught a tap aimed at the row landing on the chevron. Tap arms
+  the whole row; a long press opens the task.
 
 ### The integration points that will bite
 
-- **A sitting has no title of its own, and `EventWithTitle` joins the wrong node.** That projection
+- ✅ **A sitting has no title of its own, and `EventWithTitle` joins the wrong node.** That projection
   takes `node.title` for the *event's* node, which for a sitting is empty by design. It needs a
   second `LEFT JOIN` through `for_node_id`, and the calendar has to prefer that title. Getting this
   wrong shows up as a day full of blocks labelled "Event".
-- **The bar is shared.** It is fed by `TasksRepository.inProgress()` and drawn on several screens.
-  Adding "ready, not started" items changes what the bar *means*, so the readiness has to be a
-  separate source combined at the view model rather than a second meaning stuffed into `inProgress`.
-- **Drag between two scrollables is the fragile part.** A rail that scrolls and a timeline that
+- ✅ **The bar is shared.** Readiness is a third source combined in `RunningTask.stack`, never a
+  second meaning stuffed into `inProgress`. The pure function is where the ordering is tested.
+- ✅ **Drag between two scrollables is the fragile part.** A rail that scrolls and a timeline that
   scrolls, with a drag crossing between them, is the one interaction here that can fail on a real
   finger while passing a test. **Tap-to-arm is the guaranteed path** — tap a task in the rail, it
   lifts, tap an hour — and drag is the accelerator layered on top. Ship the reliable one first.
-- **`EventSheet` must not offer a sitting a title field.** It has no title; it borrows one. Opening a
+- ✅ **`EventSheet` must not offer a sitting a title field.** It has no title; it borrows one. Opening a
   sitting should offer time, length, reminder, *Open the task*, and *Remove from calendar* — never a
   bare "Delete", which reads as deleting the task.
 - **Deleting the task must take future sittings and leave past ones.** The cascade already deletes

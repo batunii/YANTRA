@@ -60,6 +60,11 @@ class ReminderReceiver : BroadcastReceiver() {
         // property value for it and returned, so the alarm fired into nothing.
         val event = container.db.eventDao().byId(nodeId)
         val isEvent = event != null
+        // A sitting is a reminder about a *task* — CALENDAR_PLAN.md §13. It has no words of its own,
+        // it deep-links to the thing it is time for, and it says nothing if that thing has since
+        // been finished or thrown away: an alarm for work already done is the worst kind.
+        val forTask = event?.forNodeId?.let { container.nodes.byId(it) }
+        if (event?.forNodeId != null && (forTask == null || forTask.done || forTask.deletedAt != null)) return
         if (isEvent) {
             if (event!!.cancelled) return                     // an absence has nothing to announce
             val offsetMin = event.reminderMin ?: return       // reminder cleared since arming
@@ -73,12 +78,15 @@ class ReminderReceiver : BroadcastReceiver() {
             if (at - offsetMin.toLong() * 60_000L != expectedAt) return   // due/offset moved
         }
 
-        // Same contract as a widget tap: MainActivity resolves the extras into a deep link.
+        // Same contract as a widget tap: MainActivity resolves the extras into a deep link. A
+        // sitting opens the task rather than itself — a bare hour with nothing in it is not
+        // somewhere to be sent.
+        val opens = forTask?.id ?: nodeId
         val tap = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(ListWidgetProvider.EXTRA_OPEN_NODE, nodeId)
+            putExtra(ListWidgetProvider.EXTRA_OPEN_NODE, opens)
             putExtra(ListWidgetProvider.EXTRA_OPEN_SMART, false)
-            data = Uri.parse("yantra://open/$nodeId")
+            data = Uri.parse("yantra://open/$opens")
         }
         val done = Intent(context, ReminderReceiver::class.java).apply {
             action = Reminders.ACTION_MARK_DONE
@@ -98,8 +106,17 @@ class ReminderReceiver : BroadcastReceiver() {
             .setColor(accent.toArgb())
             .setColorized(false)
             // A notification cannot render a link, so it renders what the link says.
-            .setContentTitle(Links.plain(node.title.orEmpty()).ifBlank { "Reminder" })
-            .setContentText(if (isEvent) eventWhen(event!!) else "Reminder")
+            .setContentTitle(
+                Links.plain((forTask ?: node).title.orEmpty()).ifBlank { "Reminder" }
+            )
+            .setContentText(
+                when {
+                    // What the bar is saying at the same moment, in the same words.
+                    forTask != null -> "It is time"
+                    isEvent -> eventWhen(event!!)
+                    else -> "Reminder"
+                }
+            )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)

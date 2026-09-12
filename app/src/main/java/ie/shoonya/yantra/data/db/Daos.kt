@@ -38,6 +38,37 @@ data class ReminderRow(
     val atMillis: Long,
 )
 
+/**
+ * An open task as the calendar's rail sees it: what it is called, and what dates it carries.
+ *
+ * Both dates come back nullable and unjudged. Which bucket a task belongs in is a decision about
+ * *today*, and a decision about today does not belong in a query that SQLite will happily cache.
+ */
+data class RailTask(
+    val nodeId: String,
+    val title: String?,
+    val dueMillis: Long?,
+    val deadlineMillis: Long?,
+    /** How many sittings it already has, so a row can say it is planned twice. */
+    val sittings: Int,
+)
+
+/**
+ * A stretch of time set aside for a task, and the task's own words.
+ *
+ * The title comes down with the span because the bar has to name a task that may not be in progress
+ * yet — the whole point of readiness is that nothing has been written about it anywhere else.
+ */
+data class SittingSpan(
+    val taskId: String,
+    val title: String?,
+    val startUtc: Long,
+    val endUtc: Long,
+) {
+    /** True while [at] is inside it. The end is exclusive: a sitting ending at 15:00 is over at 15:00. */
+    fun covers(at: Long): Boolean = at >= startUtc && at < endUtc
+}
+
 /** A task with a due date, for the calendar to draw beside the events. */
 data class DueRow(
     val nodeId: String,
@@ -430,6 +461,28 @@ interface PropertyDao {
     )
     fun observeDueInRange(defId: String, fromUtc: Long, toUtc: Long): Flow<List<DueRow>>
 
+    /**
+     * Every unfinished task, with its dates and how many sittings it has.
+     *
+     * Unfinished only: the rail is for deciding what to do next, and a finished task is not a
+     * candidate for time. Dates arrive raw — see [RailTask] for why the bucketing is not done here.
+     */
+    @Query(
+        """
+        SELECT n.id AS nodeId, n.title AS title,
+               d.v_date AS dueMillis,
+               l.v_date AS deadlineMillis,
+               (SELECT COUNT(*) FROM event e WHERE e.for_node_id = n.id) AS sittings
+          FROM node n
+          LEFT JOIN property_value d ON d.node_id = n.id AND d.def_id = :dueDefId
+          LEFT JOIN property_value l ON l.node_id = n.id AND l.def_id = :deadlineDefId
+         WHERE n.type = 'task' AND n.done = 0 AND n.deleted_at IS NULL
+           AND n.title IS NOT NULL AND n.title != ''
+         ORDER BY n.updated_at DESC
+        """
+    )
+    fun railTasks(dueDefId: String, deadlineDefId: String): Flow<List<RailTask>>
+
     @Query("SELECT id FROM property_def WHERE name = :name AND is_built_in = 1 AND deleted_at IS NULL LIMIT 1")
     suspend fun builtInDefIdByName(name: String): String?
 
@@ -683,8 +736,23 @@ interface LabelDao {
  */
 data class EventWithTitle(
     @Embedded val event: EventEntity,
+    /** The event's own title. Empty for a sitting, which has none by design. */
     val title: String?,
-)
+    /** The title of the task a sitting is for, joined through `for_node_id`. Null for an event. */
+    val forTitle: String? = null,
+    /** Whether that task is finished — a sitting for something already done draws as spent. */
+    val forDone: Boolean = false,
+) {
+    /**
+     * What to draw this block with.
+     *
+     * A sitting borrows its task's words; an event keeps its own. Preferring the wrong one here is
+     * the failure the build plan named — a day full of blocks labelled "Event" — because the join
+     * for an event's *own* node gives a sitting nothing.
+     */
+    val displayTitle: String?
+        get() = if (event.forNodeId != null) forTitle ?: title else title
+}
 
 @Dao
 interface EventDao {
@@ -707,8 +775,12 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title
-          FROM event e JOIN node n ON n.id = e.node_id
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone
+          FROM event e
+          JOIN node n ON n.id = e.node_id
+          -- LEFT, so a sitting whose task has gone still comes back — as a block with no words
+          -- rather than as a missing row. A stale reference is not a corrupt one.
+          LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
          WHERE n.deleted_at IS NULL
            AND (rrule IS NOT NULL
                 OR (start_utc < :toUtc AND end_utc > :fromUtc)
@@ -717,6 +789,32 @@ interface EventDao {
         """
     )
     fun inRange(fromUtc: Long, toUtc: Long): Flow<List<EventWithTitle>>
+
+    /**
+     * A sitting that has not finished yet, with the task it is for — CALENDAR_PLAN.md §13.
+     *
+     * The past is pruned in SQL rather than in Kotlin so the list stays a handful of rows in a
+     * workspace with years of them behind it. `strftime` is evaluated when the query runs, and Room
+     * re-runs it on every write to `event` or `node`, which is often enough: the in-memory clock
+     * decides which of these is happening *right now*.
+     */
+    @Query(
+        """
+        SELECT e.for_node_id AS taskId, t.title AS title,
+               e.start_utc AS startUtc, e.end_utc AS endUtc
+          FROM event e
+          JOIN node t ON t.id = e.for_node_id
+         WHERE e.for_node_id IS NOT NULL AND e.cancelled = 0
+           AND t.deleted_at IS NULL AND t.done = 0
+           AND e.end_utc >= CAST(strftime('%s', 'now') AS INTEGER) * 1000
+         ORDER BY e.start_utc
+        """
+    )
+    fun openSittings(): Flow<List<SittingSpan>>
+
+    /** The sittings planned for one task, soonest first — for its own page to list them. */
+    @Query("SELECT * FROM event WHERE for_node_id = :taskId ORDER BY start_utc")
+    fun sittingsFor(taskId: String): Flow<List<EventEntity>>
 
     /** Every override and cancellation belonging to a series, for expansion to apply. */
     @Query("SELECT * FROM event WHERE series_id = :seriesId")

@@ -336,6 +336,7 @@ data class InkStrokeEntity(
     indices = [
         Index(value = ["workspace_id", "start_utc"], name = "idx_event_start"),
         Index(value = ["series_id"], name = "idx_event_series"),
+        Index(value = ["for_node_id"], name = "idx_event_for"),
     ]
 )
 data class EventEntity(
@@ -351,6 +352,14 @@ data class EventEntity(
     @ColumnInfo(name = "start_utc") val startUtc: Long,
     @ColumnInfo(name = "end_utc") val endUtc: Long,
     val rrule: String? = null,
+    /**
+     * The task this block is time set aside for — a sitting. See CALENDAR_PLAN.md §11.
+     *
+     * No foreign key, deliberately. A sitting outliving its task is a stale reference, not a
+     * corrupt one: it degrades to an ordinary block with no title rather than taking the row down,
+     * and the index is rebuilt from files where the `for:` token is simply a string.
+     */
+    @ColumnInfo(name = "for_node_id") val forNodeId: String? = null,
     @ColumnInfo(name = "series_id") val seriesId: String? = null,
     @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
     val cancelled: Boolean = false,
