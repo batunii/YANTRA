@@ -3,7 +3,7 @@ package ie.shoonya.yantra.ui.calendar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,7 +21,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,10 +52,13 @@ import ie.shoonya.yantra.ui.theme.YantraMono
  * A calendar can only draw what has a date, so the task most in need of a time is the one it cannot
  * show. This is that list, cut four ways.
  *
- * **Tap-to-arm, not drag.** Tapping a task lifts it; the next tap on an hour puts it there. Drag
- * across two scrolling surfaces is the accelerator, and it is the one interaction that can pass a
- * test and fail a real finger — so the reliable gesture is the one that ships first and the one the
- * rail explains.
+ * **Two ways to place one, and the slow one is the one the rail explains.** Tapping a task lifts it;
+ * the next tap on an hour puts it there. That is the path that cannot be dropped between two
+ * scrolling surfaces, so it is what the hint describes and what a test drives.
+ *
+ * **Long press and drag** is the accelerator on top: hold a row and pull it onto the day, and the
+ * hour under your finger draws itself as you go. It is the better gesture when it works and the one
+ * that can fail on a real finger, which is why it arrived second rather than instead.
  */
 @Composable
 fun TaskRail(
@@ -53,6 +68,12 @@ fun TaskRail(
     onShelf: (RailBucket) -> Unit,
     onArm: (RailTask?) -> Unit,
     onOpen: (String) -> Unit,
+    /** A row has been held and is now being pulled onto the day. */
+    onDragStart: (RailTask) -> Unit = {},
+    /** Where the finger is, in root coordinates — the only space both surfaces share. */
+    onDragTo: (Offset) -> Unit = {},
+    /** Let go. Whether that lands anywhere is the day's business, not the rail's. */
+    onDrop: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val y = Yantra.colors
@@ -129,6 +150,9 @@ fun TaskRail(
                         armed = task.nodeId == armed,
                         onTap = { onArm(if (task.nodeId == armed) null else task) },
                         onOpen = { onOpen(task.nodeId) },
+                        onDragStart = { onDragStart(task) },
+                        onDragTo = onDragTo,
+                        onDrop = onDrop,
                     )
                 }
             }
@@ -147,25 +171,60 @@ private fun emptyWord(shelf: RailBucket): String = when (shelf) {
 /**
  * One task, waiting for a time.
  *
- * **One row, one target.** An earlier version put a chevron at the end for opening the task, and in
- * a rail a quarter of a phone wide a 22dp button beside a 37dp title is not two targets — it is one
- * target with a trap in it. A tap aimed at the row landed on the chevron often enough to be the
- * normal outcome, which meant the rail's whole purpose failed on its most common gesture.
+ * Three things you might want from a row, and each has its own gesture: **tap** lifts it, **hold and
+ * pull** puts it straight on the day, and the **chevron** opens the task.
  *
- * So the tap arms, the whole row, and **a long press opens the task** — the same idiom as everywhere
- * else a list row has a second thing you might want from it.
+ * **The chevron appears only when there is room for it to be a second target.** It was taken away
+ * once for being a trap: in a rail a quarter of a phone *wide*, a 28dp button sits with its left
+ * edge one point from the centre of the row, so a tap aimed at the middle opens the task instead of
+ * lifting it — which is the rail's whole purpose failing on its commonest gesture. Rather than trust
+ * that no layout will ever be that narrow, the row measures itself and simply does without below
+ * [ROOM_FOR_OPEN]. A row with one target degrades to arming, which is the thing you came for; the
+ * task is still reachable from the block once it is on the day.
+ *
+ * Long press is the drag now rather than the open, because pulling a task onto an hour is the thing
+ * a held row wants to do.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun RailRow(task: RailTask, armed: Boolean, onTap: () -> Unit, onOpen: () -> Unit) {
+private fun RailRow(
+    task: RailTask,
+    armed: Boolean,
+    onTap: () -> Unit,
+    onOpen: () -> Unit,
+    onDragStart: () -> Unit = {},
+    onDragTo: (Offset) -> Unit = {},
+    onDrop: () -> Unit = {},
+) {
     val y = Yantra.colors
+    // Its own position, so a drag can be reported in a space the day also understands. The row is
+    // inside a scrolling list inside a pane; nothing else in the chain knows where it ended up.
+    var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val roomForOpen = maxWidth >= ROOM_FOR_OPEN
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(if (armed) y.accentFill else y.cardBg)
             .then(if (armed) Modifier.border(1.dp, y.accent, RoundedCornerShape(8.dp)) else Modifier)
-            .combinedClickable(onClick = onTap, onLongClick = onOpen)
+            .clickable(onClick = onTap)
+            .onGloballyPositioned { coords = it }
+            .pointerInput(task.nodeId) {
+                // After a long press, because a plain drag inside a scrolling list is a scroll —
+                // the same reason the blocks on the timeline wait for one. The lift is what says
+                // the row is yours to move.
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { onDragStart() },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        // Root coordinates: the rail and the day are siblings with no shared
+                        // ancestor either of them can see, and root is the space they do share.
+                        coords?.takeIf { it.isAttached }?.let { onDragTo(it.localToRoot(change.position)) }
+                    },
+                    onDragEnd = { onDrop() },
+                    onDragCancel = { onDrop() },
+                )
+            }
             .padding(horizontal = 8.dp, vertical = 7.dp)
             .testTag("rail:${task.nodeId}"),
         verticalAlignment = Alignment.CenterVertically,
@@ -189,8 +248,30 @@ private fun RailRow(task: RailTask, armed: Boolean, onTap: () -> Unit, onOpen: (
                 )
             }
         }
+        // The task itself, for when what you want is to read it rather than to schedule it.
+        if (roomForOpen) {
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpen)
+                    .testTag("open:${task.nodeId}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("›", fontSize = 15.sp, color = if (armed) y.accentText else y.textDim)
+            }
+        }
+    }
     }
 }
+
+/**
+ * How wide a row has to be before it can hold two targets.
+ *
+ * A 28dp button and a title worth reading beside it. Below this the row carries one gesture, and the
+ * one it keeps is the one the rail exists for.
+ */
+private val ROOM_FOR_OPEN = 120.dp
 
 /** Separator between the day and the rail, so the two read as two things rather than one column. */
 @Composable

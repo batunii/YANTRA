@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -82,10 +84,21 @@ fun DayTimeline(
     onMove: (String, LocalDateTime) -> Unit,
     onResize: (String, LocalDateTime) -> Unit,
     onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
+    /** Hoisted so a drag coming from outside can scroll the day it is being dragged onto. */
+    scroll: ScrollState = rememberScrollState(),
+    /**
+     * Where the hour lane is, published as it moves.
+     *
+     * A drag that starts in another composable has no way to ask "which hour is under my finger"
+     * without this: the lane is inside a scrolling column, so neither its position nor its scroll
+     * offset is something the caller can work out for itself.
+     */
+    onLane: ((LaneMetrics) -> Unit)? = null,
+    /** A block being dragged in from outside, in minutes past midnight. Drawn, not committed. */
+    ghost: IntRange? = null,
     modifier: Modifier = Modifier,
 ) {
     val laid = TimelineLayout.forDay(items, day)
-    val scroll = rememberScrollState()
     var drag by remember(day) { mutableStateOf<DragState?>(null) }
     var draft by remember(day) { mutableStateOf<IntRange?>(null) }
 
@@ -95,13 +108,26 @@ fun DayTimeline(
     // number, so passing it raw scrolled to about three in the morning on a 3x screen — and to a
     // different hour on every different screen, which is the tell.
     val density = LocalDensity.current
+    val hourPx = with(density) { HOUR_HEIGHT.toPx() }
     LaunchedEffect(day) { scroll.scrollTo(with(density) { (HOUR_HEIGHT * OPEN_AT_HOUR).roundToPx() }) }
 
     Column(modifier) {
         AllDayBar(laid.allDay, onOpen)
         Row(Modifier.fillMaxWidth().verticalScroll(scroll)) {
             HourRuler()
-            BoxWithConstraints(Modifier.weight(1f)) {
+            BoxWithConstraints(
+                Modifier
+                    .weight(1f)
+                    .then(
+                        if (onLane == null) Modifier
+                        // The node measured here is the whole 24-hour content, translated by the
+                        // scroll — so a point in its local space is an hour directly, with no
+                        // scroll arithmetic for the caller to get wrong.
+                        else Modifier.onGloballyPositioned {
+                            onLane(LaneMetrics(it, hourPx))
+                        }
+                    ),
+            ) {
                 HourGrid()
                 // Underneath the blocks, deliberately. Tapping bare ruler makes something there —
                 // the quickest way to block out an hour is to point at the hour — but drawn last it
@@ -132,8 +158,9 @@ fun DayTimeline(
                         onClick = { onOpen(block.item) },
                     )
                 }
-                // The block being drawn by a drag on empty ruler.
-                draft?.let { DraftBlock(it) }
+                // The block being drawn by a drag on empty ruler, or by a task on its way in
+                // from the rail. Same shape either way: what it will be if you let go here.
+                (draft ?: ghost)?.let { DraftBlock(it) }
             }
         }
     }
@@ -294,6 +321,15 @@ private fun NowLine(day: LocalDate) {
         Box(Modifier.fillMaxWidth().height(1.5.dp).background(y.accent))
     }
 }
+
+/**
+ * Where the hour lane is, and how tall an hour is on it.
+ *
+ * Published by [DayTimeline] so a drag that began somewhere else can work out which hour it is over.
+ * The coordinates are the lane's own — a point in that space is minutes, directly — and they are
+ * only meaningful while [LayoutCoordinates.isAttached], so check before reading.
+ */
+data class LaneMetrics(val coords: androidx.compose.ui.layout.LayoutCoordinates, val hourPx: Float)
 
 /** What a finger is doing to a block right now, in minutes past midnight. */
 data class DragState(val nodeId: String, val startMinute: Int, val endMinute: Int, val resizing: Boolean)

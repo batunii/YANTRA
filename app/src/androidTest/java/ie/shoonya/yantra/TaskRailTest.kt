@@ -8,7 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -148,13 +147,85 @@ class TaskRailTest {
         assertNotNull("and the tap goes back to meaning what it meant", rec.newEvent)
     }
 
+    /**
+     * A row too narrow for two targets keeps the one the rail is for.
+     *
+     * Squeezed into a quarter of a phone, the chevron's left edge lands a point from the centre of
+     * the row — so the tap that should lift a task opens it instead. The row measures itself and
+     * does without rather than trusting that no layout will ever be that narrow.
+     */
     @Test
-    fun aLongPressOpensTheTaskRatherThanArmingIt() {
+    fun aNarrowRowDropsTheChevronRatherThanTrapTheTap() {
+        val rec = show(listOf(task("t1", due = day.toString())), sideBySide = true)
+        rule.onNodeWithTag("open:t1").assertDoesNotExist()
+        rule.onNodeWithTag("rail:t1").performClick()
+        assertNull("a tap in a narrow row must lift, not open", rec.opened)
+        rule.onNodeWithText("Tap a time on the day").assertIsDisplayed()
+    }
+
+    @Test
+    fun theChevronOpensTheTaskRatherThanArmingIt() {
         val rec = show(listOf(task("t1", due = day.toString())))
-        rule.onNodeWithTag("rail:t1").performTouchInput { longClick() }
+        rule.onNodeWithTag("open:t1").performClick()
         rule.waitForIdle()
         assertEquals("t1", rec.opened)
         rule.onNodeWithText("Tap a time on the day").assertDoesNotExist()
+    }
+
+    /**
+     * The accelerator: hold a row and pull it onto the day.
+     *
+     * Stacked, the rail is under the timeline, so the drag travels *up* — which is also the case
+     * that proves the two surfaces are talking in a shared space rather than each in its own.
+     *
+     * The hold has to advance the **main** clock. `advanceEventTime` moves the timestamps on
+     * injected events; the long-press timeout is a coroutine `withTimeout` on the composition clock,
+     * so without this the press never ripens and the whole gesture reads as a scroll of the list.
+     */
+    @Test
+    fun holdARowAndPullItOntoTheDay() {
+        val rec = show(listOf(task("t1", due = day.toString())))
+        val row = rule.onNodeWithTag("rail:t1")
+
+        rule.mainClock.autoAdvance = false
+        var from = androidx.compose.ui.geometry.Offset.Zero
+        row.performTouchInput {
+            from = center
+            down(from)
+        }
+        rule.mainClock.advanceTimeBy(1_000)
+        row.performTouchInput {
+            // Up and into the day, in steps — a single jump is not a drag to a detector that
+            // tracks pointer identity across moves.
+            repeat(10) { i -> moveTo(from.copy(y = from.y - 700f * (i + 1) / 10f)) }
+            up()
+        }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+
+        val (id, at, len) = rec.sat ?: error("the drag did not land on the day")
+        assertEquals("t1", id)
+        assertEquals(day, at.toLocalDate())
+        assertEquals(Duration.ofHours(1), len)
+        assertEquals("must land on a quarter hour", 0, at.minute % 15)
+    }
+
+    @Test
+    fun aDragThatEndsBackOnTheRailLeavesNothingBehind() {
+        val rec = show(listOf(task("t1", due = day.toString())))
+        val row = rule.onNodeWithTag("rail:t1")
+        rule.mainClock.autoAdvance = false
+        var from = androidx.compose.ui.geometry.Offset.Zero
+        row.performTouchInput { from = center; down(from) }
+        rule.mainClock.advanceTimeBy(1_000)
+        row.performTouchInput {
+            // Sideways, staying inside the rail — which is how you change your mind halfway.
+            repeat(6) { i -> moveTo(from.copy(x = from.x - 20f * (i + 1))) }
+            up()
+        }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        assertNull("a drag that went nowhere must not schedule anything", rec.sat)
     }
 
     @Test

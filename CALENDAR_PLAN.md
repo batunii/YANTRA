@@ -545,10 +545,21 @@ Three things the plan had not decided, decided by meeting them:
   wrong shows up as a day full of blocks labelled "Event".
 - ✅ **The bar is shared.** Readiness is a third source combined in `RunningTask.stack`, never a
   second meaning stuffed into `inProgress`. The pure function is where the ordering is tested.
-- ✅ **Drag between two scrollables is the fragile part.** A rail that scrolls and a timeline that
-  scrolls, with a drag crossing between them, is the one interaction here that can fail on a real
-  finger while passing a test. **Tap-to-arm is the guaranteed path** — tap a task in the rail, it
-  lifts, tap an hour — and drag is the accelerator layered on top. Ship the reliable one first.
+- ✅ **Drag between two scrollables is the fragile part.** Tap-to-arm shipped first and the drag
+  followed, carried in **root coordinates** — the two panes are siblings with no shared ancestor
+  either can see, so the rail row publishes where the finger is, `DayTimeline` publishes where its
+  hour lane is, and `DayWithRail` does the arithmetic between them. Held near an edge the day scrolls
+  under the drag, or you could only ever drop on the five hours already on screen.
+
+  Two things bit, both predicted by the note above and neither visible without the test:
+
+  - **The drop handler was stale.** It lives inside a `pointerInput` keyed on the row, so it is the
+    lambda from the *first* composition for the whole life of the gesture — and a minute computed
+    during composition and captured in it is the minute as it was before the finger moved, which is
+    to say null, for every drag. The minute is read through the state holders now, not captured.
+  - **The chevron bisected a narrow row.** At a quarter of a phone the 28dp button's left edge lands
+    one point from the centre, so the tap that should lift a task opened it. The row measures itself
+    and does without below 120dp: one target, and it is the one the rail exists for.
 - ✅ **`EventSheet` must not offer a sitting a title field.** It has no title; it borrows one. Opening a
   sitting should offer time, length, reminder, *Open the task*, and *Remove from calendar* — never a
   bare "Delete", which reads as deleting the task.
