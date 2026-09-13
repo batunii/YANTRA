@@ -236,7 +236,10 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 val page = container.nodes.inboxList()
                 container.workspaces.writerFor(page).addEvent(page, event)
             } else {
-                container.workspaces.writerFor(existingId).editEvent(existingId) { event.copy(id = existingId) }
+                // PLACED for the same reason a drag is: the sheet can change the hour, and the
+                // block behind it is drawn from the index.
+                container.workspaces.writerFor(existingId)
+                    .editEvent(existingId, PLACED) { event.copy(id = existingId) }
             }
         }
     }

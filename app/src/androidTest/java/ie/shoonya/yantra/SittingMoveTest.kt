@@ -146,6 +146,26 @@ class SittingMoveTest {
         assertEquals(task, row.forNodeId)
     }
 
+    /**
+     * Resizing, which the recording shows reverting and never coming back — unlike a move, which
+     * reverted and then landed. Same gesture, same writer, different outcome, so the length is
+     * asserted on the file as well as the row.
+     */
+    @Test
+    fun resizingASittingKeepsTheNewLength() = runBlocking {
+        val (page, _, sitting) = aSitting()
+        val longer = start.plusMinutes(75)
+
+        writer.editEvent(sitting, Change.STRUCTURAL) { e ->
+            e.copy(time = e.time.copy(end = maxOf(longer, e.time.start)), raw = null)
+        }
+        writer.flushIndex()
+
+        val line = store.pageFile(page).readText().lines().first { it.startsWith("@ ") }
+        assertEquals("the line must carry the new length: $line", true, line.contains("PT1H15M"))
+        assertEquals(longer.toString(), db.eventDao().byId(sitting)?.endLocal)
+    }
+
     /** And the index must agree with a cold read of the files, not merely be non-empty. */
     @Test
     fun theIndexAgreesWithTheFileAfterAMove() = runBlocking {

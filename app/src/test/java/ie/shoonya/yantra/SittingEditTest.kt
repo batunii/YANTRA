@@ -67,3 +67,66 @@ class SittingEditTest {
         assertEquals("t1", back!!.forTaskId)
     }
 }
+
+/**
+ * The same two edits, but through a whole page rather than one line — which is what the writer
+ * actually does: it loads a [ie.shoonya.yantra.data.format.PageDoc], transforms one block, and
+ * encodes the lot. Anything that goes wrong only in that round trip would be invisible above.
+ */
+class SittingPageEditTest {
+
+    private val page = """
+        |---
+        |id: p1
+        |type: list
+        |modified_at: 2026-09-13T10:00:00Z
+        |---
+        |- [ ] Write the deck ^t1
+        |@ 2026-09-13T09:15/PT1H ^s1 for:t1 remind:0
+    """.trimMargin() + "\n"
+
+    private fun sittingOf(text: String) =
+        ie.shoonya.yantra.data.format.PageCodec.decode(text)
+            .blocks.filterIsInstance<EventRef>().single()
+
+    private fun through(edit: (EventRef) -> EventRef): EventRef {
+        val doc = ie.shoonya.yantra.data.format.PageCodec.decode(page)
+        val next = doc.copy(blocks = doc.blocks.map { if (it is EventRef) edit(it) else it })
+        return sittingOf(ie.shoonya.yantra.data.format.PageCodec.encode(next))
+    }
+
+    @Test
+    fun `a resize survives the page`() {
+        val out = through { e ->
+            e.copy(time = e.time.copy(end = LocalDateTime.parse("2026-09-13T10:30")), raw = null)
+        }
+        assertEquals(Duration.ofMinutes(75), out.time.duration)
+        assertEquals("t1", out.forTaskId)
+    }
+
+    @Test
+    fun `a move survives the page`() {
+        val to = LocalDateTime.parse("2026-09-13T14:45")
+        val out = through { e ->
+            e.copy(time = e.time.copy(start = to, end = to.plusHours(1)), raw = null)
+        }
+        assertEquals(to, out.time.start)
+        assertEquals("t1", out.forTaskId)
+    }
+
+    /**
+     * A resize that only moves the end **without dropping `raw`** must not be silently ignored.
+     *
+     * This is the shape of the bug worth guarding: the renderer prefers the original bytes whenever
+     * they still describe the block, so an edit that forgets to clear them writes the old line back
+     * and the change disappears with no error anywhere.
+     */
+    @Test
+    fun `a resize that keeps its raw line is the silent failure`() {
+        val out = through { e -> e.copy(time = e.time.copy(end = LocalDateTime.parse("2026-09-13T10:30"))) }
+        assertEquals(
+            "if this is one hour, raw won over the edit",
+            Duration.ofMinutes(75), out.time.duration,
+        )
+    }
+}
