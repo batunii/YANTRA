@@ -19,6 +19,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_11_12
 import ie.shoonya.yantra.data.db.MIGRATION_12_13
 import ie.shoonya.yantra.data.db.MIGRATION_13_14
 import ie.shoonya.yantra.data.db.MIGRATION_14_15
+import ie.shoonya.yantra.data.db.MIGRATION_15_16
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -47,7 +48,7 @@ class MigrationTest {
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
         MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
-        MIGRATION_14_15,
+        MIGRATION_14_15, MIGRATION_15_16,
     )
 
     @get:Rule
@@ -112,6 +113,38 @@ class MigrationTest {
     }
 
     // ---- per-migration data behaviour ----
+
+    /**
+     * A line can be a note about somebody else's meeting — CALENDAR_PLAN.md §19.
+     *
+     * What the column holds is the identity the **sync source** gave the event, never this device's
+     * row id, which is the only reason it is allowed in a file at all: a row number means something
+     * different on your other phone and nothing after a reinstall.
+     */
+    @Test
+    fun migration15to16_letsALineBeANoteAboutSomebodyElsesMeeting() {
+        helper.createDatabase(DB, 15).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('n1', '', NULL, 'event', 'Design review', 'i', 0, 0, 0, 0, 1, 1)"
+            )
+            db.execSQL(
+                "INSERT INTO event (node_id, workspace_id, start_local, end_local, all_day, " +
+                    "start_utc, end_utc, cancelled) VALUES " +
+                    "('n1', '', '2026-09-16T14:00', '2026-09-16T15:00', 0, 1000, 2000, 0)"
+            )
+        }
+        helper.runMigrationsAndValidate(DB, 16, true, *ALL).use { db ->
+            assertEquals(
+                "nothing that existed is a note about anything",
+                1, db.count("SELECT COUNT(*) FROM event WHERE node_id = 'n1' AND ext_uid IS NULL"),
+            )
+            // A uid is very often an address, which is exactly the shape that has to survive.
+            db.execSQL("UPDATE event SET ext_uid = 'abc123@google.com' WHERE node_id = 'n1'")
+            assertEquals(1, db.count("SELECT COUNT(*) FROM event WHERE ext_uid = 'abc123@google.com'"))
+        }
+    }
 
     /**
      * Null is not "no colour" here — it means *the workspace's*, which is a live answer that changes

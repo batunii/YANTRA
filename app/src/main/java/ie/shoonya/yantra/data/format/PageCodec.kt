@@ -248,6 +248,7 @@ object PageCodec {
         var cancelled = false
         var location: String? = null
         var color: String? = null
+        var external: ExternalRef? = null
         var reminder: Int? = null
         var priority: String? = null
         val labels = ArrayList<String>()
@@ -264,6 +265,7 @@ object PageCodec {
                 w == "cancelled" -> { cancelled = true; true }
                 w.startsWith("loc:") -> { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }; location != null }
                 w.startsWith("col:") -> { color = w.removePrefix("col:").takeIf { it.isNotEmpty() }; color != null }
+                w.startsWith("ext:") -> parseExternal(w.removePrefix("ext:"))?.also { external = it } != null
                 w.startsWith("remind:") -> { reminder = w.removePrefix("remind:").toIntOrNull(); reminder != null }
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { attendees += w.drop(1); true }
@@ -284,6 +286,7 @@ object PageCodec {
             cancelled = cancelled,
             location = location,
             color = color,
+            external = external,
             reminderMin = reminder,
             labels = labels.reversed(),      // scanned right to left
             attendees = attendees.reversed(),
@@ -294,6 +297,24 @@ object PageCodec {
     }
 
     /** `s1` or `s1@2026-10-28T09:00`. The bare form means "the occurrence at this line's own start". */
+    /**
+     * `ext:<uid>` or `ext:<uid>@<occurrence>` — the meeting in somebody else's calendar.
+     *
+     * A UID is opaque and generated elsewhere, so nothing is assumed about its shape beyond its not
+     * being empty. The split is on the **last** `@`, because an iCalendar UID very often contains
+     * one — `abc123@google.com` is the ordinary form — and splitting on the first would take the
+     * domain for an occurrence start and lose the identity of every Google event there is.
+     */
+    private fun parseExternal(token: String): ExternalRef? {
+        if (token.isEmpty()) return null
+        val at = token.lastIndexOf('@')
+        if (at < 0) return ExternalRef(token)
+        val tail = token.drop(at + 1)
+        val occurrence = parseLocal(tail) ?: return ExternalRef(token)   // an @ inside the uid
+        val uid = token.take(at)
+        return if (uid.isEmpty()) null else ExternalRef(uid, occurrence)
+    }
+
     private fun parseSeries(token: String): SeriesRef? {
         if (token.isEmpty()) return null
         val at = token.indexOf('@')
@@ -540,6 +561,12 @@ object PageCodec {
         if (e.cancelled) append(" cancelled")
         e.location?.let { append(" loc:").append(it) }
         e.color?.let { append(" col:").append(it) }
+        e.external?.let { x ->
+            append(" ext:").append(x.uid)
+            // The occurrence only when there is one to name. A one-off meeting has a single
+            // instance, and writing its start twice would be two places for two devices to disagree.
+            x.occurrence?.let { append('@').append(renderLocal(it)) }
+        }
         e.reminderMin?.let { append(" remind:").append(it) }
         e.priority?.let { append(" !").append(it) }
         e.labels.forEach { append(" #").append(it) }

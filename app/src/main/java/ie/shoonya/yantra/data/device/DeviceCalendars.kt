@@ -39,6 +39,17 @@ data class DeviceEvent(
     val allDay: Boolean,
     val location: String?,
     val color: Int?,
+    /**
+     * The identity the **sync source** gave this event: its iCalendar UID, or failing that the id
+     * the account assigned it.
+     *
+     * Never [CalendarContract.Instances.EVENT_ID], which is a row number this device made up — a
+     * different number on your other phone and gone after a reinstall. A UID is the same wherever
+     * the event is, which is what makes it safe to write into a repository that syncs.
+     *
+     * Null when the provider gives neither, in which case the event simply cannot be annotated.
+     */
+    val uid: String?,
 )
 
 /**
@@ -129,6 +140,14 @@ class DeviceCalendarSource(private val context: Context) {
             CalendarContract.Instances.ALL_DAY,
             CalendarContract.Instances.EVENT_LOCATION,
             CalendarContract.Instances.DISPLAY_COLOR,
+            // The identity the sync source gave it. UID_2445 is the iCalendar UID and is what an
+            // organiser's system generated, so it is the same string wherever the event reaches;
+            // _SYNC_ID is the account's own id for the row and is the fallback when a provider
+            // leaves the UID null, which some of them do. Neither is this device's row number.
+            CalendarContract.Instances.UID_2445,
+            // Not exposed on Instances, but the view joins Events, so the Events constant names the
+            // same column. Reaching for Instances._SYNC_ID does not compile; the column is there.
+            CalendarContract.Events._SYNC_ID,
         )
         val where = "${CalendarContract.Instances.CALENDAR_ID} IN " +
             calendarIds.joinToString(prefix = "(", postfix = ")") +
@@ -153,6 +172,8 @@ class DeviceCalendarSource(private val context: Context) {
                                     allDay = c.getInt(5) == 1,
                                     location = c.getString(6)?.takeIf { it.isNotBlank() },
                                     color = if (c.isNull(7)) null else c.getInt(7),
+                                    uid = c.getString(8)?.takeIf { it.isNotBlank() }
+                                        ?: c.getString(9)?.takeIf { it.isNotBlank() },
                                 )
                             )
                         }

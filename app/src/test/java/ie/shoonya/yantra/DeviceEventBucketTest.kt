@@ -40,6 +40,7 @@ class DeviceEventBucketTest {
     ) = DeviceEvent(
         instanceId = id, eventId = id * 10, title = title,
         beginUtc = begin, endUtc = end, allDay = allDay, location = null, color = null,
+        uid = null,
     )
 
     private fun bucket(events: List<DeviceEvent>, zone: ZoneId = dublin) = CalendarBucketer.bucket(

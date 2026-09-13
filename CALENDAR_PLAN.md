@@ -698,7 +698,7 @@ about a meeting that live somewhere other than the meeting are notes you will no
 |---|---|
 | **Your own event** | Its page. Notes about the meeting, on the meeting |
 | **A sitting** | The **task's** page, not the sitting's. A sitting is a piece of time, not a subject — its notes are the task's notes, and two hours on Thursday is not a thing you have anything to say about |
-| **Somebody else's** (§5) | It has no node and no file, so it cannot have a page. It offers to **make it yours** instead: an event of your own with the same title and time, which then has one. That is §5's own rule — anything you want to own, you make as a YANTRA event |
+| **Somebody else's** (§5) | It has no node and no file, so it cannot have a page of its own. It gets a **note attached to it** instead — see §19 |
 
 **A tap on somebody else's event opens a sheet, not another application.** It used to hand the
 occurrence straight to the calendar that owns it, which is one of the two right answers and a poor
@@ -706,11 +706,7 @@ way to offer it: a single tap that throws you into another app is not a choice, 
 act on the thing from inside this one. You would tap Tuesday's meeting meaning to write a note about
 it and find yourself in Google Calendar. The sheet is read-only and says so — nothing on it can
 change their event, and that is not a restriction this code imposes but the absence of a permission
-it will never hold — and it offers the copy and the hand-off side by side.
-
-The copy carries **nothing of the provider**: no instance id, no event id, no calendar id. Those are
-local numbers, meaningless on another device and gone after a reinstall, and a line carrying one
-would be claiming a relationship it cannot honour.
+it will never hold.
 
 ### What has to change
 
@@ -729,3 +725,53 @@ The line stays the record. A page is what the chevron opens, not where the event
 `@ ` line keeps the time, the id and every token, and `PageDoc.title` remains authoritative only for
 a parentless page, so an event's name stays on its line where the format already puts it. Deleting
 the event takes its page with it, because `removeBlock` already walks the subtree.
+
+## 19. Notes on somebody else's meeting
+
+The first attempt at this **copied** the event: a YANTRA event with the same words and hours, which
+then had a page. It is wrong twice over, and both are the kind of wrong you only see in use.
+
+- **The day shows two blocks for one meeting.** Theirs and your copy, at the same hour, for ever.
+- **The copy drifts.** The meeting moves to four o'clock in the calendar that owns it; your copy sits
+  at two, and now your own calendar is lying to you about when you are expected somewhere.
+
+The shape every app in this category actually uses is a **link, not a copy**. Notion Calendar
+attaches a Notion doc to the existing Google event and the event stays the organiser's. Granola
+relates meetings by the calendar's own recurring-event id and never duplicates one. So:
+
+### A note names the meeting it is about
+
+`@ 2026-09-16T14:00/PT1H Design review ^n1 ext:abc123@google.com`
+
+`ext:` carries the identity **the sync source gave the event** — `UID_2445`, the iCalendar UID the
+organiser's system generated, falling back to `_SYNC_ID`, the id the account assigned it. Both are
+the same string wherever the event reaches, which is what makes one safe to write into a repository
+that syncs. Deliberately **not** the provider's `_ID` or `EVENT_ID`: those are row numbers this
+device made up, different on your other phone and gone after a reinstall, so a file carrying one
+would be claiming a relationship it cannot honour anywhere else.
+
+One occurrence of a repeating meeting adds the start — `ext:<uid>@2026-09-16T09:00` — the same
+`id@start` grammar `series:` already uses. A note about this Monday's standup must not become a note
+about every Monday.
+
+**The UID is usually an address.** `abc123@google.com` is the ordinary Google Calendar shape, so the
+occurrence split is on the **last** `@`, and a tail that does not parse as a date is part of the
+identity. Splitting on the first would take `google.com` for a start time and quietly destroy the
+identity of every event in the account.
+
+### One meeting, one block
+
+When the meeting is on screen, the note's own line **stands aside** and the meeting is drawn
+carrying the note's id — so there is nothing to duplicate and nothing to drift. The times drawn are
+always theirs, because theirs are the real ones.
+
+The title and times on the note's line are a **cache, not a claim**: they are what makes the file
+readable by a person, and what still draws when the calendar permission is taken away or the meeting
+is deleted. Notes you wrote can never become unreachable.
+
+### What is left open
+
+An event the provider gives **neither** a UID nor a sync id for cannot be annotated at all, and the
+sheet does not offer to. It is rare — a local-only calendar with no account behind it — and the
+honest answer is to say nothing rather than to attach a note to a row number that will not exist
+next week.

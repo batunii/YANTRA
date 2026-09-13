@@ -62,6 +62,23 @@ sealed interface DayItem {
         val location: String?,
         /** The owning calendar's own colour, drawn as-is: it is that calendar's identity, not ours. */
         val color: Int?,
+        /**
+         * The note of yours about this meeting, if you have written one — CALENDAR_PLAN.md §19.
+         *
+         * Its presence is what makes this block reach a page of yours rather than only the app that
+         * owns the meeting. It is a **note about** their event, never a copy of it: there is exactly
+         * one block for the pair, and the times it draws at are theirs.
+         */
+        val noteId: String? = null,
+        /** The identity its sync source gave it. Null means it cannot be annotated at all. */
+        val uid: String? = null,
+        /**
+         * Whether the meeting repeats, which decides whether a note names an occurrence.
+         *
+         * Inferred rather than asked for: the provider expands a rule into instances, so two
+         * occurrences sharing a uid in one window is what "repeats" looks like from here.
+         */
+        val repeating: Boolean = false,
         /** The event, for handing back to the app that owns it. */
         val eventId: Long,
         val beginUtc: Long,
@@ -80,6 +97,22 @@ sealed interface DayItem {
         override val sortKey: Long,
     ) : DayItem
 }
+
+/**
+ * How a note and a meeting are matched — CALENDAR_PLAN.md §19.
+ *
+ * Identity plus occurrence, because a weekly standup is one UID and fifty-two meetings, and a note
+ * about the one on the sixteenth must not attach itself to every other Monday. A meeting with only
+ * one occurrence carries no start, and matches on identity alone.
+ */
+internal fun externalKey(uid: String, occurrence: String?): String =
+    if (occurrence == null) uid else "$uid@$occurrence"
+
+/** Which occurrence a device event is, in the form a note writes down. */
+internal fun occurrenceOf(
+    d: ie.shoonya.yantra.data.device.DeviceEvent,
+    zone: ZoneId,
+): String = LocalDateTime.ofInstant(Instant.ofEpochMilli(d.beginUtc), zone).toString()
 
 /** What a month's worth of days holds, keyed by date. Days with nothing on them are absent. */
 typealias CalendarDays = Map<LocalDate, List<DayItem>>
@@ -133,10 +166,42 @@ object CalendarBucketer {
     ): CalendarDays {
         val out = HashMap<LocalDate, MutableList<DayItem>>()
 
+        // Notes about somebody else's meetings, by the meeting they are about — CALENDAR_PLAN.md
+        // §19. Two things come out of this map, and the second is the important one:
+        //
+        //  - a device occurrence that has a note carries its node id, so tapping reaches the note;
+        //  - and the note's own line is then **not drawn**, because there is one meeting and it
+        //    should be one block. Drawing both is the duplicate-and-drift failure this design
+        //    exists to avoid: two blocks at the same hour, and the copy staying put the moment the
+        //    real meeting moves.
+        val notes = events.mapNotNull { e -> e.extUid?.let { externalKey(it, e.extStart) to e } }.toMap()
+
+        /**
+         * The note about one occurrence, if there is one.
+         *
+         * Two keys, tried in that order. A note about **this Monday's** standup names the occurrence
+         * and must win; a note about a meeting that happens once names only the identity, and would
+         * never match if the occurrence key were the only one asked for. Trying the specific key
+         * first is what keeps "the sixteenth" from being answered by "every Monday".
+         */
+        fun noteFor(d: ie.shoonya.yantra.data.device.DeviceEvent): EventEntity? {
+            val uid = d.uid ?: return null
+            return notes[externalKey(uid, occurrenceOf(d, zone))] ?: notes[uid]
+        }
+
+        // Which notes have a meeting on screen to be drawn *as*. Computed before anything is
+        // emitted, because the note's own line has to know whether to stand aside.
+        val annotated = device.mapNotNullTo(HashSet()) { noteFor(it)?.nodeId }
+
         for (e in events) {
             val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull() ?: continue
             val end = runCatching { LocalDateTime.parse(e.endLocal) }.getOrNull() ?: start
             if (e.cancelled) continue        // a cancelled occurrence is an absence, not an entry
+            // A note whose meeting is on screen is drawn *as* that meeting, below, so its own line
+            // stands aside — one meeting, one block. Its cached times are a fallback for when the
+            // meeting cannot be read at all (the permission is off, or it has been deleted), and
+            // then it does draw, so notes you wrote never become unreachable.
+            if (e.nodeId in annotated) continue
 
             // The exclusive end means a one-day all-day event ends at 00:00 the next morning, and
             // an hour-long meeting ending at exactly midnight belongs to the day it started.
@@ -168,6 +233,10 @@ object CalendarBucketer {
             }
         }
 
+        // A uid seen more than once in this window is a rule the provider expanded. That is the
+        // only evidence of repetition available here — Instances hands back occurrences, not rules.
+        val repeats = device.mapNotNull { it.uid }.groupingBy { it }.eachCount()
+
         for (d in device) {
             // **An all-day event is read in UTC, a timed one in the reader's zone**, and the
             // difference is the whole bug class here. The provider stores all-day as UTC midnight
@@ -188,6 +257,9 @@ object CalendarBucketer {
                 if (!day.isBefore(from) && day.isBefore(toExclusive)) {
                     out.getOrPut(day) { ArrayList() } += DayItem.Device(
                         nodeId = "device:${d.instanceId}",
+                        noteId = noteFor(d)?.nodeId,
+                        uid = d.uid,
+                        repeating = (repeats[d.uid] ?: 0) > 1,
                         title = d.title,
                         start = start,
                         end = end,

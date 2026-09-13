@@ -158,15 +158,20 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     /**
-     * Makes one of somebody else's events into one of yours — CALENDAR_PLAN.md §18.
+     * Starts a note about somebody else's meeting — CALENDAR_PLAN.md §19.
      *
-     * A copy, and deliberately a copy rather than a link: their event lives in an account that syncs
-     * it to every device you own, and this app has no business holding a second authority on it.
-     * What you get is a YANTRA event with the same words and the same hours, which can then do
-     * everything yours can — carry a colour, be moved, and own a page you write notes on. Theirs
-     * carries on being theirs, unchanged, because nothing here can change it.
+     * **A note, not a copy.** The earlier version of this made a duplicate event with the same
+     * words and hours, and a duplicate is wrong twice over: the day then shows two blocks for one
+     * meeting, and the copy stays where it was put the moment the real meeting moves. This writes a
+     * line that *names* their meeting by the identity its sync source gave it, and the calendar
+     * draws one block for the pair — at their hours, always, because theirs are the real ones.
+     *
+     * The title and times on the line are a **cache**, not a claim: they are what makes the file
+     * readable by a person, and what still draws if the calendar permission is taken away or the
+     * meeting is deleted, so notes you wrote can never become unreachable.
      */
-    fun makeItMine(item: DayItem.Device, onMade: (String) -> Unit) {
+    fun takeNotesOn(item: DayItem.Device, onMade: (String) -> Unit) {
+        val uid = item.uid ?: return
         viewModelScope.launch {
             val page = container.nodes.inboxList()
             val id = container.workspaces.writerFor(page).addEvent(
@@ -181,6 +186,13 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                         allDay = item.allDay,
                     ),
                     location = item.location,
+                    external = ie.shoonya.yantra.data.format.ExternalRef(
+                        uid = uid,
+                        // Named only when the meeting repeats, so a note about this Monday does not
+                        // become a note about every Monday — and a meeting that happens once is not
+                        // made to carry an occurrence it does not have.
+                        occurrence = if (item.repeating) item.start else null,
+                    ),
                 ),
             )
             if (id.isNotEmpty()) onMade(id)

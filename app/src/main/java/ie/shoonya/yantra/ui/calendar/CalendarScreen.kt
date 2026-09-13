@@ -313,10 +313,12 @@ fun CalendarScreen(nav: NavHostController) {
                 runCatching { context.startActivity(vm.intentFor(item)) }
                 theirs = null
             },
-            // Straight into the copy's own page, because the reason to make one is almost always
-            // that you had something to write about the meeting.
-            onMakeItMine = {
-                vm.makeItMine(item) { id -> nav.navigate(Routes.node(id)) }
+            // Straight into the page, because the reason to start a note is that you have
+            // something to write. An existing one opens rather than a second being made.
+            onNotes = {
+                val existing = item.noteId
+                if (existing != null) nav.navigate(Routes.node(existing))
+                else vm.takeNotesOn(item) { id -> nav.navigate(Routes.node(id)) }
                 theirs = null
             },
             onDismiss = { theirs = null },

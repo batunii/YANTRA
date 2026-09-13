@@ -476,3 +476,18 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+/**
+ * A line can be a note about somebody else's meeting — CALENDAR_PLAN.md §19.
+ *
+ * Nullable and unbackfilled: nothing that exists is a note about anything, and the column is the
+ * *sync source's* identity for an event rather than this device's row id — so it is a value that
+ * means the same thing on another phone, which is the whole reason it is allowed in a file at all.
+ */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `ext_uid` TEXT")
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `ext_start` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_ext` ON `event` (`ext_uid`)")
+    }
+}
+

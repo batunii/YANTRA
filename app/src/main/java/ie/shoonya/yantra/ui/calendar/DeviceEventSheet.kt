@@ -46,13 +46,17 @@ private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
  * So it opens here, read-only, and says plainly that it is not yours. Nothing on this sheet can
  * change their event, and that is not a restriction this code imposes — the app holds no permission
  * to write one, so there is nothing to offer.
+ *
+ * What it *can* offer is a page of your own about the meeting — CALENDAR_PLAN.md §19. A note, not a
+ * copy: the day keeps one block for one meeting, drawn at their hours, and your notes follow it when
+ * they move it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceEventSheet(
     item: DayItem.Device,
     onOpenInCalendar: () -> Unit,
-    onMakeItMine: () -> Unit,
+    onNotes: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val y = Yantra.colors
@@ -113,13 +117,21 @@ fun DeviceEventSheet(
             }
 
             Spacer(Modifier.height(16.dp))
-            SheetAction(
-                title = "Make a copy I can write on",
-                subtitle = "An event of your own with the same words and hours — one you can colour, " +
-                    "move, and take notes on. Theirs is untouched.",
-                onClick = onMakeItMine,
-            )
-            Spacer(Modifier.height(8.dp))
+            // Notes *about* their meeting, never a copy of it. There is one meeting and one block
+            // for it; what this adds is a page of yours hanging off it.
+            if (item.uid != null) {
+                SheetAction(
+                    title = if (item.noteId != null) "Open my notes" else "Take notes on this",
+                    subtitle = if (item.noteId != null) {
+                        "The page you have been writing on this meeting."
+                    } else {
+                        "A page of your own about this meeting. It stays attached to theirs — if " +
+                            "they move it, your notes move with it."
+                    },
+                    onClick = onNotes,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             SheetAction(
                 title = "Open in the calendar app",
                 subtitle = "Where it lives, and the only place it can be changed.",

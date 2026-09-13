@@ -337,6 +337,7 @@ data class InkStrokeEntity(
         Index(value = ["workspace_id", "start_utc"], name = "idx_event_start"),
         Index(value = ["series_id"], name = "idx_event_series"),
         Index(value = ["for_node_id"], name = "idx_event_for"),
+        Index(value = ["ext_uid"], name = "idx_event_ext"),
     ]
 )
 data class EventEntity(
@@ -367,6 +368,15 @@ data class EventEntity(
      * gives: the same word is a different ink on paper and at night.
      */
     val color: String? = null,
+    /**
+     * The meeting in somebody else's calendar this row is a note about — CALENDAR_PLAN.md §19.
+     *
+     * The identity the *sync source* gave it, never the provider's local row id. Indexed, because
+     * every draw of the overlay asks "is there a note for this one".
+     */
+    @ColumnInfo(name = "ext_uid") val extUid: String? = null,
+    /** Which occurrence, for a repeating one. Null means the meeting has only the one. */
+    @ColumnInfo(name = "ext_start") val extStart: String? = null,
     @ColumnInfo(name = "series_id") val seriesId: String? = null,
     @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
     val cancelled: Boolean = false,

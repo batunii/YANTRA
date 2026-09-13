@@ -165,6 +165,25 @@ data class EventTime(
 data class SeriesRef(val id: String, val originalStart: LocalDateTime? = null)
 
 /**
+ * The event **in somebody else's calendar** that this line is a note about — CALENDAR_PLAN.md §19.
+ *
+ * Written `ext:<uid>`, or `ext:<uid>@<occurrence start>` for one occurrence of a repeating one, the
+ * same `id@start` grammar [SeriesRef] uses.
+ *
+ * [uid] is the identity the *sync source* gave the event — its iCalendar UID, or failing that the
+ * id the account assigned it. Deliberately **not** the provider's local row id: that is a number
+ * this device made up, different on your other phone and gone after a reinstall, so a file carrying
+ * one would be claiming a relationship it cannot honour anywhere else. A UID is the same everywhere
+ * the event is, which is what makes it safe to write into a repository.
+ *
+ * A line carrying this is an **annotation, not an event**. It holds a cached title and time so the
+ * file reads sensibly and so something still draws when the calendar permission is off or the
+ * meeting has gone — but wherever the provider can be read, the provider is the truth and this is
+ * the thing that follows it.
+ */
+data class ExternalRef(val uid: String, val occurrence: LocalDateTime? = null)
+
+/**
  * Something that happens, as opposed to something to be done.
  *
  * An event has a span and no done state — it is not finished, it simply passes. That is why it is
@@ -193,6 +212,13 @@ data class EventRef(
      * from and one of them would go stale.
      */
     val forTaskId: String? = null,
+    /**
+     * Somebody else's event that this line annotates — CALENDAR_PLAN.md §19.
+     *
+     * Non-null makes this line a **note about** a meeting rather than a meeting of your own. The
+     * calendar draws one block for the pair, using their times, and tapping it reaches these notes.
+     */
+    val external: ExternalRef? = null,
     /**
      * What colour it wears, by name — `col:teal`.
      *
