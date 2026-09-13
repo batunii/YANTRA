@@ -3,6 +3,10 @@ package ie.shoonya.yantra.ui.calendar
 import androidx.compose.foundation.background
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
@@ -59,8 +63,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 
-private val HOUR_HEIGHT = 60.dp
-
 /** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
 
@@ -77,6 +79,64 @@ private val RESIZE_GRIP = 18.dp
 
 /** How long a block stays where a finger left it when the file never catches up. */
 private const val SETTLE_MS = 1500L
+
+/**
+ * Pinch to change how tall an hour is, keeping the hour between your fingers where it is.
+ *
+ * **Two fingers or nothing.** Written against the raw pointer stream rather than with
+ * `detectTransformGestures`, because that one also reports pan — and pan on a timeline is the
+ * vertical scroll this sits inside, so it would fight the scroll on every one-finger drag and steal
+ * the gestures that move blocks. Here a single pointer is passed through untouched and the scroll,
+ * the long-press drags and the taps all carry on exactly as they were.
+ *
+ * The **anchor** is the point of it. Zooming without one leaves you somewhere else in the day and
+ * having to find Tuesday afternoon again; scaling the scroll offset about the focal point keeps the
+ * hour you are looking at under the fingers looking at it.
+ */
+private fun Modifier.pinchToZoom(
+    scroll: ScrollState,
+    hourHeight: Dp,
+    onHeight: (Dp) -> Unit,
+): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var zooming = false
+        var last = 1f
+        do {
+            val event = awaitPointerEvent()
+            val pointers = event.changes.filter { it.pressed }
+            if (pointers.size < 2) {
+                // One finger is somebody else's gesture. Nothing is consumed, so it reaches them.
+                if (zooming) break
+                continue
+            }
+            val zoom = event.calculateZoom()
+            if (zoom == 0f || zoom.isNaN()) continue
+            if (!zooming) {
+                // A little slack before claiming the gesture, so a two-finger scroll that never
+                // spreads is still a scroll.
+                last *= zoom
+                if (kotlin.math.abs(last - 1f) < 0.06f) continue
+                zooming = true
+            }
+            val focus = event.calculateCentroid(useCurrent = true)
+            val before = hourHeight
+            val after = (before * zoom).clampedHourHeight()
+            if (after != before) {
+                // The minute under the centroid, before and after. Scroll by the difference and it
+                // has not moved.
+                val ratio = after / before
+                val atFocus = scroll.value + focus.y
+                val delta = (atFocus * ratio - atFocus).toInt()
+                onHeight(after)
+                // Dispatched rather than awaited: this is inside a pointer callback, and the scroll
+                // has to land on the same frame as the size change or the day flickers.
+                scroll.dispatchRawDelta(delta.toFloat())
+            }
+            event.changes.forEach { it.consume() }
+        } while (event.changes.any { it.pressed })
+    }
+}
 
 private val RULER_WIDTH = 36.dp
 
@@ -129,7 +189,8 @@ private fun DayLane(
     modifier: Modifier = Modifier,
     onLane: ((LaneMetrics) -> Unit)? = null,
 ) {
-    val hourPx = with(LocalDensity.current) { HOUR_HEIGHT.toPx() }
+    val hourHeight = LocalHourHeight.current
+    val hourPx = with(LocalDensity.current) { hourHeight.toPx() }
     fun at(minute: Int): LocalDateTime = day.atStartOfDay().plusMinutes(minute.toLong())
     fun commit(d: DragState) {
         editing.held = d
@@ -245,23 +306,31 @@ fun DayTimeline(
     onLane: ((LaneMetrics) -> Unit)? = null,
     /** A block being dragged in from outside, in minutes past midnight. Drawn, not committed. */
     ghost: IntRange? = null,
+    /** A pinch asking for a different hour height — CALENDAR_PLAN.md §17. */
+    onHourHeight: (Dp) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val hourHeight = LocalHourHeight.current
     val laid = TimelineLayout.forDay(items, day)
     val editing = remember(day) { Editing() }
     SettleHeld(editing, laid.blocks)
 
     // Open on the working day rather than at midnight, which is eight hours of nothing.
     //
-    // Converted through the density: `scrollTo` counts pixels and `HOUR_HEIGHT.value` is a dp
+    // Converted through the density: `scrollTo` counts pixels and `hourHeight.value` is a dp
     // number, so passing it raw scrolled to about three in the morning on a 3x screen — and to a
     // different hour on every different screen, which is the tell.
     val density = LocalDensity.current
-    LaunchedEffect(day) { scroll.scrollTo(with(density) { (HOUR_HEIGHT * OPEN_AT_HOUR).roundToPx() }) }
+    LaunchedEffect(day) { scroll.scrollTo(with(density) { (hourHeight * OPEN_AT_HOUR).roundToPx() }) }
 
     Column(modifier) {
         AllDayBar(laid.allDay, onOpen)
-        Row(Modifier.fillMaxWidth().verticalScroll(scroll)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .pinchToZoom(scroll, hourHeight, onHourHeight)
+                .verticalScroll(scroll),
+        ) {
             HourRuler()
             DayLane(
                 day = day,
@@ -297,8 +366,10 @@ fun WeekTimeline(
     onEmptyTap: (LocalDate, LocalTime) -> Unit,
     onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
     onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
+    onHourHeight: (Dp) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val hourHeight = LocalHourHeight.current
     val y = Yantra.colors
     val laid = week.map { TimelineLayout.forDay(days[it].orEmpty(), it) }
     val sep = y.tileBorder.copy(alpha = 0.45f)
@@ -307,7 +378,7 @@ fun WeekTimeline(
     val editing = remember(week.first()) { Editing() }
     SettleHeld(editing, laid.flatMap { it.blocks })
     LaunchedEffect(week.first()) {
-        scroll.scrollTo(with(density) { (HOUR_HEIGHT * OPEN_AT_HOUR).roundToPx() })
+        scroll.scrollTo(with(density) { (hourHeight * OPEN_AT_HOUR).roundToPx() })
     }
 
     // Observable, unlike Locale.getDefault() — the same lint the month grid's weekday letters
@@ -356,7 +427,12 @@ fun WeekTimeline(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().verticalScroll(scroll)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .pinchToZoom(scroll, hourHeight, onHourHeight)
+                .verticalScroll(scroll),
+        ) {
             HourRuler()
             week.forEachIndexed { i, d ->
                 DayLane(
@@ -388,9 +464,11 @@ fun WeekTimeline(
 @Composable
 private fun HourRuler() {
     val y = Yantra.colors
+    val hourHeight = LocalHourHeight.current
+
     Column(Modifier.width(RULER_WIDTH)) {
         repeat(24) { hour ->
-            Box(Modifier.height(HOUR_HEIGHT).fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+            Box(Modifier.height(hourHeight).fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
                 if (hour > 0) {
                     Text(
                         // No leading zero. "9" is a time; "09" is a field in a form.
@@ -418,9 +496,11 @@ private fun HourRuler() {
 @Composable
 private fun HourGrid() {
     val y = Yantra.colors
+    val hourHeight = LocalHourHeight.current
+
     val hour = y.tileBorder.copy(alpha = 0.5f)
     val half = y.tileBorder.copy(alpha = 0.18f)
-    Canvas(Modifier.fillMaxWidth().height(HOUR_HEIGHT * 24)) {
+    Canvas(Modifier.fillMaxWidth().height(hourHeight * 24)) {
         val h = size.height / 24f
         for (i in 0..24) {
             val at = h * i
@@ -440,9 +520,11 @@ private fun HourGrid() {
 private fun NowLine(day: LocalDate) {
     if (day != LocalDate.now()) return
     val y = Yantra.colors
+    val hourHeight = LocalHourHeight.current
+
     val minute = LocalTime.now().toSecondOfDay() / 60
     Row(
-        Modifier.offset(y = HOUR_HEIGHT * (minute / 60f) - 3.dp).fillMaxWidth(),
+        Modifier.offset(y = hourHeight * (minute / 60f) - 3.dp).fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(6.dp).clip(CircleShape).background(y.accent))
@@ -509,6 +591,7 @@ private fun BlockChip(
     selected: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val hourHeight = LocalHourHeight.current
     val y = Yantra.colors
     val item = block.item
     val isEvent = item is DayItem.Event
@@ -552,9 +635,9 @@ private fun BlockChip(
     val shown = live ?: held?.takeIf { it.nodeId == block.item.nodeId }
     val startMin = shown?.startMinute ?: block.startMinute
     val endMin = shown?.endMinute ?: block.endMinute
-    val height = HOUR_HEIGHT * ((endMin - startMin) / 60f)
+    val height = hourHeight * ((endMin - startMin) / 60f)
     val density = LocalDensity.current
-    val minutesPerPx = with(density) { 60f / HOUR_HEIGHT.toPx() }
+    val minutesPerPx = with(density) { 60f / hourHeight.toPx() }
     val writable = onDrag != null && theirs == null
     // Never more than a third of the block, so the middle is always somewhere to grab the whole.
     val grip = minOf(RESIZE_GRIP, height / 3)
@@ -568,7 +651,7 @@ private fun BlockChip(
     // without drawing a second box around it.
     Box(
         Modifier
-            .offset(x = x, y = HOUR_HEIGHT * (startMin / 60f))
+            .offset(x = x, y = hourHeight * (startMin / 60f))
             .width(width)
             .height(height)
             // **After** the offset, deliberately. A modifier placed before `offset` describes the
@@ -691,12 +774,12 @@ private fun BlockChip(
                         isEvent && !sitting && tint == null -> y.accentText
                         else -> y.textPrimary
                     },
-                    maxLines = if (height > HOUR_HEIGHT) 2 else 1,
+                    maxLines = if (height > hourHeight) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
                 )
                 // While dragging, the time is the thing you need to see, so it shows at any size.
-                if (live != null || (!compact && height > HOUR_HEIGHT * 0.7f)) {
+                if (live != null || (!compact && height > hourHeight * 0.7f)) {
                     Text(
                         "%d:%02d".format(startMin / 60, startMin % 60) +
                             if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else "",
@@ -743,8 +826,9 @@ private fun EdgeHandles(
     onDrag: (DragState?) -> Unit,
     onCommit: (DragState) -> Unit,
 ) {
+    val hourHeight = LocalHourHeight.current
     val density = LocalDensity.current
-    val minutesPerPx = with(density) { 60f / HOUR_HEIGHT.toPx() }
+    val minutesPerPx = with(density) { 60f / hourHeight.toPx() }
 
     @Composable
     fun puck(grab: Grab, minute: Int) {
@@ -753,7 +837,7 @@ private fun EdgeHandles(
             Modifier
                 .offset(
                     x = centreX - EDGE_HANDLE / 2,
-                    y = HOUR_HEIGHT * (minute / 60f) - EDGE_HANDLE / 2,
+                    y = hourHeight * (minute / 60f) - EDGE_HANDLE / 2,
                 )
                 .size(EDGE_HANDLE)
                 .testTag("grip:${if (grab == Grab.TOP) "top" else "bottom"}:${block.item.nodeId}")
@@ -903,8 +987,9 @@ private fun TapTargets(
     onDraft: (IntRange?) -> Unit,
     onCommit: (IntRange) -> Unit,
 ) {
+    val hourHeight = LocalHourHeight.current
     val density = LocalDensity.current
-    val minutesPerPx = with(density) { 60f / HOUR_HEIGHT.toPx() }
+    val minutesPerPx = with(density) { 60f / hourHeight.toPx() }
     Column(
         Modifier
             .testTag("ruler")
@@ -912,7 +997,7 @@ private fun TapTargets(
             // inside this, and a child's clickable is hit-tested first — so it swallowed the press
             // and the long press up here never fired. One gesture area, two detectors.
             .fillMaxWidth()
-            .height(HOUR_HEIGHT * 24)
+            .height(hourHeight * 24)
             // Drag detector declared first, tap second. Order matters: with the tap detector first
             // it claimed the press and the long press never fired, so the ruler could be tapped and
             // not dragged.
@@ -955,11 +1040,13 @@ private fun TapTargets(
 @Composable
 private fun DraftBlock(range: IntRange) {
     val y = Yantra.colors
+    val hourHeight = LocalHourHeight.current
+
     Box(
         Modifier
-            .offset(y = HOUR_HEIGHT * (range.first / 60f))
+            .offset(y = hourHeight * (range.first / 60f))
             .fillMaxWidth()
-            .height(HOUR_HEIGHT * ((range.last - range.first) / 60f))
+            .height(hourHeight * ((range.last - range.first) / 60f))
             .padding(end = 4.dp)
             .clip(RoundedCornerShape(7.dp))
             .background(y.accentFill.copy(alpha = 0.6f))

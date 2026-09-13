@@ -175,6 +175,28 @@ class NodePageViewModel(
     val blocks: StateFlow<List<NodeEntity>> =
         nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * This page's own event, when the page *is* one.
+     *
+     * A document with a title and no date is a note that used to be a meeting — CALENDAR_PLAN.md
+     * §18. The when lives in the `event` table, not on the node, so the band has to ask for it.
+     */
+    val ownEvent: StateFlow<ie.shoonya.yantra.data.db.EventWithTitle?> =
+        container.db.eventDao().observeById(nodeId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * The times behind any event lines on this page, by node id.
+     *
+     * A node row holds what every line has — a title, a rank, an indent — and an event's *when* is
+     * not that. It lives in the `event` table beside it, so a page that wants to draw an event as an
+     * event has to ask for it. See CALENDAR_PLAN.md §18.
+     */
+    val events: StateFlow<Map<String, ie.shoonya.yantra.data.db.EventWithTitle>> =
+        container.db.eventDao().eventsUnder(nodeId)
+            .map { rows -> rows.associateBy { it.event.nodeId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     // ---- links ----
 
     /**

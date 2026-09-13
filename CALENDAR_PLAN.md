@@ -661,3 +661,59 @@ distinguishes nothing, and tinting every block in the app a colour nobody chose 
 
 A coloured block replaces the spine and tints the wash; it does not flood the fill. A day of solid
 colour blocks is a chart, and the words stop being the thing you read.
+
+## 17. Zoom
+
+An hour is sixty points tall and always has been, which makes a day two and a half screens. That is
+right for a morning with three things in it and wrong for a day you want to see the shape of, and
+wrong again for a half-hour block you are trying to put a handle on.
+
+**Pinch, and the hour under your fingers stays put.** Zooming is only useful if it keeps your place:
+scale the scroll offset around the focal point, or the day leaps and you have to find Tuesday
+afternoon again. Clamped to a range with a reason at each end — small enough that a whole working
+day fits on a phone, large enough that a fifteen-minute block is a real target.
+
+**It is a view preference, so it is device-local and it persists.** Nothing about how tall you like
+your hours belongs in a repository, and re-pinching on every visit would be worse than no zoom.
+
+The mechanical part is that `HOUR_HEIGHT` is a constant read in nineteen places. It becomes a
+composition local rather than a parameter threaded through six composables: every reader is already
+in a composable, and a local cannot be passed inconsistently by one caller that forgot.
+
+## 18. An event you can write on
+
+**An event owns a page, exactly as a task does.** This is not a new mechanism — it is the one the
+app is built on. A task is a line on its parent's page and its contents are a separate document
+named by its id; an event is already a node with an id and a type, so `pages/<eventId>.md` needs no
+format change, no migration and no new concept. `ensurePage` already creates the file lazily, the
+moment there is something to put in it, so an event you never write on costs nothing.
+
+What it buys is the thing that is missing: an agenda, what was decided, who said what, a link to the
+deck. Today that has to go in the title or on some other page, and the second one is worse — notes
+about a meeting that live somewhere other than the meeting are notes you will not find again.
+
+### Three cases, three answers
+
+| What you tapped | What opening it means |
+|---|---|
+| **Your own event** | Its page. Notes about the meeting, on the meeting |
+| **A sitting** | The **task's** page, not the sitting's. A sitting is a piece of time, not a subject — its notes are the task's notes, and two hours on Thursday is not a thing you have anything to say about |
+| **Somebody else's** (§5) | It has no node and no file, so it cannot have a page. Offer to **make it yours** instead: an event of your own with the same title and time, which then has one. That is §5's own rule — anything you want to own, you make as a YANTRA event |
+
+### What has to change
+
+1. **An event line on a page has to look like one.** It renders through `TextualBlockRow` today, so a
+   page shows the event's *title* and nothing else — no time, no marker — and a sitting, which has no
+   title by design, renders as an **empty row**. That is why the Inbox looks empty while holding two
+   events. An event row shows its when, reads as an event, and carries the chevron that opens it.
+2. **The page has to say when it is.** A document with a title and no date is a note that used to be
+   a meeting. The event's when belongs in its header, the way a task's chips sit in its.
+3. **A way in from the calendar.** The block's sheet gains *Open notes*, beside the row a sitting
+   already has for opening its task.
+
+### What does not change
+
+The line stays the record. A page is what the chevron opens, not where the event moves to — the
+`@ ` line keeps the time, the id and every token, and `PageDoc.title` remains authoritative only for
+a parentless page, so an event's name stays on its line where the format already puts it. Deleting
+the event takes its page with it, because `removeBlock` already walks the subtree.

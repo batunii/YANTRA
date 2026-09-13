@@ -812,6 +812,36 @@ interface EventDao {
     )
     fun openSittings(): Flow<List<SittingSpan>>
 
+    /**
+     * The events written on one page, so a page can draw them as events.
+     *
+     * An event line renders through the ordinary text row otherwise, which shows its title and
+     * nothing else — and a sitting, which has no title by design, renders as an empty row. That is
+     * why a list holding two events looked empty. See CALENDAR_PLAN.md §18.
+     */
+    @Query(
+        """
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone
+          FROM event e
+          JOIN node n ON n.id = e.node_id
+          LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
+         WHERE n.parent_id = :parentId AND n.deleted_at IS NULL
+        """
+    )
+    fun eventsUnder(parentId: String): Flow<List<EventWithTitle>>
+
+    /** One event, watched — for its own page to say when it is. */
+    @Query(
+        """
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone
+          FROM event e
+          JOIN node n ON n.id = e.node_id
+          LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
+         WHERE e.node_id = :nodeId
+        """
+    )
+    fun observeById(nodeId: String): Flow<EventWithTitle?>
+
     /** The sittings planned for one task, soonest first — for its own page to list them. */
     @Query("SELECT * FROM event WHERE for_node_id = :taskId ORDER BY start_utc")
     fun sittingsFor(taskId: String): Flow<List<EventEntity>>

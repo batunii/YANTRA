@@ -209,6 +209,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // so laying the page out never means walking a tree.
     val allBlocks by vm.blocks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
+    val pageEvents by vm.events.collectAsStateWithLifecycle()
+    val ownEvent by vm.ownEvent.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
     val allLabels by vm.allLabels.collectAsStateWithLifecycle()
@@ -291,14 +293,37 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
     val current = node
     val isTask = current?.type == NodeType.TASK
+
+    /**
+     * Whether this page is a **document** — something you type into — rather than a list of rows
+     * you open.
+     *
+     * `isTask` was standing in for this, and the comments through this file say so out loud: "a
+     * task's page is a document". That was true while a task was the only thing with a page. An
+     * event has one now (CALENDAR_PLAN.md §18) and it is a document in exactly the same sense —
+     * notes about a meeting, on the meeting — so the distinction has to be named rather than
+     * implied, or an event's page comes up in list mode: prose filtered out, a bar that captures
+     * tasks, and no way to write the thing you opened it to write.
+     *
+     * The places that genuinely mean *a task* — a focus timer, a done state — keep asking `isTask`.
+     */
+    val isDocument = isTask || current?.type == NodeType.EVENT
     val y = Yantra.colors
 
-    // A list is a list of tasks. Prose, headings, sketches and images are how you describe a task,
-    // so they live on the task's own page — a list page neither shows them nor offers to make one.
-    // (Anything that predates this rule is gathered onto a "Notes" task by tidyListsToTasksOnly,
-    // so the filter can never be the reason something is unreachable.)
-    val blocks = remember(allBlocks, isTask) {
-        if (isTask) allBlocks else allBlocks.filter { it.type == NodeType.TASK }
+    // A list is a list of tasks **and events**. Prose, headings, sketches and images are how you
+    // describe a task, so they live on the task's own page — a list page neither shows them nor
+    // offers to make one. (The comment here used to point at a `tidyListsToTasksOnly` that would
+    // rescue anything predating the rule; there is no such function in the tree, so the claim has
+    // been removed rather than repeated.)
+    //
+    // An event is the exception, and it has to be: one is written here deliberately — by the
+    // calendar, which puts a new event on the Inbox and a sitting on its task's list — and filtering
+    // it out made the page *lie*. An Inbox holding two events read "Empty", and the only way to
+    // reach them was the day they happened to fall on. A thing you put on a page has to be on the
+    // page. CALENDAR_PLAN.md §18.
+    val blocks = remember(allBlocks, isDocument) {
+        if (isDocument) allBlocks
+        else allBlocks.filter { it.type == NodeType.TASK || it.type == NodeType.EVENT }
     }
 
     // The moment the reordered page arrives, the preview has nothing left to say and gets out of
@@ -443,6 +468,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onToggleDone = { done -> vm.setDone(nodeId, done) },
             onToggleInProgress = { on -> vm.setInProgress(nodeId, on) },
             properties = {
+                // An event's page says when it is, in the slot a task's chips sit in. Without it
+                // the document is a title and a blank page, and nothing on screen says what the
+                // notes are notes *about*.
+                ownEvent?.let { EventWhenChip(it) }
                 if (isTask) {
                     PropertyRow(
                         defs = defs,
@@ -616,7 +645,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 .nestedScroll(headerScroll),
             // A list card is inset like a card; a document runs to the page edge, with its start
             // inset living inside each block's drag gutter so nothing shifts sideways.
-            contentPadding = if (isTask) {
+            contentPadding = if (isDocument) {
                 PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
             } else {
                 PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp)
@@ -745,7 +774,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 // paragraph a thumb's width off the margin and made a document look like a stack of
                 // widgets. They keep the indent, which is theirs.
                 Wrapper(
-                    grouped = !isTask,
+                    grouped = !isDocument,
                     inset = (if (draggable) BLOCK_GUTTER else PROSE_MARGIN) + NEST_STEP * child.indent,
                     // Completion supersedes it and the repository clears the flag, so a finished
                     // task never arrives here still lit.
@@ -785,6 +814,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     // Absent on a page: every row here is already somewhere you can see.
                     origin = null,
                     inkStrokes = inkPreviews[child.id].orEmpty(),
+                    event = pageEvents[child.id],
                     autoFocus = child.type == NodeType.TASK && child.id == justCreatedId,
                     onAutoFocusConsumed = { if (justCreatedId == child.id) justCreatedId = null },
                     vm = vm,
@@ -793,7 +823,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     },
                     // Complement of `grouped` above: a task's page is a document you type in, a
                     // list is a set of rows you open.
-                    editable = isTask,
+                    editable = isDocument,
                     onDraft = { v -> linkDraft = child.id to v },
                     replaceWith = linkInsert?.takeIf { it.first == child.id }?.second,
                     onReplaced = { linkInsert = null },
@@ -810,9 +840,13 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         // replaced it: the whole chain of pages you had walked down collapsed into
                         // one, and Back from a subtask went to the list instead of to its parent.
                         // Nesting and singleTop cannot both be true of this route.
-                        if (child.id != nodeId) when (child.type) {
+                        // A sitting has no subject of its own — it is two hours on Thursday, and
+                        // there is nothing to write about that. Its notes are the task's, so the
+                        // chevron goes there. CALENDAR_PLAN.md §18.
+                        val target = pageEvents[child.id]?.event?.forNodeId ?: child.id
+                        if (target != nodeId) when (child.type) {
                             NodeType.INK -> nav.navigate(Routes.ink(child.id))
-                            else -> nav.navigate(Routes.node(child.id))
+                            else -> nav.navigate(Routes.node(target))
                         }
                     },
                 )
@@ -827,7 +861,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             //
             // A list never gets one at all: a list captures through the bar at the bottom, the same
             // way a smart list does.
-            if (isTask && blocks.isEmpty()) {
+            if (isDocument && blocks.isEmpty()) {
                 item(key = "write-line") {
                     // A task's page is where you write *about* the task, so the blank it offers is a
                     // note. Notes are never withheld anywhere — the Note chip, "- " markdown, or one
@@ -845,7 +879,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // under the last line does in any editor: puts the caret on a new line. If the page
             // already ends in a blank block, that blank IS the new line, so it is focused instead
             // of another one being made.
-            if (isTask) {
+            if (isDocument) {
                 item(key = "page-tail") {
                     val tail = blocks.lastOrNull()
                     val endsBlank = tail != null &&
@@ -933,9 +967,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 // Lists and workspaces show what is on the go; a task's own page does not. You are
                 // already inside one task — a deck of the others is a list of places you are not, and
                 // it would sit exactly where the words go on the one screen that is written into.
-                showNow = !isTask,
+                showNow = !isDocument,
             ) { bottomPadding ->
-                if (!isTask) {
+                if (!isDocument) {
                     QuickAddBar(
                         labels = allLabels,
                         lists = listNames,
@@ -956,7 +990,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 )
             }
             // Only a task's page is typed into, so only it can be mid-link.
-            val typing = linkDraft?.takeIf { isTask }
+            val typing = linkDraft?.takeIf { isDocument }
             val linkQuery = typing?.let { (_, v) -> Links.draft(v.text, v.selection.end)?.second }
             LaunchedEffect(linkQuery, typing?.first) {
                 // Never the block being typed in. A line that links to itself is a line that says
@@ -985,7 +1019,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             )
             BlockTypeBar(
                 // Nothing to pick between on a list: every block on it is a task.
-                showTypes = isTask,
+                showTypes = isDocument,
                 currentType = caretBlock?.type?.takeIf { it in textTypes },
                 onTask = { setType(NodeType.TASK) },
                 onText = { setType(NodeType.PARAGRAPH) },
@@ -1381,6 +1415,8 @@ private fun BlockRow(
     pomoCount: Int,
     origin: Origin?,
     inkStrokes: List<androidx.ink.strokes.Stroke>,
+    /** The times behind this line, when it is an event. Null for everything else. */
+    event: ie.shoonya.yantra.data.db.EventWithTitle?,
     autoFocus: Boolean,
     onAutoFocusConsumed: () -> Unit,
     vm: NodePageViewModel,
@@ -1395,6 +1431,23 @@ private fun BlockRow(
         // Task, note and heading all go through the SAME composable so that converting between
         // them cannot dispose the text field the caret is sitting in.
         NodeType.INK -> InkBlockRow(child, active, onActivate, inkStrokes, vm, onOpen)
+        // An event is not a line of text with a marker in front of it — it is a span, and the span
+        // is the part worth reading. See CALENDAR_PLAN.md §18.
+        NodeType.EVENT -> event?.let { EventBlockRow(it, onOpen) }
+            ?: TextualBlockRow(
+                child, active, onActivate, onFocusChange, claimCaret, onCaretClaimed, onSplit,
+                onMergeBack, chips, childCount, ordinal, pomoCount, origin, autoFocus,
+                onAutoFocusConsumed,
+                onRename = { vm.rename(child.id, it) },
+                onToggleDone = { vm.setDone(child.id, it) },
+                onToggleInProgress = { vm.setInProgress(child.id, it) },
+                onBecome = onBecome,
+                onOpen = onOpen,
+                editable = editable,
+                onDraft = onDraft,
+                replaceWith = replaceWith,
+                onReplaced = onReplaced,
+            )
         NodeType.IMAGE -> ImageBlockRow(child, active, onActivate, vm)
         else -> TextualBlockRow(
             child, active, onActivate, onFocusChange, claimCaret, onCaretClaimed, onSplit,

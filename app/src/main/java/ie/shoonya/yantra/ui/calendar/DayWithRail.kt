@@ -101,6 +101,8 @@ fun DayWithRail(
     /** A block now runs from here to here — moved, or stretched from either end. */
     onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
     onSelectDay: (LocalDate) -> Unit = {},
+    /** A pinch on either timeline asking for a different hour height — CALENDAR_PLAN.md §17. */
+    onHourHeight: (androidx.compose.ui.unit.Dp) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // ---- dragging a task out of the rail and onto an hour ----
@@ -188,6 +190,7 @@ fun DayWithRail(
                 scroll = scroll,
                 onLane = { lane = it },
                 ghost = ghostMinute?.let { it..it + SITTING_LENGTH.toMinutes().toInt() },
+                onHourHeight = onHourHeight,
                 modifier = mod.padding(horizontal = 8.dp),
             )
         } else {
@@ -204,6 +207,7 @@ fun DayWithRail(
                 onEmptyTap = tapped,
                 onSpan = onSpan,
                 onCreateRange = ranged,
+                onHourHeight = onHourHeight,
                 modifier = mod.padding(horizontal = 4.dp),
             )
         }

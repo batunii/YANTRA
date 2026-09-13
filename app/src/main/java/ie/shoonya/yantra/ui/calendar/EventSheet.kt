@@ -101,6 +101,14 @@ fun EventSheet(
     forTitle: String? = null,
     /** Opens that task. Offered only when there is one. */
     onOpenTask: (() -> Unit)? = null,
+    /**
+     * Opens the event's own page, for notes about it — CALENDAR_PLAN.md §18.
+     *
+     * Offered on an event and not on a sitting: a sitting borrows its subject from a task, and the
+     * place to write about that task is the task. Null on a new one, which has no page until it has
+     * an id.
+     */
+    onOpenNotes: (() -> Unit)? = null,
     onSave: (EventRef) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -204,6 +212,13 @@ fun EventSheet(
                 )
             }
 
+            // Notes about the meeting, on the meeting. A page appears the first time there is
+            // something to put in it, exactly as a task's does.
+            if (!sitting && onOpenNotes != null) {
+                SheetRow("Notes", onClick = { onOpenNotes(); onDismiss() }) {
+                    Text("\u203a", fontSize = 16.sp, color = y.accent)
+                }
+            }
             // An all-day sitting is a claim to the whole day rather than time set aside in it, and
             // a place is a property of an appointment. Neither is what a sitting is for.
             if (!sitting) SheetRow("All day") {

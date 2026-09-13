@@ -150,6 +150,9 @@ fun CalendarScreen(nav: NavHostController) {
     // for the mark-then-pick gesture — see §13B.
     var railOpen by remember { mutableStateOf(true) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // How tall an hour is — CALENDAR_PLAN.md §17. Read once from this device's preferences and
+    // written back as it changes, because re-pinching on every visit would be worse than no zoom.
+    var hourHeight by remember { mutableStateOf(loadHourHeight(context)) }
 
     // A permission granted in Settings, or a calendar ticked there, cannot reach this screen as a
     // Flow. Asking again on resume is the cheap and correct answer: it is one provider query.
@@ -158,6 +161,7 @@ fun CalendarScreen(nav: NavHostController) {
         onPauseOrDispose { }
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalHourHeight provides hourHeight) {
     Column(
         Modifier
             .fillMaxSize()
@@ -241,6 +245,7 @@ fun CalendarScreen(nav: NavHostController) {
                 onSit = vm::createSitting,
                 onSpan = vm::spanTo,
                 onSelectDay = vm::select,
+                onHourHeight = { hourHeight = it; saveHourHeight(context, it) },
                 modifier = Modifier.weight(1f),
             )
         }
@@ -282,6 +287,8 @@ fun CalendarScreen(nav: NavHostController) {
         }
     }
 
+    }
+
     sheet?.let { target ->
         EventSheet(
             initial = target.event,
@@ -290,6 +297,7 @@ fun CalendarScreen(nav: NavHostController) {
             length = target.length,
             forTitle = target.forTitle,
             onOpenTask = target.event?.forTaskId?.let { id -> { nav.navigate(Routes.node(id)) } },
+            onOpenNotes = target.nodeId?.let { id -> { nav.navigate(Routes.node(id)) } },
             onSave = { vm.save(target.nodeId, it) },
             onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
             onDismiss = { sheet = null },
