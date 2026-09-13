@@ -171,6 +171,72 @@ class TimelineDragTest {
         assertTrue("start must stay before end, got $from..$to", from.isBefore(to))
     }
 
+    /**
+     * A hold that goes nowhere picks the block out, and picking it out is what makes a short one
+     * stretchable: the handles then sit *on* its boundaries rather than inside it, so their size
+     * has nothing to do with how long it is.
+     */
+    @Test
+    fun aHoldThatMovesNothingSelectsRatherThanWrites() {
+        val rec = show(listOf(event("a", "09:00", "09:30")))
+        holdOn("block:a")
+        assertNull("a hold that moved nothing must not write", rec.span)
+        rule.onNodeWithTag("grip:top:a").assertExists()
+        rule.onNodeWithTag("grip:bottom:a").assertExists()
+    }
+
+    @Test
+    fun aGripStretchesAHalfHourBlockThatHasNoRoomForHandlesInside() {
+        val rec = show(listOf(event("a", "09:00", "09:30")))
+        holdOn("block:a")
+        // No long press this time: the puck is a deliberate target, so it drags at once.
+        rule.onNodeWithTag("grip:bottom:a").performTouchInput {
+            down(center)
+            repeat(8) { i -> moveTo(center.copy(y = center.y + 120f * (i + 1) / 8)) }
+            up()
+        }
+        rule.waitForIdle()
+        val (_, from, to) = rec.span ?: error("the grip should have stretched the block")
+        assertEquals("the start must not move", 9, from.hour)
+        assertTrue("should have grown past half past, got $to", to.isAfter(LocalDateTime.parse("2026-09-11T09:30")))
+    }
+
+    @Test
+    fun theTopGripPullsTheStartBack() {
+        val rec = show(listOf(event("a", "10:00", "11:00")))
+        holdOn("block:a")
+        rule.onNodeWithTag("grip:top:a").performTouchInput {
+            down(center)
+            repeat(8) { i -> moveTo(center.copy(y = center.y - 120f * (i + 1) / 8)) }
+            up()
+        }
+        rule.waitForIdle()
+        val (_, from, to) = rec.span ?: error("the top grip should have stretched the block")
+        assertEquals("the end must not move", 11, to.hour)
+        assertTrue("the start should have come earlier, got $from", from.isBefore(LocalDateTime.parse("2026-09-11T10:00")))
+    }
+
+    @Test
+    fun tappingTheBareDayPutsTheSelectionDown() {
+        show(listOf(event("a", "09:00", "09:30")))
+        holdOn("block:a")
+        rule.onNodeWithTag("grip:top:a").assertExists()
+        rule.onNodeWithTag("ruler").performTouchInput { click() }
+        rule.waitForIdle()
+        rule.onNodeWithTag("grip:top:a").assertDoesNotExist()
+    }
+
+    /** Hold, and let go without moving. */
+    private fun holdOn(tag: String) {
+        val node = rule.onNodeWithTag(tag)
+        rule.mainClock.autoAdvance = false
+        node.performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1_000)
+        node.performTouchInput { up() }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+    }
+
     @Test
     fun aLongPressDragOnEmptyRulerDrawsARange() {
         val rec = show(emptyList())

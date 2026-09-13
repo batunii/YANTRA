@@ -598,17 +598,21 @@ private fun CreatePanel(
 @Composable
 private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit, onCalendar: () -> Unit) {
     val y = Yantra.colors
-    // Three zones rather than four evenly spaced items, so the cog stays in the middle of the bar.
-    // SpaceBetween across four put it at two-thirds, and the cog is the one thing on this bar that
-    // is meant to be found without looking — it is the biggest, the only accented, and now the only
-    // one whose position does not move when something is added beside it.
+    // Three zones, one thing in each, and the cog in the middle where it can be found without
+    // looking — it is the biggest, the only accented, and the only one whose position does not move
+    // when something is added beside it.
+    //
+    // **The home mark is gone.** It sat on the left of the home screen's own bar doing nothing: a
+    // button for where you already are is a button that can only ever be a no-op, and it was taking
+    // the best-reachable corner of the bar to do it. The calendar has that corner now, which also
+    // puts the two ways of *looking* at your work on either side of the one way of *adding* to it.
     Row(
         Modifier.fillMaxWidth().background(y.page).navigationBarsPadding()
             .padding(start = 30.dp, end = 30.dp, top = 8.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { HomeGlyph(active = true) }
+            Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) { CalendarGlyph() }
         }
         // the cog — quick create
         Box(
@@ -618,33 +622,16 @@ private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit, onCalendar: () ->
                 .clickable(onClick = onCog),
             contentAlignment = Alignment.Center,
         ) { GearMark(Modifier.size(30.dp), tint = y.accent) }
-        // A calendar is a place you go, not a setting you change, so it belongs on the bar rather
-        // than buried a screen deep — beside stats, since both are ways of looking at what is
-        // already there rather than places to put something new.
         Row(
             Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) { CalendarGlyph() }
             Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) { StatsGlyph() }
         }
     }
 }
 
-@Composable
-private fun HomeGlyph(active: Boolean) {
-    val y = Yantra.colors
-    val tint = if (active) y.textPrimary else y.textDim
-    Canvas(Modifier.size(22.dp)) {
-        val w = size.width
-        val p = Path().apply {
-            moveTo(w * 0.16f, w * 0.44f); lineTo(w * 0.5f, w * 0.16f); lineTo(w * 0.84f, w * 0.44f)
-            lineTo(w * 0.84f, w * 0.84f); lineTo(w * 0.16f, w * 0.84f); close()
-        }
-        drawPath(p, color = tint, style = Stroke(width = w * 0.08f, join = StrokeJoin.Round))
-    }
-}
 
 @Composable
 private fun SettingsGlyph() {
@@ -683,25 +670,35 @@ private fun CalendarGlyph() {
     val y = Yantra.colors
     Canvas(Modifier.size(20.dp)) {
         val unit = size.width / 20f
-        val stroke = 1.6f * unit
-        // the sheet
+        val frame = 1.7f * unit
+        // A day, not a month.
+        //
+        // The old mark was a wall calendar: a sheet with two rings hanging off the top and one
+        // square in a corner. At twenty points the rings are a pair of hairlines poking out of the
+        // frame with nothing to attach to, and the lone square sat low and left, so the whole thing
+        // read as lopsided and slightly broken rather than as a calendar.
+        //
+        // This is what the screen behind it actually shows: a ruled day with a block on it. Two
+        // hours as hairlines, one filled block sitting across the middle in the accent, in the same
+        // language as the stats mark beside it — a frame, and one thing in it that is yours.
         drawRoundRect(
             color = y.textDim,
-            topLeft = Offset(2f * unit, 4f * unit),
-            size = Size(16f * unit, 14f * unit),
-            cornerRadius = CornerRadius(2.5f * unit, 2.5f * unit),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+            topLeft = Offset(2f * unit, 2.6f * unit),
+            size = Size(16f * unit, 14.8f * unit),
+            cornerRadius = CornerRadius(3.4f * unit, 3.4f * unit),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = frame),
         )
-        // the two rings it hangs from
-        drawLine(y.textDim, Offset(6.5f * unit, 1.6f * unit), Offset(6.5f * unit, 5f * unit), stroke, StrokeCap.Round)
-        drawLine(y.textDim, Offset(13.5f * unit, 1.6f * unit), Offset(13.5f * unit, 5f * unit), stroke, StrokeCap.Round)
-        // the rule under the header, and today
-        drawLine(y.textDim, Offset(2f * unit, 8.5f * unit), Offset(18f * unit, 8.5f * unit), stroke)
+        // The hours. Faint enough to be the ruling rather than part of the frame.
+        val rule = y.textDim.copy(alpha = 0.45f)
+        listOf(7.4f, 12.6f).forEach { at ->
+            drawLine(rule, Offset(4.4f * unit, at * unit), Offset(15.6f * unit, at * unit), 1.1f * unit)
+        }
+        // The block, crossing a rule so it reads as something with a length rather than a dot.
         drawRoundRect(
             color = y.accent,
-            topLeft = Offset(5f * unit, 11f * unit),
-            size = Size(4f * unit, 4f * unit),
-            cornerRadius = CornerRadius(1f * unit, 1f * unit),
+            topLeft = Offset(5.6f * unit, 8.3f * unit),
+            size = Size(8.8f * unit, 3.9f * unit),
+            cornerRadius = CornerRadius(1.4f * unit, 1.4f * unit),
         )
     }
 }

@@ -163,6 +163,22 @@ fun CalendarScreen(nav: NavHostController) {
         // space the title bar already had spare.
         PageHeader("Calendar", onBack = { nav.popBackStack() }) {
             ModeSwitch(mode = mode, days = daysAcross, onMode = vm::setMode)
+            Spacer(Modifier.width(6.dp))
+            // Making something is the one thing a calendar is *for* that looking at it does not
+            // cover, and it used to live under the month grid — which meant it did not exist in the
+            // two views you actually plan in. Here it is on every mode, in the bar the eye already
+            // goes to, and it opens on the day you are looking at.
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(y.accentFill)
+                    .clickable { sheet = EventSheetTarget(null, null) }
+                    .testTag("newEvent"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+", fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.accent)
+            }
         }
 
         Column(
@@ -195,32 +211,28 @@ fun CalendarScreen(nav: NavHostController) {
                 onSelect = vm::select,
                 modifier = Modifier.padding(horizontal = PAGE_MARGIN),
             )
-            CalendarMode.WEEK -> WeekTimeline(
-                week = TimelineLayout.span(selected, daysAcross),
-                days = days,
-                selected = selected,
-                onSelectDay = vm::select,
-                onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-            )
-            CalendarMode.DAY -> DayWithRail(
+            // One planner, two spans. The multi-day view used to be a picture — nothing on it
+            // could be dragged, stretched, tapped out or filled from the rail, which meant that to
+            // change anything about Tuesday you first had to go to Tuesday.
+            CalendarMode.WEEK, CalendarMode.DAY -> DayWithRail(
+                span = if (mode == CalendarMode.DAY) listOf(selected) else TimelineLayout.span(selected, daysAcross),
                 day = selected,
                 items = items,
+                days = days,
                 shelves = rail,
                 shelf = shelf,
                 armed = armed,
                 railOpen = railOpen,
-                // Stacked on a phone, beside the day on a tablet — the same breakpoint that decides
-                // three days against seven, and for the same reason.
                 sideBySide = widthDp >= TABLET_WIDTH,
                 onShelf = vm::setShelf,
                 onArm = vm::arm,
                 onOpenTask = { nav.navigate(Routes.node(it)) },
                 onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
-                onNewEvent = { at -> sheet = EventSheetTarget(null, null, at) },
-                onMark = { from, to -> marked = from..to },
+                onNewEvent = { onDay, at -> vm.select(onDay); sheet = EventSheetTarget(null, null, at) },
+                onMark = { from, to -> vm.select(from.toLocalDate()); marked = from..to },
                 onSit = vm::createSitting,
                 onSpan = vm::spanTo,
+                onSelectDay = vm::select,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -237,16 +249,6 @@ fun CalendarScreen(nav: NavHostController) {
                 fontWeight = FontWeight.W700,
                 color = y.textDim,
                 modifier = Modifier.weight(1f),
-            )
-            Text(
-                "+ Event",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.W700,
-                color = y.accent,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { sheet = EventSheetTarget(null, null) }
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
 
@@ -442,9 +444,9 @@ private fun MonthBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        // Only on the day, because only the day has a rail. Shown as a state rather than an
-        // icon: "Tasks" lit means they are beside you, unlit means the day has the screen.
-        if (mode == CalendarMode.DAY) {
+        // On both timelines, because both of them are places you plan. Shown as a state rather
+        // than an icon: "Tasks" lit means they are beside you, unlit means the days have the screen.
+        if (mode != CalendarMode.MONTH) {
             Text(
                 "Tasks",
                 fontSize = 12.sp,

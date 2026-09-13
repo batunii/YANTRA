@@ -3,6 +3,7 @@ package ie.shoonya.yantra.ui.calendar
 import androidx.compose.foundation.background
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.drawWithContent
@@ -80,6 +81,137 @@ private const val SETTLE_MS = 1500L
 private val RULER_WIDTH = 36.dp
 
 /**
+ * What is being done to the timeline right now, wherever the finger is.
+ *
+ * Hoisted above the lanes rather than held inside one, because a multi-day view is several lanes and
+ * only one of them can be under a finger at a time. Held per-lane, two columns could each believe
+ * they owned the gesture.
+ */
+private class Editing {
+    var drag by mutableStateOf<DragState?>(null)
+    /**
+     * Where a finger just left a block, kept until the index says the same thing.
+     *
+     * Letting go used to hand the block straight back to the data, and the data is a file write and
+     * a reindex behind — so for a couple of hundred milliseconds the block sprang back to where it
+     * had been and then jumped to where you put it. Measured off a screen recording: exactly the
+     * quiet timer, every time, on every gesture.
+     */
+    var held by mutableStateOf<DragState?>(null)
+    /** The block a long press picked out. Its boundaries get handles you can actually hit. */
+    var selected by mutableStateOf<String?>(null)
+    /** A range being dragged out of bare ruler, and which day's ruler it is. */
+    var draft by mutableStateOf<Pair<LocalDate, IntRange>?>(null)
+}
+
+/**
+ * One day's column: the ruling, what is on it, and every gesture that changes it.
+ *
+ * **The day view and the multi-day view are this, once or three or seven times.** They used to be
+ * two composables, and the second was a picture — no dragging, no tapping out a new event, no way to
+ * put a task on a Tuesday without first going to Tuesday. Two implementations of "a day, to scale"
+ * is also two places for the arithmetic to drift.
+ *
+ * A block moves only within its own column. Carrying one across to the next day is a different
+ * gesture with a different failure mode and is deliberately not in this pass — CALENDAR_PLAN.md §14.
+ */
+@Composable
+private fun DayLane(
+    day: LocalDate,
+    laid: TimelineDay,
+    editing: Editing,
+    compact: Boolean,
+    onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
+    onOpen: (DayItem) -> Unit,
+    onEmptyTap: (LocalDate, LocalTime) -> Unit,
+    onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
+    ghost: IntRange?,
+    modifier: Modifier = Modifier,
+    onLane: ((LaneMetrics) -> Unit)? = null,
+) {
+    val hourPx = with(LocalDensity.current) { HOUR_HEIGHT.toPx() }
+    fun at(minute: Int): LocalDateTime = day.atStartOfDay().plusMinutes(minute.toLong())
+    fun commit(d: DragState) {
+        editing.held = d
+        onSpan(d.nodeId, at(d.startMinute), at(d.endMinute))
+    }
+
+    BoxWithConstraints(
+        modifier.then(
+            if (onLane == null) Modifier
+            // The node measured here is the whole 24-hour content, translated by the scroll — so a
+            // point in its local space is an hour directly, with no scroll arithmetic for the
+            // caller to get wrong.
+            else Modifier.onGloballyPositioned { onLane(LaneMetrics(it, hourPx)) }
+        )
+    ) {
+        HourGrid()
+        // Underneath the blocks, deliberately. Tapping bare ruler makes something there — the
+        // quickest way to block out an hour is to point at the hour — but drawn last it would cover
+        // the whole column and swallow every tap meant for a block.
+        TapTargets(
+            // Anywhere off a block puts the selection down again. One that survived a tap on the
+            // bare day would be a mode you had to remember you were in.
+            onTap = { time -> editing.selected = null; onEmptyTap(day, time) },
+            draft = editing.draft?.takeIf { it.first == day }?.second,
+            onDraft = { editing.draft = it?.let { r -> day to r } },
+            onCommit = { range -> onCreateRange(at(range.first), at(range.last)) },
+        )
+        NowLine(day)
+        laid.blocks.forEach { block ->
+            BlockChip(
+                block = block,
+                laneWidth = maxWidth,
+                compact = compact,
+                drag = editing.drag,
+                held = editing.held,
+                onDrag = { editing.drag = it },
+                onCommit = ::commit,
+                // A hold that goes nowhere is not an edit — it is you pointing at the block. That
+                // is the cheapest gesture there is for "this one", and it had no meaning of its own.
+                onSelect = { editing.selected = it },
+                selected = block.item.nodeId == editing.selected,
+                onClick = { onOpen(block.item) },
+            )
+        }
+        // Drawn after every block, so a handle is never underneath one of its neighbours.
+        laid.blocks.firstOrNull { it.item.nodeId == editing.selected }?.let { picked ->
+            val shown = (editing.drag ?: editing.held)?.takeIf { it.nodeId == picked.item.nodeId }
+            val lane = maxWidth / picked.columns
+            EdgeHandles(
+                centreX = lane * picked.column + lane / 2,
+                startMinute = shown?.startMinute ?: picked.startMinute,
+                endMinute = shown?.endMinute ?: picked.endMinute,
+                block = picked,
+                onDrag = { editing.drag = it },
+                onCommit = ::commit,
+            )
+        }
+        // The block being drawn by a drag on bare ruler, or by a task on its way in from the rail.
+        // Same shape either way: what it will be if you let go here.
+        (editing.draft?.takeIf { it.first == day }?.second ?: ghost)?.let { DraftBlock(it) }
+    }
+}
+
+/**
+ * Reality catching up is what ends a hold — or, failing that, a timer, because a write that never
+ * arrives must not freeze a block in a position the file does not have.
+ */
+@Composable
+private fun SettleHeld(editing: Editing, blocks: List<TimedBlock>) {
+    val landed = editing.held?.let { h -> blocks.firstOrNull { it.item.nodeId == h.nodeId } }
+    LaunchedEffect(editing.held, landed?.startMinute, landed?.endMinute) {
+        val h = editing.held ?: return@LaunchedEffect
+        if (landed != null && landed.startMinute == h.startMinute && landed.endMinute == h.endMinute) {
+            editing.held = null
+            return@LaunchedEffect
+        }
+        delay(SETTLE_MS)
+        editing.held = null
+    }
+}
+
+/**
  * A day drawn to scale: an hour ruler with blocks laid over it.
  *
  * Height is duration, so an empty afternoon looks empty — which is the whole reason to draw a
@@ -116,34 +248,8 @@ fun DayTimeline(
     modifier: Modifier = Modifier,
 ) {
     val laid = TimelineLayout.forDay(items, day)
-    var drag by remember(day) { mutableStateOf<DragState?>(null) }
-    /**
-     * Where a finger just left a block, kept until the index says the same thing.
-     *
-     * Letting go used to hand the block straight back to the data, and the data is a file write and
-     * a reindex behind — so for a couple of hundred milliseconds the block sprang back to where it
-     * had been and then jumped to where you put it. Measured off a screen recording: exactly the
-     * quiet timer, every time, on every gesture.
-     *
-     * Making the write structural removed the wait; this removes the flicker, which is the part that
-     * would come back the moment a workspace grew large enough for the rebuild itself to be visible.
-     * The block simply stays where you put it until the file agrees.
-     */
-    var held by remember(day) { mutableStateOf<DragState?>(null) }
-    var draft by remember(day) { mutableStateOf<IntRange?>(null) }
-
-    // Reality catching up is what ends the hold — or, failing that, a timer, because a write that
-    // never arrives must not freeze a block in a position the file does not have.
-    val landed = held?.let { h -> laid.blocks.firstOrNull { it.item.nodeId == h.nodeId } }
-    LaunchedEffect(held, landed?.startMinute, landed?.endMinute) {
-        val h = held ?: return@LaunchedEffect
-        if (landed != null && landed.startMinute == h.startMinute && landed.endMinute == h.endMinute) {
-            held = null
-            return@LaunchedEffect
-        }
-        delay(SETTLE_MS)
-        held = null
-    }
+    val editing = remember(day) { Editing() }
+    SettleHeld(editing, laid.blocks)
 
     // Open on the working day rather than at midnight, which is eight hours of nothing.
     //
@@ -151,69 +257,36 @@ fun DayTimeline(
     // number, so passing it raw scrolled to about three in the morning on a 3x screen — and to a
     // different hour on every different screen, which is the tell.
     val density = LocalDensity.current
-    val hourPx = with(density) { HOUR_HEIGHT.toPx() }
     LaunchedEffect(day) { scroll.scrollTo(with(density) { (HOUR_HEIGHT * OPEN_AT_HOUR).roundToPx() }) }
 
     Column(modifier) {
         AllDayBar(laid.allDay, onOpen)
         Row(Modifier.fillMaxWidth().verticalScroll(scroll)) {
             HourRuler()
-            BoxWithConstraints(
-                Modifier
-                    .weight(1f)
-                    .then(
-                        if (onLane == null) Modifier
-                        // The node measured here is the whole 24-hour content, translated by the
-                        // scroll — so a point in its local space is an hour directly, with no
-                        // scroll arithmetic for the caller to get wrong.
-                        else Modifier.onGloballyPositioned {
-                            onLane(LaneMetrics(it, hourPx))
-                        }
-                    ),
-            ) {
-                HourGrid()
-                // Underneath the blocks, deliberately. Tapping bare ruler makes something there —
-                // the quickest way to block out an hour is to point at the hour — but drawn last it
-                // would cover the whole column and swallow every tap meant for a block.
-                TapTargets(
-                    onTap = onEmptyTap,
-                    draft = draft,
-                    onDraft = { draft = it },
-                    onCommit = { range ->
-                        onCreateRange(
-                            day.atStartOfDay().plusMinutes(range.first.toLong()),
-                            day.atStartOfDay().plusMinutes(range.last.toLong()),
-                        )
-                    },
-                )
-                NowLine(day)
-                laid.blocks.forEach { block ->
-                    BlockChip(
-                        block = block,
-                        laneWidth = maxWidth,
-                        drag = drag,
-                        held = held,
-                        onDrag = { drag = it },
-                        onCommit = { d ->
-                            held = d
-                            onSpan(
-                                d.nodeId,
-                                day.atStartOfDay().plusMinutes(d.startMinute.toLong()),
-                                day.atStartOfDay().plusMinutes(d.endMinute.toLong()),
-                            )
-                        },
-                        onClick = { onOpen(block.item) },
-                    )
-                }
-                // The block being drawn by a drag on empty ruler, or by a task on its way in
-                // from the rail. Same shape either way: what it will be if you let go here.
-                (draft ?: ghost)?.let { DraftBlock(it) }
-            }
+            DayLane(
+                day = day,
+                laid = laid,
+                editing = editing,
+                compact = false,
+                onSpan = onSpan,
+                onOpen = onOpen,
+                onEmptyTap = { _, time -> onEmptyTap(time) },
+                onCreateRange = onCreateRange,
+                ghost = ghost,
+                onLane = onLane,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
 
-/** Seven days sharing one ruler. The same blocks, a seventh as wide. */
+/**
+ * Several days sharing one ruler — three on a phone, seven on a tablet.
+ *
+ * The same lane as the day view, several times over, which is the point: everything you can do to a
+ * Tuesday in the day view you can do to the Tuesday column here. It was read-only, and a read-only
+ * week is a week you have to leave in order to change anything on it.
+ */
 @Composable
 fun WeekTimeline(
     week: List<LocalDate>,
@@ -221,6 +294,9 @@ fun WeekTimeline(
     selected: LocalDate,
     onSelectDay: (LocalDate) -> Unit,
     onOpen: (DayItem) -> Unit,
+    onEmptyTap: (LocalDate, LocalTime) -> Unit,
+    onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
+    onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val y = Yantra.colors
@@ -228,6 +304,8 @@ fun WeekTimeline(
     val sep = y.tileBorder.copy(alpha = 0.45f)
     val scroll = rememberScrollState()
     val density = LocalDensity.current
+    val editing = remember(week.first()) { Editing() }
+    SettleHeld(editing, laid.flatMap { it.blocks })
     LaunchedEffect(week.first()) {
         scroll.scrollTo(with(density) { (HOUR_HEIGHT * OPEN_AT_HOUR).roundToPx() })
     }
@@ -281,8 +359,17 @@ fun WeekTimeline(
         Row(Modifier.fillMaxWidth().verticalScroll(scroll)) {
             HourRuler()
             week.forEachIndexed { i, d ->
-                BoxWithConstraints(
-                    Modifier
+                DayLane(
+                    day = d,
+                    laid = laid[i],
+                    editing = editing,
+                    compact = true,
+                    onSpan = onSpan,
+                    onOpen = onOpen,
+                    onEmptyTap = onEmptyTap,
+                    onCreateRange = onCreateRange,
+                    ghost = null,
+                    modifier = Modifier
                         .weight(1f)
                         // A hairline between days, on one side only. Borders on every column drew
                         // two lines between each pair and boxed the week into a table.
@@ -292,13 +379,7 @@ fun WeekTimeline(
                                 sep, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1f,
                             )
                         },
-                ) {
-                    HourGrid()
-                    NowLine(d)
-                    laid[i].blocks.forEach { block ->
-                        BlockChip(block, maxWidth, compact = true) { onOpen(block.item) }
-                    }
-                }
+                )
             }
         }
     }
@@ -423,6 +504,9 @@ private fun BlockChip(
     held: DragState? = null,
     onDrag: ((DragState?) -> Unit)? = null,
     onCommit: ((DragState) -> Unit)? = null,
+    /** A hold that moved nothing. It means "this one", and puts proper handles on its edges. */
+    onSelect: ((String) -> Unit)? = null,
+    selected: Boolean = false,
     onClick: () -> Unit,
 ) {
     val y = Yantra.colors
@@ -475,6 +559,11 @@ private fun BlockChip(
             .padding(end = 4.dp, bottom = 2.dp)
             .clip(RoundedCornerShape(7.dp))
             .background(if (isEvent && !sitting) y.accentFill else y.cardBg)
+            // Picked out, so the two handles on its edges read as belonging to *this* block.
+            .then(
+                if (!selected) Modifier
+                else Modifier.border(1.5.dp, y.accent, RoundedCornerShape(7.dp))
+            )
             .then(
                 if (onDrag == null) Modifier else Modifier.pointerInput(
                     block.item.nodeId, block.startMinute, block.endMinute,
@@ -487,11 +576,20 @@ private fun BlockChip(
                     // block could be pressed and never moved. The state is published outward for
                     // drawing; it is not read back.
                     var working: DragState? = null
+                    // Whether the finger ever actually went anywhere.
+                    //
+                    // `detectDragGesturesAfterLongPress` fires `onDragStart` the moment the press
+                    // ripens — before any movement — and then, if the finger lifts without moving,
+                    // ends the gesture through **onDragCancel** rather than onDragEnd. So a hold
+                    // and release is a cancel, and "did it move" is the only honest way to tell a
+                    // pointing gesture from an abandoned drag.
+                    var moved = false
 
                     // Long press first, because a plain drag inside a scrolling column is a scroll.
                     // The lift is what tells you the block is yours to move.
                     detectDragGesturesAfterLongPress(
                         onDragStart = { at ->
+                            moved = false
                             working = DragState(
                                 nodeId = block.item.nodeId,
                                 startMinute = block.startMinute,
@@ -509,16 +607,37 @@ private fun BlockChip(
                         onDrag = { change, amount ->
                             change.consume()
                             val current = working ?: return@detectDragGesturesAfterLongPress
+                            if (amount != Offset.Zero) moved = true
                             val by = (amount.y * minutesPerPx).toInt()
                             working = current.stretched(by)
                             onDrag(working)
                         },
                         onDragEnd = {
-                            working?.let { onCommit?.invoke(it.snapped()) }
+                            working?.let { w ->
+                                val landed = w.snapped()
+                                // Nothing moved, so nothing is being asked of the file. Writing the
+                                // same span back would bump modified_at and put an empty diff in
+                                // somebody's history for the sake of a press.
+                                if (!moved ||
+                                    (landed.startMinute == block.startMinute &&
+                                        landed.endMinute == block.endMinute)
+                                ) {
+                                    onSelect?.invoke(block.item.nodeId)
+                                } else {
+                                    onCommit?.invoke(landed)
+                                }
+                            }
                             working = null
                             onDrag(null)
                         },
-                        onDragCancel = { working = null; onDrag(null) },
+                        // A hold released where it started arrives here, not at onDragEnd. It is
+                        // the commonest way anybody will ever pick a block out, so it cannot be
+                        // treated as an abandoned gesture.
+                        onDragCancel = {
+                            if (!moved) onSelect?.invoke(block.item.nodeId)
+                            working = null
+                            onDrag(null)
+                        },
                     )
                 }
             )
@@ -554,7 +673,9 @@ private fun BlockChip(
                 }
             }
         }
-        if (handles) {
+        // Hidden while selected: the big ones out on the boundaries are doing this job, and two
+        // marks per edge would read as two different things you could grab.
+        if (handles && !selected) {
             Handle(Alignment.TopCenter, lit = live?.grab == Grab.TOP)
             Handle(Alignment.BottomCenter, lit = live?.grab == Grab.BOTTOM)
         }
@@ -563,6 +684,88 @@ private fun BlockChip(
 
 /** How tall a block has to be before it is worth putting two handles on. */
 private val HANDLES_FROM = 34.dp
+
+/** How big a boundary handle is once a block has been picked out. A finger, not a hairline. */
+private val EDGE_HANDLE = 34.dp
+
+/**
+ * The two boundaries of the selected block, as things you can actually take hold of.
+ *
+ * Siblings of the blocks rather than children of one, and that is the whole point: a handle drawn
+ * inside a block can be no bigger than the block, which is why a half-hour one was still fiddly
+ * after the in-block handles arrived. These sit *on* the edges — half above the line and half below
+ * — so their size has nothing to do with how long the block is.
+ *
+ * They drag immediately, with no long press to wait through. A long press is what you pay to prove
+ * you did not mean to scroll; aiming at a 34dp puck that only appeared because you selected this
+ * block is proof enough.
+ */
+@Composable
+private fun EdgeHandles(
+    centreX: Dp,
+    startMinute: Int,
+    endMinute: Int,
+    block: TimedBlock,
+    onDrag: (DragState?) -> Unit,
+    onCommit: (DragState) -> Unit,
+) {
+    val density = LocalDensity.current
+    val minutesPerPx = with(density) { 60f / HOUR_HEIGHT.toPx() }
+
+    @Composable
+    fun puck(grab: Grab, minute: Int) {
+        val y = Yantra.colors
+        Box(
+            Modifier
+                .offset(
+                    x = centreX - EDGE_HANDLE / 2,
+                    y = HOUR_HEIGHT * (minute / 60f) - EDGE_HANDLE / 2,
+                )
+                .size(EDGE_HANDLE)
+                .testTag("grip:${if (grab == Grab.TOP) "top" else "bottom"}:${block.item.nodeId}")
+                .pointerInput(block.item.nodeId, grab, block.startMinute, block.endMinute) {
+                    // The gesture keeps its own state for the same reason the block's does: a
+                    // lambda inside pointerInput reads what it captured when the coroutine started.
+                    var working: DragState? = null
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            working = DragState(
+                                block.item.nodeId, block.startMinute, block.endMinute, grab,
+                            )
+                            onDrag(working)
+                        },
+                        onVerticalDrag = { change, dy ->
+                            // Consumed, or the column this sits in reads the same movement as a
+                            // scroll and takes the gesture away mid-stretch.
+                            change.consume()
+                            working = working?.stretched((dy * minutesPerPx).toInt())
+                            onDrag(working)
+                        },
+                        onDragEnd = {
+                            working?.let { onCommit(it.snapped()) }
+                            working = null
+                            onDrag(null)
+                        },
+                        onDragCancel = { working = null; onDrag(null) },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            // A ring rather than a disc: the boundary has to stay visible through the middle of it,
+            // or the handle hides the very edge you are placing.
+            Box(
+                Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(y.page)
+                    .border(2.5.dp, y.accent, CircleShape),
+            )
+        }
+    }
+
+    puck(Grab.TOP, startMinute)
+    puck(Grab.BOTTOM, endMinute)
+}
 
 /**
  * A boundary you can pull.

@@ -74,8 +74,10 @@ class TaskRailTest {
                 var shelf by remember { mutableStateOf(RailBucket.TODAY) }
                 var armed by remember { mutableStateOf<RailTask?>(null) }
                 DayWithRail(
+                    span = listOf(day),
                     day = day,
                     items = emptyList(),
+                    days = emptyMap(),
                     shelves = railShelves(tasks, day, dublin),
                     shelf = shelf,
                     armed = armed,
@@ -85,7 +87,7 @@ class TaskRailTest {
                     onArm = { armed = it },
                     onOpenTask = { rec.opened = it },
                     onOpen = { },
-                    onNewEvent = { rec.newEvent = it },
+                    onNewEvent = { _, at -> rec.newEvent = at },
                     onMark = { _, _ -> },
                     onSit = { id, at, len -> rec.sat = Triple(id, at, len); armed = null },
                     onSpan = { _, _, _ -> },

@@ -74,8 +74,13 @@ private const val EDGE_SCROLL_PX = 12f
  */
 @Composable
 fun DayWithRail(
+    /** The days on screen: one in the day view, three or seven in the multi-day one. */
+    span: List<LocalDate>,
+    /** Which of them the rail and the headings treat as the current one. */
     day: LocalDate,
     items: List<DayItem>,
+    /** Everything in the window, for the multi-day lanes. Ignored when a single day is on screen. */
+    days: CalendarDays,
     shelves: Map<RailBucket, List<RailTask>>,
     shelf: RailBucket,
     armed: RailTask?,
@@ -87,14 +92,15 @@ fun DayWithRail(
     /** The task itself, reached from the rail without arming it. */
     onOpenTask: (String) -> Unit,
     onOpen: (DayItem) -> Unit,
-    /** A tap on a free hour with nothing held up. */
-    onNewEvent: (LocalTime) -> Unit,
+    /** A tap on a free hour with nothing held up, and which day's hour it was. */
+    onNewEvent: (LocalDate, LocalTime) -> Unit,
     /** A range dragged out with nothing held up — §13B asks what goes in it. */
     onMark: (LocalDateTime, LocalDateTime) -> Unit,
     /** Time set aside for a task. No sheet: a sitting has no name to ask for. */
     onSit: (String, LocalDateTime, Duration) -> Unit,
     /** A block now runs from here to here — moved, or stretched from either end. */
     onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
+    onSelectDay: (LocalDate) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // ---- dragging a task out of the rail and onto an hour ----
@@ -155,31 +161,52 @@ fun DayWithRail(
     // One set of callbacks, two arrangements. The wiring is the feature; which way the screen is cut
     // is a question about the screen, so the two are kept apart rather than the whole thing written
     // out twice with one `Row` changed to a `Column`.
+    // A tap on a free hour means the same thing on every day on screen: with a task held up it is
+    // where that task goes, and with nothing held it is a new event on *that* day.
+    val tapped: (LocalDate, LocalTime) -> Unit = { onDay, at ->
+        val held = armed
+        if (held != null) onSit(held.nodeId, onDay.atTime(at), SITTING_LENGTH)
+        else onNewEvent(onDay, at)
+    }
+    // A drag with a task held up is that task, exactly that long — the length was the point of
+    // dragging rather than tapping. With nothing held, the range is a question.
+    val ranged: (LocalDateTime, LocalDateTime) -> Unit = { from, to ->
+        val held = armed
+        if (held != null) onSit(held.nodeId, from, Duration.between(from, to))
+        else onMark(from, to)
+    }
+
     val timeline: @Composable (Modifier) -> Unit = { mod ->
-        DayTimeline(
-            day = day,
-            items = items,
-            onOpen = onOpen,
-            // With a task held up, a tap on an hour is where it goes. With nothing held, a tap on a
-            // free hour still means what it always meant.
-            onEmptyTap = { at ->
-                val held = armed
-                if (held != null) onSit(held.nodeId, day.atTime(at), SITTING_LENGTH)
-                else onNewEvent(at)
-            },
-            onSpan = onSpan,
-            // A drag with a task held up is that task, exactly that long — the length was the point
-            // of dragging rather than tapping. With nothing held, the range is a question.
-            onCreateRange = { from, to ->
-                val held = armed
-                if (held != null) onSit(held.nodeId, from, Duration.between(from, to))
-                else onMark(from, to)
-            },
-            scroll = scroll,
-            onLane = { lane = it },
-            ghost = ghostMinute?.let { it..it + SITTING_LENGTH.toMinutes().toInt() },
-            modifier = mod.padding(horizontal = 8.dp),
-        )
+        if (span.size <= 1) {
+            DayTimeline(
+                day = day,
+                items = items,
+                onOpen = onOpen,
+                onEmptyTap = { at -> tapped(day, at) },
+                onSpan = onSpan,
+                onCreateRange = ranged,
+                scroll = scroll,
+                onLane = { lane = it },
+                ghost = ghostMinute?.let { it..it + SITTING_LENGTH.toMinutes().toInt() },
+                modifier = mod.padding(horizontal = 8.dp),
+            )
+        } else {
+            // The same lanes, several across. Dragging a task *out of the rail* stays a day-view
+            // gesture: with three columns on screen a drop would have to say which day it meant,
+            // and the honest answer to that is a second gesture rather than a guess. Arming a task
+            // and tapping an hour works here exactly as it does on one day.
+            WeekTimeline(
+                week = span,
+                days = days,
+                selected = day,
+                onSelectDay = onSelectDay,
+                onOpen = onOpen,
+                onEmptyTap = tapped,
+                onSpan = onSpan,
+                onCreateRange = ranged,
+                modifier = mod.padding(horizontal = 4.dp),
+            )
+        }
     }
     val rail: @Composable (Modifier) -> Unit = { mod ->
         TaskRail(
