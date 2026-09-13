@@ -287,11 +287,13 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     java.time.LocalDateTime.parse(event.startLocal),
                     java.time.LocalDateTime.parse(event.endLocal),
                 )
-                writer.editEvent(nodeId) { e ->
+                writer.editEvent(nodeId, PLACED) { e ->
                     e.copy(time = e.time.copy(start = start, end = start.plus(length)), raw = null)
                 }
             } else {
-                writer.editTask(nodeId) { t -> t.copy(due = t.due?.movedTo(start, zone), raw = null) }
+                writer.editTask(nodeId, PLACED) { t ->
+                    t.copy(due = t.due?.movedTo(start, zone), raw = null)
+                }
             }
         }
     }
@@ -302,11 +304,11 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             val writer = container.workspaces.writerFor(nodeId)
             val event = container.db.eventDao().byId(nodeId)
             if (event != null) {
-                writer.editEvent(nodeId) { e ->
+                writer.editEvent(nodeId, PLACED) { e ->
                     e.copy(time = e.time.copy(end = maxOf(end, e.time.start)), raw = null)
                 }
             } else {
-                writer.editTask(nodeId) { t ->
+                writer.editTask(nodeId, PLACED) { t ->
                     val spec = t.due ?: return@editTask t
                     val from = spec.startLocal(zone) ?: return@editTask t
                     val mins = java.time.Duration.between(from, end).toMinutes()
@@ -339,6 +341,22 @@ private fun ie.shoonya.yantra.data.format.DueSpec.startLocal(zone: ZoneId): java
             java.time.LocalDateTime.ofInstant(v.instant, zone)
         is ie.shoonya.yantra.data.format.DueValue.AllDay -> v.date.atStartOfDay()
     }
+
+/**
+ * Putting a block somewhere is a structural change, not a text edit.
+ *
+ * A plain edit defers its reindex by a couple of hundred milliseconds, which is right for typing —
+ * the letters are already on screen from the field's own state, so nothing is waiting on the index.
+ * A calendar has no such second copy: **every block it draws comes from the index**, so a deferred
+ * one means the block you just dropped springs back to where it was and arrives at its new hour a
+ * beat later, or sits in the wrong place indefinitely if the next thing you do is drag it again and
+ * restart the timer.
+ *
+ * The writer's own rule already said so — "creating, deleting, completing or *moving* a block
+ * changes what the list contains, and that list is drawn from the index" — and a drag ends once, on
+ * release, so the rebuild it costs is one, not one per frame.
+ */
+private val PLACED = ie.shoonya.yantra.data.sync.Change.STRUCTURAL
 
 /** How much of the calendar is on screen. */
 enum class CalendarMode(val label: String) {
