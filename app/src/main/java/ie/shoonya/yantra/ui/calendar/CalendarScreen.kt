@@ -136,6 +136,8 @@ fun CalendarScreen(nav: NavHostController) {
     var sheet by remember { mutableStateOf<EventSheetTarget?>(null) }
     // A range marked on an empty day, waiting to be told what goes in it — CALENDAR_PLAN.md §13B.
     var marked by remember { mutableStateOf<ClosedRange<java.time.LocalDateTime>?>(null) }
+    // Somebody else's event, tapped. Read-only, with the two things you can do about it.
+    var theirs by remember { mutableStateOf<DayItem.Device?>(null) }
     val scope = rememberCoroutineScope()
 
     val rail by vm.rail.collectAsStateWithLifecycle()
@@ -239,7 +241,7 @@ fun CalendarScreen(nav: NavHostController) {
                 onShelf = vm::setShelf,
                 onArm = vm::arm,
                 onOpenTask = { nav.navigate(Routes.node(it)) },
-                onOpen = { openItem(it, vm, scope, nav, context) { t -> sheet = t } },
+                onOpen = { openItem(it, vm, scope, nav, context, { theirs = it }) { t -> sheet = t } },
                 onNewEvent = { onDay, at -> vm.select(onDay); sheet = EventSheetTarget(null, null, at) },
                 onMark = { from, to -> vm.select(from.toLocalDate()); marked = from..to },
                 onSit = vm::createSitting,
@@ -279,7 +281,7 @@ fun CalendarScreen(nav: NavHostController) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(items, key = { it.nodeId + it.sortKey }) { item ->
-                    DayRow(item) { openItem(item, vm, scope, nav, context) { t -> sheet = t } }
+                    DayRow(item) { openItem(item, vm, scope, nav, context, { theirs = it }) { t -> sheet = t } }
                 }
             }
         }
@@ -301,6 +303,23 @@ fun CalendarScreen(nav: NavHostController) {
             onSave = { vm.save(target.nodeId, it) },
             onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
             onDismiss = { sheet = null },
+        )
+    }
+
+    theirs?.let { item ->
+        DeviceEventSheet(
+            item = item,
+            onOpenInCalendar = {
+                runCatching { context.startActivity(vm.intentFor(item)) }
+                theirs = null
+            },
+            // Straight into the copy's own page, because the reason to make one is almost always
+            // that you had something to write about the meeting.
+            onMakeItMine = {
+                vm.makeItMine(item) { id -> nav.navigate(Routes.node(id)) }
+                theirs = null
+            },
+            onDismiss = { theirs = null },
         )
     }
 
@@ -421,12 +440,15 @@ private fun openItem(
     scope: kotlinx.coroutines.CoroutineScope,
     nav: NavHostController,
     context: android.content.Context,
+    onDevice: (DayItem.Device) -> Unit,
     open: (EventSheetTarget) -> Unit,
 ) {
-    // Somebody else's event goes back to the app that owns it — there is nothing this one can do
-    // with it, and a sheet that could only show it would be a dead end pretending to be an editor.
+    // Somebody else's event opens *here*, read-only, with the two things you can actually do about
+    // it. It used to hand the occurrence straight to the calendar that owns it, which is one of
+    // those two and a poor way to offer it: a tap that throws you into another application is not a
+    // choice, and it left no way to act on the thing from inside this one.
     if (item is DayItem.Device) {
-        runCatching { context.startActivity(vm.intentFor(item)) }
+        onDevice(item)
         return
     }
     if (item is DayItem.Event) {

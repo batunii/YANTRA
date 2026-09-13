@@ -698,7 +698,19 @@ about a meeting that live somewhere other than the meeting are notes you will no
 |---|---|
 | **Your own event** | Its page. Notes about the meeting, on the meeting |
 | **A sitting** | The **task's** page, not the sitting's. A sitting is a piece of time, not a subject — its notes are the task's notes, and two hours on Thursday is not a thing you have anything to say about |
-| **Somebody else's** (§5) | It has no node and no file, so it cannot have a page. Offer to **make it yours** instead: an event of your own with the same title and time, which then has one. That is §5's own rule — anything you want to own, you make as a YANTRA event |
+| **Somebody else's** (§5) | It has no node and no file, so it cannot have a page. It offers to **make it yours** instead: an event of your own with the same title and time, which then has one. That is §5's own rule — anything you want to own, you make as a YANTRA event |
+
+**A tap on somebody else's event opens a sheet, not another application.** It used to hand the
+occurrence straight to the calendar that owns it, which is one of the two right answers and a poor
+way to offer it: a single tap that throws you into another app is not a choice, and it left no way to
+act on the thing from inside this one. You would tap Tuesday's meeting meaning to write a note about
+it and find yourself in Google Calendar. The sheet is read-only and says so — nothing on it can
+change their event, and that is not a restriction this code imposes but the absence of a permission
+it will never hold — and it offers the copy and the hand-off side by side.
+
+The copy carries **nothing of the provider**: no instance id, no event id, no calendar id. Those are
+local numbers, meaningless on another device and gone after a reinstall, and a line carrying one
+would be claiming a relationship it cannot honour.
 
 ### What has to change
 

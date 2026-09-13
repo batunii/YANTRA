@@ -157,6 +157,36 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    /**
+     * Makes one of somebody else's events into one of yours — CALENDAR_PLAN.md §18.
+     *
+     * A copy, and deliberately a copy rather than a link: their event lives in an account that syncs
+     * it to every device you own, and this app has no business holding a second authority on it.
+     * What you get is a YANTRA event with the same words and the same hours, which can then do
+     * everything yours can — carry a colour, be moved, and own a page you write notes on. Theirs
+     * carries on being theirs, unchanged, because nothing here can change it.
+     */
+    fun makeItMine(item: DayItem.Device, onMade: (String) -> Unit) {
+        viewModelScope.launch {
+            val page = container.nodes.inboxList()
+            val id = container.workspaces.writerFor(page).addEvent(
+                pageId = page,
+                event = ie.shoonya.yantra.data.format.EventRef(
+                    id = "",
+                    title = item.title,
+                    time = ie.shoonya.yantra.data.format.EventTime(
+                        start = item.start,
+                        end = item.end,
+                        zone = null,
+                        allDay = item.allDay,
+                    ),
+                    location = item.location,
+                ),
+            )
+            if (id.isNotEmpty()) onMade(id)
+        }
+    }
+
     /** Hands one of somebody else's events back to the app that owns it. */
     fun intentFor(item: DayItem.Device): android.content.Intent =
         device.viewIntent(item.eventId, item.beginUtc, item.endUtc)
