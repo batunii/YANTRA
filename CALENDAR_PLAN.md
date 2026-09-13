@@ -775,3 +775,57 @@ An event the provider gives **neither** a UID nor a sync id for cannot be annota
 sheet does not offer to. It is rare — a local-only calendar with no account behind it — and the
 honest answer is to say nothing rather than to attach a note to a row number that will not exist
 next week.
+
+## 20. Turning their meeting into a task
+
+Some meetings are appointments and some are work. "Design review, 14:00" is an hour you will spend
+on the design review, and the thing you want from it afterwards is not a note — it is the same
+machinery every other piece of your work gets: a checkbox, a list, a focus session, a place in
+Today.
+
+### It composes with `for:` rather than needing anything new
+
+A sitting is already "this time is for that task" (§11). A note is already "this line is about their
+meeting" (§19). They are two tokens on one line, and the line that carries both says exactly the
+right thing:
+
+```
+- [ ] Design review ^t1
+@ 2026-09-16T14:00/PT1H ^n1 for:t1 ext:abc123@google.com
+```
+
+*Their meeting is the time set aside for my task.* Nothing in the format has to be invented, and
+everything already built comes along: the task is a real task with a page, a list and a checkbox;
+the bar says **IT IS TIME** when the meeting starts; play runs a focus session and writes `- [~]`;
+and the day still draws **one block, at their hours**.
+
+### The finding that makes it work — and that is a bug today
+
+**Every mechanism keyed on our own row's times is wrong for a line whose times are a cache.**
+`EventDao.openSittings` reads `e.start_utc`; `observeEventReminders` computes the alarm from
+`e.start_utc - reminder_min`. For an `ext:` line those columns are what the meeting said *when the
+note was written*. Move the meeting in Google Calendar and:
+
+- a reminder on a note fires at the old hour — **this is already true, today, without any of this**;
+- a task attached to it would light the bar at the old hour too.
+
+The fix is one rule, and it repairs the existing bug as well as enabling this: **when the overlay is
+read and a matched meeting's times differ from the line's cache, rewrite the line.** The cache is
+then never more than one calendar-read stale, and every existing mechanism is correct without
+knowing that a provider exists. It is a write to our own file, which is allowed; it is never a write
+to theirs, which is not.
+
+Guard: rewrite only when the times actually differ, or every read of the calendar dirties the repo
+and every sync carries an empty diff.
+
+### What the block says
+
+The meeting keeps **its own name**, because a meeting is called what it is called and your Wednesday
+afternoon should be recognisable. Where an attached task has been renamed to something else, that
+goes on the second line — the one that currently holds the time and the place. Honest in both
+directions, and no decision to make.
+
+### Open
+
+Whether the task gets a `due:` at the meeting's hour. It is the §11 tension again — a sitting is not
+a due date, and a task scheduled only by a sitting does not appear in Today.
