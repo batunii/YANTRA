@@ -31,6 +31,19 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 
     private val zone: ZoneId = ZoneId.systemDefault()
 
+    private val device = ie.shoonya.yantra.data.device.DeviceCalendarSource(container.app)
+    private val calendarChoice = ie.shoonya.yantra.data.device.CalendarChoice(container.app)
+
+    /**
+     * Asked again whenever the overlay might have changed — a permission granted, a calendar ticked.
+     *
+     * A screen cannot observe a `SharedPreferences` write or a permission grant through a Flow, and
+     * both happen while this view model is alive. One nudge covers them.
+     */
+    private val overlay = MutableStateFlow(0)
+
+    fun overlayChanged() { overlay.value++ }
+
     private val _month = MutableStateFlow(YearMonth.now())
     val month: StateFlow<YearMonth> = _month.asStateFlow()
 
@@ -114,7 +127,16 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     else container.db.propertyDao().observeDueInRange(defId, fromUtc, toUtc)
                 }
 
-            combine(events, tasks) { e, t ->
+            // The phone's own calendars, re-read when the provider changes and when the choice
+            // does. Permission is checked at the point of asking rather than remembered: it can be
+            // revoked from Settings while this screen is open, and the honest response to that is an
+            // empty overlay on the next emission rather than stale rows.
+            val theirs = combine(device.changes(), overlay) { _, _ -> Unit }
+                .map {
+                    device.instances(fromUtc, toUtc, calendarChoice.effective(device))
+                }
+
+            combine(events, tasks, theirs) { e, t, d ->
                 CalendarBucketer.bucket(
                     // The repository as a hue, by the same rule the smart lists and the widget
                     // already follow — including the part where a single open repository gets none,
@@ -126,6 +148,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     tasks = t,
                     // The title comes down with the row, joined from node — see [EventWithTitle].
                     titles = e.mapNotNull { row -> row.displayTitle?.let { row.event.nodeId to it } }.toMap(),
+                    device = d,
                     from = from,
                     toExclusive = toExclusive,
                     zone = zone,
@@ -133,6 +156,10 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Hands one of somebody else's events back to the app that owns it. */
+    fun intentFor(item: DayItem.Device): android.content.Intent =
+        device.viewIntent(item.eventId, item.beginUtc, item.endUtc)
 
     /** The day list under the grid. */
     val selectedItems: StateFlow<List<DayItem>> = combine(days, _selected) { d, day -> d[day].orEmpty() }

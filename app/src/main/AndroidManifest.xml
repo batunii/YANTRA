@@ -7,6 +7,14 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Read only, and permanently so — CALENDAR_PLAN.md §5. WRITE_CALENDAR is deliberately absent and
+      is not coming: a device event belongs to an account that already syncs it to every device you
+      own, and the strongest promise this app can make about never touching it is one the OS keeps
+      rather than one the code does.
+    -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- The completion choreography's feel channel: a LOW_TICK when a hold arms, a THUD when the
          bindu lands. Normal permission, no runtime prompt. It carries the whole reward when the
          user has animations turned off. -->

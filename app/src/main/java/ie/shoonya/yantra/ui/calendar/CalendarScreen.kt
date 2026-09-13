@@ -149,6 +149,14 @@ fun CalendarScreen(nav: NavHostController) {
     // The toggle stays, because the full-width day is the right shape for reading a busy one and
     // for the mark-then-pick gesture — see §13B.
     var railOpen by remember { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // A permission granted in Settings, or a calendar ticked there, cannot reach this screen as a
+    // Flow. Asking again on resume is the cheap and correct answer: it is one provider query.
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        vm.overlayChanged()
+        onPauseOrDispose { }
+    }
 
     Column(
         Modifier
@@ -227,7 +235,7 @@ fun CalendarScreen(nav: NavHostController) {
                 onShelf = vm::setShelf,
                 onArm = vm::arm,
                 onOpenTask = { nav.navigate(Routes.node(it)) },
-                onOpen = { openItem(it, vm, scope, nav) { t -> sheet = t } },
+                onOpen = { openItem(it, vm, scope, nav, context) { t -> sheet = t } },
                 onNewEvent = { onDay, at -> vm.select(onDay); sheet = EventSheetTarget(null, null, at) },
                 onMark = { from, to -> vm.select(from.toLocalDate()); marked = from..to },
                 onSit = vm::createSitting,
@@ -266,7 +274,7 @@ fun CalendarScreen(nav: NavHostController) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(items, key = { it.nodeId + it.sortKey }) { item ->
-                    DayRow(item) { openItem(item, vm, scope, nav) { t -> sheet = t } }
+                    DayRow(item) { openItem(item, vm, scope, nav, context) { t -> sheet = t } }
                 }
             }
         }
@@ -404,8 +412,15 @@ private fun openItem(
     vm: CalendarViewModel,
     scope: kotlinx.coroutines.CoroutineScope,
     nav: NavHostController,
+    context: android.content.Context,
     open: (EventSheetTarget) -> Unit,
 ) {
+    // Somebody else's event goes back to the app that owns it — there is nothing this one can do
+    // with it, and a sheet that could only show it would be a dead end pretending to be an editor.
+    if (item is DayItem.Device) {
+        runCatching { context.startActivity(vm.intentFor(item)) }
+        return
+    }
     if (item is DayItem.Event) {
         scope.launch {
             val event = vm.eventFor(item.nodeId) ?: return@launch
@@ -603,6 +618,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
         Text(
             when (item) {
                 is DayItem.Event -> if (item.allDay) "all day" else item.start.format(TIME)
+                is DayItem.Device -> if (item.allDay) "all day" else item.start.format(TIME)
                 is DayItem.Task -> if (item.hasTime) item.at.format(TIME) else "due"
             },
             fontFamily = YantraMono,
@@ -628,6 +644,9 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
                     item.location,
                     if (!item.allDay && item.end != item.start) "until ${item.end.format(TIME)}" else null,
                 ).joinToString(" · ")
+                // Named as somebody else's, because there is nothing you can do to it from here and
+                // a row that looked like yours would invite the attempt.
+                is DayItem.Device -> listOfNotNull("From your calendar", item.location).joinToString(" · ")
                 is DayItem.Task -> ""
             }
             if (sub.isNotEmpty()) {

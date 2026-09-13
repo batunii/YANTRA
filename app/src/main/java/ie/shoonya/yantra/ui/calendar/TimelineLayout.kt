@@ -126,6 +126,10 @@ object TimelineLayout {
                 if (!item.hasTime) return null
                 item.at to (item.at.plusMinutes((item.durationMin ?: 0).toLong()))
             }
+            is DayItem.Device -> {
+                if (item.allDay) return null
+                item.start to item.end
+            }
         }
         // Cross-day things go in the bar, the way every calendar does it: a block that began
         // yesterday has no honest top edge on today's ruler.

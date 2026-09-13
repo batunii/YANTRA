@@ -42,6 +42,33 @@ sealed interface DayItem {
         override val sortKey: Long,
     ) : DayItem
 
+    /**
+     * Somebody else's event, read from the phone's calendars — CALENDAR_PLAN.md §5.
+     *
+     * A separate kind rather than an [Event] with a flag, because the difference is not cosmetic:
+     * this one has no node, no file and no id of ours, and **nothing may write to it**. Every
+     * gesture that changes a block asks for a node id; giving this one a synthetic one that looked
+     * like the others would be inviting exactly the write the whole design forbids.
+     *
+     * [nodeId] carries the instance id only so a list can key on it, and is deliberately prefixed so
+     * anything that treats it as a node id fails loudly rather than writing somewhere strange.
+     */
+    data class Device(
+        override val nodeId: String,
+        override val title: String,
+        val start: LocalDateTime,
+        val end: LocalDateTime,
+        val allDay: Boolean,
+        val location: String?,
+        /** The owning calendar's own colour, drawn as-is: it is that calendar's identity, not ours. */
+        val color: Int?,
+        /** The event, for handing back to the app that owns it. */
+        val eventId: Long,
+        val beginUtc: Long,
+        val endUtc: Long,
+        override val sortKey: Long,
+    ) : DayItem
+
     data class Task(
         override val nodeId: String,
         override val title: String,
@@ -85,6 +112,14 @@ object CalendarBucketer {
         /** Sitting node id → the task it is for. */
         sittingOf: Map<String, String> = emptyMap(),
         /**
+         * Occurrences read from the phone's own calendars, already expanded by the provider.
+         *
+         * They arrive as instants because that is what `Instances` returns, and are put on a day in
+         * the reader's zone — which is right: somebody else's meeting happens at a moment, and the
+         * question here is which of your days that moment falls in.
+         */
+        device: List<ie.shoonya.yantra.data.device.DeviceEvent> = emptyList(),
+        /**
          * Workspace id → the hue that repository wears, when there is more than one open.
          *
          * Inheritance is resolved here rather than at the screen so it is decided in one place and
@@ -127,6 +162,42 @@ object CalendarBucketer {
                         tint = EventTint.resolve(e.color, workspaceTints[e.workspaceId]),
                         // All-day first, then by clock. A day reads top to bottom as it happens.
                         sortKey = if (e.allDay) Long.MIN_VALUE else start.toLocalTime().toNanoOfDay(),
+                    )
+                }
+                day = day.plusDays(1)
+            }
+        }
+
+        for (d in device) {
+            // **An all-day event is read in UTC, a timed one in the reader's zone**, and the
+            // difference is the whole bug class here. The provider stores all-day as UTC midnight
+            // to UTC midnight — a date wearing an instant's clothes — so resolving it locally puts
+            // a birthday at nine in the morning in Tokyo and at seven the *evening before* in New
+            // York. Half the world would see it on the wrong day, and the half that did not is the
+            // half a developer in Europe happens to test in.
+            val readIn = if (d.allDay) ZoneId.of("UTC") else zone
+            val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(d.beginUtc), readIn)
+            val end = LocalDateTime.ofInstant(Instant.ofEpochMilli(d.endUtc), readIn)
+            val lastDay = when {
+                end == start -> start.toLocalDate()
+                end.toLocalTime() == java.time.LocalTime.MIDNIGHT -> end.toLocalDate().minusDays(1)
+                else -> end.toLocalDate()
+            }
+            var day = start.toLocalDate()
+            while (!day.isAfter(lastDay)) {
+                if (!day.isBefore(from) && day.isBefore(toExclusive)) {
+                    out.getOrPut(day) { ArrayList() } += DayItem.Device(
+                        nodeId = "device:${d.instanceId}",
+                        title = d.title,
+                        start = start,
+                        end = end,
+                        allDay = d.allDay,
+                        location = d.location,
+                        color = d.color,
+                        eventId = d.eventId,
+                        beginUtc = d.beginUtc,
+                        endUtc = d.endUtc,
+                        sortKey = if (d.allDay) Long.MIN_VALUE else start.toLocalTime().toNanoOfDay(),
                     )
                 }
                 day = day.plusDays(1)

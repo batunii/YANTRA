@@ -254,6 +254,32 @@ does, which is correct.
 
 Anything you want to *own*, you make as a YANTRA event.
 
+### What it came to
+
+All five parts, and two things the plan had not said:
+
+- **An all-day event is read in UTC; a timed one in the reader's zone.** The provider stores all-day
+  as UTC midnight to UTC midnight — a date wearing an instant's clothes — so resolving it locally
+  puts a birthday at nine in the morning in Tokyo and at seven the *evening before* in New York.
+  Half the world would see it on the wrong day, and the half that would not is the half a developer
+  in Europe happens to test in. `DeviceEventBucketTest` checks every all-day case in three zones,
+  one of them west of UTC.
+- **`DayItem.Device` is its own kind, not an event with a flag.** It has no node, no file and no id
+  of ours, and every gesture that changes a block asks for a node id. Giving it a synthetic one that
+  looked like the others would be inviting exactly the write the design forbids, so `BlockChip`
+  refuses the drag outright rather than relying on a handler to decline. Its `nodeId` is prefixed
+  `device:` so anything that mistakes it fails loudly instead of writing somewhere strange.
+
+Drawn fainter than your own and in its own calendar's colour, unmapped — that colour is the other
+app's identity and recognising it is the point. A tap hands the occurrence back to the app that owns
+it, with the instance's time range, so it opens on the occurrence you were looking at rather than on
+the series' first.
+
+The picker lives in **Settings** rather than the calendar screen, because it is a device-local
+preference and that is what the screen is for. The reason is shown before the request: a dangerous
+permission asked without explanation is one people refuse permanently on behalf of a feature they
+never saw.
+
 ## 6. The calendar view
 
 - **A month grid and a day list.** Not the month/week/day trio an earlier draft promised: a week
@@ -287,7 +313,7 @@ Each phase is useful on its own, and each one's guards go in with it.
 | **2** ✅ | The calendar view — month grid and a day list, over events and `due:` tasks | First point the feature is visible |
 | **3** ✅ | Create/edit/delete an event, reminders via the existing scheduler | Reminders are already built; events just feed them |
 | **4** | Recurrence: the RRULE subset, windowed expansion, override and cancellation lines | Needs 0–3 stable underneath it |
-| **5** | Device calendar: `READ_CALENDAR`, calendar picker, `Instances` query, overlay in the view | Independent of 0–4; could be built alongside them by someone else |
+| **5** ✅ | Device calendar: `READ_CALENDAR`, calendar picker, `Instances` query, overlay in the view | Independent of 0–4; could be built alongside them by someone else |
 
 ## 8. What the index holds
 

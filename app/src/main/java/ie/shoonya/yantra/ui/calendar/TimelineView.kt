@@ -517,14 +517,25 @@ private fun BlockChip(
     // a deadline landing at an hour, so it is quiet. A sitting is time you gave to your own work:
     // the body of a task, the spine of an effort.
     val sitting = item is DayItem.Event && item.forTaskId != null
+    // Somebody else's, read from the phone's calendars — CALENDAR_PLAN.md §5. **No gesture that
+    // writes is offered on one**, and that is enforced here rather than trusted to the handlers:
+    // there is no node behind it, so there is nothing a drag could edit even if it wanted to.
+    val theirs = item as? DayItem.Device
     // The block's own colour, its workspace's, or the accent — resolved in [CalendarBucketer], so
     // by the time it arrives here it is one word or none. A coloured block replaces the *spine*
     // and tints the wash rather than flooding the fill: a day of solid colour blocks is a chart,
     // and the words on them stop being the thing you read.
     val tint = (item as? DayItem.Event)?.tint?.let {
         androidx.compose.ui.graphics.Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
+    // A device event wears the colour its own calendar gives it, unmapped. That colour is the
+    // other app's identity and the whole point of drawing it is that you recognise it.
+    } ?: theirs?.color?.let { androidx.compose.ui.graphics.Color(it) }
+    val spine = when {
+        theirs != null -> (tint ?: y.textDim).copy(alpha = 0.75f)
+        tint != null -> tint
+        isEvent || sitting -> y.accent
+        else -> y.textDim.copy(alpha = 0.5f)
     }
-    val spine = tint ?: if (isEvent || sitting) y.accent else y.textDim.copy(alpha = 0.5f)
     // Always side by side.
     //
     // An earlier version cascaded overlapping blocks once the columns got too narrow to hold a
@@ -544,12 +555,13 @@ private fun BlockChip(
     val height = HOUR_HEIGHT * ((endMin - startMin) / 60f)
     val density = LocalDensity.current
     val minutesPerPx = with(density) { 60f / HOUR_HEIGHT.toPx() }
+    val writable = onDrag != null && theirs == null
     // Never more than a third of the block, so the middle is always somewhere to grab the whole.
     val grip = minOf(RESIZE_GRIP, height / 3)
     val gripPx = with(density) { grip.toPx() }
     // Handles are for the day view, where a block is wide enough to aim at and there is a gesture
     // behind them. A week's blocks are a seventh as wide and read-only.
-    val handles = !compact && onDrag != null && height >= HANDLES_FROM
+    val handles = !compact && writable && height >= HANDLES_FROM
 
     // A soft fill and a spine down the left, no outline. An outlined block on an outlined grid is
     // two competing rectangles; the spine is what every calendar uses to say "this one is mine"
@@ -568,6 +580,10 @@ private fun BlockChip(
             .clip(RoundedCornerShape(7.dp))
             .background(
                 when {
+                    // Fainter for somebody else's: it is a backdrop your own day is drawn against,
+                    // and a provider colour at the same weight as yours would out-shout the things
+                    // you can actually do something about.
+                    theirs != null -> (tint ?: y.textDim).copy(alpha = 0.10f)
                     tint != null -> tint.copy(alpha = 0.16f)
                     isEvent && !sitting -> y.accentFill
                     else -> y.cardBg
@@ -579,7 +595,7 @@ private fun BlockChip(
                 else Modifier.border(1.5.dp, y.accent, RoundedCornerShape(7.dp))
             )
             .then(
-                if (onDrag == null) Modifier else Modifier.pointerInput(
+                if (!writable) Modifier else Modifier.pointerInput(
                     block.item.nodeId, block.startMinute, block.endMinute,
                 ) {
                     // The gesture keeps its own running state.
@@ -670,7 +686,11 @@ private fun BlockChip(
                     fontSize = if (compact) 9.sp else 12.sp,
                     fontWeight = FontWeight.W600,
                     lineHeight = if (compact) 11.sp else 14.sp,
-                    color = if (isEvent && !sitting && tint == null) y.accentText else y.textPrimary,
+                    color = when {
+                        theirs != null -> y.textMuted
+                        isEvent && !sitting && tint == null -> y.accentText
+                        else -> y.textPrimary
+                    },
                     maxLines = if (height > HOUR_HEIGHT) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
