@@ -595,6 +595,20 @@ Recurrence on sittings, dragging a sitting between days in the multi-day view, a
 layer from §11. The last is close — `focus_session` already has the times — but drawing it before
 you can make a sitting would be drawing the answer to a question nobody can ask yet.
 
+## 15. Open questions
+
+1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
+   captured with no home — the same answer quick-add gives — rather than a `calendar/` area the
+   format has no notion of. An event made from a page belongs to that page; one made from a month
+   belongs nowhere in particular, and "nowhere in particular" already had a name here.
+2. **Do events archive?** Tasks archive on a threshold after completion. An event is never completed;
+   a year-old one is just old. Left alone for now, but a workspace of standups grows forever.
+3. **Attendees are `@name` strings**, the same as `assignee`, and carry no email. Nothing is sent to
+   anybody: an attendee here is a note about who is involved, the same as an assignee on a task.
+   This is not a scheduling feature and should not look like one.
+4. **Timezone display**: does a zoned event show its own zone or the reader's? (Proposal: the
+   reader's, with the original noted when they differ.)
+
 ## 16. Colour
 
 A block can wear a colour, `col:Teal` on the line. Three decisions, and each of them was already
@@ -621,17 +635,3 @@ distinguishes nothing, and tinting every block in the app a colour nobody chose 
 
 A coloured block replaces the spine and tints the wash; it does not flood the fill. A day of solid
 colour blocks is a chart, and the words stop being the thing you read.
-
-## 15. Open questions
-
-1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing
-   captured with no home — the same answer quick-add gives — rather than a `calendar/` area the
-   format has no notion of. An event made from a page belongs to that page; one made from a month
-   belongs nowhere in particular, and "nowhere in particular" already had a name here.
-2. **Do events archive?** Tasks archive on a threshold after completion. An event is never completed;
-   a year-old one is just old. Left alone for now, but a workspace of standups grows forever.
-3. **Attendees are `@name` strings**, the same as `assignee`, and carry no email. Nothing is sent to
-   anybody: an attendee here is a note about who is involved, the same as an assignee on a task.
-   This is not a scheduling feature and should not look like one.
-4. **Timezone display**: does a zoned event show its own zone or the reader's? (Proposal: the
-   reader's, with the original noted when they differ.)
