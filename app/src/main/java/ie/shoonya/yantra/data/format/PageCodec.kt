@@ -247,6 +247,7 @@ object PageCodec {
         var series: SeriesRef? = null
         var cancelled = false
         var location: String? = null
+        var color: String? = null
         var reminder: Int? = null
         var priority: String? = null
         val labels = ArrayList<String>()
@@ -262,6 +263,7 @@ object PageCodec {
                 w.startsWith("series:") -> parseSeries(w.removePrefix("series:"))?.also { series = it } != null
                 w == "cancelled" -> { cancelled = true; true }
                 w.startsWith("loc:") -> { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }; location != null }
+                w.startsWith("col:") -> { color = w.removePrefix("col:").takeIf { it.isNotEmpty() }; color != null }
                 w.startsWith("remind:") -> { reminder = w.removePrefix("remind:").toIntOrNull(); reminder != null }
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { attendees += w.drop(1); true }
@@ -281,6 +283,7 @@ object PageCodec {
             series = series,
             cancelled = cancelled,
             location = location,
+            color = color,
             reminderMin = reminder,
             labels = labels.reversed(),      // scanned right to left
             attendees = attendees.reversed(),
@@ -536,6 +539,7 @@ object PageCodec {
         }
         if (e.cancelled) append(" cancelled")
         e.location?.let { append(" loc:").append(it) }
+        e.color?.let { append(" col:").append(it) }
         e.reminderMin?.let { append(" remind:").append(it) }
         e.priority?.let { append(" !").append(it) }
         e.labels.forEach { append(" #").append(it) }

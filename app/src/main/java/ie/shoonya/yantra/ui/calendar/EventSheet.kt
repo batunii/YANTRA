@@ -1,7 +1,10 @@
 package ie.shoonya.yantra.ui.calendar
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +120,7 @@ fun EventSheet(
         )
     }
     var location by remember { mutableStateOf(initial?.location.orEmpty()) }
+    var color by remember { mutableStateOf(initial?.color) }
     var reminder by remember { mutableStateOf(initial?.reminderMin) }
 
     var showDate by remember { mutableStateOf(false) }
@@ -211,6 +216,29 @@ fun EventSheet(
                     }
                 }
             }
+            // Offered on a sitting as much as on an appointment: a block of your own time is
+            // exactly the kind of thing somebody wants to find at a glance in a full day.
+            SheetRow("Colour") {
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Inherit first, and it is a swatch like the rest rather than a word, because
+                    // "what this looks like when I do not choose" is a colour you should be able to
+                    // see beside the ones you could choose instead.
+                    Swatch(
+                        fill = null,
+                        chosen = color == null,
+                        onClick = { color = null },
+                    )
+                    EventTint.names.forEach { name ->
+                        Swatch(
+                            fill = EventTint.storedOf(name)?.let {
+                                Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
+                            },
+                            chosen = color.equals(name, ignoreCase = true),
+                            onClick = { color = name },
+                        )
+                    }
+                }
+            }
             if (!sitting) SheetRow("Where") {
                 BasicTextField(
                     value = location,
@@ -257,6 +285,7 @@ fun EventSheet(
                                 time = time,
                                 length = length,
                                 location = location.trim(),
+                                color = color,
                                 reminder = reminder,
                             )
                         )
@@ -315,6 +344,35 @@ private fun PickerDialog(
     }
 }
 
+/**
+ * One colour to pick, or the absence of one.
+ *
+ * A hollow ring for "inherit" rather than a crossed-out circle: nothing is being disabled, the block
+ * simply takes whatever its workspace wears, and a strike-through would read as "no colour ever".
+ */
+@Composable
+private fun Swatch(fill: Color?, chosen: Boolean, onClick: () -> Unit) {
+    val y = Yantra.colors
+    Box(
+        Modifier
+            .size(26.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .then(if (chosen) Modifier.border(2.dp, y.textPrimary, CircleShape) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(if (chosen) 14.dp else 18.dp)
+                .clip(CircleShape)
+                .then(
+                    if (fill != null) Modifier.background(fill)
+                    else Modifier.border(1.5.dp, y.textDim, CircleShape)
+                ),
+        )
+    }
+}
+
 @Composable
 private fun SheetRow(label: String, onClick: (() -> Unit)? = null, value: @Composable () -> Unit) {
     val y = Yantra.colors
@@ -345,6 +403,7 @@ private fun build(
     time: LocalTime,
     length: Duration,
     location: String,
+    color: String?,
     reminder: Int?,
 ): EventRef {
     val start = if (allDay) date.atStartOfDay() else date.atTime(time)
@@ -355,6 +414,7 @@ private fun build(
         title = title,
         time = when0,
         location = location.ifEmpty { null },
+        color = color,
         reminderMin = reminder,
         raw = null,          // the line has to be re-rendered; it no longer says what it said
     )

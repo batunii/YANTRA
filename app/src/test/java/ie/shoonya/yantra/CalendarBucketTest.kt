@@ -196,6 +196,46 @@ class CalendarBucketTest {
         assertEquals("t1", item.forTaskId)
     }
 
+    // ---- colour ----
+
+    @Test
+    fun `a block with no colour of its own wears its workspace's`() {
+        val item = CalendarBucketer.bucket(
+            events = listOf(event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1")),
+            tasks = emptyList(),
+            titles = mapOf("e1" to "Design review"),
+            workspaceTints = mapOf("w1" to 999L),
+            from = LocalDate.parse("2026-09-01"),
+            toExclusive = LocalDate.parse("2026-10-01"),
+            zone = dublin,
+        ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+        assertEquals(999L, item.tint)
+    }
+
+    @Test
+    fun `a block's own colour beats the workspace's`() {
+        val teal = ie.shoonya.yantra.data.label.LabelPalette.swatches.first { it.name == "Teal" }.light
+        val item = CalendarBucketer.bucket(
+            events = listOf(
+                event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1", color = "Teal"),
+            ),
+            tasks = emptyList(),
+            titles = mapOf("e1" to "Design review"),
+            workspaceTints = mapOf("w1" to 999L),
+            from = LocalDate.parse("2026-09-01"),
+            toExclusive = LocalDate.parse("2026-10-01"),
+            zone = dublin,
+        ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+        assertEquals(teal, item.tint)
+    }
+
+    @Test
+    fun `a block with nothing anywhere has no tint, and paints in the accent`() {
+        val item = bucket(listOf(event("e1", "2026-09-11T14:00", "2026-09-11T15:00")))
+            .getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+        assertNull(item.tint)
+    }
+
     @Test
     fun `an ordinary event is not a sitting`() {
         val item = bucket(

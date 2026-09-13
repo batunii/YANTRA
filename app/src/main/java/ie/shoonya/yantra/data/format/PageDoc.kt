@@ -193,6 +193,18 @@ data class EventRef(
      * from and one of them would go stale.
      */
     val forTaskId: String? = null,
+    /**
+     * What colour it wears, by name — `col:teal`.
+     *
+     * A **name**, not a value, so the same word can be a slightly different ink on paper and at
+     * night. Storing the hex would freeze whichever theme happened to be on when it was chosen, and
+     * a light-mode colour on a dark ground is the one that goes muddy.
+     *
+     * Null means the workspace's colour, which is itself allowed to be nothing — see
+     * CALENDAR_PLAN.md §16. A word this build does not recognise is kept as written rather than
+     * dropped: an unknown colour should paint nothing, not lose somebody's line.
+     */
+    val color: String? = null,
     val series: SeriesRef? = null,
     val cancelled: Boolean = false,
     val location: String? = null,

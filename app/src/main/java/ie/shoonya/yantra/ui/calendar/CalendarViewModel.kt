@@ -116,6 +116,10 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 
             combine(events, tasks) { e, t ->
                 CalendarBucketer.bucket(
+                    // The repository as a hue, by the same rule the smart lists and the widget
+                    // already follow — including the part where a single open repository gets none,
+                    // because then it distinguishes nothing and would only tint the whole app.
+                    workspaceTints = workspaceTints(),
                     events = e.map { it.event },
                     // A sitting is drawn as its task, and tapping it should reach the task.
                     sittingOf = e.mapNotNull { row -> row.event.forNodeId?.let { row.event.nodeId to it } }.toMap(),
@@ -133,6 +137,13 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     /** The day list under the grid. */
     val selectedItems: StateFlow<List<DayItem>> = combine(days, _selected) { d, day -> d[day].orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Which hue each open repository wears, or nothing at all when only one is open. */
+    private fun workspaceTints(): Map<String, Long> {
+        val open = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+        return if (open.size < 2) emptyMap()
+        else open.associate { it.id to ie.shoonya.yantra.data.label.LabelPalette.defaultFor(it.name) }
+    }
 
     private fun dueDefId() = container.db.propertyDao().observeBuiltInDefIdByName(BuiltIns.DUE_NAME)
 
@@ -265,6 +276,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 cancelled = row.cancelled,
                 location = row.location,
                 reminderMin = row.reminderMin,
+                color = row.color,
                 // Carried, and it has to be: the sheet saves whatever it was handed, so dropping
                 // this here would quietly turn a sitting into an ordinary untitled event the first
                 // time anybody nudged its start time.

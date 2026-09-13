@@ -463,3 +463,16 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+/**
+ * An event can wear a colour — CALENDAR_PLAN.md §16.
+ *
+ * Nullable and unbackfilled, because null is not "no colour" here: it means *the workspace's*, which
+ * is a live answer that changes when the workspace does. Writing a value into every existing row
+ * would sever that inheritance for everything that already exists.
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `color` TEXT")
+    }
+}
+

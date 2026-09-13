@@ -223,6 +223,38 @@ class EventCodecTest {
         assertEquals(page, PageCodec.encode(doc))
     }
 
+    // ---- colour ----
+
+    @Test
+    fun `an event can say what colour it wears`() {
+        val e = roundTrip("@ 2026-09-13T14:00/PT1H Design review ^e1 col:Teal")
+        assertEquals("Teal", e.color)
+    }
+
+    @Test
+    fun `a colour this build does not know is kept rather than dropped`() {
+        // The word is the file's, not ours. Somebody on a newer build picking a colour we have never
+        // heard of must not lose it the first time this one opens their page.
+        val e = roundTrip("@ 2026-09-13T14:00/PT1H Design review ^e1 col:Vermilion")
+        assertEquals("Vermilion", e.color)
+    }
+
+    @Test
+    fun `no colour is the ordinary case and writes nothing`() {
+        assertNull(roundTrip("@ 2026-09-13T14:00/PT1H Design review ^e1").color)
+        assertEquals(
+            "@ 2026-09-13T14:00/PT1H Design review ^e1",
+            PageCodec.encodeBlock(parse("@ 2026-09-13T14:00/PT1H Design review ^e1")!!.copy(raw = null)),
+        )
+    }
+
+    @Test
+    fun `a sitting can wear a colour too`() {
+        val e = roundTrip("@ 2026-09-13T14:00/PT2H ^s1 for:t1 col:Plum")
+        assertEquals("t1", e.forTaskId)
+        assertEquals("Plum", e.color)
+    }
+
     // ---- not events ----
 
     @Test

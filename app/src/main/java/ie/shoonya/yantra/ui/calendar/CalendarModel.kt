@@ -2,6 +2,7 @@ package ie.shoonya.yantra.ui.calendar
 
 import ie.shoonya.yantra.data.db.DueRow
 import ie.shoonya.yantra.data.db.EventEntity
+import ie.shoonya.yantra.data.label.LabelPalette
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -33,6 +34,11 @@ sealed interface DayItem {
         val cancelled: Boolean,
         /** The task this block is time for, when it is a sitting rather than an appointment. */
         val forTaskId: String? = null,
+        /**
+         * The colour it wears, already resolved through its workspace — a stored [LabelPalette]
+         * value, swapped for its dark twin at render. Null paints it in the accent.
+         */
+        val tint: Long? = null,
         override val sortKey: Long,
     ) : DayItem
 
@@ -78,6 +84,14 @@ object CalendarBucketer {
         titles: Map<String, String>,
         /** Sitting node id → the task it is for. */
         sittingOf: Map<String, String> = emptyMap(),
+        /**
+         * Workspace id → the hue that repository wears, when there is more than one open.
+         *
+         * Inheritance is resolved here rather than at the screen so it is decided in one place and
+         * can be checked without one: an event's own colour wins, its workspace's is the fallback,
+         * and nothing at all means the app's accent.
+         */
+        workspaceTints: Map<String, Long> = emptyMap(),
         from: LocalDate,
         toExclusive: LocalDate,
         zone: ZoneId,
@@ -110,6 +124,7 @@ object CalendarBucketer {
                         repeating = e.rrule != null,
                         cancelled = false,
                         forTaskId = sittingOf[e.nodeId],
+                        tint = EventTint.resolve(e.color, workspaceTints[e.workspaceId]),
                         // All-day first, then by clock. A day reads top to bottom as it happens.
                         sortKey = if (e.allDay) Long.MIN_VALUE else start.toLocalTime().toNanoOfDay(),
                     )

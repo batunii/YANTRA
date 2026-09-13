@@ -595,6 +595,33 @@ Recurrence on sittings, dragging a sitting between days in the multi-day view, a
 layer from §11. The last is close — `focus_session` already has the times — but drawing it before
 you can make a sitting would be drawing the answer to a question nobody can ask yet.
 
+## 16. Colour
+
+A block can wear a colour, `col:Teal` on the line. Three decisions, and each of them was already
+made somewhere else in this app:
+
+**A name in the file, a value in the index.** The line says a word; the word becomes an ink at render
+time through `LabelPalette.display`. Writing the hex would freeze whichever theme was on when it was
+picked, and a light-mode colour on a dark ground is the one that goes muddy. An unrecognised word is
+**kept, not dropped** — a file written by a newer build must not lose somebody's choice the first
+time an older one opens the page — and it **inherits rather than painting nothing**, so an unknown
+colour looks ordinary instead of invisible.
+
+**The palette is the label palette.** Not a wheel. Those five were already chosen to sit on this
+paper, to stay clear of the 24°–71° arc the colour law reserves for priority and effort, and to hold
+one lightness across every hue so no swatch out-shouts another. A second set of calendar colours
+would be a second thing to learn and a second chance to collide with the accent.
+
+**Inheritance follows the hue the app already has.** No colour on the line means the workspace's, and
+the workspace's is `LabelPalette.defaultFor(name)` — the same hue the smart lists and the widget
+already use to say which repository a task came from. Following it rather than inventing a per-
+workspace preference is what keeps one workspace one colour everywhere you meet it. And, exactly as
+those do, it applies **only when more than one repository is open**: with a single one it
+distinguishes nothing, and tinting every block in the app a colour nobody chose is noise.
+
+A coloured block replaces the spine and tints the wash; it does not flood the fill. A day of solid
+colour blocks is a chart, and the words stop being the thing you read.
+
 ## 15. Open questions
 
 1. ~~**Whose event is it?**~~ **Settled: the Inbox.** It is where this app already puts a thing

@@ -517,6 +517,14 @@ private fun BlockChip(
     // a deadline landing at an hour, so it is quiet. A sitting is time you gave to your own work:
     // the body of a task, the spine of an effort.
     val sitting = item is DayItem.Event && item.forTaskId != null
+    // The block's own colour, its workspace's, or the accent — resolved in [CalendarBucketer], so
+    // by the time it arrives here it is one word or none. A coloured block replaces the *spine*
+    // and tints the wash rather than flooding the fill: a day of solid colour blocks is a chart,
+    // and the words on them stop being the thing you read.
+    val tint = (item as? DayItem.Event)?.tint?.let {
+        androidx.compose.ui.graphics.Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
+    }
+    val spine = tint ?: if (isEvent || sitting) y.accent else y.textDim.copy(alpha = 0.5f)
     // Always side by side.
     //
     // An earlier version cascaded overlapping blocks once the columns got too narrow to hold a
@@ -558,7 +566,13 @@ private fun BlockChip(
             .testTag("block:${block.item.nodeId}")
             .padding(end = 4.dp, bottom = 2.dp)
             .clip(RoundedCornerShape(7.dp))
-            .background(if (isEvent && !sitting) y.accentFill else y.cardBg)
+            .background(
+                when {
+                    tint != null -> tint.copy(alpha = 0.16f)
+                    isEvent && !sitting -> y.accentFill
+                    else -> y.cardBg
+                }
+            )
             // Picked out, so the two handles on its edges read as belonging to *this* block.
             .then(
                 if (!selected) Modifier
@@ -648,7 +662,7 @@ private fun BlockChip(
                 Modifier
                     .width(3.dp)
                     .fillMaxHeight()
-                    .background(if (isEvent || sitting) y.accent else y.textDim.copy(alpha = 0.5f)),
+                    .background(spine),
             )
             Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
                 Text(
@@ -656,7 +670,7 @@ private fun BlockChip(
                     fontSize = if (compact) 9.sp else 12.sp,
                     fontWeight = FontWeight.W600,
                     lineHeight = if (compact) 11.sp else 14.sp,
-                    color = if (isEvent && !sitting) y.accentText else y.textPrimary,
+                    color = if (isEvent && !sitting && tint == null) y.accentText else y.textPrimary,
                     maxLines = if (height > HOUR_HEIGHT) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                     textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
@@ -668,7 +682,7 @@ private fun BlockChip(
                             if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else "",
                         fontSize = 10.sp,
                         fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
-                        color = if (isEvent && !sitting) y.accentText.copy(alpha = 0.85f) else y.textMuted,
+                        color = if (isEvent && !sitting && tint == null) y.accentText.copy(alpha = 0.85f) else y.textMuted,
                     )
                 }
             }

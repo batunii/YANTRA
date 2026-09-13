@@ -360,6 +360,13 @@ data class EventEntity(
      * and the index is rebuilt from files where the `for:` token is simply a string.
      */
     @ColumnInfo(name = "for_node_id") val forNodeId: String? = null,
+    /**
+     * The colour it wears, by name. Null means whatever the workspace wears.
+     *
+     * A name rather than a value, for the reason [ie.shoonya.yantra.data.format.EventRef.color]
+     * gives: the same word is a different ink on paper and at night.
+     */
+    val color: String? = null,
     @ColumnInfo(name = "series_id") val seriesId: String? = null,
     @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
     val cancelled: Boolean = false,

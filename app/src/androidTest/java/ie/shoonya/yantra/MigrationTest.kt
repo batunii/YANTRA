@@ -18,6 +18,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_10_11
 import ie.shoonya.yantra.data.db.MIGRATION_11_12
 import ie.shoonya.yantra.data.db.MIGRATION_12_13
 import ie.shoonya.yantra.data.db.MIGRATION_13_14
+import ie.shoonya.yantra.data.db.MIGRATION_14_15
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -46,6 +47,7 @@ class MigrationTest {
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
         MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
+        MIGRATION_14_15,
     )
 
     @get:Rule
@@ -110,6 +112,35 @@ class MigrationTest {
     }
 
     // ---- per-migration data behaviour ----
+
+    /**
+     * Null is not "no colour" here — it means *the workspace's*, which is a live answer that changes
+     * when the workspace does. So nothing is backfilled: writing a value into every existing row
+     * would sever that inheritance for everything that already exists, permanently and silently.
+     */
+    @Test
+    fun migration14to15_letsAnEventWearAColourAndLeavesTheRestInheriting() {
+        helper.createDatabase(DB, 14).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('e1', '', NULL, 'event', 'Design review', 'i', 0, 0, 0, 0, 1, 1)"
+            )
+            db.execSQL(
+                "INSERT INTO event (node_id, workspace_id, start_local, end_local, all_day, " +
+                    "start_utc, end_utc, cancelled) VALUES " +
+                    "('e1', '', '2026-09-13T14:00', '2026-09-13T15:00', 0, 1000, 2000, 0)"
+            )
+        }
+        helper.runMigrationsAndValidate(DB, 15, true, *ALL).use { db ->
+            assertEquals(
+                "an event that existed before colours must still inherit",
+                1, db.count("SELECT COUNT(*) FROM event WHERE node_id = 'e1' AND color IS NULL"),
+            )
+            db.execSQL("UPDATE event SET color = 'Teal' WHERE node_id = 'e1'")
+            assertEquals(1, db.count("SELECT COUNT(*) FROM event WHERE color = 'Teal'"))
+        }
+    }
 
     @Test
     fun migration13to14_letsAnEventSayWhichTaskItIsFor() {
