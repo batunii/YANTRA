@@ -70,6 +70,10 @@ sealed interface DayItem {
          * one block for the pair, and the times it draws at are theirs.
          */
         val noteId: String? = null,
+        /** The task this meeting is the time for, when one has been made from it — §20. */
+        val taskId: String? = null,
+        /** What that task is called, when it has been renamed to something other than the meeting. */
+        val taskTitle: String? = null,
         /** The identity its sync source gave it. Null means it cannot be annotated at all. */
         val uid: String? = null,
         /**
@@ -107,6 +111,24 @@ sealed interface DayItem {
  */
 internal fun externalKey(uid: String, occurrence: String?): String =
     if (occurrence == null) uid else "$uid@$occurrence"
+
+/**
+ * When a device event is, in local terms — the one place that decision is made.
+ *
+ * **All-day is read in UTC, everything else in the reader's zone.** The provider stores an all-day
+ * event as UTC midnight to UTC midnight — a date wearing an instant's clothes — so resolving it
+ * locally puts a birthday at nine in the morning in Tokyo and at seven the evening *before* in New
+ * York. Shared by the drawing and by the cache refresh because those two disagreeing would mean a
+ * line being rewritten on every read, for ever.
+ */
+fun deviceLocalSpan(
+    d: ie.shoonya.yantra.data.device.DeviceEvent,
+    zone: ZoneId,
+): Pair<LocalDateTime, LocalDateTime> {
+    val readIn = if (d.allDay) ZoneId.of("UTC") else zone
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(d.beginUtc), readIn) to
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(d.endUtc), readIn)
+}
 
 /** Which occurrence a device event is, in the form a note writes down. */
 internal fun occurrenceOf(
@@ -238,15 +260,7 @@ object CalendarBucketer {
         val repeats = device.mapNotNull { it.uid }.groupingBy { it }.eachCount()
 
         for (d in device) {
-            // **An all-day event is read in UTC, a timed one in the reader's zone**, and the
-            // difference is the whole bug class here. The provider stores all-day as UTC midnight
-            // to UTC midnight — a date wearing an instant's clothes — so resolving it locally puts
-            // a birthday at nine in the morning in Tokyo and at seven the *evening before* in New
-            // York. Half the world would see it on the wrong day, and the half that did not is the
-            // half a developer in Europe happens to test in.
-            val readIn = if (d.allDay) ZoneId.of("UTC") else zone
-            val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(d.beginUtc), readIn)
-            val end = LocalDateTime.ofInstant(Instant.ofEpochMilli(d.endUtc), readIn)
+            val (start, end) = deviceLocalSpan(d, zone)
             val lastDay = when {
                 end == start -> start.toLocalDate()
                 end.toLocalTime() == java.time.LocalTime.MIDNIGHT -> end.toLocalDate().minusDays(1)
@@ -258,6 +272,10 @@ object CalendarBucketer {
                     out.getOrPut(day) { ArrayList() } += DayItem.Device(
                         nodeId = "device:${d.instanceId}",
                         noteId = noteFor(d)?.nodeId,
+                        taskId = noteFor(d)?.forNodeId,
+                        // `titles` already resolves a line with `for:` to the task's name — see
+                        // EventWithTitle.displayTitle — so this is the task's words, not the note's.
+                        taskTitle = noteFor(d)?.let { n -> titles[n.nodeId]?.takeIf { it != d.title } },
                         uid = d.uid,
                         repeating = (repeats[d.uid] ?: 0) > 1,
                         title = d.title,

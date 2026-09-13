@@ -825,7 +825,14 @@ afternoon should be recognisable. Where an attached task has been renamed to som
 goes on the second line — the one that currently holds the time and the place. Honest in both
 directions, and no decision to make.
 
-### Open
+### The task is due when the meeting is
 
-Whether the task gets a `due:` at the meeting's hour. It is the §11 tension again — a sitting is not
-a due date, and a task scheduled only by a sitting does not appear in Today.
+Settled: it gets a `due:` at the meeting's start, so it reaches Today and the rail's Today shelf like
+any other piece of today's work. That writes the schedule in two places — the due date and the
+meeting — and the price is paid by the refresh above: move the meeting and the due date moves with
+it, in the same pass that corrects the cache.
+
+The alternative was to leave it scheduled only by its sitting, which is one source of truth and
+invisible in Today. That would have been the tidier model and the less useful app, and the §11 gap
+behind it (a task with a sitting today is not *today's* work anywhere) is still open and worth
+closing on its own terms.

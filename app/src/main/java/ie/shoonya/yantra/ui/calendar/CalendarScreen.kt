@@ -321,6 +321,12 @@ fun CalendarScreen(nav: NavHostController) {
                 else vm.takeNotesOn(item) { id -> nav.navigate(Routes.node(id)) }
                 theirs = null
             },
+            onTask = {
+                val existing = item.taskId
+                if (existing != null) nav.navigate(Routes.node(existing))
+                else vm.makeItATask(item) { id -> nav.navigate(Routes.node(id)) }
+                theirs = null
+            },
             onDismiss = { theirs = null },
         )
     }

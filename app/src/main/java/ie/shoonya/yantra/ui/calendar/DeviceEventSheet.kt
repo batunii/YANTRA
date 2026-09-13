@@ -57,6 +57,7 @@ fun DeviceEventSheet(
     item: DayItem.Device,
     onOpenInCalendar: () -> Unit,
     onNotes: () -> Unit,
+    onTask: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val y = Yantra.colors
@@ -129,6 +130,20 @@ fun DeviceEventSheet(
                             "they move it, your notes move with it."
                     },
                     onClick = onNotes,
+                )
+                Spacer(Modifier.height(8.dp))
+                // Some meetings are appointments and some are work — CALENDAR_PLAN.md §20. This is
+                // the second kind: a task of your own, with their meeting as the time set aside for
+                // it, so the bar, the focus timer and Today all apply to it.
+                SheetAction(
+                    title = if (item.taskId != null) "Open the task" else "Make it a task",
+                    subtitle = if (item.taskId != null) {
+                        "The work you attached to this meeting."
+                    } else {
+                        "A task of your own, due when this starts, with the meeting as its time. " +
+                            "It reaches Today, the focus timer and the bar like any other."
+                    },
+                    onClick = onTask,
                 )
                 Spacer(Modifier.height(8.dp))
             }

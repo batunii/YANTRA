@@ -784,8 +784,12 @@ private fun BlockChip(
                 // While dragging, the time is the thing you need to see, so it shows at any size.
                 if (live != null || (!compact && height > hourHeight * 0.7f)) {
                     Text(
-                        "%d:%02d".format(startMin / 60, startMin % 60) +
-                            if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else "",
+                        // A meeting keeps its own name — it is called what it is called, and your
+                        // Wednesday afternoon should stay recognisable. A task made from it, if it
+                        // has since been renamed to something else, says so on the second line.
+                        theirs?.taskTitle?.takeIf { live == null }
+                            ?: ("%d:%02d".format(startMin / 60, startMin % 60) +
+                                if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else ""),
                         fontSize = 10.sp,
                         fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
                         color = if (isEvent && !sitting && tint == null) y.accentText.copy(alpha = 0.85f) else y.textMuted,
