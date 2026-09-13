@@ -14,7 +14,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,8 +66,16 @@ private const val OPEN_AT_HOUR = 7
 /** Everything snaps to the quarter hour. */
 private const val SNAP = 15
 
-/** How much of a block's foot is a resize grip rather than somewhere to grab and move it. */
+/**
+ * How much of each end of a block is a handle rather than somewhere to grab and move it.
+ *
+ * Capped at a third of the block in [BlockChip], so the middle third is always somewhere to take
+ * hold of the whole thing — on a half-hour block two 18dp ends would leave nothing to move.
+ */
 private val RESIZE_GRIP = 18.dp
+
+/** How long a block stays where a finger left it when the file never catches up. */
+private const val SETTLE_MS = 1500L
 
 private val RULER_WIDTH = 36.dp
 
@@ -81,8 +92,14 @@ fun DayTimeline(
     items: List<DayItem>,
     onOpen: (DayItem) -> Unit,
     onEmptyTap: (LocalTime) -> Unit,
-    onMove: (String, LocalDateTime) -> Unit,
-    onResize: (String, LocalDateTime) -> Unit,
+    /**
+     * This block now runs from here to here.
+     *
+     * One callback for all three grabs rather than a move and a resize, because they are one fact
+     * about a block said three ways — and two callbacks are two places for the same rule to drift
+     * apart, which is how a resize came to be lost while a move survived.
+     */
+    onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
     onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
     /** Hoisted so a drag coming from outside can scroll the day it is being dragged onto. */
     scroll: ScrollState = rememberScrollState(),
@@ -100,7 +117,33 @@ fun DayTimeline(
 ) {
     val laid = TimelineLayout.forDay(items, day)
     var drag by remember(day) { mutableStateOf<DragState?>(null) }
+    /**
+     * Where a finger just left a block, kept until the index says the same thing.
+     *
+     * Letting go used to hand the block straight back to the data, and the data is a file write and
+     * a reindex behind — so for a couple of hundred milliseconds the block sprang back to where it
+     * had been and then jumped to where you put it. Measured off a screen recording: exactly the
+     * quiet timer, every time, on every gesture.
+     *
+     * Making the write structural removed the wait; this removes the flicker, which is the part that
+     * would come back the moment a workspace grew large enough for the rebuild itself to be visible.
+     * The block simply stays where you put it until the file agrees.
+     */
+    var held by remember(day) { mutableStateOf<DragState?>(null) }
     var draft by remember(day) { mutableStateOf<IntRange?>(null) }
+
+    // Reality catching up is what ends the hold — or, failing that, a timer, because a write that
+    // never arrives must not freeze a block in a position the file does not have.
+    val landed = held?.let { h -> laid.blocks.firstOrNull { it.item.nodeId == h.nodeId } }
+    LaunchedEffect(held, landed?.startMinute, landed?.endMinute) {
+        val h = held ?: return@LaunchedEffect
+        if (landed != null && landed.startMinute == h.startMinute && landed.endMinute == h.endMinute) {
+            held = null
+            return@LaunchedEffect
+        }
+        delay(SETTLE_MS)
+        held = null
+    }
 
     // Open on the working day rather than at midnight, which is eight hours of nothing.
     //
@@ -149,11 +192,15 @@ fun DayTimeline(
                         block = block,
                         laneWidth = maxWidth,
                         drag = drag,
+                        held = held,
                         onDrag = { drag = it },
                         onCommit = { d ->
-                            val at = day.atStartOfDay().plusMinutes(d.startMinute.toLong())
-                            if (d.resizing) onResize(d.nodeId, day.atStartOfDay().plusMinutes(d.endMinute.toLong()))
-                            else onMove(d.nodeId, at)
+                            held = d
+                            onSpan(
+                                d.nodeId,
+                                day.atStartOfDay().plusMinutes(d.startMinute.toLong()),
+                                day.atStartOfDay().plusMinutes(d.endMinute.toLong()),
+                            )
                         },
                         onClick = { onOpen(block.item) },
                     )
@@ -331,18 +378,49 @@ private fun NowLine(day: LocalDate) {
  */
 data class LaneMetrics(val coords: androidx.compose.ui.layout.LayoutCoordinates, val hourPx: Float)
 
+/** Which part of a block a finger took hold of. */
+enum class Grab {
+    /** The body: the whole block travels and keeps its length. */
+    MOVE,
+
+    /** The top edge: the start moves and the end stays where it is. */
+    TOP,
+
+    /** The foot: the end moves and the start stays. */
+    BOTTOM,
+}
+
 /** What a finger is doing to a block right now, in minutes past midnight. */
-data class DragState(val nodeId: String, val startMinute: Int, val endMinute: Int, val resizing: Boolean)
+data class DragState(
+    val nodeId: String,
+    val startMinute: Int,
+    val endMinute: Int,
+    val grab: Grab,
+)
 
 /** Snapped to the quarter hour. A block that lands at 14:07 because that is where a thumb was is a block nobody chose. */
 private fun snap(minute: Int): Int = ((minute + SNAP / 2) / SNAP) * SNAP
 
+/**
+ * One block, drawn to scale, with a handle at each end.
+ *
+ * **Both boundaries move, not just the foot.** A block has two edges and a person stretching an hour
+ * has no reason to prefer one of them — pulling the top back to half past nine is the same thought as
+ * pushing the bottom out to eleven, and an earlier version could only do the second. The handles are
+ * drawn rather than implied, because an invisible grip is one you find by accident.
+ *
+ * The grabbable end is capped at a third of the block's height, so the middle third is always
+ * somewhere to take hold of the whole thing. Two fixed 18dp ends would swallow a half-hour block
+ * entirely and leave it impossible to move.
+ */
 @Composable
 private fun BlockChip(
     block: TimedBlock,
     laneWidth: Dp,
     compact: Boolean = false,
     drag: DragState? = null,
+    /** Where the finger left it, still drawn there until the file agrees. See [DayTimeline]. */
+    held: DragState? = null,
     onDrag: ((DragState?) -> Unit)? = null,
     onCommit: ((DragState) -> Unit)? = null,
     onClick: () -> Unit,
@@ -363,20 +441,28 @@ private fun BlockChip(
     // layout mode — two staggered blocks read as one smeared block, and their labels ran together.
     val width = laneWidth / block.columns
     val x = width * block.column
-    // While this block is the one being dragged, it is drawn where the finger has it rather than
-    // where the file still says it is. The write happens once, on release — a drag is dozens of
-    // frames and each write is a whole-file rewrite plus a reindex.
+    // While this block is the one being dragged it is drawn where the finger has it rather than
+    // where the file still says it is, and it stays there after the release until the file catches
+    // up. The write happens once, on release — a drag is dozens of frames and each write is a
+    // whole-file rewrite plus a reindex.
     val live = drag?.takeIf { it.nodeId == block.item.nodeId }
-    val startMin = live?.startMinute ?: block.startMinute
-    val endMin = live?.endMinute ?: block.endMinute
+    val shown = live ?: held?.takeIf { it.nodeId == block.item.nodeId }
+    val startMin = shown?.startMinute ?: block.startMinute
+    val endMin = shown?.endMinute ?: block.endMinute
     val height = HOUR_HEIGHT * ((endMin - startMin) / 60f)
     val density = LocalDensity.current
     val minutesPerPx = with(density) { 60f / HOUR_HEIGHT.toPx() }
+    // Never more than a third of the block, so the middle is always somewhere to grab the whole.
+    val grip = minOf(RESIZE_GRIP, height / 3)
+    val gripPx = with(density) { grip.toPx() }
+    // Handles are for the day view, where a block is wide enough to aim at and there is a gesture
+    // behind them. A week's blocks are a seventh as wide and read-only.
+    val handles = !compact && onDrag != null && height >= HANDLES_FROM
 
     // A soft fill and a spine down the left, no outline. An outlined block on an outlined grid is
     // two competing rectangles; the spine is what every calendar uses to say "this one is mine"
     // without drawing a second box around it.
-    Row(
+    Box(
         Modifier
             .offset(x = x, y = HOUR_HEIGHT * (startMin / 60f))
             .width(width)
@@ -390,7 +476,9 @@ private fun BlockChip(
             .clip(RoundedCornerShape(7.dp))
             .background(if (isEvent && !sitting) y.accentFill else y.cardBg)
             .then(
-                if (onDrag == null) Modifier else Modifier.pointerInput(block.item.nodeId, block.startMinute) {
+                if (onDrag == null) Modifier else Modifier.pointerInput(
+                    block.item.nodeId, block.startMinute, block.endMinute,
+                ) {
                     // The gesture keeps its own running state.
                     //
                     // Reading the composable's `drag` in here reads whatever it was when this
@@ -404,14 +492,17 @@ private fun BlockChip(
                     // The lift is what tells you the block is yours to move.
                     detectDragGesturesAfterLongPress(
                         onDragStart = { at ->
-                            val fromBottom = size.height - at.y
                             working = DragState(
                                 nodeId = block.item.nodeId,
                                 startMinute = block.startMinute,
                                 endMinute = block.endMinute,
-                                // Grabbing the foot of a block changes its length; grabbing
-                                // anywhere else moves the whole thing.
-                                resizing = fromBottom < RESIZE_GRIP.toPx(),
+                                // Either end changes the length from that end; anywhere between
+                                // them moves the whole thing.
+                                grab = when {
+                                    at.y <= gripPx -> Grab.TOP
+                                    size.height - at.y <= gripPx -> Grab.BOTTOM
+                                    else -> Grab.MOVE
+                                },
                             )
                             onDrag(working)
                         },
@@ -419,27 +510,11 @@ private fun BlockChip(
                             change.consume()
                             val current = working ?: return@detectDragGesturesAfterLongPress
                             val by = (amount.y * minutesPerPx).toInt()
-                            working = if (current.resizing) current.copy(
-                                endMinute = (current.endMinute + by)
-                                    .coerceIn(current.startMinute + TimelineLayout.MIN_BLOCK_MINUTES, TimelineLayout.MINUTES_IN_DAY)
-                            ) else {
-                                val length = current.endMinute - current.startMinute
-                                val s0 = (current.startMinute + by).coerceIn(0, TimelineLayout.MINUTES_IN_DAY - length)
-                                current.copy(startMinute = s0, endMinute = s0 + length)
-                            }
+                            working = current.stretched(by)
                             onDrag(working)
                         },
                         onDragEnd = {
-                            working?.let { current ->
-                                onCommit?.invoke(
-                                    if (current.resizing) current.copy(endMinute = snap(current.endMinute))
-                                    else {
-                                        val length = current.endMinute - current.startMinute
-                                        val s0 = snap(current.startMinute)
-                                        current.copy(startMinute = s0, endMinute = s0 + length)
-                                    }
-                                )
-                            }
+                            working?.let { onCommit?.invoke(it.snapped()) }
                             working = null
                             onDrag(null)
                         },
@@ -449,34 +524,98 @@ private fun BlockChip(
             )
             .pointerInput(block.item.nodeId) { detectTapGestures { onClick() } },
     ) {
-        Box(
-            Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .background(if (isEvent || sitting) y.accent else y.textDim.copy(alpha = 0.5f)),
-        )
-        Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
-            Text(
-                item.title,
-                fontSize = if (compact) 9.sp else 12.sp,
-                fontWeight = FontWeight.W600,
-                lineHeight = if (compact) 11.sp else 14.sp,
-                color = if (isEvent && !sitting) y.accentText else y.textPrimary,
-                maxLines = if (height > HOUR_HEIGHT) 2 else 1,
-                overflow = TextOverflow.Ellipsis,
-                textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
+        Row(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(if (isEvent || sitting) y.accent else y.textDim.copy(alpha = 0.5f)),
             )
-            // While dragging, the time is the thing you need to see, so it shows at any size.
-            if (live != null || (!compact && height > HOUR_HEIGHT * 0.7f)) {
+            Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
                 Text(
-                    "%d:%02d".format(startMin / 60, startMin % 60) +
-                        if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else "",
-                    fontSize = 10.sp,
-                    fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
-                    color = if (isEvent && !sitting) y.accentText.copy(alpha = 0.85f) else y.textMuted,
+                    item.title,
+                    fontSize = if (compact) 9.sp else 12.sp,
+                    fontWeight = FontWeight.W600,
+                    lineHeight = if (compact) 11.sp else 14.sp,
+                    color = if (isEvent && !sitting) y.accentText else y.textPrimary,
+                    maxLines = if (height > HOUR_HEIGHT) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textDecoration = if (item is DayItem.Task && item.done) TextDecoration.LineThrough else null,
                 )
+                // While dragging, the time is the thing you need to see, so it shows at any size.
+                if (live != null || (!compact && height > HOUR_HEIGHT * 0.7f)) {
+                    Text(
+                        "%d:%02d".format(startMin / 60, startMin % 60) +
+                            if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else "",
+                        fontSize = 10.sp,
+                        fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
+                        color = if (isEvent && !sitting) y.accentText.copy(alpha = 0.85f) else y.textMuted,
+                    )
+                }
             }
         }
+        if (handles) {
+            Handle(Alignment.TopCenter, lit = live?.grab == Grab.TOP)
+            Handle(Alignment.BottomCenter, lit = live?.grab == Grab.BOTTOM)
+        }
+    }
+}
+
+/** How tall a block has to be before it is worth putting two handles on. */
+private val HANDLES_FROM = 34.dp
+
+/**
+ * A boundary you can pull.
+ *
+ * A short bar rather than a circle at the corner: the whole edge moves, so the mark belongs in the
+ * middle of it. Faint until it is the one being held, because two bright bars on every block would
+ * turn a full day into a ladder.
+ */
+@Composable
+private fun BoxScope.Handle(where: Alignment, lit: Boolean) {
+    val y = Yantra.colors
+    Box(
+        Modifier
+            .align(where)
+            .padding(vertical = 2.dp)
+            .width(if (lit) 34.dp else 26.dp)
+            .height(3.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(y.accent.copy(alpha = if (lit) 1f else 0.5f)),
+    )
+}
+
+/** The same block after a finger has moved [by] minutes, whichever part of it was taken hold of. */
+private fun DragState.stretched(by: Int): DragState = when (grab) {
+    Grab.BOTTOM -> copy(
+        endMinute = (endMinute + by)
+            .coerceIn(startMinute + TimelineLayout.MIN_BLOCK_MINUTES, TimelineLayout.MINUTES_IN_DAY),
+    )
+    // A block cannot be pulled through itself: the top stops a minimum short of the foot, which is
+    // also what stops it turning inside out and rendering a negative height.
+    Grab.TOP -> copy(
+        startMinute = (startMinute + by)
+            .coerceIn(0, endMinute - TimelineLayout.MIN_BLOCK_MINUTES),
+    )
+    Grab.MOVE -> {
+        val length = endMinute - startMinute
+        val s0 = (startMinute + by).coerceIn(0, TimelineLayout.MINUTES_IN_DAY - length)
+        copy(startMinute = s0, endMinute = s0 + length)
+    }
+}
+
+/** Where it lands: the quarter hour, from whichever end was being held. */
+private fun DragState.snapped(): DragState = when (grab) {
+    Grab.BOTTOM -> copy(
+        endMinute = snap(endMinute).coerceAtLeast(startMinute + TimelineLayout.MIN_BLOCK_MINUTES),
+    )
+    Grab.TOP -> copy(
+        startMinute = snap(startMinute).coerceAtMost(endMinute - TimelineLayout.MIN_BLOCK_MINUTES),
+    )
+    Grab.MOVE -> {
+        val length = endMinute - startMinute
+        val s0 = snap(startMinute)
+        copy(startMinute = s0, endMinute = s0 + length)
     }
 }
 

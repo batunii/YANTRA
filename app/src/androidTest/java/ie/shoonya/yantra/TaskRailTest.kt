@@ -88,8 +88,7 @@ class TaskRailTest {
                     onNewEvent = { rec.newEvent = it },
                     onMark = { _, _ -> },
                     onSit = { id, at, len -> rec.sat = Triple(id, at, len); armed = null },
-                    onMove = { _, _ -> },
-                    onResize = { _, _ -> },
+                    onSpan = { _, _, _ -> },
                     modifier = Modifier.fillMaxSize(),
                 )
             }

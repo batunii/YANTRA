@@ -93,8 +93,8 @@ fun DayWithRail(
     onMark: (LocalDateTime, LocalDateTime) -> Unit,
     /** Time set aside for a task. No sheet: a sitting has no name to ask for. */
     onSit: (String, LocalDateTime, Duration) -> Unit,
-    onMove: (String, LocalDateTime) -> Unit,
-    onResize: (String, LocalDateTime) -> Unit,
+    /** A block now runs from here to here — moved, or stretched from either end. */
+    onSpan: (String, LocalDateTime, LocalDateTime) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // ---- dragging a task out of the rail and onto an hour ----
@@ -167,8 +167,7 @@ fun DayWithRail(
                 if (held != null) onSit(held.nodeId, day.atTime(at), SITTING_LENGTH)
                 else onNewEvent(at)
             },
-            onMove = onMove,
-            onResize = onResize,
+            onSpan = onSpan,
             // A drag with a task held up is that task, exactly that long — the length was the point
             // of dragging rather than tapping. With nothing held, the range is a question.
             onCreateRange = { from, to ->

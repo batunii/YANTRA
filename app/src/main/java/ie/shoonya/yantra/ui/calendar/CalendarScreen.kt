@@ -220,8 +220,7 @@ fun CalendarScreen(nav: NavHostController) {
                 onNewEvent = { at -> sheet = EventSheetTarget(null, null, at) },
                 onMark = { from, to -> marked = from..to },
                 onSit = vm::createSitting,
-                onMove = vm::moveTo,
-                onResize = vm::resizeTo,
+                onSpan = vm::spanTo,
                 modifier = Modifier.weight(1f),
             )
         }

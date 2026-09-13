@@ -276,47 +276,34 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     suspend fun titleOf(nodeId: String): String? = container.nodes.byId(nodeId)?.title
 
     /**
-     * Moves a block to a new start, keeping its length.
+     * A block now runs from [start] to [end].
      *
-     * A drag says where a thing now begins; how long it takes is not what the finger was saying, so
-     * the end travels with the start rather than being recomputed from where the thumb let go.
+     * One method for all three grabs — dragged, stretched from the top, stretched from the foot —
+     * because they are one fact about a block said three ways. It used to be two, a move and a
+     * resize, and the two drifted: a screen recording showed the resize landing a beat later than
+     * the move, and the only reason was that each had its own copy of the same write.
+     *
+     * A task carries the same fact differently: the due date is where it starts, and the length it
+     * is blocked out for is how long. Both are written, so dragging a due task on the timeline says
+     * the same thing about it that dragging an event says about an event.
      */
-    fun moveTo(nodeId: String, start: java.time.LocalDateTime) {
-        viewModelScope.launch {
-            val writer = container.workspaces.writerFor(nodeId)
-            val event = container.db.eventDao().byId(nodeId)
-            if (event != null) {
-                val length = java.time.Duration.between(
-                    java.time.LocalDateTime.parse(event.startLocal),
-                    java.time.LocalDateTime.parse(event.endLocal),
-                )
-                writer.editEvent(nodeId, PLACED) { e ->
-                    e.copy(time = e.time.copy(start = start, end = start.plus(length)), raw = null)
-                }
-            } else {
-                writer.editTask(nodeId, PLACED) { t ->
-                    t.copy(due = t.due?.movedTo(start, zone), raw = null)
-                }
-            }
-        }
-    }
-
-    /** Changes how long a block lasts. The start stays where it is. */
-    fun resizeTo(nodeId: String, end: java.time.LocalDateTime) {
+    fun spanTo(nodeId: String, start: java.time.LocalDateTime, end: java.time.LocalDateTime) {
         viewModelScope.launch {
             val writer = container.workspaces.writerFor(nodeId)
             val event = container.db.eventDao().byId(nodeId)
             if (event != null) {
                 writer.editEvent(nodeId, PLACED) { e ->
-                    e.copy(time = e.time.copy(end = maxOf(end, e.time.start)), raw = null)
+                    e.copy(time = e.time.copy(start = start, end = maxOf(end, start)), raw = null)
                 }
             } else {
                 writer.editTask(nodeId, PLACED) { t ->
                     val spec = t.due ?: return@editTask t
-                    val from = spec.startLocal(zone) ?: return@editTask t
-                    val mins = java.time.Duration.between(from, end).toMinutes()
-                    if (mins <= 0) t
-                    else t.copy(due = spec.copy(duration = java.time.Duration.ofMinutes(mins)), raw = null)
+                    val mins = java.time.Duration.between(start, end).toMinutes()
+                    t.copy(
+                        due = spec.movedTo(start, zone)
+                            .copy(duration = if (mins > 0) java.time.Duration.ofMinutes(mins) else spec.duration),
+                        raw = null,
+                    )
                 }
             }
         }
@@ -336,14 +323,6 @@ private fun ie.shoonya.yantra.data.format.DueSpec.movedTo(
 ): ie.shoonya.yantra.data.format.DueSpec = copy(
     value = ie.shoonya.yantra.data.format.DueValue.At(start.atZone(zone).toInstant()),
 )
-
-/** Where a due date sits in local time, or null for a value that has no moment. */
-private fun ie.shoonya.yantra.data.format.DueSpec.startLocal(zone: ZoneId): java.time.LocalDateTime? =
-    when (val v = value) {
-        is ie.shoonya.yantra.data.format.DueValue.At ->
-            java.time.LocalDateTime.ofInstant(v.instant, zone)
-        is ie.shoonya.yantra.data.format.DueValue.AllDay -> v.date.atStartOfDay()
-    }
 
 /**
  * Putting a block somewhere is a structural change, not a text edit.

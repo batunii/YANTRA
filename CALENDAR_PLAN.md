@@ -505,6 +505,28 @@ asked for — the task waiting there with a play button when its time comes — 
 claiming you did something you have not done yet. If a sitting passes untouched, the only trace is
 §11's empty outline on the timeline, which is a record of the plan rather than an accusation.
 
+### What a drag turned out to need
+
+Three passes, and the last two were only findable by watching a real finger:
+
+1. **A drop is structural.** A plain edit defers its reindex by 200ms, which is right for typing and
+   wrong for a calendar — every block it draws comes from the index, so the block sprang back to
+   where it was and arrived at its new hour a beat later.
+2. **The block stays where you left it until the file agrees.** Making the write immediate removed
+   the wait but not the shape of the problem: the moment a release hands the block back to the data,
+   any delay at all is a flicker. `DayTimeline` holds the committed geometry until the index says the
+   same thing, or a second and a half passes — a write that never arrives must not freeze a block in
+   a position the file does not have.
+3. **Both boundaries move.** A block has two edges and a person stretching an hour has no reason to
+   prefer one: pulling the top back is the same thought as pushing the foot out. The grabbable end is
+   capped at a third of the block's height so the middle third is always somewhere to take hold of
+   the whole thing — two fixed 18dp ends swallow a half-hour block entirely.
+
+And one shape worth keeping: **move and stretch are one callback**, `onSpan`, because they are one
+fact about a block said three ways. They were two, and the two drifted — a recording showed the
+resize landing a beat later than the move, and the only reason was that each had its own copy of the
+same write.
+
 ## 14. Build order
 
 Written before starting, because most of the cost in a feature like this is discovering an

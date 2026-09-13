@@ -48,8 +48,7 @@ class TimelineDragTest {
     )
 
     private class Recorder {
-        var moved: Pair<String, LocalDateTime>? = null
-        var resized: Pair<String, LocalDateTime>? = null
+        var span: Triple<String, LocalDateTime, LocalDateTime>? = null
         var created: Pair<LocalDateTime, LocalDateTime>? = null
         var opened: DayItem? = null
         var tapped: java.time.LocalTime? = null
@@ -64,8 +63,7 @@ class TimelineDragTest {
                     items = items,
                     onOpen = { rec.opened = it },
                     onEmptyTap = { rec.tapped = it },
-                    onMove = { id, at -> rec.moved = id to at },
-                    onResize = { id, at -> rec.resized = id to at },
+                    onSpan = { id, from, to -> rec.span = Triple(id, from, to) },
                     onCreateRange = { a, b -> rec.created = a to b },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -83,7 +81,7 @@ class TimelineDragTest {
      * drag reads as a scroll. Splitting the gesture across separate `performTouchInput` calls is
      * what lets the clock move in the middle of it.
      */
-    private fun dragOn(tag: String, byY: Float, fromBottom: Boolean = false) {
+    private fun dragOn(tag: String, byY: Float, fromBottom: Boolean = false, fromTop: Boolean = false) {
         val node = rule.onNodeWithTag(tag)
         rule.mainClock.autoAdvance = false
         var anchorY = 0f
@@ -91,7 +89,11 @@ class TimelineDragTest {
             // 92% down rather than flush against the bottom: the block carries 2dp of bottom
             // padding, so the last few pixels of the semantics node are outside the gesture node
             // and a press there starts nothing at all.
-            anchorY = if (fromBottom) height * 0.92f else centerY
+            anchorY = when {
+                fromBottom -> height * 0.92f
+                fromTop -> height * 0.04f
+                else -> centerY
+            }
             down(androidx.compose.ui.geometry.Offset(centerX, anchorY))
         }
         rule.mainClock.advanceTimeBy(1_000)          // past the long-press timeout
@@ -111,36 +113,62 @@ class TimelineDragTest {
         rule.onNodeWithTag("block:a").performClick()
         rule.waitForIdle()
         assertEquals("a", rec.opened?.nodeId)
-        assertNull("a tap must not move anything", rec.moved)
+        assertNull("a tap must not move anything", rec.span)
     }
 
     @Test
     fun aLongPressDragMovesTheBlockLater() {
         val rec = show(listOf(event("a", "09:00", "10:00")))
         dragOn("block:a", byY = 180f)          // roughly three hours down
-        val moved = rec.moved
-        assertNotNull("the drag should have committed a move", moved)
-        assertEquals("a", moved!!.first)
-        assertTrue("should have moved later, got ${moved.second}", moved.second.hour > 9)
-        assertEquals("must land on a quarter hour", 0, moved.second.minute % 15)
+        val span = rec.span
+        assertNotNull("the drag should have committed a span", span)
+        val (id, from, to) = span!!
+        assertEquals("a", id)
+        assertTrue("should have moved later, got $from", from.hour > 9)
+        assertEquals("must land on a quarter hour", 0, from.minute % 15)
+        assertEquals("a move keeps its length", 60, java.time.Duration.between(from, to).toMinutes())
     }
 
     @Test
     fun aDragUpMovesItEarlier() {
         val rec = show(listOf(event("a", "14:00", "15:00")))
         dragOn("block:a", byY = -180f)
-        assertTrue("should have moved earlier", rec.moved!!.second.hour < 14)
+        assertTrue("should have moved earlier", rec.span!!.second.hour < 14)
     }
 
     @Test
-    fun aDragOnTheFootResizesRatherThanMoves() {
+    fun aDragOnTheFootStretchesTheEndAndLeavesTheStart() {
         val rec = show(listOf(event("a", "09:00", "10:00")))
-        // Start the press at the very bottom of the block: that is the grip.
+        // Start the press at the very bottom of the block: that is the handle.
         dragOn("block:a", byY = 180f, fromBottom = true)
-        assertNull("a foot drag must not move the block", rec.moved)
-        val resized = rec.resized
-        assertNotNull("the foot should resize", resized)
-        assertTrue("should have grown, got ${resized!!.second}", resized.second.hour >= 10)
+        val (_, from, to) = rec.span ?: error("the foot should stretch the block")
+        assertEquals("the start must not move", 9, from.hour)
+        assertTrue("should have grown, got $to", to.hour >= 10)
+    }
+
+    /**
+     * The other handle, which is the new one.
+     *
+     * A block has two edges and a person stretching an hour has no reason to prefer one of them:
+     * pulling the top back to half past eight is the same thought as pushing the foot out to eleven.
+     */
+    @Test
+    fun aDragOnTheHeadStretchesTheStartAndLeavesTheEnd() {
+        val rec = show(listOf(event("a", "09:00", "11:00")))
+        dragOn("block:a", byY = -60f, fromTop = true)
+        val (_, from, to) = rec.span ?: error("the head should stretch the block")
+        assertEquals("the end must not move", 11, to.hour)
+        assertTrue("the start should have come earlier, got $from", from.isBefore(LocalDateTime.parse("2026-09-11T09:00")))
+        assertEquals("must land on a quarter hour", 0, from.minute % 15)
+    }
+
+    @Test
+    fun aHeadDragCannotPullTheBlockThroughItself() {
+        val rec = show(listOf(event("a", "09:00", "10:00")))
+        // Far past the foot. The start must stop short of it rather than invert the block.
+        dragOn("block:a", byY = 600f, fromTop = true)
+        val (_, from, to) = rec.span ?: error("expected a span")
+        assertTrue("start must stay before end, got $from..$to", from.isBefore(to))
     }
 
     @Test
