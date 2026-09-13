@@ -690,8 +690,8 @@ private fun BlockChip(
         // Hidden while selected: the big ones out on the boundaries are doing this job, and two
         // marks per edge would read as two different things you could grab.
         if (handles && !selected) {
-            Handle(Alignment.TopCenter, lit = live?.grab == Grab.TOP)
-            Handle(Alignment.BottomCenter, lit = live?.grab == Grab.BOTTOM)
+            Handle(Alignment.TopCenter, tint = spine, lit = live?.grab == Grab.TOP)
+            Handle(Alignment.BottomCenter, tint = spine, lit = live?.grab == Grab.BOTTOM)
         }
     }
 }
@@ -789,8 +789,7 @@ private fun EdgeHandles(
  * turn a full day into a ladder.
  */
 @Composable
-private fun BoxScope.Handle(where: Alignment, lit: Boolean) {
-    val y = Yantra.colors
+private fun BoxScope.Handle(where: Alignment, tint: Color, lit: Boolean) {
     Box(
         Modifier
             .align(where)
@@ -798,7 +797,9 @@ private fun BoxScope.Handle(where: Alignment, lit: Boolean) {
             .width(if (lit) 34.dp else 26.dp)
             .height(3.dp)
             .clip(RoundedCornerShape(2.dp))
-            .background(y.accent.copy(alpha = if (lit) 1f else 0.5f)),
+            // The block's own colour, not the accent: a coloured block with accent handles reads
+            // as two things stuck together rather than one thing with edges.
+            .background(tint.copy(alpha = if (lit) 1f else 0.5f)),
     )
 }
 

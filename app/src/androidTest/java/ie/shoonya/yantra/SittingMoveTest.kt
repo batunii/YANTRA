@@ -166,6 +166,32 @@ class SittingMoveTest {
         assertEquals(longer.toString(), db.eventDao().byId(sitting)?.endLocal)
     }
 
+    /**
+     * A colour picked in the sheet has to reach the file and come back through the index.
+     *
+     * Three places it could be dropped without a word — the renderer, the mapper, or the edit that
+     * rewrites the line for some other reason — so all three are checked here rather than trusted.
+     */
+    @Test
+    fun aColourReachesTheFileAndComesBack() = runBlocking {
+        val (page, _, sitting) = aSitting()
+
+        writer.editEvent(sitting, Change.STRUCTURAL) { it.copy(color = "Teal", raw = null) }
+        writer.flushIndex()
+
+        val line = store.pageFile(page).readText().lines().first { it.startsWith("@ ") }
+        assertEquals("the line must carry the colour: $line", true, line.contains("col:Teal"))
+        assertEquals("Teal", db.eventDao().byId(sitting)?.color)
+
+        // And it survives being moved, which rewrites the whole line.
+        val to = start.plusHours(2)
+        writer.editEvent(sitting, Change.STRUCTURAL) { e ->
+            e.copy(time = e.time.copy(start = to, end = to.plusHours(1)), raw = null)
+        }
+        writer.flushIndex()
+        assertEquals("a move must not lose the colour", "Teal", db.eventDao().byId(sitting)?.color)
+    }
+
     /** And the index must agree with a cold read of the files, not merely be non-empty. */
     @Test
     fun theIndexAgreesWithTheFileAfterAMove() = runBlocking {

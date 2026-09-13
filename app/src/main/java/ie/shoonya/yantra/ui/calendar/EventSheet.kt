@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -128,13 +131,35 @@ fun EventSheet(
     var lengthMenu by remember { mutableStateOf(false) }
     var reminderMenu by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.page) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = y.page,
+        // Opened all the way, never half.
+        //
+        // A partially expanded sheet is laid out at its full intrinsic height and then translated
+        // off the bottom of the screen, so the fields below the fold are not merely hidden — they
+        // are outside the window, and no amount of scrolling *inside* the sheet reaches them. That
+        // is what put Save out of reach: the sheet had grown a row at a time, and the last addition
+        // pushed the one control that ends the job past the edge. Expanded, the sheet is bounded by
+        // the screen, which is what lets the list below scroll and the buttons stay put.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        // **Save is pinned; the fields scroll.**
+        //
+        // The sheet grew a row at a time — a length, a reminder, a colour — and each one pushed the
+        // buttons further down until they were off the bottom of the screen. There is no error in
+        // that state and nothing looks broken: you pick a colour, you cannot find Save, you tap
+        // outside, and the sheet closes having done nothing. Every addition from here would have
+        // cost somebody the same half-minute, so the row that ends the job stays where it can be
+        // seen and the list above it gives instead.
+        Column(
+            Modifier.fillMaxWidth().navigationBarsPadding().imePadding(),
+        ) {
         Column(
             Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .imePadding(),
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (sitting) {
@@ -255,9 +280,10 @@ fun EventSheet(
                 )
             }
 
+        }
             Spacer(Modifier.height(8.dp))
             Row(
-                Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 0.dp).padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
