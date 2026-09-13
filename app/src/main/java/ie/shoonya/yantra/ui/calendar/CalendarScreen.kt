@@ -299,7 +299,11 @@ fun CalendarScreen(nav: NavHostController) {
             length = target.length,
             forTitle = target.forTitle,
             onOpenTask = target.event?.forTaskId?.let { id -> { nav.navigate(Routes.node(id)) } },
-            onOpenNotes = target.nodeId?.let { id -> { nav.navigate(Routes.node(id)) } },
+            // Lands on the new task, because the reason to convert is that you have something to
+            // write — and the node is the same node, so anything already written is already there.
+            onTurnIntoTask = target.nodeId?.let { id ->
+                { vm.turnIntoTask(id) { taskId -> nav.navigate(Routes.node(taskId)) } }
+            },
             onSave = { vm.save(target.nodeId, it) },
             onDelete = target.nodeId?.let { id -> { vm.delete(id) } },
             onDismiss = { sheet = null },
@@ -311,14 +315,6 @@ fun CalendarScreen(nav: NavHostController) {
             item = item,
             onOpenInCalendar = {
                 runCatching { context.startActivity(vm.intentFor(item)) }
-                theirs = null
-            },
-            // Straight into the page, because the reason to start a note is that you have
-            // something to write. An existing one opens rather than a second being made.
-            onNotes = {
-                val existing = item.noteId
-                if (existing != null) nav.navigate(Routes.node(existing))
-                else vm.takeNotesOn(item) { id -> nav.navigate(Routes.node(id)) }
                 theirs = null
             },
             onTask = {

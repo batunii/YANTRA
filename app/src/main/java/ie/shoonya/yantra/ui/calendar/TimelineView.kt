@@ -770,9 +770,9 @@ private fun BlockChip(
                     fontWeight = FontWeight.W600,
                     lineHeight = if (compact) 11.sp else 14.sp,
                     color = when {
-                        // A meeting you have written on is one you have a stake in, so it reads at
-                        // full strength rather than as backdrop.
-                        theirs?.noteId != null -> y.textPrimary
+                        // A meeting you have made work of is one you have a stake in, so it reads
+                        // at full strength rather than as backdrop.
+                        theirs?.taskId != null -> y.textPrimary
                         theirs != null -> y.textMuted
                         isEvent && !sitting && tint == null -> y.accentText
                         else -> y.textPrimary
@@ -797,10 +797,10 @@ private fun BlockChip(
                 }
             }
         }
-        // A mark for a meeting you have notes on — CALENDAR_PLAN.md §19. Small and in the corner,
-        // because it is a fact about the block rather than something to press: the whole block
-        // already opens the notes.
-        if (theirs?.noteId != null) {
+        // A mark for a meeting you have made work of — CALENDAR_PLAN.md §21. Small and in the
+        // corner, because it is a fact about the block rather than something to press: the whole
+        // block already reaches the task.
+        if (theirs?.taskId != null) {
             Box(
                 Modifier
                     .align(Alignment.TopEnd)

@@ -63,11 +63,11 @@ sealed interface DayItem {
         /** The owning calendar's own colour, drawn as-is: it is that calendar's identity, not ours. */
         val color: Int?,
         /**
-         * The note of yours about this meeting, if you have written one — CALENDAR_PLAN.md §19.
+         * The line of yours that links this meeting to a task — CALENDAR_PLAN.md §20.
          *
-         * Its presence is what makes this block reach a page of yours rather than only the app that
-         * owns the meeting. It is a **note about** their event, never a copy of it: there is exactly
-         * one block for the pair, and the times it draws at are theirs.
+         * A line **about** their meeting, never a copy of it: there is exactly one block for the
+         * pair, and the times it draws at are theirs. Its presence is also what tells the note's own
+         * line to stand aside, which is how one meeting stays one block.
          */
         val noteId: String? = null,
         /** The task this meeting is the time for, when one has been made from it — §20. */

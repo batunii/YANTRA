@@ -212,48 +212,6 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /**
-     * Starts a note about somebody else's meeting — CALENDAR_PLAN.md §19.
-     *
-     * **A note, not a copy.** The earlier version of this made a duplicate event with the same
-     * words and hours, and a duplicate is wrong twice over: the day then shows two blocks for one
-     * meeting, and the copy stays where it was put the moment the real meeting moves. This writes a
-     * line that *names* their meeting by the identity its sync source gave it, and the calendar
-     * draws one block for the pair — at their hours, always, because theirs are the real ones.
-     *
-     * The title and times on the line are a **cache**, not a claim: they are what makes the file
-     * readable by a person, and what still draws if the calendar permission is taken away or the
-     * meeting is deleted, so notes you wrote can never become unreachable.
-     */
-    fun takeNotesOn(item: DayItem.Device, onMade: (String) -> Unit) {
-        val uid = item.uid ?: return
-        viewModelScope.launch {
-            val page = container.nodes.inboxList()
-            val id = container.workspaces.writerFor(page).addEvent(
-                pageId = page,
-                event = ie.shoonya.yantra.data.format.EventRef(
-                    id = "",
-                    title = item.title,
-                    time = ie.shoonya.yantra.data.format.EventTime(
-                        start = item.start,
-                        end = item.end,
-                        zone = null,
-                        allDay = item.allDay,
-                    ),
-                    location = item.location,
-                    external = ie.shoonya.yantra.data.format.ExternalRef(
-                        uid = uid,
-                        // Named only when the meeting repeats, so a note about this Monday does not
-                        // become a note about every Monday — and a meeting that happens once is not
-                        // made to carry an occurrence it does not have.
-                        occurrence = if (item.repeating) item.start else null,
-                    ),
-                ),
-            )
-            if (id.isNotEmpty()) onMade(id)
-        }
-    }
-
-    /**
      * Makes their meeting a piece of your own work — CALENDAR_PLAN.md §20.
      *
      * Two lines and no new grammar: a task, and a line that is at once a note about their meeting
@@ -304,6 +262,62 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 afterId = taskId,
             )
             onMade(taskId)
+        }
+    }
+
+    /**
+     * Turns an event into a task — CALENDAR_PLAN.md §21.
+     *
+     * The one way to write about anything on your calendar. A task is this app's only noun that
+     * carries a document, and it already has the checkbox, the list, the focus timer and the place
+     * in Today that a second page-bearing thing would have had to grow for itself.
+     *
+     * Lossless, because a due date has carried a **duration** since §10 — which is what lets a task
+     * be drawn to scale on a timeline at all. An hour-long event is an hour-long task.
+     *
+     * **The id is kept.** `editBlock` maps a block to a block and the node is the same node, so an
+     * event that already had notes written on it comes out as a task with those notes: this upgrades
+     * what is there rather than replacing it.
+     *
+     * The one thing a task line cannot hold is a colour, and that is a real loss rather than a
+     * rounding — see §21.
+     */
+    fun turnIntoTask(nodeId: String, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val writer = container.workspaces.writerFor(nodeId)
+            var location: String? = null
+            writer.editBlock(nodeId, PLACED) { b ->
+                if (b !is ie.shoonya.yantra.data.format.EventRef) b else {
+                    location = b.location
+                    ie.shoonya.yantra.data.format.TaskRef(
+                        id = b.id,
+                        title = b.title.ifBlank { "Untitled" },
+                        due = ie.shoonya.yantra.data.format.DueSpec(
+                            value = if (b.time.allDay) {
+                                ie.shoonya.yantra.data.format.DueValue.AllDay(b.time.start.toLocalDate())
+                            } else {
+                                ie.shoonya.yantra.data.format.DueValue.At(b.time.start.atZone(zone).toInstant())
+                            },
+                            reminderMin = b.reminderMin,
+                            // An all-day task is a day, not a span: giving it twenty-four hours
+                            // would draw a block down the whole ruler for something that has no
+                            // hours of its own.
+                            duration = if (b.time.allDay) null else b.time.duration.takeIf { !it.isZero },
+                        ),
+                        labels = b.labels,
+                        priority = b.priority,
+                        indent = b.indent,
+                        raw = null,
+                    )
+                }
+            }
+            // A task has nowhere to put a place, and a page is exactly where a detail about a thing
+            // belongs. Written only when there is one, so an ordinary event does not earn a file it
+            // has no use for.
+            location?.takeIf { it.isNotBlank() }?.let { where ->
+                writer.addBlock(nodeId, ie.shoonya.yantra.data.db.NodeType.PARAGRAPH, where)
+            }
+            onDone(nodeId)
         }
     }
 

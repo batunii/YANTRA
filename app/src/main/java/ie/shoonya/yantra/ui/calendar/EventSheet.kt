@@ -102,13 +102,14 @@ fun EventSheet(
     /** Opens that task. Offered only when there is one. */
     onOpenTask: (() -> Unit)? = null,
     /**
-     * Opens the event's own page, for notes about it — CALENDAR_PLAN.md §18.
+     * Turns this event into a task — CALENDAR_PLAN.md §21.
      *
-     * Offered on an event and not on a sitting: a sitting borrows its subject from a task, and the
-     * place to write about that task is the task. Null on a new one, which has no page until it has
-     * an id.
+     * The one way to write about a thing on your calendar: a task is the app's only noun that
+     * carries a document, and it brings the checkbox, the list and the focus timer with it. Offered
+     * on an event and not on a sitting, which is already a task's time, and not on a new one, which
+     * has no line yet to convert.
      */
-    onOpenNotes: (() -> Unit)? = null,
+    onTurnIntoTask: (() -> Unit)? = null,
     onSave: (EventRef) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -212,10 +213,10 @@ fun EventSheet(
                 )
             }
 
-            // Notes about the meeting, on the meeting. A page appears the first time there is
-            // something to put in it, exactly as a task's does.
-            if (!sitting && onOpenNotes != null) {
-                SheetRow("Notes", onClick = { onOpenNotes(); onDismiss() }) {
+            // The one way to write about it — CALENDAR_PLAN.md §21. Its hours come along as the
+            // task's own, because a due date carries a duration.
+            if (!sitting && onTurnIntoTask != null) {
+                SheetRow("Turn into a task", onClick = { onTurnIntoTask(); onDismiss() }) {
                     Text("\u203a", fontSize = 16.sp, color = y.accent)
                 }
             }

@@ -836,3 +836,48 @@ The alternative was to leave it scheduled only by its sitting, which is one sour
 invisible in Today. That would have been the tidier model and the less useful app, and the §11 gap
 behind it (a task with a sitting today is not *today's* work anywhere) is still open and worth
 closing on its own terms.
+
+## 21. One way to write about a thing on your calendar
+
+There were three, which is two too many. An event owned a page (§18); somebody else's meeting could
+carry a note line (§19); and a meeting could have a task attached (§20). Three answers to one
+question — *I want to write something about this* — and which one you got depended on whose event it
+was and which button you found.
+
+**A task is the app's one noun that carries a document.** It has a page, a checkbox, a list, a focus
+timer and a place in Today. Building a second thing with a page beside it was the mistake; the
+answer is not another mechanism but the one already there.
+
+So: **anything on your calendar you want to write on becomes a task.**
+
+### Converting is lossless because a task can hold a span
+
+`DueSpec` has carried a `duration` since §10 — that is what lets a task be drawn to scale on the
+timeline in the first place. So an event maps onto a task without inventing anything:
+
+| Event | Task |
+|---|---|
+| title | title |
+| `2026-09-16T14:00/PT1H` | `due:2026-09-16T14:00` with a duration of `PT1H` |
+| an all-day span | an all-day `due:` |
+| `remind:15` | the due's own reminder offset |
+| labels, priority, indent | the same |
+| `loc:Room4` | the first line of the task's page — a task has nowhere else for it, and a page is exactly the place for a detail about a thing |
+
+**The id is kept**, because `editBlock` maps a block to a block and the node is the same node. Which
+means an event that already had notes on it comes out as a task with those notes: the conversion
+upgrades what is there rather than replacing it, and nothing anybody wrote goes missing.
+
+The one real loss is **colour**, which a task line cannot carry yet. Worth fixing by letting a task
+wear one — the timeline already tints any block it is told to — and worth saying out loud rather
+than dropping quietly.
+
+### What this removes
+
+The *offers* go, not the capability: an event can still have a page, so anything already written
+stays reachable, but the app stops proposing two ways to reach it.
+
+- The event sheet's **Notes** becomes **Turn into a task**.
+- Somebody else's meeting offers **Make it a task** and nothing else alongside opening it where it
+  lives. The `ext:` link stays — that is not a notes mechanism, it is what makes the task follow the
+  meeting when it moves (§20).

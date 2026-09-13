@@ -56,7 +56,6 @@ private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
 fun DeviceEventSheet(
     item: DayItem.Device,
     onOpenInCalendar: () -> Unit,
-    onNotes: () -> Unit,
     onTask: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -121,17 +120,6 @@ fun DeviceEventSheet(
             // Notes *about* their meeting, never a copy of it. There is one meeting and one block
             // for it; what this adds is a page of yours hanging off it.
             if (item.uid != null) {
-                SheetAction(
-                    title = if (item.noteId != null) "Open my notes" else "Take notes on this",
-                    subtitle = if (item.noteId != null) {
-                        "The page you have been writing on this meeting."
-                    } else {
-                        "A page of your own about this meeting. It stays attached to theirs — if " +
-                            "they move it, your notes move with it."
-                    },
-                    onClick = onNotes,
-                )
-                Spacer(Modifier.height(8.dp))
                 // Some meetings are appointments and some are work — CALENDAR_PLAN.md §20. This is
                 // the second kind: a task of your own, with their meeting as the time set aside for
                 // it, so the bar, the focus timer and Today all apply to it.
