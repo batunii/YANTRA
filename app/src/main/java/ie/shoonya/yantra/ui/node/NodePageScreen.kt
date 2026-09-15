@@ -211,6 +211,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val chips by vm.chips.collectAsStateWithLifecycle()
     val pageEvents by vm.events.collectAsStateWithLifecycle()
     val ownEvent by vm.ownEvent.collectAsStateWithLifecycle()
+    val meeting by vm.meeting.collectAsStateWithLifecycle()
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
     val allLabels by vm.allLabels.collectAsStateWithLifecycle()
@@ -879,6 +880,12 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // under the last line does in any editor: puts the caret on a new line. If the page
             // already ends in a blank block, that blank IS the new line, so it is focused instead
             // of another one being made.
+            // What the owning calendar knows, drawn above your own writing — CALENDAR_PLAN.md §22.
+            // Read live and never stored, so one page answers both "what is this" and "what did I
+            // write about it" without holding a copy of either.
+            meeting?.let { details ->
+                item(key = "meeting-details") { MeetingDetails(details) }
+            }
             if (isDocument) {
                 item(key = "page-tail") {
                     val tail = blocks.lastOrNull()

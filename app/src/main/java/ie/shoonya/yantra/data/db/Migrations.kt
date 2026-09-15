@@ -491,3 +491,22 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/**
+ * The link to somebody else's meeting moves to the **node** — CALENDAR_PLAN.md §22.
+ *
+ * It was on `event`, which forced a task about a meeting to be two rows: the task, and an event line
+ * to carry the link. One meeting, two things in your Inbox. On the node it is a fact about a line of
+ * any kind, and the task is the only node there is.
+ *
+ * `event.ext_uid` is left in place, unwritten. Recreating a table to drop a column that costs
+ * nothing is a real risk taken for tidiness, and anything already written through the old shape
+ * still reads.
+ */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `ext_uid` TEXT")
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `ext_start` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_node_ext` ON `node` (`ext_uid`)")
+    }
+}
+

@@ -69,6 +69,8 @@ object SystemKey {
         // Scoped by workspace: every workspace has its own Inbox and its own Today, and a global
         // constraint would reject the second one on insert.
         Index(value = ["workspace_id", "system_key"], unique = true, name = "idx_node_system_key"),
+        // Every draw of the calendar overlay asks "is there a line about this meeting".
+        Index(value = ["ext_uid"], name = "idx_node_ext"),
     ]
 )
 data class NodeEntity(
@@ -111,6 +113,17 @@ data class NodeEntity(
     @ColumnInfo(name = "canvas_w") val canvasW: Double? = null,
     @ColumnInfo(name = "canvas_h") val canvasH: Double? = null,
     @ColumnInfo(name = "system_key") val systemKey: String? = null,  // see [SystemKey]
+    /**
+     * The meeting in somebody else's calendar this line is about — CALENDAR_PLAN.md §22.
+     *
+     * On **node** rather than on `event`, because it is a fact about a line of any kind: a task
+     * about a meeting is one node, not a task plus a linking event row. The identity stored is the
+     * sync source's, never this device's row id, which is what makes it mean the same thing on
+     * another phone.
+     */
+    @ColumnInfo(name = "ext_uid") val extUid: String? = null,
+    /** Which occurrence, for a repeating meeting. Null when it has only the one. */
+    @ColumnInfo(name = "ext_start") val extStart: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,    // LWW clock for sync
     @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,

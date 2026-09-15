@@ -119,6 +119,15 @@ data class TaskRef(
      * would be noise in a file people read.
      */
     val doneAt: LocalDate? = null,
+    /**
+     * The meeting **in somebody else's calendar** this task is about — CALENDAR_PLAN.md §22.
+     *
+     * A task that carries one is a task *about* a meeting, not a copy of it: the day draws one block
+     * at the meeting's hours, the due date follows it when it moves, and the meeting's own details
+     * are read live rather than written here. What the file keeps is the minimum needed to find it
+     * again — a title, a time and this identity.
+     */
+    val external: ExternalRef? = null,
     override val raw: String? = null,
 ) : Block
 

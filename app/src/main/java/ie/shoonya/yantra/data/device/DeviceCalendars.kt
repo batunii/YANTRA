@@ -53,6 +53,21 @@ data class DeviceEvent(
 )
 
 /**
+ * What the owning calendar knows about a meeting, beyond its hours — CALENDAR_PLAN.md §22.
+ *
+ * Shown on the task's page and never written into the file, so the answer to "where are the
+ * details" and the answer to "where are my notes" are the same page, and neither is a copy.
+ */
+data class DeviceEventDetails(
+    val title: String,
+    val location: String?,
+    val description: String?,
+    val organiser: String?,
+    val calendarName: String?,
+    val guests: List<String>,
+)
+
+/**
  * The phone's own calendars, read and never written — CALENDAR_PLAN.md §5.
  *
  * **The boundary is absolute and the OS enforces it.** Only `READ_CALENDAR` is in the manifest;
@@ -181,6 +196,64 @@ class DeviceCalendarSource(private val context: Context) {
                 }.orEmpty()
         }.getOrDefault(emptyList())
     }
+
+    /**
+     * Everything the owning calendar knows about one meeting — CALENDAR_PLAN.md §22.
+     *
+     * Read on demand and never stored: this is what a task's page shows above your own writing, so
+     * the place and the guests live in exactly one place — the calendar that owns them — and cannot
+     * drift from it. Without the permission it is simply null, and the task is still a task.
+     *
+     * Matched on the identity the sync source gave the event, not on a row id, for the same reason
+     * the link is written that way: a row id means nothing on your other phone.
+     */
+    fun detailsFor(uid: String, calendarIds: Set<Long>): DeviceEventDetails? {
+        if (!hasPermission() || uid.isBlank()) return null
+        val projection = arrayOf(
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.EVENT_LOCATION,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.ORGANIZER,
+            CalendarContract.Events._ID,
+            CalendarContract.Events.CALENDAR_DISPLAY_NAME,
+        )
+        return runCatching {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI, projection,
+                "${CalendarContract.Events.UID_2445} = ? OR ${CalendarContract.Events._SYNC_ID} = ?",
+                arrayOf(uid, uid), null,
+            )?.use { c ->
+                if (!c.moveToFirst()) null else {
+                    val eventId = c.getLong(4)
+                    DeviceEventDetails(
+                        title = c.getString(0).orEmpty(),
+                        location = c.getString(1)?.takeIf { it.isNotBlank() },
+                        description = c.getString(2)?.takeIf { it.isNotBlank() },
+                        organiser = c.getString(3)?.takeIf { it.isNotBlank() },
+                        calendarName = c.getString(5)?.takeIf { it.isNotBlank() },
+                        guests = guestsOf(eventId),
+                    )
+                }
+            }
+        }.getOrNull()
+    }
+
+    /** Who is coming, as the provider lists them. Names where it has one, addresses otherwise. */
+    private fun guestsOf(eventId: Long): List<String> = runCatching {
+        context.contentResolver.query(
+            CalendarContract.Attendees.CONTENT_URI,
+            arrayOf(CalendarContract.Attendees.ATTENDEE_NAME, CalendarContract.Attendees.ATTENDEE_EMAIL),
+            "${CalendarContract.Attendees.EVENT_ID} = ?", arrayOf(eventId.toString()), null,
+        )?.use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    val who = c.getString(0)?.takeIf { it.isNotBlank() }
+                        ?: c.getString(1)?.takeIf { it.isNotBlank() }
+                    if (who != null) add(who)
+                }
+            }
+        }.orEmpty()
+    }.getOrDefault(emptyList())
 
     /**
      * Emits whenever the provider changes, so the overlay follows an edit made in the other app.

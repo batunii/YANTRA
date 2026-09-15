@@ -20,6 +20,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_12_13
 import ie.shoonya.yantra.data.db.MIGRATION_13_14
 import ie.shoonya.yantra.data.db.MIGRATION_14_15
 import ie.shoonya.yantra.data.db.MIGRATION_15_16
+import ie.shoonya.yantra.data.db.MIGRATION_16_17
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -48,7 +49,7 @@ class MigrationTest {
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
         MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
-        MIGRATION_14_15, MIGRATION_15_16,
+        MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
     )
 
     @get:Rule
@@ -113,6 +114,32 @@ class MigrationTest {
     }
 
     // ---- per-migration data behaviour ----
+
+    /**
+     * The link to somebody else's meeting moves onto the node — CALENDAR_PLAN.md §22.
+     *
+     * On `event` it forced a task about a meeting to be two rows; on the node it is a fact about a
+     * line of any kind, and a task is the only node there is.
+     */
+    @Test
+    fun migration16to17_letsAnyLineBeAboutSomebodyElsesMeeting() {
+        helper.createDatabase(DB, 16).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('t1', '', NULL, 'task', 'Design review', 'i', 0, 0, 0, 0, 1, 1)"
+            )
+        }
+        helper.runMigrationsAndValidate(DB, 17, true, *ALL).use { db ->
+            assertEquals(
+                "nothing that existed is about anything",
+                1, db.count("SELECT COUNT(*) FROM node WHERE id = 't1' AND ext_uid IS NULL"),
+            )
+            // A uid is usually an address, which is the shape that has to survive.
+            db.execSQL("UPDATE node SET ext_uid = 'abc123@google.com' WHERE id = 't1'")
+            assertEquals(1, db.count("SELECT COUNT(*) FROM node WHERE ext_uid = 'abc123@google.com'"))
+        }
+    }
 
     /**
      * A line can be a note about somebody else's meeting — CALENDAR_PLAN.md §19.

@@ -176,6 +176,7 @@ object PageCodec {
         var id = ""
         var due: DueSpec? = null
         var deadline: LocalDate? = null
+        var external: ExternalRef? = null
         var doneAt: LocalDate? = null
         var priority: String? = null
         var assignee: String? = null
@@ -196,6 +197,7 @@ object PageCodec {
                     parseDate(w.removePrefix("deadline:"))?.also { deadline = it } != null
                 w.startsWith("done:") ->
                     parseDate(w.removePrefix("done:"))?.also { doneAt = it } != null
+                w.startsWith("ext:") -> parseExternal(w.removePrefix("ext:"))?.also { external = it } != null
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { assignee = w.drop(1); true }
                 w.startsWith("#") && w.length > 1 -> { labels += w.drop(1); true }
@@ -216,6 +218,7 @@ object PageCodec {
             labels = labels.reversed(),   // scanned right to left
             assignee = assignee,
             doneAt = doneAt,
+            external = external,
             raw = raw,
         )
     }
@@ -537,6 +540,10 @@ object PageCodec {
         // Only ever written on a finished task, so an open one carries no dead token — and
         // un-finishing clears it, so a task cannot claim to have been completed on a day it was not.
         t.doneAt?.takeIf { t.status == TaskStatus.DONE }?.let { append(" done:").append(it) }
+        t.external?.let { x ->
+            append(" ext:").append(x.uid)
+            x.occurrence?.let { append('@').append(renderLocal(it)) }
+        }
         t.priority?.let { append(" !").append(it) }
         t.labels.forEach { append(" #").append(it) }
         t.assignee?.let { append(" @").append(it) }

@@ -137,9 +137,9 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 }
 
             combine(events, tasks, theirs) { e, t, d ->
-                // Before drawing, not after: a block drawn from a stale cache would be visibly
+                // Before drawing, not after: a block drawn from a stale due date would be visibly
                 // wrong for one frame and then jump.
-                reconcile(e, d)
+                reconcile(t, d)
                 CalendarBucketer.bucket(
                     // The repository as a hue, by the same rule the smart lists and the widget
                     // already follow — including the part where a single open repository gets none,
@@ -161,14 +161,13 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     /**
-     * Keeps a note's cached times in step with the meeting it is about — CALENDAR_PLAN.md §20.
+     * Keeps a task's due date in step with the meeting it is about — CALENDAR_PLAN.md §20, §22.
      *
-     * **Everything in this app that acts on a time reads our own row.** The bar's sittings query
-     * reads `event.start_utc`; the reminder scheduler computes the alarm from `start_utc` minus the
-     * offset. For a line whose times are a *cache* of somebody else's meeting, those columns say
-     * what the meeting said when the note was written — so moving the meeting in the other calendar
-     * made a reminder fire at the old hour, and would make the bar announce a task at the old hour
-     * too. That was already true before any of this, quietly.
+     * **Everything in this app that acts on a time reads our own row.** Today, the rail, the widget
+     * and the reminder scheduler all read the task's `due:`. For a task about somebody else's
+     * meeting, that date is what the meeting said when the task was made — so moving the meeting in
+     * the other calendar would leave the task due at the old hour, in Today on the wrong day, with
+     * an alarm to match.
      *
      * One rule repairs all of it: when the meeting has moved, rewrite the line. Nothing else then
      * has to know a provider exists. It is a write to **our** file and never to theirs — there is no
@@ -178,51 +177,45 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
      * actual difference, because rewriting on every read would dirty the repository each time the
      * calendar is looked at and fill somebody's history with empty diffs.
      */
-    private fun reconcile(ours: List<ie.shoonya.yantra.data.db.EventWithTitle>, theirs: List<ie.shoonya.yantra.data.device.DeviceEvent>) {
+    private fun reconcile(
+        tasks: List<ie.shoonya.yantra.data.db.DueRow>,
+        theirs: List<ie.shoonya.yantra.data.device.DeviceEvent>,
+    ) {
         if (theirs.isEmpty()) return
         val byKey = theirs.mapNotNull { d -> d.uid?.let { externalKey(it, occurrenceOf(d, zone)) to d } }.toMap()
         val byUid = theirs.mapNotNull { d -> d.uid?.let { it to d } }.toMap()
-        for (row in ours) {
-            val uid = row.event.extUid ?: continue
-            val d = byKey[externalKey(uid, row.event.extStart)] ?: byUid[uid] ?: continue
+        for (t in tasks) {
+            val uid = t.extUid ?: continue
+            val d = byKey[externalKey(uid, t.extStart)] ?: byUid[uid] ?: continue
             val (start, end) = deviceLocalSpan(d, zone)
-            val titleMoved = d.title != row.title
-            if (!titleMoved && row.event.startLocal == start.toString() && row.event.endLocal == end.toString()) continue
+            val startMillis = start.atZone(zone).toInstant().toEpochMilli()
+            val minutes = java.time.Duration.between(start, end).toMinutes().toInt().takeIf { it > 0 }
+            // Only an actual difference. Rewriting on every read would dirty the repository each
+            // time the calendar is looked at and fill somebody's history with empty diffs.
+            if (t.dueMillis == startMillis && t.durationMin == minutes) continue
             viewModelScope.launch {
-                val writer = container.workspaces.writerFor(row.event.nodeId)
-                writer.editEvent(row.event.nodeId, PLACED) { e ->
-                    e.copy(
-                        // The cached words follow too: a meeting that was renamed should not leave
-                        // a file describing the old one.
-                        title = d.title,
-                        time = e.time.copy(start = start, end = end, allDay = d.allDay),
+                container.workspaces.writerFor(t.nodeId).editTask(t.nodeId, PLACED) { task ->
+                    val due = task.due ?: return@editTask task
+                    task.copy(
+                        due = due.movedTo(start, zone).copy(duration = minutes?.let { java.time.Duration.ofMinutes(it.toLong()) }),
                         raw = null,
                     )
-                }
-                // A task made from the meeting is due when the meeting is, so it moves with it —
-                // that is the price of writing the schedule in two places, paid here.
-                row.event.forNodeId?.let { taskId ->
-                    container.workspaces.writerFor(taskId).editTask(taskId, PLACED) { t ->
-                        val due = t.due ?: return@editTask t
-                        t.copy(due = due.movedTo(start, zone), raw = null)
-                    }
                 }
             }
         }
     }
 
     /**
-     * Makes their meeting a piece of your own work — CALENDAR_PLAN.md §20.
+     * Makes their meeting a piece of your own work — CALENDAR_PLAN.md §20, §22.
      *
-     * Two lines and no new grammar: a task, and a line that is at once a note about their meeting
-     * (`ext:`) and the time set aside for that task (`for:`). *Their meeting is the time for my
-     * task.* Everything already built then applies — the task has a checkbox, a list and a page,
-     * the bar says it is time when the meeting starts, and play runs a focus session against it —
-     * while the day still draws **one block, at their hours**.
+     * **One node.** A task, carrying `ext:` — that is the whole of it. It used to be two, a task
+     * plus an event line to link them, which put one meeting in your Inbox twice; the link belongs
+     * on the task and now sits there.
      *
-     * The task is **due when the meeting is**, which is what makes it appear in Today rather than
-     * only on the day it happens to fall on. That writes the schedule in two places, and the price
-     * is paid in [reconcile]: move the meeting and the due date moves with it.
+     * The file keeps a title, a time and an identity, which is the minimum needed to find the
+     * meeting again and to draw the block when the calendar cannot be read. Everything else — the
+     * place, the description, the guests — stays in the calendar that owns it and is read live onto
+     * the task's page, so there is nothing to copy and nothing to drift.
      */
     fun makeItATask(item: DayItem.Device, onMade: (String) -> Unit) {
         val uid = item.uid ?: return
@@ -234,33 +227,23 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             container.workspaces.writerFor(taskId).editTask(taskId, PLACED) { t ->
                 t.copy(
                     due = ie.shoonya.yantra.data.format.DueSpec(
-                        value = ie.shoonya.yantra.data.format.DueValue.At(
-                            item.start.atZone(zone).toInstant(),
-                        ),
+                        value = if (item.allDay) {
+                            ie.shoonya.yantra.data.format.DueValue.AllDay(item.start.toLocalDate())
+                        } else {
+                            ie.shoonya.yantra.data.format.DueValue.At(item.start.atZone(zone).toInstant())
+                        },
+                        duration = if (item.allDay) null
+                        else java.time.Duration.between(item.start, item.end).takeIf { !it.isZero },
+                    ),
+                    external = ie.shoonya.yantra.data.format.ExternalRef(
+                        uid = uid,
+                        // Named only when the meeting repeats, so a task about this Monday does not
+                        // become a task about every Monday.
+                        occurrence = if (item.repeating) item.start else null,
                     ),
                     raw = null,
                 )
             }
-            writer.addEvent(
-                pageId = page,
-                event = ie.shoonya.yantra.data.format.EventRef(
-                    id = "",
-                    title = item.title,
-                    time = ie.shoonya.yantra.data.format.EventTime(
-                        start = item.start,
-                        end = item.end,
-                        zone = null,
-                        allDay = item.allDay,
-                    ),
-                    location = item.location,
-                    forTaskId = taskId,
-                    external = ie.shoonya.yantra.data.format.ExternalRef(
-                        uid = uid,
-                        occurrence = if (item.repeating) item.start else null,
-                    ),
-                ),
-                afterId = taskId,
-            )
             onMade(taskId)
         }
     }

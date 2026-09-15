@@ -881,3 +881,41 @@ stays reachable, but the app stops proposing two ways to reach it.
 - Somebody else's meeting offers **Make it a task** and nothing else alongside opening it where it
   lives. The `ext:` link stays — that is not a notes mechanism, it is what makes the task follow the
   meeting when it moves (§20).
+
+## 22. One node, and the meeting's own details inside it
+
+§21 settled that a task is the thing you write on. It left one duplication standing: *making* a task
+from somebody else's meeting wrote **two** nodes — a task, and an event line carrying `ext:` to link
+it. One meeting, two rows in the Inbox. That is the second copy, and it has no business existing.
+
+**The link belongs on the task.** `ext:` moves from the event line onto the task line:
+
+```
+- [ ] Design review ^t1 due:2026-09-16T14:00 ext:abc123@google.com
+```
+
+One node. It is a task in every respect — checkbox, list, page, focus, Today — and it is *about*
+their meeting, so the day still draws **one block at their hours** and the due date still follows the
+meeting when it moves.
+
+The link is stored on **`node`** rather than on `event`, because it is now a fact about a line of any
+kind rather than about an event row. `event.ext_uid` stays in the schema, unwritten, rather than
+being dropped: a table recreate is a real risk taken for a column that costs nothing, and anything
+already written through the old shape still reads.
+
+### The details are shown, not copied
+
+The meeting's place, description and guests are **read live from the provider and drawn at the top of
+the task's page**, marked as theirs and not editable. Nothing is copied into the file, so nothing can
+drift, and the answer to "where are the details" is the same as the answer to "where are my notes" —
+the one page you already opened.
+
+Below them is the page, which is yours and ordinary.
+
+Two consequences worth stating:
+
+- **Without the calendar permission the details are simply absent**, and the task is still a task.
+  The overlay has always been an addition rather than a precondition, and this keeps that true.
+- **What the file holds is a title, a time and an identity.** Those are the minimum needed to find
+  the meeting again and to draw the block when the provider cannot be read; everything else stays
+  where it is, in the calendar that owns it.

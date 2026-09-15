@@ -108,6 +108,11 @@ object PageMapper {
                 done = block is TaskRef && block.status == TaskStatus.DONE,
                 inProgress = block is TaskRef && block.status == TaskStatus.IN_PROGRESS,
                 indent = block.indent,
+                // A line of any kind may be about somebody else's meeting — CALENDAR_PLAN.md §22.
+                // A task carries it now; an event line still may, from before the link moved here.
+                extUid = (block as? TaskRef)?.external?.uid ?: (block as? EventRef)?.external?.uid,
+                extStart = ((block as? TaskRef)?.external ?: (block as? EventRef)?.external)
+                    ?.occurrence?.toString(),
                 createdAt = ts,
                 updatedAt = ts,
             )

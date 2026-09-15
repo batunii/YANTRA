@@ -79,6 +79,9 @@ data class DueRow(
     val hasTime: Boolean,
     /** Minutes the task is blocked out for, or null for a moment. Drawn to scale on a timeline. */
     val durationMin: Int? = null,
+    /** The meeting this task is about, when it is about one — CALENDAR_PLAN.md §22. */
+    val extUid: String? = null,
+    val extStart: String? = null,
 )
 
 @Dao
@@ -451,7 +454,8 @@ interface PropertyDao {
         """
         SELECT pv.node_id AS nodeId, n.title AS title, n.done AS done,
                pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime,
-               pv.v_duration_min AS durationMin
+               pv.v_duration_min AS durationMin,
+               n.ext_uid AS extUid, n.ext_start AS extStart
           FROM property_value pv JOIN node n ON n.id = pv.node_id
          WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL
            AND pv.v_date >= :fromUtc AND pv.v_date < :toUtc

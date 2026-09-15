@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -174,6 +175,25 @@ class NodePageViewModel(
      */
     val blocks: StateFlow<List<NodeEntity>> =
         nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * The meeting this page is about, read live from the calendar that owns it — §22.
+     *
+     * Never stored. The place, the guests and the description stay in the calendar and are fetched
+     * on the way past, so the page answers "what is this" and "what did I write" without holding a
+     * second copy of either. Null without the permission, and the page is an ordinary page.
+     */
+    val meeting: StateFlow<ie.shoonya.yantra.data.device.DeviceEventDetails?> =
+        node.map { n -> n?.extUid }
+            .distinctUntilChanged()
+            .map { uid ->
+                if (uid == null) null else withContext(Dispatchers.IO) {
+                    val source = ie.shoonya.yantra.data.device.DeviceCalendarSource(container.app)
+                    val chosen = ie.shoonya.yantra.data.device.CalendarChoice(container.app)
+                    source.detailsFor(uid, chosen.effective(source))
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /**
      * This page's own event, when the page *is* one.

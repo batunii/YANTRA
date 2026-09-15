@@ -196,7 +196,13 @@ object CalendarBucketer {
         //    should be one block. Drawing both is the duplicate-and-drift failure this design
         //    exists to avoid: two blocks at the same hour, and the copy staying put the moment the
         //    real meeting moves.
-        val notes = events.mapNotNull { e -> e.extUid?.let { externalKey(it, e.extStart) to e } }.toMap()
+        // Lines of ours about somebody else's meetings, by the meeting — CALENDAR_PLAN.md §22. A
+        // **task** carries the link now, so this is mostly tasks; an event line may still carry one
+        // from before the link moved onto the node, and both are looked up the same way.
+        val linked: Map<String, Pair<String, String?>> = buildMap {
+            tasks.forEach { t -> t.extUid?.let { put(externalKey(it, t.extStart), t.nodeId to t.title) } }
+            events.forEach { e -> e.extUid?.let { put(externalKey(it, e.extStart), e.nodeId to titles[e.nodeId]) } }
+        }
 
         /**
          * The note about one occurrence, if there is one.
@@ -206,14 +212,14 @@ object CalendarBucketer {
          * never match if the occurrence key were the only one asked for. Trying the specific key
          * first is what keeps "the sixteenth" from being answered by "every Monday".
          */
-        fun noteFor(d: ie.shoonya.yantra.data.device.DeviceEvent): EventEntity? {
+        fun noteFor(d: ie.shoonya.yantra.data.device.DeviceEvent): Pair<String, String?>? {
             val uid = d.uid ?: return null
-            return notes[externalKey(uid, occurrenceOf(d, zone))] ?: notes[uid]
+            return linked[externalKey(uid, occurrenceOf(d, zone))] ?: linked[uid]
         }
 
         // Which notes have a meeting on screen to be drawn *as*. Computed before anything is
         // emitted, because the note's own line has to know whether to stand aside.
-        val annotated = device.mapNotNullTo(HashSet()) { noteFor(it)?.nodeId }
+        val annotated = device.mapNotNullTo(HashSet()) { noteFor(it)?.first }
 
         for (e in events) {
             val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull() ?: continue
@@ -271,11 +277,10 @@ object CalendarBucketer {
                 if (!day.isBefore(from) && day.isBefore(toExclusive)) {
                     out.getOrPut(day) { ArrayList() } += DayItem.Device(
                         nodeId = "device:${d.instanceId}",
-                        noteId = noteFor(d)?.nodeId,
-                        taskId = noteFor(d)?.forNodeId,
-                        // `titles` already resolves a line with `for:` to the task's name — see
-                        // EventWithTitle.displayTitle — so this is the task's words, not the note's.
-                        taskTitle = noteFor(d)?.let { n -> titles[n.nodeId]?.takeIf { it != d.title } },
+                        // One node, not two: the line about this meeting *is* the task.
+                        noteId = noteFor(d)?.first,
+                        taskId = noteFor(d)?.first,
+                        taskTitle = noteFor(d)?.second?.takeIf { it.isNotBlank() && it != d.title },
                         uid = d.uid,
                         repeating = (repeats[d.uid] ?: 0) > 1,
                         title = d.title,
@@ -295,6 +300,9 @@ object CalendarBucketer {
         }
 
         for (t in tasks) {
+            // A task about a meeting that is on screen is drawn *as* that meeting, above — one
+            // meeting, one block. Its own due date is what draws when the meeting cannot be read.
+            if (t.nodeId in annotated) continue
             val at = LocalDateTime.ofInstant(Instant.ofEpochMilli(t.dueMillis), zone)
             val day = at.toLocalDate()
             if (day.isBefore(from) || !day.isBefore(toExclusive)) continue

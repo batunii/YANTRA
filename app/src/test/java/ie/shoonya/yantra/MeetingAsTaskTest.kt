@@ -43,104 +43,102 @@ class MeetingAsTaskTest {
     // ---- the line ----
 
     @Test
-    fun `one line is both a note and a sitting`() {
-        val line = "@ 2026-09-16T14:00/PT1H Design review ^n1 for:t1 ext:abc@google.com"
-        val e = PageCodec.decodeBlock(line) as EventRef
-        assertEquals("t1", e.forTaskId)
-        assertEquals("abc@google.com", e.external!!.uid)
-        assertEquals("and it round-trips", line, PageCodec.encodeBlock(e.copy(raw = null)))
+    fun `one line is a task about a meeting`() {
+        // One node. It used to take two — a task, plus an event line to link it — which put one
+        // meeting in the Inbox twice.
+        val line = "- [ ] Design review ^t1 due:2026-09-16T14:00/PT1H ext:abc@google.com"
+        val t = PageCodec.decodeBlock(line) as ie.shoonya.yantra.data.format.TaskRef
+        assertEquals("abc@google.com", t.external!!.uid)
+        assertEquals("and it round-trips", line, PageCodec.encodeBlock(t.copy(raw = null)))
     }
 
     // ---- the day ----
 
-    private fun bucket(ours: List<EventEntity>, device: List<DeviceEvent>, titles: Map<String, String>) =
+    private fun bucket(
+        tasks: List<ie.shoonya.yantra.data.db.DueRow> = emptyList(),
+        device: List<DeviceEvent> = emptyList(),
+    ) =
         CalendarBucketer.bucket(
-            events = ours,
-            tasks = emptyList(),
-            titles = titles,
+            events = emptyList(),
+            tasks = tasks,
+            titles = emptyMap(),
             device = device,
             from = LocalDate.parse("2026-09-01"),
             toExclusive = LocalDate.parse("2026-10-01"),
             zone = dublin,
         )
 
-    private fun lineFor(taskId: String?, title: String = "Design review") = EventEntity(
-        nodeId = "n1",
-        startLocal = "2026-09-16T14:00", endLocal = "2026-09-16T15:00", allDay = false,
-        startUtc = at("2026-09-16T14:00"), endUtc = at("2026-09-16T15:00"),
-        forNodeId = taskId,
-        extUid = "abc@google.com",
-    )
+    /** The one node: a task that is *about* their meeting — CALENDAR_PLAN.md §22. */
+    private fun taskAbout(title: String = "Design review", occurrence: String? = null) =
+        ie.shoonya.yantra.data.db.DueRow(
+            nodeId = "t1",
+            title = title,
+            done = false,
+            dueMillis = at("2026-09-16T14:00"),
+            hasTime = true,
+            durationMin = 60,
+            extUid = "abc@google.com",
+            extStart = occurrence,
+        )
 
     private val day = LocalDate.parse("2026-09-16")
 
     @Test
-    fun `a meeting with a task on it is still one block, and reaches the task`() {
-        val items = bucket(
-            ours = listOf(lineFor("t1")),
-            device = listOf(theirs()),
-            titles = mapOf("n1" to "Design review"),
-        ).getValue(day)
+    fun `a meeting and the task about it are one block`() {
+        // The whole point of §22: one node, and one thing drawn. Two would be the Inbox holding a
+        // meeting twice, which is what this replaced.
+        val items = bucket(tasks = listOf(taskAbout()), device = listOf(theirs())).getValue(day)
         assertEquals("one meeting is one block", 1, items.size)
-        val block = items.single() as DayItem.Device
-        assertEquals("t1", block.taskId)
-        assertEquals("n1", block.noteId)
+        assertEquals("t1", (items.single() as DayItem.Device).taskId)
     }
 
     @Test
-    fun `the meeting keeps its own name`() {
-        // A renamed task says so on the second line; the block is still called what the meeting is
-        // called, because that is what makes a Wednesday afternoon recognisable.
-        val block = bucket(
-            ours = listOf(lineFor("t1")),
-            device = listOf(theirs()),
-            titles = mapOf("n1" to "Prepare the Q3 numbers"),
-        ).getValue(day).single() as DayItem.Device
+    fun `the meeting keeps its own name, and a renamed task says so beside it`() {
+        val block = bucket(tasks = listOf(taskAbout("Prepare the Q3 numbers")), device = listOf(theirs()))
+            .getValue(day).single() as DayItem.Device
         assertEquals("Design review", block.title)
         assertEquals("Prepare the Q3 numbers", block.taskTitle)
     }
 
     @Test
     fun `a task named the same as its meeting says nothing twice`() {
-        val block = bucket(
-            ours = listOf(lineFor("t1")),
-            device = listOf(theirs()),
-            titles = mapOf("n1" to "Design review"),
-        ).getValue(day).single() as DayItem.Device
+        val block = bucket(tasks = listOf(taskAbout()), device = listOf(theirs()))
+            .getValue(day).single() as DayItem.Device
         assertNull("no second line when it would repeat the first", block.taskTitle)
     }
 
     @Test
-    fun `a meeting with only notes has no task`() {
-        val block = bucket(
-            ours = listOf(lineFor(taskId = null)),
-            device = listOf(theirs()),
-            titles = mapOf("n1" to "Design review"),
-        ).getValue(day).single() as DayItem.Device
-        assertNull(block.taskId)
-        assertEquals("n1", block.noteId)
+    fun `a task whose meeting cannot be read still draws, from its own due date`() {
+        // Permission off, or the meeting deleted. It is a task; it does not vanish.
+        val items = bucket(tasks = listOf(taskAbout())).getValue(day)
+        assertEquals(1, items.size)
+        assertEquals("t1", items.single().nodeId)
+    }
+
+    @Test
+    fun `a meeting nobody has made work of has no task`() {
+        assertNull((bucket(device = listOf(theirs())).getValue(day).single() as DayItem.Device).taskId)
     }
 
     // ---- the cache, and what reads it ----
 
     @Test
     fun `a moved meeting is a difference the refresh can see`() {
-        // The comparison reconcile makes. It has to be against the *same* reading of a device event
-        // the drawing uses, or a line would be rewritten on every read of the calendar for ever.
-        val cached = lineFor("t1")
+        // The comparison reconcile makes, against the *same* reading of a device event the drawing
+        // uses — the two disagreeing would rewrite a line on every read of the calendar for ever.
         val moved = theirs(begin = "2026-09-16T16:00", end = "2026-09-16T17:00")
-        val (start, end) = deviceLocalSpan(moved, dublin)
-        assertEquals("2026-09-16T16:00", start.toString())
-        assertEquals("2026-09-16T17:00", end.toString())
-        assertEquals(false, cached.startLocal == start.toString())
+        val (start, _) = deviceLocalSpan(moved, dublin)
+        assertEquals(false, taskAbout().dueMillis == start.atZone(dublin).toInstant().toEpochMilli())
     }
 
     @Test
     fun `an unmoved meeting is not a difference, so nothing is rewritten`() {
-        val cached = lineFor("t1")
         val (start, end) = deviceLocalSpan(theirs(), dublin)
-        assertEquals(cached.startLocal, start.toString())
-        assertEquals(cached.endLocal, end.toString())
+        assertEquals(taskAbout().dueMillis, start.atZone(dublin).toInstant().toEpochMilli())
+        assertEquals(
+            taskAbout().durationMin,
+            java.time.Duration.between(start, end).toMinutes().toInt(),
+        )
     }
 
     @Test
