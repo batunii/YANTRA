@@ -59,6 +59,10 @@ data class DeviceEvent(
  * details" and the answer to "where are my notes" are the same page, and neither is a copy.
  */
 data class DeviceEventDetails(
+    /** The event, for handing back to the app that owns it. */
+    val eventId: Long,
+    val beginUtc: Long,
+    val endUtc: Long,
     val title: String,
     val location: String?,
     val description: String?,
@@ -207,7 +211,7 @@ class DeviceCalendarSource(private val context: Context) {
      * Matched on the identity the sync source gave the event, not on a row id, for the same reason
      * the link is written that way: a row id means nothing on your other phone.
      */
-    fun detailsFor(uid: String, calendarIds: Set<Long>): DeviceEventDetails? {
+    fun detailsFor(uid: String, begin: Long, end: Long): DeviceEventDetails? {
         if (!hasPermission() || uid.isBlank()) return null
         val projection = arrayOf(
             CalendarContract.Events.TITLE,
@@ -226,6 +230,9 @@ class DeviceCalendarSource(private val context: Context) {
                 if (!c.moveToFirst()) null else {
                     val eventId = c.getLong(4)
                     DeviceEventDetails(
+                        eventId = eventId,
+                        beginUtc = begin,
+                        endUtc = end,
                         title = c.getString(0).orEmpty(),
                         location = c.getString(1)?.takeIf { it.isNotBlank() },
                         description = c.getString(2)?.takeIf { it.isNotBlank() },

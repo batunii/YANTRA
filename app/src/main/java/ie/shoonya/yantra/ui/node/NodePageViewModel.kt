@@ -177,25 +177,6 @@ class NodePageViewModel(
         nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * The meeting this page is about, read live from the calendar that owns it — §22.
-     *
-     * Never stored. The place, the guests and the description stay in the calendar and are fetched
-     * on the way past, so the page answers "what is this" and "what did I write" without holding a
-     * second copy of either. Null without the permission, and the page is an ordinary page.
-     */
-    val meeting: StateFlow<ie.shoonya.yantra.data.device.DeviceEventDetails?> =
-        node.map { n -> n?.extUid }
-            .distinctUntilChanged()
-            .map { uid ->
-                if (uid == null) null else withContext(Dispatchers.IO) {
-                    val source = ie.shoonya.yantra.data.device.DeviceCalendarSource(container.app)
-                    val chosen = ie.shoonya.yantra.data.device.CalendarChoice(container.app)
-                    source.detailsFor(uid, chosen.effective(source))
-                }
-            }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    /**
      * This page's own event, when the page *is* one.
      *
      * A document with a title and no date is a note that used to be a meeting — CALENDAR_PLAN.md
@@ -203,6 +184,27 @@ class NodePageViewModel(
      */
     val ownEvent: StateFlow<ie.shoonya.yantra.data.db.EventWithTitle?> =
         container.db.eventDao().observeById(nodeId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * The meeting this page is about, read live from the calendar that owns it — §22.
+     *
+     * Never stored. The place, the guests and the description stay in the calendar and are fetched
+     * on the way past, so the page answers "what is this" and "what did I write" without holding a
+     * second copy of either. Null without the permission, and the page is an ordinary page.
+     */
+    val meeting: StateFlow<ie.shoonya.yantra.data.device.DeviceEventDetails?> =
+        combine(node, ownEvent) { n, e -> Triple(n?.extUid, e?.event?.startUtc, e?.event?.endUtc) }
+            .distinctUntilChanged()
+            .map { (uid, begin, end) ->
+                if (uid == null) null else withContext(Dispatchers.IO) {
+                    ie.shoonya.yantra.data.device.DeviceCalendarSource(container.app)
+                        // The cached hours are enough to hand the other app: they are what this line
+                        // was written from, and a provider that has since moved the meeting will
+                        // open on it regardless — the event id is what it matches on.
+                        .detailsFor(uid, begin ?: 0L, end ?: 0L)
+                }
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /**

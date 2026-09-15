@@ -919,3 +919,44 @@ Two consequences worth stating:
 - **What the file holds is a title, a time and an identity.** Those are the minimum needed to find
   the meeting again and to draw the block when the provider cannot be read; everything else stays
   where it is, in the calendar that owns it.
+
+## 23. An event node is the thing you open
+
+§21 and §22 each removed a duplication and each kept turning the meeting into a **task**. That was
+the wrong noun. A meeting is not a thing to tick off; it is a thing that happens, and what you want
+when you tap it is the meeting — its place, its guests, and somewhere to write.
+
+**The app has had the right shape all along.** `NodeType.EVENT` is a `node` row with an `event` row
+of event-specific columns beside it: everything a node has — an id, a title, a parent, a page — and a
+start, an end, a place, a colour and a repeat as well. That is the "EventNode extends Node" this
+wanted, and it exists.
+
+So tapping somebody else's meeting **opens an event node of yours**:
+
+```
+@ 2026-09-16T14:00/PT1H Design review ^n1 ext:abc123@google.com
+```
+
+- **Made lazily, on the first tap.** A calendar of two hundred meetings costs two hundred nothing
+  until you touch one.
+- **Made once.** The second tap finds the line by the identity the sync source gave the meeting and
+  goes to the same page.
+- **One block on the day** — the meeting's, at the meeting's hours — and it takes you here.
+
+### What the page holds
+
+The meeting's own details are **read live from the provider** and drawn above your writing: where it
+is, who is coming, what the description says, which calendar it came from, and the way back to the
+app that owns it. None of it is in the file, so none of it can drift.
+
+What the file keeps is a title, a time and an identity — the minimum needed to find the meeting again
+and to draw the block when the calendar cannot be read at all.
+
+### What went, and what stayed
+
+The sheet with two actions is gone. A tap on a meeting is not a question any more; it opens the
+thing. Where it lives and how to get back to the other app are on that page, which is where you were
+going anyway.
+
+Turning an event into a task (§21) stays for **your own** events, because that conversion is about
+work you have decided to do. It is no longer what happens to somebody else's meeting by default.

@@ -139,7 +139,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             combine(events, tasks, theirs) { e, t, d ->
                 // Before drawing, not after: a block drawn from a stale due date would be visibly
                 // wrong for one frame and then jump.
-                reconcile(t, d)
+                reconcile(e, t, d)
                 CalendarBucketer.bucket(
                     // The repository as a hue, by the same rule the smart lists and the widget
                     // already follow — including the part where a single open repository gets none,
@@ -178,26 +178,50 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
      * calendar is looked at and fill somebody's history with empty diffs.
      */
     private fun reconcile(
+        ours: List<ie.shoonya.yantra.data.db.EventWithTitle>,
         tasks: List<ie.shoonya.yantra.data.db.DueRow>,
         theirs: List<ie.shoonya.yantra.data.device.DeviceEvent>,
     ) {
         if (theirs.isEmpty()) return
         val byKey = theirs.mapNotNull { d -> d.uid?.let { externalKey(it, occurrenceOf(d, zone)) to d } }.toMap()
         val byUid = theirs.mapNotNull { d -> d.uid?.let { it to d } }.toMap()
+        fun match(uid: String?, occurrence: String?) =
+            uid?.let { byKey[externalKey(it, occurrence)] ?: byUid[it] }
+
+        // Event nodes: their own times are the cache, so they are what gets corrected.
+        for (row in ours) {
+            val d = match(row.event.extUid, row.event.extStart) ?: continue
+            val (start, end) = deviceLocalSpan(d, zone)
+            if (d.title == row.title &&
+                row.event.startLocal == start.toString() &&
+                row.event.endLocal == end.toString()
+            ) continue
+            viewModelScope.launch {
+                container.workspaces.writerFor(row.event.nodeId).editEvent(row.event.nodeId, PLACED) { e ->
+                    // The words follow too: a meeting that was renamed should not leave a file
+                    // describing the old one.
+                    e.copy(
+                        title = d.title,
+                        time = e.time.copy(start = start, end = end, allDay = d.allDay),
+                        raw = null,
+                    )
+                }
+            }
+        }
+
+        // And a task about a meeting, for anyone who turned one into work.
         for (t in tasks) {
-            val uid = t.extUid ?: continue
-            val d = byKey[externalKey(uid, t.extStart)] ?: byUid[uid] ?: continue
+            val d = match(t.extUid, t.extStart) ?: continue
             val (start, end) = deviceLocalSpan(d, zone)
             val startMillis = start.atZone(zone).toInstant().toEpochMilli()
             val minutes = java.time.Duration.between(start, end).toMinutes().toInt().takeIf { it > 0 }
-            // Only an actual difference. Rewriting on every read would dirty the repository each
-            // time the calendar is looked at and fill somebody's history with empty diffs.
             if (t.dueMillis == startMillis && t.durationMin == minutes) continue
             viewModelScope.launch {
                 container.workspaces.writerFor(t.nodeId).editTask(t.nodeId, PLACED) { task ->
                     val due = task.due ?: return@editTask task
                     task.copy(
-                        due = due.movedTo(start, zone).copy(duration = minutes?.let { java.time.Duration.ofMinutes(it.toLong()) }),
+                        due = due.movedTo(start, zone)
+                            .copy(duration = minutes?.let { java.time.Duration.ofMinutes(it.toLong()) }),
                         raw = null,
                     )
                 }
@@ -206,45 +230,51 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /**
-     * Makes their meeting a piece of your own work — CALENDAR_PLAN.md §20, §22.
+     * Opens somebody else's meeting as a node of yours, making one the first time — §23.
      *
-     * **One node.** A task, carrying `ext:` — that is the whole of it. It used to be two, a task
-     * plus an event line to link them, which put one meeting in your Inbox twice; the link belongs
-     * on the task and now sits there.
+     * **An event node, not a task.** The app has had the shape all along: `NodeType.EVENT` is a
+     * `node` row with an `event` row of event-specific columns beside it — a node with everything a
+     * node has, and a start, an end, a place and a colour as well. That is the thing to open.
      *
-     * The file keeps a title, a time and an identity, which is the minimum needed to find the
-     * meeting again and to draw the block when the calendar cannot be read. Everything else — the
-     * place, the description, the guests — stays in the calendar that owns it and is read live onto
-     * the task's page, so there is nothing to copy and nothing to drift.
+     * Made **lazily**, on the first tap, so a calendar of two hundred meetings costs two hundred
+     * nothing until you touch one. Made **once**: the second tap finds the line already there by the
+     * identity its sync source gave the meeting, and goes to the same page.
+     *
+     * One node, and the day still draws one block — the meeting's, at the meeting's hours, which
+     * takes you here. Nothing is duplicated because nothing is copied: the title and times on the
+     * line are what lets it be found and drawn when the calendar cannot be read, and everything else
+     * is read live from the calendar that owns it.
      */
-    fun makeItATask(item: DayItem.Device, onMade: (String) -> Unit) {
+    fun openLocally(item: DayItem.Device, onOpen: (String) -> Unit) {
+        val existing = item.noteId
+        if (existing != null) {
+            onOpen(existing)
+            return
+        }
         val uid = item.uid ?: return
         viewModelScope.launch {
             val page = container.nodes.inboxList()
-            val writer = container.workspaces.writerFor(page)
-            val taskId = writer.addBlock(page, ie.shoonya.yantra.data.db.NodeType.TASK, item.title)
-            if (taskId.isEmpty()) return@launch
-            container.workspaces.writerFor(taskId).editTask(taskId, PLACED) { t ->
-                t.copy(
-                    due = ie.shoonya.yantra.data.format.DueSpec(
-                        value = if (item.allDay) {
-                            ie.shoonya.yantra.data.format.DueValue.AllDay(item.start.toLocalDate())
-                        } else {
-                            ie.shoonya.yantra.data.format.DueValue.At(item.start.atZone(zone).toInstant())
-                        },
-                        duration = if (item.allDay) null
-                        else java.time.Duration.between(item.start, item.end).takeIf { !it.isZero },
+            val id = container.workspaces.writerFor(page).addEvent(
+                pageId = page,
+                event = ie.shoonya.yantra.data.format.EventRef(
+                    id = "",
+                    title = item.title,
+                    time = ie.shoonya.yantra.data.format.EventTime(
+                        start = item.start,
+                        end = item.end,
+                        zone = null,
+                        allDay = item.allDay,
                     ),
+                    location = item.location,
                     external = ie.shoonya.yantra.data.format.ExternalRef(
                         uid = uid,
-                        // Named only when the meeting repeats, so a task about this Monday does not
-                        // become a task about every Monday.
+                        // Named only when the meeting repeats, so a page about this Monday does not
+                        // become the page for every Monday.
                         occurrence = if (item.repeating) item.start else null,
                     ),
-                    raw = null,
-                )
-            }
-            onMade(taskId)
+                ),
+            )
+            if (id.isNotEmpty()) onOpen(id)
         }
     }
 
@@ -304,9 +334,6 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Hands one of somebody else's events back to the app that owns it. */
-    fun intentFor(item: DayItem.Device): android.content.Intent =
-        device.viewIntent(item.eventId, item.beginUtc, item.endUtc)
 
     /** The day list under the grid. */
     val selectedItems: StateFlow<List<DayItem>> = combine(days, _selected) { d, day -> d[day].orEmpty() }

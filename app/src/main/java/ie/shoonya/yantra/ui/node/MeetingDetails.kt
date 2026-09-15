@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.ui.node
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +36,7 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 @Composable
 internal fun MeetingDetails(details: DeviceEventDetails) {
     val y = Yantra.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(
         Modifier
             .fillMaxWidth()
@@ -80,6 +83,27 @@ internal fun MeetingDetails(details: DeviceEventDetails) {
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.height(10.dp))
+        // The way back to the app that owns it. It used to be a choice you made *instead* of
+        // opening the page, which meant a tap could throw you into another application; here it is
+        // one row on the page you were going to anyway.
+        Text(
+            "Open in the calendar app  \u203a",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.W700,
+            color = y.accent,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    runCatching {
+                        context.startActivity(
+                            ie.shoonya.yantra.data.device.DeviceCalendarSource(context)
+                                .viewIntent(details.eventId, details.beginUtc, details.endUtc),
+                        )
+                    }
+                }
+                .padding(vertical = 4.dp),
+        )
     }
 }
 
