@@ -294,6 +294,23 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
     val current = node
     val isTask = current?.type == NodeType.TASK
+    // The page says what it is once it has settled. A node that never arrives is the difference
+    // between "this page is empty" and "this page is not there", which look identical on a screen.
+    val nodeLoaded by vm.nodeLoaded.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(nodeId, nodeLoaded, current?.id, current?.type) {
+        val node = current
+        if (node == null) {
+            if (nodeLoaded) {
+                ie.shoonya.yantra.Trace.warn("page", "opened ${ie.shoonya.yantra.Trace.id(nodeId)} — no such node")
+            }
+        } else {
+            ie.shoonya.yantra.Trace.log(
+                "page",
+                "opened ${ie.shoonya.yantra.Trace.id(nodeId)} type=${node.type} " +
+                    "ext=${ie.shoonya.yantra.Trace.uid(node.extUid)}",
+            )
+        }
+    }
 
     /**
      * Whether this page is a **document** — something you type into — rather than a list of rows
@@ -435,6 +452,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     ) {
         PageBand(
             node = current,
+            loaded = nodeLoaded,
             isTask = isTask,
             // Folded by a scroll, and folded by the keyboard.
             //
@@ -469,11 +487,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onToggleDone = { done -> vm.setDone(nodeId, done) },
             onToggleInProgress = { on -> vm.setInProgress(nodeId, on) },
             properties = {
-                // An event's header — CALENDAR_PLAN.md §23. In the slot a task's chips sit in,
-                // because it is the same thing: what is true of this page's subject, said before
-                // anything you wrote about it. Driven by the file and enriched by the calendar, so
-                // it is never the blank page a provider-only version left behind.
-                ownEvent?.let { MeetingHeader(it, meeting) }
                 if (isTask) {
                     PropertyRow(
                         defs = defs,
@@ -881,6 +894,17 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // under the last line does in any editor: puts the caret on a new line. If the page
             // already ends in a blank block, that blank IS the new line, so it is focused instead
             // of another one being made.
+            // An event's header — CALENDAR_PLAN.md §23, §25. The **first thing in the page** rather
+            // than part of the band, which was a mistake worth naming: the band folds itself away
+            // when the keyboard comes up, to give a document room to be typed in. For a task that is
+            // right. For a meeting it meant the details vanished the moment you started writing the
+            // notes you opened the page to write — and writing about a meeting is exactly when you
+            // want to see who is in it.
+            //
+            // Here it scrolls with the page, so it goes when you push it away and not before.
+            ownEvent?.let { event ->
+                item(key = "meeting-header") { MeetingHeader(event, meeting) }
+            }
             if (isDocument) {
                 item(key = "page-tail") {
                     val tail = blocks.lastOrNull()
@@ -1085,6 +1109,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 @Composable
 private fun PageBand(
     node: NodeEntity?,
+    /** Whether the node's row has arrived. Before it has, the page says nothing about itself. */
+    loaded: Boolean,
     isTask: Boolean,
     collapsed: Boolean,
     crumbs: List<String>,
@@ -1377,7 +1403,11 @@ private fun PageBand(
                             .followLinks(node?.id, { titleLayout }, { titleLinks }, titleOpen),
                         decorationBox = { inner ->
                             Box {
-                                if (title.isEmpty()) {
+                                // "Untitled" is an answer, so it waits until there is one. Before
+                                // the row arrives this said the page had no name, which is how a
+                                // page that was sixty milliseconds behind came to look exactly like
+                                // a page that was not there — see NodePageViewModel.nodeLoaded.
+                                if (title.isEmpty() && loaded) {
                                     Text("Untitled", style = MaterialTheme.typography.headlineMedium, color = y.textMuted.copy(alpha = 0.6f))
                                 }
                                 inner()

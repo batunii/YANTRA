@@ -3,6 +3,7 @@ package ie.shoonya.yantra.ui.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ie.shoonya.yantra.AppContainer
+import ie.shoonya.yantra.Trace
 import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.RailTask
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -140,6 +141,20 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 // Before drawing, not after: a block drawn from a stale due date would be visibly
                 // wrong for one frame and then jump.
                 reconcile(e, t, d)
+                // The line that answers "why are there two of this meeting" without anybody having
+                // to describe it: how many of theirs are on screen, how many lines of ours claim
+                // one, and how many actually met. Said here rather than inside the bucketer, which
+                // is pure and tested on the JVM — a log call in there drags android.util.Log into
+                // every one of those tests, and they fail rather than run.
+                val mine = e.count { it.nodeExtUid != null } + t.count { it.extUid != null }
+                if (d.isNotEmpty() || mine > 0) {
+                    val unidentified = d.count { it.uid == null }
+                    Trace.log(
+                        "overlay",
+                        "theirs=${d.size} ours=$mine" +
+                            if (unidentified > 0) " unidentified=$unidentified" else "",
+                    )
+                }
                 CalendarBucketer.bucket(
                     // The repository as a hue, by the same rule the smart lists and the widget
                     // already follow — including the part where a single open repository gets none,
@@ -248,6 +263,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     fun openLocally(item: DayItem.Device, onOpen: (String) -> Unit) {
         val existing = item.noteId
         if (existing != null) {
+            Trace.log("calendar", "tap on their meeting uid=${Trace.uid(item.uid)} -> existing node ${Trace.id(existing)}")
             onOpen(existing)
             return
         }
@@ -282,7 +298,13 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     ),
                 ),
             )
-            if (id.isNotEmpty()) onOpen(id)
+            if (id.isEmpty()) {
+                // The one outcome a tap must never have: nothing, with no reason given.
+                Trace.warn("calendar", "tap on their meeting uid=${Trace.uid(uid)} made no node")
+                return@launch
+            }
+            Trace.log("calendar", "tap on their meeting uid=${Trace.uid(uid)} -> made node ${Trace.id(id)}")
+            onOpen(id)
         }
     }
 

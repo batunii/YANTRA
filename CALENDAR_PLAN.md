@@ -998,3 +998,64 @@ dropped on the floor, silently. `UID_2445` is null on some providers and `_SYNC_
 calendar with no account behind it, so the app was broken for whole calendars rather than at random.
 Those fall back to this device's own row id, marked `local:` so the file says plainly that it means
 nothing on another phone.
+
+## 25. What a recording and a log line found
+
+Three symptoms, reported as "it's still messy", and each one a different fault.
+
+### One meeting drawn twice
+
+The match was keyed on **identity plus the occurrence start**. The occurrence start is the one thing
+about a meeting that moves, so a line whose remembered time had gone stale could never meet its
+meeting again — and therefore could never be corrected either. A deadlock: two blocks for one
+meeting, for ever. The recording showed it exactly, one *Pluto x Napkin* at ten and another at nine.
+
+Matching on identity alone went too far the other way — one line about the sixteenth claimed every
+Monday of a weekly standup. So the rule is now **each line chooses its instance, nearest wins, and
+only the nearest**: a meeting moved an hour, or to another day, keeps the page written for it, and
+the other fifty-one Mondays are left alone.
+
+### The details vanished when you started writing
+
+The header was in the band, and the band folds itself away when the keyboard comes up — to give a
+document room to be typed in. For a task that is right. For a meeting it meant the details
+disappeared at exactly the moment you began the notes you opened the page to write, which is when you
+most want to see who is in the room. It is the first thing *in* the page now, so it goes when you
+scroll past it and not before.
+
+### "Untitled", empty
+
+Not a missing node: a **missing loading state**. `node` is null both while the query is in flight and
+when there is no such node, and the two drew identically — an empty page titled "Untitled". A page a
+few milliseconds behind was indistinguishable from a page that was not there.
+
+That is the one this section exists for, because it was found by a log line rather than by guessing:
+
+```
+W page: opened 7a99acc0 — no such node
+I page: opened 7a99acc0 type=task ext=none
+```
+
+Sixty-one milliseconds apart. "Untitled" is an answer, so it waits until there is one.
+
+## 26. The app says what it just did
+
+`Trace` writes a running commentary readable over `adb logcat -s YANTRA`.
+
+Reporting a bug in a phone app costs the person reporting it far more than the person fixing it: you
+have to notice, remember, describe, and then describe again when the description turns out to be
+ambiguous. Three rounds of "it disappears sometimes" is three rounds nobody enjoys. The thing that
+ends it is the app saying plainly what it just did.
+
+- **Every line says what happened and what was decided.** "matched meeting to node n1" earns a line;
+  "onCreate" does not.
+- **It survives minification**, deliberately, because the build that needs explaining is the release
+  build somebody is actually using. A trace stripped by R8 is worse than none, since it reads as
+  nothing having happened — so the first line of every session names the version, and proves the
+  channel works.
+- **Nothing private goes in.** A meeting's title is somebody's day and an attendee list is somebody's
+  address book. Ids are shortened, external identities are shown as a head and a length, and counts
+  say everything a bug needs.
+- **It stays out of the pure code.** A log call inside `CalendarBucketer` pulled `android.util.Log`
+  into every JVM test of it, and they failed rather than ran. The bucketer stays pure; the view model
+  does the talking.

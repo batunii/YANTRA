@@ -103,11 +103,40 @@ sealed interface DayItem {
 }
 
 /**
- * How a note and a meeting are matched — CALENDAR_PLAN.md §19.
+ * A line of ours that is about somebody else's meeting.
  *
- * Identity plus occurrence, because a weekly standup is one UID and fifty-two meetings, and a note
- * about the one on the sixteenth must not attach itself to every other Monday. A meeting with only
- * one occurrence carries no start, and matches on identity alone.
+ * [occurrence] is the instance it was written for, present only on a repeat. [remembered] is the
+ * time the line itself carries, which is what a one-off has instead — and what lets a line still
+ * find its meeting after somebody moved it.
+ */
+internal data class Linked(
+    val nodeId: String,
+    val title: String?,
+    val occurrence: String?,
+    val remembered: String,
+) {
+    /** How far this line's idea of when is from one of their instances, in minutes. */
+    fun gapTo(d: ie.shoonya.yantra.data.device.DeviceEvent, zone: ZoneId): Long =
+        gapBetween(occurrence ?: remembered, occurrenceOf(d, zone))
+}
+
+/**
+ * How far apart two remembered occurrences are, in minutes, for choosing between them.
+ *
+ * Unparseable either side is infinitely far: a line whose occurrence cannot be read should lose to
+ * one that can, rather than win by accident.
+ */
+internal fun gapBetween(a: String, b: String): Long {
+    val left = runCatching { LocalDateTime.parse(a) }.getOrNull() ?: return Long.MAX_VALUE
+    val right = runCatching { LocalDateTime.parse(b) }.getOrNull() ?: return Long.MAX_VALUE
+    return kotlin.math.abs(java.time.Duration.between(left, right).toMinutes())
+}
+
+/**
+ * How a line and a meeting are matched — CALENDAR_PLAN.md §19, §25.
+ *
+ * Identity plus occurrence, because a weekly standup is one UID and fifty-two meetings. Kept for
+ * writing a line down; **matching no longer uses it as a key**, for the reason §25 gives.
  */
 internal fun externalKey(uid: String, occurrence: String?): String =
     if (occurrence == null) uid else "$uid@$occurrence"
@@ -196,32 +225,62 @@ object CalendarBucketer {
         //    should be one block. Drawing both is the duplicate-and-drift failure this design
         //    exists to avoid: two blocks at the same hour, and the copy staying put the moment the
         //    real meeting moves.
-        // Lines of ours about somebody else's meetings, by the meeting — CALENDAR_PLAN.md §22. A
-        // **task** carries the link now, so this is mostly tasks; an event line may still carry one
-        // from before the link moved onto the node, and both are looked up the same way.
-        val linked: Map<String, Pair<String, String?>> = buildMap {
-            tasks.forEach { t -> t.extUid?.let { put(externalKey(it, t.extStart), t.nodeId to t.title) } }
+        // Lines of ours about somebody else's meetings — CALENDAR_PLAN.md §25.
+        //
+        // **Each line chooses its instance; an instance does not choose a line.** That direction is
+        // the whole of it. Matching on identity-plus-occurrence deadlocked — the occurrence is the
+        // start, the start is what moves, so a line whose remembered time had gone stale could never
+        // meet its meeting again and never be corrected, and the day drew the meeting twice for
+        // ever. Matching on identity alone went too far the other way: one line about the sixteenth
+        // claimed every Monday of a weekly standup.
+        //
+        // Nearest wins, and only the nearest: a line picks the instance closest to what it
+        // remembers, so a meeting moved an hour — or to another day — keeps the page written for it,
+        // while the other fifty-one Mondays are left alone.
+        val lines: Map<String, List<Linked>> = buildMap<String, MutableList<Linked>> {
+            tasks.forEach { t ->
+                t.extUid?.let {
+                    getOrPut(it) { mutableListOf() } += Linked(
+                        nodeId = t.nodeId,
+                        title = t.title,
+                        occurrence = t.extStart,
+                        remembered = LocalDateTime.ofInstant(Instant.ofEpochMilli(t.dueMillis), zone).toString(),
+                    )
+                }
+            }
             events.forEach { e ->
-                e.nodeExtUid?.let { put(externalKey(it, e.nodeExtStart), e.event.nodeId to titles[e.event.nodeId]) }
+                e.nodeExtUid?.let {
+                    getOrPut(it) { mutableListOf() } += Linked(
+                        nodeId = e.event.nodeId,
+                        title = titles[e.event.nodeId],
+                        occurrence = e.nodeExtStart,
+                        remembered = e.event.startLocal,
+                    )
+                }
             }
         }
 
-        /**
-         * The note about one occurrence, if there is one.
-         *
-         * Two keys, tried in that order. A note about **this Monday's** standup names the occurrence
-         * and must win; a note about a meeting that happens once names only the identity, and would
-         * never match if the occurrence key were the only one asked for. Trying the specific key
-         * first is what keeps "the sixteenth" from being answered by "every Monday".
-         */
-        fun noteFor(d: ie.shoonya.yantra.data.device.DeviceEvent): Pair<String, String?>? {
-            val uid = d.uid ?: return null
-            return linked[externalKey(uid, occurrenceOf(d, zone))] ?: linked[uid]
+        val instances = device.filter { it.uid != null }.groupBy { it.uid!! }
+        val claimed: Map<Long, Linked> = buildMap {
+            lines.forEach { (uid, ours) ->
+                val theirs = instances[uid] ?: return@forEach
+                ours.forEach { line ->
+                    val target = theirs.minByOrNull { line.gapTo(it, zone) } ?: return@forEach
+                    val sitting = get(target.instanceId)
+                    // Two lines wanting the same instance is a repeat somebody wrote about twice.
+                    // The nearer keeps it; the other falls back to drawing its own remembered time.
+                    if (sitting == null || line.gapTo(target, zone) < sitting.gapTo(target, zone)) {
+                        put(target.instanceId, line)
+                    }
+                }
+            }
         }
+
+        fun noteFor(d: ie.shoonya.yantra.data.device.DeviceEvent): Linked? = claimed[d.instanceId]
 
         // Which notes have a meeting on screen to be drawn *as*. Computed before anything is
         // emitted, because the note's own line has to know whether to stand aside.
-        val annotated = device.mapNotNullTo(HashSet()) { noteFor(it)?.first }
+        val annotated = device.mapNotNullTo(HashSet()) { noteFor(it)?.nodeId }
 
         for (row in events) {
             val e = row.event
@@ -281,9 +340,9 @@ object CalendarBucketer {
                     out.getOrPut(day) { ArrayList() } += DayItem.Device(
                         nodeId = "device:${d.instanceId}",
                         // One node, not two: the line about this meeting *is* the task.
-                        noteId = noteFor(d)?.first,
-                        taskId = noteFor(d)?.first,
-                        taskTitle = noteFor(d)?.second?.takeIf { it.isNotBlank() && it != d.title },
+                        noteId = noteFor(d)?.nodeId,
+                        taskId = noteFor(d)?.nodeId,
+                        taskTitle = noteFor(d)?.title?.takeIf { it.isNotBlank() && it != d.title },
                         uid = d.uid,
                         repeating = (repeats[d.uid] ?: 0) > 1,
                         title = d.title,

@@ -53,6 +53,24 @@ class NodePageViewModel(
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /**
+     * Whether the answer has arrived yet — CALENDAR_PLAN.md §25.
+     *
+     * `node` is null for two entirely different reasons: the query has not come back, and there is
+     * no such node. They drew identically — an **empty page titled "Untitled"** — so a page that was
+     * merely a few milliseconds behind looked exactly like a page that was not there, and a report
+     * of "it opens an empty page" could not be told from "it opens the wrong thing". Tracing it was
+     * how that came out: the page logged *no such node* and then, sixty milliseconds later, the
+     * node.
+     *
+     * Kept deliberately separate rather than folded into a sealed state, because every caller of
+     * `node` wants the node and exactly one caller — the header — needs to know the difference.
+     */
+    val nodeLoaded: StateFlow<Boolean> =
+        nodes.observe(nodeId)
+            .map { true }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     // ---- people ----
 
     private val peopleRefreshing = MutableStateFlow(false)
