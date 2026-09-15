@@ -50,7 +50,7 @@ class CalendarBucketTest {
         from: String = "2026-09-01",
         to: String = "2026-10-01",
     ) = CalendarBucketer.bucket(
-        events = events,
+        events = events.map { indexed(it, titles[it.nodeId]) },
         tasks = tasks,
         titles = titles,
         from = LocalDate.parse(from),
@@ -182,7 +182,7 @@ class CalendarBucketTest {
         val sitting = event("s1", "2026-09-11T14:00", "2026-09-11T16:00")
             .copy(forNodeId = "t1")
         val item = CalendarBucketer.bucket(
-            events = listOf(sitting),
+            events = listOf(indexed(sitting, "Write the deck")),
             tasks = emptyList(),
             // The view model resolves this through the DAO's LEFT JOIN on for_node_id; here it is
             // handed in the same way, which is the contract that matters.
@@ -201,7 +201,7 @@ class CalendarBucketTest {
     @Test
     fun `a block with no colour of its own wears its workspace's`() {
         val item = CalendarBucketer.bucket(
-            events = listOf(event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1")),
+            events = listOf(indexed(event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1"), "Design review")),
             tasks = emptyList(),
             titles = mapOf("e1" to "Design review"),
             workspaceTints = mapOf("w1" to 999L),
@@ -217,7 +217,7 @@ class CalendarBucketTest {
         val teal = ie.shoonya.yantra.data.label.LabelPalette.swatches.first { it.name == "Teal" }.light
         val item = CalendarBucketer.bucket(
             events = listOf(
-                event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1", color = "Teal"),
+                indexed(event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1", color = "Teal"), "Design review"),
             ),
             tasks = emptyList(),
             titles = mapOf("e1" to "Design review"),

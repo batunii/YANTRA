@@ -469,10 +469,11 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             onToggleDone = { done -> vm.setDone(nodeId, done) },
             onToggleInProgress = { on -> vm.setInProgress(nodeId, on) },
             properties = {
-                // An event's page says when it is, in the slot a task's chips sit in. Without it
-                // the document is a title and a blank page, and nothing on screen says what the
-                // notes are notes *about*.
-                ownEvent?.let { EventWhenChip(it) }
+                // An event's header — CALENDAR_PLAN.md §23. In the slot a task's chips sit in,
+                // because it is the same thing: what is true of this page's subject, said before
+                // anything you wrote about it. Driven by the file and enriched by the calendar, so
+                // it is never the blank page a provider-only version left behind.
+                ownEvent?.let { MeetingHeader(it, meeting) }
                 if (isTask) {
                     PropertyRow(
                         defs = defs,
@@ -880,12 +881,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // under the last line does in any editor: puts the caret on a new line. If the page
             // already ends in a blank block, that blank IS the new line, so it is focused instead
             // of another one being made.
-            // What the owning calendar knows, drawn above your own writing — CALENDAR_PLAN.md §22.
-            // Read live and never stored, so one page answers both "what is this" and "what did I
-            // write about it" without holding a copy of either.
-            meeting?.let { details ->
-                item(key = "meeting-details") { MeetingDetails(details) }
-            }
             if (isDocument) {
                 item(key = "page-tail") {
                     val tail = blocks.lastOrNull()

@@ -156,7 +156,7 @@ typealias CalendarDays = Map<LocalDate, List<DayItem>>
 object CalendarBucketer {
 
     fun bucket(
-        events: List<EventEntity>,
+        events: List<ie.shoonya.yantra.data.db.EventWithTitle>,
         tasks: List<DueRow>,
         /**
          * Titles by node id. [EventEntity] holds the times and the rule; the words live on the node
@@ -201,7 +201,9 @@ object CalendarBucketer {
         // from before the link moved onto the node, and both are looked up the same way.
         val linked: Map<String, Pair<String, String?>> = buildMap {
             tasks.forEach { t -> t.extUid?.let { put(externalKey(it, t.extStart), t.nodeId to t.title) } }
-            events.forEach { e -> e.extUid?.let { put(externalKey(it, e.extStart), e.nodeId to titles[e.nodeId]) } }
+            events.forEach { e ->
+                e.nodeExtUid?.let { put(externalKey(it, e.nodeExtStart), e.event.nodeId to titles[e.event.nodeId]) }
+            }
         }
 
         /**
@@ -221,7 +223,8 @@ object CalendarBucketer {
         // emitted, because the note's own line has to know whether to stand aside.
         val annotated = device.mapNotNullTo(HashSet()) { noteFor(it)?.first }
 
-        for (e in events) {
+        for (row in events) {
+            val e = row.event
             val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull() ?: continue
             val end = runCatching { LocalDateTime.parse(e.endLocal) }.getOrNull() ?: start
             if (e.cancelled) continue        // a cancelled occurrence is an absence, not an entry

@@ -382,13 +382,15 @@ data class EventEntity(
      */
     val color: String? = null,
     /**
-     * The meeting in somebody else's calendar this row is a note about — CALENDAR_PLAN.md §19.
+     * **Dead. Read nothing from these.** The link to somebody else's meeting lives on `node` —
+     * CALENDAR_PLAN.md §22 — because it is a fact about a line of any kind.
      *
-     * The identity the *sync source* gave it, never the provider's local row id. Indexed, because
-     * every draw of the overlay asks "is there a note for this one".
+     * They are kept only so the table need not be recreated to drop them, and they are never
+     * written. Leaving them readable already cost one bug: the bucketer went on consulting the
+     * embedded column after the mapper stopped filling it, saw null for every line, and made a new
+     * page on every tap of the same meeting. Use [EventWithTitle.nodeExtUid].
      */
     @ColumnInfo(name = "ext_uid") val extUid: String? = null,
-    /** Which occurrence, for a repeating one. Null means the meeting has only the one. */
     @ColumnInfo(name = "ext_start") val extStart: String? = null,
     @ColumnInfo(name = "series_id") val seriesId: String? = null,
     @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,

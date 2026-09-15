@@ -131,6 +131,7 @@ internal fun whenWords(
     }
 }
 
+
 /**
  * When this page's event is, shown in the band — CALENDAR_PLAN.md §18.
  *

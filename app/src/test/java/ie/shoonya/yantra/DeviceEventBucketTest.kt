@@ -138,9 +138,12 @@ class DeviceEventBucketTest {
     fun `theirs and ours share a day without one hiding the other`() {
         val days = CalendarBucketer.bucket(
             events = listOf(
-                ie.shoonya.yantra.data.db.EventEntity(
-                    nodeId = "e1", startLocal = "2026-09-14T09:00", endLocal = "2026-09-14T10:00",
-                    allDay = false, startUtc = 0, endUtc = 0,
+                indexed(
+                    ie.shoonya.yantra.data.db.EventEntity(
+                        nodeId = "e1", startLocal = "2026-09-14T09:00", endLocal = "2026-09-14T10:00",
+                        allDay = false, startUtc = 0, endUtc = 0,
+                    ),
+                    "Mine",
                 ),
             ),
             tasks = emptyList(),

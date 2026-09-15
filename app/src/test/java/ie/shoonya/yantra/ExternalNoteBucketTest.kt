@@ -38,24 +38,38 @@ class ExternalNoteBucketTest {
         allDay = false, location = null, color = null, uid = uid,
     )
 
+    /**
+     * A line of ours about their meeting, as the calendar receives it.
+     *
+     * The link is set through the **node**, not the embedded row's dead column — setting the wrong
+     * one is exactly the mistake that made every tap create another page, and a fixture that made it
+     * would pass while the app failed.
+     */
     private fun note(
         nodeId: String = "n1",
         uid: String? = "abc@google.com",
         occurrence: String? = null,
         start: String = "2026-09-16T14:00",
         end: String = "2026-09-16T15:00",
-    ) = EventEntity(
-        nodeId = nodeId,
-        startLocal = start, endLocal = end, allDay = false,
-        startUtc = at(start), endUtc = at(end),
-        extUid = uid, extStart = occurrence,
+    ) = indexed(
+        event = EventEntity(
+            nodeId = nodeId,
+            startLocal = start, endLocal = end, allDay = false,
+            startUtc = at(start), endUtc = at(end),
+        ),
+        title = "Cached title",
+        extUid = uid,
+        extStart = occurrence,
     )
 
-    private fun bucket(ours: List<EventEntity> = emptyList(), device: List<DeviceEvent> = emptyList()) =
+    private fun bucket(
+        ours: List<ie.shoonya.yantra.data.db.EventWithTitle> = emptyList(),
+        device: List<DeviceEvent> = emptyList(),
+    ) =
         CalendarBucketer.bucket(
             events = ours,
             tasks = emptyList(),
-            titles = ours.associate { it.nodeId to "Cached title" },
+            titles = ours.associate { it.event.nodeId to "Cached title" },
             device = device,
             from = LocalDate.parse("2026-09-01"),
             toExclusive = LocalDate.parse("2026-10-01"),
@@ -92,6 +106,23 @@ class ExternalNoteBucketTest {
         val items = bucket(ours = listOf(note()), device = emptyList()).getValue(day)
         assertEquals(1, items.size)
         assertTrue("falls back to our own line", items.single() is DayItem.Event)
+    }
+
+    /**
+     * The bug that made every tap create another page.
+     *
+     * The link moved onto the node and `event.ext_uid` stopped being written, but the matching went
+     * on reading the embedded column — so it saw null for every line, never found the page a meeting
+     * already had, and made a new one each time. A meeting with a line about it **must** come back
+     * carrying that line's id.
+     */
+    @Test
+    fun `a meeting finds the page it already has, every time`() {
+        repeat(3) {
+            val block = bucket(ours = listOf(note()), device = listOf(theirs())).getValue(day)
+                .single() as DayItem.Device
+            assertEquals("the same page, not another one", "n1", block.noteId)
+        }
     }
 
     @Test

@@ -145,7 +145,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     // already follow — including the part where a single open repository gets none,
                     // because then it distinguishes nothing and would only tint the whole app.
                     workspaceTints = workspaceTints(),
-                    events = e.map { it.event },
+                    events = e,
                     // A sitting is drawn as its task, and tapping it should reach the task.
                     sittingOf = e.mapNotNull { row -> row.event.forNodeId?.let { row.event.nodeId to it } }.toMap(),
                     tasks = t,
@@ -190,7 +190,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 
         // Event nodes: their own times are the cache, so they are what gets corrected.
         for (row in ours) {
-            val d = match(row.event.extUid, row.event.extStart) ?: continue
+            val d = match(row.nodeExtUid, row.nodeExtStart) ?: continue
             val (start, end) = deviceLocalSpan(d, zone)
             if (d.title == row.title &&
                 row.event.startLocal == start.toString() &&

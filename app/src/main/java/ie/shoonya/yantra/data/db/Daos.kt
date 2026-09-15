@@ -746,6 +746,16 @@ data class EventWithTitle(
     val forTitle: String? = null,
     /** Whether that task is finished — a sitting for something already done draws as spent. */
     val forDone: Boolean = false,
+    /**
+     * The meeting this line is about, **read from the node** — CALENDAR_PLAN.md §22.
+     *
+     * Aliased rather than taken from the embedded event row, and the distinction cost real bugs: the
+     * link moved onto `node` and `event.ext_uid` stopped being written, so everything still reading
+     * the embedded column silently saw null. A calendar block then never found the page it already
+     * had, and every tap made another one.
+     */
+    val nodeExtUid: String? = null,
+    val nodeExtStart: String? = null,
 ) {
     /**
      * What to draw this block with.
@@ -779,7 +789,8 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+               n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
           -- LEFT, so a sitting whose task has gone still comes back — as a block with no words
@@ -825,7 +836,8 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+               n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
           LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
@@ -837,7 +849,8 @@ interface EventDao {
     /** One event, watched — for its own page to say when it is. */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+               n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
           LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
