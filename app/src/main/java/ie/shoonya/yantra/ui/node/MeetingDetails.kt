@@ -16,6 +16,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.db.EventWithTitle
 import ie.shoonya.yantra.data.device.DeviceCalendarSource
 import ie.shoonya.yantra.data.device.DeviceEventDetails
+import ie.shoonya.yantra.data.device.MeetingText
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
@@ -126,7 +131,35 @@ internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
             }
         }
 
-        val where = details?.location ?: e.location
+        // The join link, first and biggest — CALENDAR_PLAN.md §24. On a meeting that has one it is
+        // the thing you came for, and every calendar worth using puts it where your thumb already
+        // is rather than three lines into a description.
+        val conference = MeetingText.conferenceIn(details?.location ?: e.location, details?.description)
+        conference?.let { call ->
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(y.accentFill)
+                    .clickable { open(context, call.url) }
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Join ${call.name}",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.W700,
+                    color = y.accentText,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("\u203a", fontSize = 16.sp, color = y.accentText)
+            }
+        }
+
+        val where = (details?.location ?: e.location)
+            // A location that is only the video link says nothing the button above has not.
+            ?.takeIf { it.trim() != conference?.url }
         val guests = details?.guests.orEmpty()
         if (where != null || guests.isNotEmpty() || details?.organiser != null) {
             Spacer(Modifier.height(12.dp))
@@ -142,16 +175,41 @@ internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
             }
         }
 
-        details?.description?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(10.dp))
+        // Unwrapped, because Google's web client writes HTML and a description drawn raw is a wall
+        // of `<br>`s. See MeetingText.readable.
+        val description = MeetingText.readable(details?.description)
+        if (description.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            var expanded by remember(description) { mutableStateOf(false) }
             Text(
-                it.trim(),
+                description,
                 fontSize = 12.5.sp,
                 lineHeight = 18.sp,
                 color = y.textSecondary,
-                maxLines = 8,
+                maxLines = if (expanded) Int.MAX_VALUE else 5,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable { expanded = !expanded },
             )
+            // Every other link in it, as things you can press. An invitation routinely carries the
+            // agenda, the deck and a dial-in page, and a URL you have to select and copy is a URL
+            // nobody follows from a phone.
+            val others = MeetingText.linksIn(description).filter { it != conference?.url }
+            if (others.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                others.take(4).forEach { url ->
+                    Text(
+                        shortUrl(url),
+                        fontSize = 12.sp,
+                        color = y.accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { open(context, url) }
+                            .padding(vertical = 3.dp),
+                    )
+                }
+            }
         }
 
         details?.let { d ->
@@ -195,6 +253,23 @@ private fun Field(label: String, value: String) {
         )
         Text(value, fontSize = 12.5.sp, lineHeight = 17.sp, color = y.textPrimary, modifier = Modifier.weight(1f))
     }
+}
+
+/** Hands a link to whatever opens it. A calendar page cannot assume a browser is there. */
+private fun open(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
+/** A link as something readable: the host, and enough of the path to tell two apart. */
+private fun shortUrl(url: String): String {
+    val host = url.substringAfter("://", url).substringBefore('/')
+    val path = url.substringAfter("://", url).substringAfter('/', "")
+    return if (path.isEmpty()) host else "$host/${path.take(24)}${if (path.length > 24) "…" else ""}"
 }
 
 /** "1 hour", "45 min" — how long, in the words somebody would use. */

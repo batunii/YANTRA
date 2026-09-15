@@ -107,12 +107,21 @@ object WorkspaceReconciler {
                 // The file supplies identity and everything below the fold; the line supplies the
                 // fields that belong to a line. Taking the page row wholesale silently reset every
                 // task that owned a page back to open, at indent zero, in an arbitrary order.
+                //
+                // **Every line-owned field has to be listed here, and one being missed is invisible
+                // until the node earns a page.** `ext_uid` was, and the failure was a good example
+                // of the shape: an event about somebody else's meeting kept its link right up until
+                // the moment you wrote the first note on it — because that is when it first got a
+                // page — and then quietly lost it, so the calendar stopped recognising the meeting
+                // and the next tap made a second page for the same thing.
                 else -> m.page.copy(
                     title = line.title,
                     done = line.done,
                     inProgress = line.inProgress,
                     indent = line.indent,
                     rank = line.rank,
+                    extUid = line.extUid,
+                    extStart = line.extStart,
                 )
             }
 

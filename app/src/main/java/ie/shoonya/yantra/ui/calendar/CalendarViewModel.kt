@@ -251,7 +251,15 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
             onOpen(existing)
             return
         }
-        val uid = item.uid ?: return
+        // An event the provider gives no identity for still has to open. `UID_2445` is null on some
+        // providers and `_SYNC_ID` is null on a calendar with no account behind it, and a tap that
+        // silently did nothing was the worst of the available answers — it read as the app being
+        // broken half the time, because it was broken for half the calendars.
+        //
+        // The fallback is this device's own row id, marked as such. It cannot mean anything on
+        // another phone, and saying so in the file is better than pretending otherwise: a meeting
+        // that only exists on this device was never going to be recognised on another one.
+        val uid = item.uid ?: "local:${item.eventId}"
         viewModelScope.launch {
             val page = container.nodes.inboxList()
             val id = container.workspaces.writerFor(page).addEvent(

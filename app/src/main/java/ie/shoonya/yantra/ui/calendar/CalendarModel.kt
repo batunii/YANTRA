@@ -74,7 +74,7 @@ sealed interface DayItem {
         val taskId: String? = null,
         /** What that task is called, when it has been renamed to something other than the meeting. */
         val taskTitle: String? = null,
-        /** The identity its sync source gave it. Null means it cannot be annotated at all. */
+        /** The identity its sync source gave it, or null when the provider offers none. */
         val uid: String? = null,
         /**
          * Whether the meeting repeats, which decides whether a note names an occurrence.

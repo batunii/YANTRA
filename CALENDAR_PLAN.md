@@ -960,3 +960,41 @@ going anyway.
 
 Turning an event into a task (§21) stays for **your own** events, because that conversion is about
 work you have decided to do. It is no longer what happens to somebody else's meeting by default.
+
+## 24. Reading a real invitation
+
+Two things are true of almost every meeting a real calendar hands back, and neither is visible until
+you draw one:
+
+**The description is HTML.** That is what the web client writes, so it arrives as `<br>`s, `<a>`s and
+`&nbsp;`s, and drawn raw it is a wall of tags. `MeetingText.readable` unwraps the handful of things a
+calendar actually emits — line breaks, list items, the five entities — and leaves everything else
+alone. It is deliberately not a HTML parser: a description that was already plain text passes through
+untouched, which is the common case and the one that must not be damaged.
+
+**The join link is the point.** On a meeting that has one it is the thing you opened the page for,
+and in the invitation it sits three lines into a block of dial-in numbers. It comes to the top, as a
+button, named for what it joins — the location is looked at first because a provider that knows the
+meeting is a video call puts it there.
+
+Named from a **closed list** of services rather than guessed. "Join meeting" on a link to a shared
+document is worse than no button at all, because it is a promise about what pressing it will do.
+Every other link in the description is offered separately and plainly, since a URL you have to select
+and copy is a URL nobody follows from a phone.
+
+### And the bug underneath the mess
+
+An event about somebody else's meeting kept its link right up until you wrote the first note on it,
+and then lost it. `WorkspaceReconciler` rebuilds a node from its **page** once it has one, taking
+only `title`, `done`, `inProgress`, `indent` and `rank` back from the line — and `ext_uid` was not on
+that list. Writing a note is exactly the moment a node first earns a page.
+
+So: the link broke, the calendar stopped recognising the meeting, the next tap found no page and made
+a second one, and which page you landed on became a matter of luck. Every line-owned field has to be
+in that list, and one being missed is invisible until the node earns a page.
+
+The other half of "sometimes it opens" was simpler: an event the provider gives no identity for was
+dropped on the floor, silently. `UID_2445` is null on some providers and `_SYNC_ID` is null on a
+calendar with no account behind it, so the app was broken for whole calendars rather than at random.
+Those fall back to this device's own row id, marked `local:` so the file says plainly that it means
+nothing on another phone.
