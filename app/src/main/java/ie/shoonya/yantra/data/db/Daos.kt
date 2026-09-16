@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.db
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -35,6 +36,52 @@ data class NodePomoCount(
 data class ReminderRow(
     val nodeId: String,
     val atMillis: Long,
+)
+
+/**
+ * An open task as the calendar's rail sees it: what it is called, and what dates it carries.
+ *
+ * Both dates come back nullable and unjudged. Which bucket a task belongs in is a decision about
+ * *today*, and a decision about today does not belong in a query that SQLite will happily cache.
+ */
+data class RailTask(
+    val nodeId: String,
+    val title: String?,
+    val dueMillis: Long?,
+    val deadlineMillis: Long?,
+    /** How many sittings it already has, so a row can say it is planned twice. */
+    val sittings: Int,
+)
+
+/**
+ * A stretch of time set aside for a task, and the task's own words.
+ *
+ * The title comes down with the span because the bar has to name a task that may not be in progress
+ * yet — the whole point of readiness is that nothing has been written about it anywhere else.
+ */
+data class SittingSpan(
+    val taskId: String,
+    val title: String?,
+    val startUtc: Long,
+    val endUtc: Long,
+) {
+    /** True while [at] is inside it. The end is exclusive: a sitting ending at 15:00 is over at 15:00. */
+    fun covers(at: Long): Boolean = at >= startUtc && at < endUtc
+}
+
+/** A task with a due date, for the calendar to draw beside the events. */
+data class DueRow(
+    val nodeId: String,
+    val title: String?,
+    val done: Boolean,
+    val dueMillis: Long,
+    /** The `v_bool` encoding on [ie.shoonya.yantra.data.db.BuiltIns]: true when the due has a time. */
+    val hasTime: Boolean,
+    /** Minutes the task is blocked out for, or null for a moment. Drawn to scale on a timeline. */
+    val durationMin: Int? = null,
+    /** The meeting this task is about, when it is about one — CALENDAR_PLAN.md §22. */
+    val extUid: String? = null,
+    val extStart: String? = null,
 )
 
 @Dao
@@ -396,6 +443,50 @@ interface PropertyDao {
     )
     suspend fun activeRemindersOnce(defId: String): List<ReminderRow>
 
+    /**
+     * Tasks due inside `[fromUtc, toUtc)` — the other half of what a calendar day holds.
+     *
+     * Done tasks are kept, unlike [observeActiveReminders], which drops them: a reminder for
+     * something already finished is noise, but a calendar that hides what you completed on Tuesday
+     * is a calendar that cannot be looked back at.
+     */
+    @Query(
+        """
+        SELECT pv.node_id AS nodeId, n.title AS title, n.done AS done,
+               pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime,
+               pv.v_duration_min AS durationMin,
+               n.ext_uid AS extUid, n.ext_start AS extStart
+          FROM property_value pv JOIN node n ON n.id = pv.node_id
+         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL
+           AND pv.v_date >= :fromUtc AND pv.v_date < :toUtc
+           AND n.deleted_at IS NULL
+         ORDER BY pv.v_date
+        """
+    )
+    fun observeDueInRange(defId: String, fromUtc: Long, toUtc: Long): Flow<List<DueRow>>
+
+    /**
+     * Every unfinished task, with its dates and how many sittings it has.
+     *
+     * Unfinished only: the rail is for deciding what to do next, and a finished task is not a
+     * candidate for time. Dates arrive raw — see [RailTask] for why the bucketing is not done here.
+     */
+    @Query(
+        """
+        SELECT n.id AS nodeId, n.title AS title,
+               d.v_date AS dueMillis,
+               l.v_date AS deadlineMillis,
+               (SELECT COUNT(*) FROM event e WHERE e.for_node_id = n.id) AS sittings
+          FROM node n
+          LEFT JOIN property_value d ON d.node_id = n.id AND d.def_id = :dueDefId
+          LEFT JOIN property_value l ON l.node_id = n.id AND l.def_id = :deadlineDefId
+         WHERE n.type = 'task' AND n.done = 0 AND n.deleted_at IS NULL
+           AND n.title IS NOT NULL AND n.title != ''
+         ORDER BY n.updated_at DESC
+        """
+    )
+    fun railTasks(dueDefId: String, deadlineDefId: String): Flow<List<RailTask>>
+
     @Query("SELECT id FROM property_def WHERE name = :name AND is_built_in = 1 AND deleted_at IS NULL LIMIT 1")
     suspend fun builtInDefIdByName(name: String): String?
 
@@ -638,6 +729,177 @@ interface LabelDao {
     /** Recolour a label everywhere at once — the colour belongs to the tag, not to an attachment. */
     @Query("UPDATE label SET color = :color, updated_at = :now WHERE id = :id")
     suspend fun setColor(id: String, color: Long?, now: Long)
+}
+
+/**
+ * An event and the title it does not carry.
+ *
+ * [EventEntity] holds times, rule and series; the words live on the node row beside it. Joining in
+ * SQL rather than reading every node and matching in Kotlin — a calendar wants a month, not a
+ * workspace, and the join also drops events whose node has been deleted.
+ */
+data class EventWithTitle(
+    @Embedded val event: EventEntity,
+    /** The event's own title. Empty for a sitting, which has none by design. */
+    val title: String?,
+    /** The title of the task a sitting is for, joined through `for_node_id`. Null for an event. */
+    val forTitle: String? = null,
+    /** Whether that task is finished — a sitting for something already done draws as spent. */
+    val forDone: Boolean = false,
+    /**
+     * The meeting this line is about, **read from the node** — CALENDAR_PLAN.md §22.
+     *
+     * Aliased rather than taken from the embedded event row, and the distinction cost real bugs: the
+     * link moved onto `node` and `event.ext_uid` stopped being written, so everything still reading
+     * the embedded column silently saw null. A calendar block then never found the page it already
+     * had, and every tap made another one.
+     */
+    val nodeExtUid: String? = null,
+    val nodeExtStart: String? = null,
+) {
+    /**
+     * What to draw this block with.
+     *
+     * A sitting borrows its task's words; an event keeps its own. Preferring the wrong one here is
+     * the failure the build plan named — a day full of blocks labelled "Event" — because the join
+     * for an event's *own* node gives a sitting nothing.
+     */
+    val displayTitle: String?
+        get() = if (event.forNodeId != null) forTitle ?: title else title
+}
+
+@Dao
+interface EventDao {
+
+    @Query("SELECT * FROM event WHERE node_id = :nodeId")
+    suspend fun byId(nodeId: String): EventEntity?
+
+    /**
+     * Everything that might fall in `[fromUtc, toUtc)`.
+     *
+     * Three clauses, and each earns its place. The first is the ordinary overlap test. The second
+     * catches a **moment** — an event with no duration, where `start == end` makes the overlap test
+     * empty and would hide a reminder-shaped event sitting exactly on the boundary. The third
+     * returns every **recurring** event regardless of its own span, because the row holds only the
+     * first occurrence: a weekly standup that began in September has to come back when November is
+     * asked for, and deciding which of its occurrences actually land in the window is expansion's
+     * job, not SQL's.
+     *
+     * So this is a *candidate* query. The caller expands and filters. See CALENDAR_PLAN.md §4.
+     */
+    @Query(
+        """
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+               n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
+          FROM event e
+          JOIN node n ON n.id = e.node_id
+          -- LEFT, so a sitting whose task has gone still comes back — as a block with no words
+          -- rather than as a missing row. A stale reference is not a corrupt one.
+          LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
+         WHERE n.deleted_at IS NULL
+           AND (rrule IS NOT NULL
+                OR (start_utc < :toUtc AND end_utc > :fromUtc)
+                OR (start_utc = end_utc AND start_utc >= :fromUtc AND start_utc < :toUtc))
+         ORDER BY start_utc
+        """
+    )
+    fun inRange(fromUtc: Long, toUtc: Long): Flow<List<EventWithTitle>>
+
+    /**
+     * A sitting that has not finished yet, with the task it is for — CALENDAR_PLAN.md §13.
+     *
+     * The past is pruned in SQL rather than in Kotlin so the list stays a handful of rows in a
+     * workspace with years of them behind it. `strftime` is evaluated when the query runs, and Room
+     * re-runs it on every write to `event` or `node`, which is often enough: the in-memory clock
+     * decides which of these is happening *right now*.
+     */
+    @Query(
+        """
+        SELECT e.for_node_id AS taskId, t.title AS title,
+               e.start_utc AS startUtc, e.end_utc AS endUtc
+          FROM event e
+          JOIN node t ON t.id = e.for_node_id
+         WHERE e.for_node_id IS NOT NULL AND e.cancelled = 0
+           AND t.deleted_at IS NULL AND t.done = 0
+           AND e.end_utc >= CAST(strftime('%s', 'now') AS INTEGER) * 1000
+         ORDER BY e.start_utc
+        """
+    )
+    fun openSittings(): Flow<List<SittingSpan>>
+
+    /**
+     * The events written on one page, so a page can draw them as events.
+     *
+     * An event line renders through the ordinary text row otherwise, which shows its title and
+     * nothing else — and a sitting, which has no title by design, renders as an empty row. That is
+     * why a list holding two events looked empty. See CALENDAR_PLAN.md §18.
+     */
+    @Query(
+        """
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+               n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
+          FROM event e
+          JOIN node n ON n.id = e.node_id
+          LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
+         WHERE n.parent_id = :parentId AND n.deleted_at IS NULL
+        """
+    )
+    fun eventsUnder(parentId: String): Flow<List<EventWithTitle>>
+
+    /** One event, watched — for its own page to say when it is. */
+    @Query(
+        """
+        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+               n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
+          FROM event e
+          JOIN node n ON n.id = e.node_id
+          LEFT JOIN node t ON t.id = e.for_node_id AND t.deleted_at IS NULL
+         WHERE e.node_id = :nodeId
+        """
+    )
+    fun observeById(nodeId: String): Flow<EventWithTitle?>
+
+    /** The sittings planned for one task, soonest first — for its own page to list them. */
+    @Query("SELECT * FROM event WHERE for_node_id = :taskId ORDER BY start_utc")
+    fun sittingsFor(taskId: String): Flow<List<EventEntity>>
+
+    /** Every override and cancellation belonging to a series, for expansion to apply. */
+    @Query("SELECT * FROM event WHERE series_id = :seriesId")
+    suspend fun overridesOf(seriesId: String): List<EventEntity>
+
+    /**
+     * Armed reminders on events, in the shape [ReminderRow] already uses.
+     *
+     * The instant is computed in SQL the same way the Due query does it — start minus the offset in
+     * minutes, so a negative offset means after — and for the same reason: one expression the
+     * scheduler can trust rather than two places that must agree about the sign.
+     *
+     * A cancelled occurrence carries no reminder: it is an absence, and an alarm for something that
+     * is not happening is the worst kind of notification.
+     */
+    @Query(
+        """
+        SELECT e.node_id AS nodeId, e.start_utc - e.reminder_min * 60000 AS atMillis
+          FROM event e JOIN node n ON n.id = e.node_id
+         WHERE e.reminder_min IS NOT NULL AND e.cancelled = 0 AND n.deleted_at IS NULL
+        """
+    )
+    fun observeEventReminders(): Flow<List<ReminderRow>>
+
+    @Query(
+        """
+        SELECT e.node_id AS nodeId, e.start_utc - e.reminder_min * 60000 AS atMillis
+          FROM event e JOIN node n ON n.id = e.node_id
+         WHERE e.reminder_min IS NOT NULL AND e.cancelled = 0 AND n.deleted_at IS NULL
+        """
+    )
+    suspend fun eventRemindersOnce(): List<ReminderRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(events: List<EventEntity>)
+
+    @Query("DELETE FROM event WHERE workspace_id = :ws")
+    suspend fun clearEvents(ws: String)
 }
 
 @Dao

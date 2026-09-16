@@ -4,6 +4,8 @@ import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.data.db.PropertyValueEntity
+import ie.shoonya.yantra.data.db.EventEntity
+import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.Block
 import ie.shoonya.yantra.data.format.Bullet
 import ie.shoonya.yantra.data.format.DueSpec
@@ -32,6 +34,7 @@ data class MappedPage(
     val values: List<PropertyValueEntity>,
     val labels: List<LabelLink>,
     val inkNodeIds: List<String>,
+    val events: List<EventEntity> = emptyList(),
 ) {
     val nodes: List<NodeEntity> get() = listOf(page) + children
 }
@@ -81,12 +84,18 @@ object PageMapper {
         val values = ArrayList<PropertyValueEntity>()
         val labels = ArrayList<LabelLink>()
         val ink = ArrayList<String>()
+        val events = ArrayList<EventEntity>()
 
         var rank = Rank.after(null)
         page.blocks.forEachIndexed { i, block ->
             val id = when (block) {
                 is InkRef -> block.id
                 is TaskRef -> block.id.ifEmpty { blockId(page.id, i) }
+                // An event's own `^id` is load-bearing in a way a bullet's position is not: an
+                // override line names its series by that id, and a derived id changes the moment a
+                // line is inserted above it. A series whose members were renumbered by an unrelated
+                // edit would come apart.
+                is EventRef -> block.id.ifEmpty { blockId(page.id, i) }
                 else -> blockId(page.id, i)
             }
             children += NodeEntity(
@@ -99,12 +108,18 @@ object PageMapper {
                 done = block is TaskRef && block.status == TaskStatus.DONE,
                 inProgress = block is TaskRef && block.status == TaskStatus.IN_PROGRESS,
                 indent = block.indent,
+                // A line of any kind may be about somebody else's meeting — CALENDAR_PLAN.md §22.
+                // A task carries it now; an event line still may, from before the link moved here.
+                extUid = (block as? TaskRef)?.external?.uid ?: (block as? EventRef)?.external?.uid,
+                extStart = ((block as? TaskRef)?.external ?: (block as? EventRef)?.external)
+                    ?.occurrence?.toString(),
                 createdAt = ts,
                 updatedAt = ts,
             )
             rank = Rank.after(rank)
 
             if (block is InkRef) ink += block.id
+            if (block is EventRef) events += eventRow(id, block, workspaceId, zone)
             if (block is TaskRef) {
                 values += valuesFor(id, block, ts, zone, workspaceId)
                 block.labels.forEach { labels += LabelLink(id, it) }
@@ -129,6 +144,7 @@ object PageMapper {
             values = values,
             labels = labels,
             inkNodeIds = ink,
+            events = events,
         )
     }
 
@@ -140,6 +156,7 @@ object PageMapper {
         is Prose -> NodeType.PARAGRAPH
         is InkRef -> NodeType.INK
         is ImageRef -> NodeType.IMAGE
+        is EventRef -> NodeType.EVENT
     }
 
     private fun titleOf(b: Block): String? = when (b) {
@@ -149,7 +166,41 @@ object PageMapper {
         is Numbered -> b.text
         is Prose -> b.text
         is ImageRef -> b.uri
+        is EventRef -> b.title
         is InkRef -> null
+    }
+
+    /**
+     * One event's row.
+     *
+     * [zone] is the *device's* zone and is used only for a floating event, whose whole meaning is
+     * "whatever local time is here". A zoned event resolves in its own zone and indexes identically
+     * on every device. See [EventEntity].
+     */
+    private fun eventRow(id: String, e: EventRef, ws: String, zone: ZoneId): EventEntity {
+        val resolve = e.time.zone ?: zone
+        return EventEntity(
+            nodeId = id,
+            workspaceId = ws,
+            startLocal = e.time.start.toString(),
+            endLocal = e.time.end.toString(),
+            zone = e.time.zone?.toString(),
+            allDay = e.time.allDay,
+            startUtc = e.time.start.atZone(resolve).toInstant().toEpochMilli(),
+            endUtc = e.time.end.atZone(resolve).toInstant().toEpochMilli(),
+            rrule = e.rrule,
+            forNodeId = e.forTaskId,
+            color = e.color,
+            extUid = e.external?.uid,
+            extStart = e.external?.occurrence?.toString(),
+            seriesId = e.series?.id,
+            // The bare `series:s1` form means "the occurrence at this line's own start", so the
+            // index writes that start rather than a null the reader would have to know to fill in.
+            seriesOriginal = e.series?.let { (it.originalStart ?: e.time.start).toString() },
+            cancelled = e.cancelled,
+            location = e.location,
+            reminderMin = e.reminderMin,
+        )
     }
 
     private fun valuesFor(id: String, t: TaskRef, ts: Long, zone: ZoneId, ws: String): List<PropertyValueEntity> {
@@ -165,6 +216,7 @@ object PageMapper {
                 },
                 vBool = !allDay,
                 vNumber = due.reminderMin?.toDouble(),
+                vDurationMin = due.duration?.toMinutes()?.toInt(),
                 updatedAt = ts,
             )
         }

@@ -207,6 +207,14 @@ fun SettingsScreen(nav: NavHostController) {
             )
 
             Spacer(Modifier.height(28.dp))
+            // A device-local choice, which is exactly what this screen is for: provider ids are
+            // local numbers, and a phone and a tablet signed into different accounts have different
+            // answers. See CALENDAR_PLAN.md §5.
+            SectionLabel("Calendars")
+            Spacer(Modifier.height(2.dp))
+            DeviceCalendarSetting()
+
+            Spacer(Modifier.height(28.dp))
             // Everything commits on its own — this is for when you want to know it has, which
             // matters more than it should on Android, where the system is free to decide your
             // background work can wait until tomorrow.

@@ -54,19 +54,39 @@ class ReminderReceiver : BroadcastReceiver() {
         // or cleared after arming) — the DB is the source of truth, not the alarm.
         val node = container.nodes.byId(nodeId) ?: return
         if (node.done || node.deletedAt != null) return
-        val dueDefId = container.db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME) ?: return
-        val row = container.db.propertyDao().valuesForNodeOnce(nodeId)
-            .firstOrNull { it.defId == dueDefId } ?: return
-        val offsetMin = row.vNumber ?: return                 // reminder cleared since arming
-        val at = row.vDate ?: return
-        if (at - offsetMin.toLong() * 60_000L != expectedAt) return   // due/offset moved
 
-        // Same contract as a widget tap: MainActivity resolves the extras into a deep link.
+        // Two kinds of thing arm an alarm, and each validates against its own row. Without this an
+        // event's reminder was armed and then dropped in silence: the Due lookup below found no
+        // property value for it and returned, so the alarm fired into nothing.
+        val event = container.db.eventDao().byId(nodeId)
+        val isEvent = event != null
+        // A sitting is a reminder about a *task* — CALENDAR_PLAN.md §13. It has no words of its own,
+        // it deep-links to the thing it is time for, and it says nothing if that thing has since
+        // been finished or thrown away: an alarm for work already done is the worst kind.
+        val forTask = event?.forNodeId?.let { container.nodes.byId(it) }
+        if (event?.forNodeId != null && (forTask == null || forTask.done || forTask.deletedAt != null)) return
+        if (isEvent) {
+            if (event!!.cancelled) return                     // an absence has nothing to announce
+            val offsetMin = event.reminderMin ?: return       // reminder cleared since arming
+            if (event.startUtc - offsetMin.toLong() * 60_000L != expectedAt) return
+        } else {
+            val dueDefId = container.db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME) ?: return
+            val row = container.db.propertyDao().valuesForNodeOnce(nodeId)
+                .firstOrNull { it.defId == dueDefId } ?: return
+            val offsetMin = row.vNumber ?: return             // reminder cleared since arming
+            val at = row.vDate ?: return
+            if (at - offsetMin.toLong() * 60_000L != expectedAt) return   // due/offset moved
+        }
+
+        // Same contract as a widget tap: MainActivity resolves the extras into a deep link. A
+        // sitting opens the task rather than itself — a bare hour with nothing in it is not
+        // somewhere to be sent.
+        val opens = forTask?.id ?: nodeId
         val tap = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(ListWidgetProvider.EXTRA_OPEN_NODE, nodeId)
+            putExtra(ListWidgetProvider.EXTRA_OPEN_NODE, opens)
             putExtra(ListWidgetProvider.EXTRA_OPEN_SMART, false)
-            data = Uri.parse("yantra://open/$nodeId")
+            data = Uri.parse("yantra://open/$opens")
         }
         val done = Intent(context, ReminderReceiver::class.java).apply {
             action = Reminders.ACTION_MARK_DONE
@@ -86,8 +106,17 @@ class ReminderReceiver : BroadcastReceiver() {
             .setColor(accent.toArgb())
             .setColorized(false)
             // A notification cannot render a link, so it renders what the link says.
-            .setContentTitle(Links.plain(node.title.orEmpty()).ifBlank { "Reminder" })
-            .setContentText("Reminder")
+            .setContentTitle(
+                Links.plain((forTask ?: node).title.orEmpty()).ifBlank { "Reminder" }
+            )
+            .setContentText(
+                when {
+                    // What the bar is saying at the same moment, in the same words.
+                    forTask != null -> "It is time"
+                    isEvent -> eventWhen(event!!)
+                    else -> "Reminder"
+                }
+            )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
@@ -97,16 +126,29 @@ class ReminderReceiver : BroadcastReceiver() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
             )
-            .addAction(
-                0, "Mark done",
-                PendingIntent.getBroadcast(
-                    context, 0, done,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            // An event has no done state — it happens, it is not finished — so it gets no button
+            // that claims otherwise. Offering one would write `done` onto a node whose line has no
+            // checkbox to show it.
+            .apply {
+                if (!isEvent) addAction(
+                    0, "Mark done",
+                    PendingIntent.getBroadcast(
+                        context, 0, done,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    )
                 )
-            )
+            }
             .build()
         val canNotify = Build.VERSION.SDK_INT < 33 ||
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         if (canNotify) NotificationManagerCompat.from(context).notify(nodeId.hashCode(), notification)
+    }
+
+    /** "14:00" for a timed event, or the plain word for one that owns the whole day. */
+    private fun eventWhen(e: ie.shoonya.yantra.data.db.EventEntity): String {
+        if (e.allDay) return "All day"
+        val start = runCatching { java.time.LocalDateTime.parse(e.startLocal) }.getOrNull()
+            ?: return "Reminder"
+        return start.toLocalTime().toString()
     }
 }

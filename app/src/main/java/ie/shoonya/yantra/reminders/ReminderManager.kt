@@ -4,6 +4,7 @@ import ie.shoonya.yantra.data.db.AppDatabase
 import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.ReminderRow
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -30,7 +31,15 @@ class ReminderManager(
             // lookup) also covers the fresh-install case where seeding hasn't finished.
             val defId = db.propertyDao().observeBuiltInDefIdByName(BuiltIns.DUE_NAME)
                 .filterNotNull().first()
-            db.propertyDao().observeActiveReminders(defId)
+            // Two sources, one scheduler. A task's reminder lives in property_value and an event's
+            // in the event table, but an alarm is an alarm — combining here rather than running two
+            // managers is what keeps [sync]'s "cancel whatever left the set" honest, since a
+            // manager that could only see half the rows would cancel the other half's alarms every
+            // time it ran.
+            combine(
+                db.propertyDao().observeActiveReminders(defId),
+                db.eventDao().observeEventReminders(),
+            ) { tasks, events -> tasks + events }
                 .distinctUntilChanged()
                 .collect { sync(it) }
         }
@@ -50,7 +59,11 @@ class ReminderManager(
 
     /** One-shot for [BootReceiver] — alarms don't survive reboot. */
     suspend fun rescheduleAll() {
-        val defId = db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME) ?: return
-        sync(db.propertyDao().activeRemindersOnce(defId))
+        val defId = db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME)
+        val tasks = if (defId == null) emptyList() else db.propertyDao().activeRemindersOnce(defId)
+        // Events do not depend on the property registry having been seeded, so they are rearmed even
+        // when the Due def is somehow missing — a boot that lost the registry should not also lose
+        // every meeting alarm.
+        sync(tasks + db.eventDao().eventRemindersOnce())
     }
 }

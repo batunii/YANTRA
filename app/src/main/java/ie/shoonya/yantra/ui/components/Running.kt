@@ -308,7 +308,16 @@ fun NowPlayer(
                 )
                 Text(
                     buildString {
-                        append(current.elapsedSecs?.let { "RUNNING · ${elapsedLabel(it)}" } ?: "ON THE GO")
+                        append(
+                            when {
+                                current.elapsedSecs != null -> "RUNNING · ${elapsedLabel(current.elapsedSecs)}"
+                                // Its hour has come and nobody has pressed anything. The bar says
+                                // so; the file says nothing, which is the whole arrangement — see
+                                // RunningTask.stack.
+                                current.scheduled -> "IT IS TIME"
+                                else -> "ON THE GO"
+                            }
+                        )
                         if (stack.size > 1) append("  ·  ${index + 1}/${stack.size}")
                     },
                     fontFamily = YantraMono,
