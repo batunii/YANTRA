@@ -47,7 +47,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.flow.first
 import androidx.navigation.NavHostController
 import ie.shoonya.yantra.AddResult
 import ie.shoonya.yantra.AppContainer
@@ -247,14 +250,37 @@ fun SignInScreen(nav: NavHostController) {
     }
 
     /** Polls until the user finishes on github.com, or until the code dies. */
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(stage) {
         val waiting = stage as? Stage.Waiting ?: return@LaunchedEffect
         var interval = waiting.code.intervalSecs
-        var waited = 0
         var offline = 0
-        while (waited < waiting.code.expiresInSecs) {
+        // Real elapsed time, not a count of intervals. The loop now stops while the app is in the
+        // background, so summing the intervals it *meant* to wait would say four minutes had passed
+        // when the code had been alive for twelve, and the screen would go on offering a code GitHub
+        // had already expired.
+        val startedAt = System.currentTimeMillis()
+        fun elapsed() = ((System.currentTimeMillis() - startedAt) / 1000).toInt()
+        while (elapsed() < waiting.code.expiresInSecs) {
             delay(interval * 1000L)
-            waited += interval
+            // Nothing is asked while the app is in the background, because nothing *can* be.
+            //
+            // This is the whole of "having trouble connecting and then it worked". Pressing the
+            // button sends you to the browser, and Android answers by cutting this app off:
+            //
+            //     Destroyed live tcp sockets for uids={10684}
+            //     DNS Requested by 251, 10684(…), 4(FAIL), isBlocked=true
+            //
+            // `isBlocked=true` is the platform's background network firewall, not a bad network —
+            // the browser resolved github.com on the same network two seconds either side of it.
+            // So every poll made while you were away was guaranteed to fail, the screen reported
+            // exactly that, and the first poll after you came back succeeded. It was telling the
+            // truth about a fight it could not win.
+            //
+            // Waiting to be resumed is the fix rather than a workaround: the platform is right that
+            // a backgrounded app should not be holding a connection open, and there is nothing to
+            // learn in that window anyway. The one poll that matters is the one after you return.
+            lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
             when (val poll = withContext(Dispatchers.IO) { container.deviceAuth.poll(waiting.code) }) {
                 is DevicePoll.Token -> {
                     struggling = null
@@ -308,13 +334,33 @@ fun SignInScreen(nav: NavHostController) {
                 // A dropped request is not an answer. Keep asking — but say so, because a screen
                 // that reads "waiting for you" while it is actually failing is a lie, and give up
                 // eventually so a genuinely dead network does not look like a hang forever.
+                //
+                // **Not on the first miss, though.** This polls every few seconds for up to fifteen
+                // minutes while you are in another app approving, and one request in that window
+                // failing is unremarkable: the phone hands off between Wi-Fi and mobile when the
+                // browser opens, and a pooled keep-alive socket that the network dropped in the
+                // meantime fails once and then reconnects. Warning on a single miss meant the
+                // screen announced trouble during sign-ins that were going perfectly well and
+                // completed seconds later — which teaches you to distrust the message, and the
+                // message is worth trusting when the network really is gone.
                 is DevicePoll.Offline -> {
                     offline++
+                    // What actually went wrong, written down — CALENDAR_PLAN.md §26.
+                    //
+                    // The reason used to exist only as a sentence on screen, which meant a sign-in
+                    // that warned and then succeeded left no trace of *why* it warned. "It said it
+                    // was having trouble and then worked" is not something anybody can act on, and
+                    // guessing at the cause from the outside is how this sort of thing gets a fix
+                    // aimed at the wrong layer.
+                    //
+                    // The exception's own message and nothing else: no code, no token. A device
+                    // code is a credential for the next fifteen minutes.
+                    ie.shoonya.yantra.Trace.warn("signin", "poll $offline could not reach GitHub: ${poll.reason}")
                     if (offline >= MAX_OFFLINE_POLLS) {
                         stage = failed("Cannot reach GitHub — ${poll.reason}")
                         return@LaunchedEffect
                     }
-                    struggling = poll.reason
+                    if (offline >= QUIET_OFFLINE_POLLS) struggling = poll.reason
                 }
                 // GitHub sets the floor and we take it. Polling faster than asked is how an OAuth
                 // app gets rate-limited for every install of it, not just this one.
@@ -323,6 +369,11 @@ fun SignInScreen(nav: NavHostController) {
                     interval = poll.intervalSecs
                 }
                 DevicePoll.Pending -> {
+                    // Only worth a line when it is recovering from something, so an ordinary
+                    // sign-in stays quiet and a recovered one is visible as a recovery.
+                    if (offline > 0) {
+                        ie.shoonya.yantra.Trace.log("signin", "reached GitHub again after $offline miss(es)")
+                    }
                     offline = 0
                     struggling = null
                 }
@@ -430,7 +481,26 @@ fun SignInScreen(nav: NavHostController) {
                                 ?.setPrimaryClip(ClipData.newPlainText("code", s.code.userCode))
                             copied = true
                         },
-                        onOpen = { uri.openUri(s.code.verificationUri) },
+                        // Copied on the way out, every time.
+                        //
+                        // Copying used to be a separate tap on the code box that you had to know
+                        // was there, so the ordinary route — read the code, press Open GitHub —
+                        // arrived at GitHub's page with nothing on the clipboard. There is no way
+                        // to tell that apart from a page that refuses to paste, and it reads as the
+                        // second one.
+                        //
+                        // GitHub cannot be made to fill the field in for us: `?user_code=` on the
+                        // verification URL is carried through their sign-in redirect but ignored on
+                        // arrival — tried on a phone, the box came up empty. The web flow that would
+                        // avoid the code entirely needs a client secret even with PKCE, and a secret
+                        // shipped inside an APK is not a secret. So the code stays, and the most
+                        // that can be done is to make sure it is always there to paste.
+                        onOpen = {
+                            ctx.getSystemService(ClipboardManager::class.java)
+                                ?.setPrimaryClip(ClipData.newPlainText("code", s.code.userCode))
+                            copied = true
+                            uri.openUri(s.code.verificationUri)
+                        },
                     )
 
                     else -> {
@@ -697,7 +767,7 @@ private fun DeviceCodePanel(
     onOpen: () -> Unit,
 ) {
     val y = Yantra.colors
-    SectionLabel("Type this on GitHub")
+    SectionLabel("Your code")
     Spacer(Modifier.height(10.dp))
     Box(
         Modifier
@@ -729,14 +799,22 @@ private fun DeviceCodePanel(
     }
     Spacer(Modifier.height(12.dp))
     YantraButton(
-        label = "Open GitHub",
+        label = "Copy and open GitHub",
         modifier = Modifier.fillMaxWidth(),
         icon = Icons.AutoMirrored.Filled.OpenInNew,
         onClick = onOpen,
     )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "The code is copied when you open GitHub, so it is there to paste. GitHub asks for it "
+            + "once and then remembers this phone.",
+        color = y.textDim,
+        fontSize = 11.5.sp,
+    )
     Spacer(Modifier.height(12.dp))
     Text(
-        if (struggling == null) "Waiting for you to approve it. This screen will notice by itself."
+        if (struggling == null) "Come back here once you have approved it — this screen picks it " +
+            "up as soon as you do."
         else "Having trouble reaching GitHub — still trying. Your code is still good.",
         color = if (struggling == null) y.textMuted else y.warning,
         fontSize = 12.5.sp,
@@ -749,6 +827,15 @@ private fun DeviceCodePanel(
  * Roughly half a minute at GitHub's five-second floor: long enough to ride out a handover between
  * wifi and mobile, short enough that a genuinely dead network is not mistaken for a hang.
  */
+/**
+ * How many consecutive misses before the screen says anything.
+ *
+ * Two, so a single dropped request stays silent and a network that is actually gone is still named
+ * within about ten seconds. One was too eager — see the Offline branch — and saying nothing at all
+ * would put us back to a screen that reads "waiting for you" while nothing is reaching GitHub.
+ */
+private const val QUIET_OFFLINE_POLLS = 2
+
 private const val MAX_OFFLINE_POLLS = 6
 
 /**

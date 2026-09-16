@@ -50,6 +50,18 @@ class SyncEngine(
      * was built with, which by then was the one that had stopped working.
      */
     private val credentials: suspend () -> CredentialsProvider? = { null },
+    /**
+     * Where to say that this pass has reached the network, so a screen can show it.
+     *
+     * Reported from **inside** the engine rather than around it, because only the engine knows
+     * whether a pass touches the network at all. A workspace with no remote commits locally and
+     * returns, and announcing "Syncing with GitHub" for that would be a claim about a conversation
+     * that never happened — which is the same kind of misleading feedback this was added to end.
+     *
+     * Defaulted, like [credentials], so the tests of *what this engine does* carry nothing about
+     * what it announces.
+     */
+    private val activity: NetworkActivity = NetworkActivity(),
 ) {
     /**
      * One pass at a time per workspace.
@@ -89,6 +101,9 @@ class SyncEngine(
         val resolutions = ArrayList<ConflictResolver.Resolution>()
         var committed = false
         var pulled = false
+        // Whether the network was reached, so the announcement is withdrawn exactly once and only
+        // if it was ever made. The body below returns from a dozen places.
+        var networked = false
 
         // Before the first request, so an expiring token is renewed rather than discovered dead.
         val creds = runCatching { credentials() }.getOrNull()
@@ -102,6 +117,10 @@ class SyncEngine(
                     // the whole of sync for it, and saying "no remote" as an error would be wrong.
                     return SyncResult(committed = committed, problems = reindex() + listOfNotNull(unlocked))
                 }
+
+                // Past this line there is a remote, so everything below is a conversation with it.
+                networked = true
+                activity.enter(NetworkWords.SYNCING)
 
                 var attempt = 0
                 while (true) {
@@ -167,6 +186,12 @@ class SyncEngine(
                 committed = committed, pulled = pulled, conflicts = resolutions,
                 error = readable(e.message ?: e.toString()),
             )
+        } finally {
+            // Whatever happened — a clean push, a refusal, a throw, or one of the returns scattered
+            // through the body above — the screen stops saying this is in progress. A label that
+            // outlives its work is worse than no label, because it is the one people would learn to
+            // ignore.
+            if (networked) activity.leave()
         }
     }
 

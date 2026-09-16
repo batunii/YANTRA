@@ -206,6 +206,14 @@ class AppContainer(val app: Application) {
     /** One scheduler per workspace: each repo commits on its own rhythm. */
     private val commits = LinkedHashMap<String, CommitScheduler>()
 
+    /**
+     * What the app is saying to the network, for any screen that wants to show it.
+     *
+     * One for the whole app rather than one per workspace: the question a person is asking is "is
+     * it doing something right now", and three repos pushing at once is still one answer.
+     */
+    val network = ie.shoonya.yantra.data.sync.NetworkActivity()
+
     /** Commit and sync everything now, without waiting — app shutdown, and the Settings button. */
     fun syncNow(reason: String = "asked to sync") = commits.values.forEach { it.requestFlush(reason) }
 
@@ -342,9 +350,12 @@ class AppContainer(val app: Application) {
                 // Resolved per pass, after renewing: a token refreshed on the last pass — or a
                 // fresh sign-in — has to be picked up without restarting the app.
                 credentials = {
-                    withContext(Dispatchers.IO) { tokenRenewal.renewIfNeeded() }
+                    network.during(ie.shoonya.yantra.data.sync.NetworkWords.RENEWING) {
+                        withContext(Dispatchers.IO) { tokenRenewal.renewIfNeeded() }
+                    }
                     credentials.providerFor(store.id)
                 },
+                activity = network,
             ),
         )
     }
@@ -367,9 +378,16 @@ class AppContainer(val app: Application) {
                 ?: RepoRef.parse(urlOrSlug)?.name
                 ?: "Workspace"
 
-            when (val result = linker.link(dir, id, label, urlOrSlug, token) { store ->
-                WorkspaceSeeder.seedLinked(store, label)
-            }) {
+            // Said out loud, because this is the long one: two API checks, a clone and a push,
+            // over somebody's mobile connection. It was the most silent thing in the app and the
+            // one most likely to leave a person wondering whether the button had worked.
+            when (
+                val result = network.during(ie.shoonya.yantra.data.sync.NetworkWords.LINKING) {
+                    linker.link(dir, id, label, urlOrSlug, token) { store ->
+                        WorkspaceSeeder.seedLinked(store, label)
+                    }
+                }
+            ) {
                 is LinkResult.Refused -> {
                     // Nothing here is worth keeping, and leaving it would make a second attempt at
                     // the same repo look like an already-linked workspace.
@@ -431,7 +449,11 @@ class AppContainer(val app: Application) {
             val store = workspaces.store(workspaceId)
                 ?: return@withContext AddResult.Refused("That workspace is not open")
 
-            when (val result = linker.attach(store, urlOrSlug, token, adopt)) {
+            when (
+                val result = network.during(ie.shoonya.yantra.data.sync.NetworkWords.LINKING) {
+                    linker.attach(store, urlOrSlug, token, adopt)
+                }
+            ) {
                 is LinkResult.Refused -> AddResult.Refused(result.reason)
                 is LinkResult.HasTasks ->
                     AddResult.HasTasks(result.ref.slug, db.nodeDao().countNodes(workspaceId))

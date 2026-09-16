@@ -373,6 +373,10 @@ private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+        // Home has its own header rather than the shared one, so it needs this explicitly. It is
+        // also the screen most likely to be open while a sync runs, since that is where you land
+        // after writing something.
+        ie.shoonya.yantra.ui.components.NetworkPulse(Modifier.padding(top = 10.dp, end = 8.dp))
         NavCircleSurface(onClick = onSettings, size = 40.dp) { SettingsGlyph() }
     }
 }

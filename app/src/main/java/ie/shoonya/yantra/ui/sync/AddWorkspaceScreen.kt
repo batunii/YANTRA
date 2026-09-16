@@ -145,6 +145,23 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 Text("Paste the address, or type owner/name", color = y.textMuted, fontSize = 12.5.sp)
                 Spacer(Modifier.height(12.dp))
                 YantraField(url, { url = it; note = null }, "github.com/you/project", mono = true)
+                // What this address resolved to, said before anything is linked.
+                //
+                // The parser accepts a link from anywhere inside a repository — an issue, a file, a
+                // release — because that is where you are standing when you decide to link it. The
+                // price of being that forgiving is that the person should be able to see what it
+                // understood, so a paste of the wrong tab is caught by them rather than by a failed
+                // push a week later. An empty box says nothing; only a non-empty one is answered.
+                val resolved = RepoRef.parse(url)
+                if (url.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        resolved?.let { "Will use ${it.slug}" }
+                            ?: "No repository in that — paste its address, or type owner/name",
+                        color = if (resolved != null) y.textSecondary else y.textDim,
+                        fontSize = 12.sp,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "Tasks are kept on a branch called yantra-tasks. Your code is never downloaded "

@@ -92,6 +92,8 @@ class CommitScheduler(
         }
         // A structural change with nothing batched behind it still commits: the change itself is
         // already on disk and is exactly what we are here to record.
+        // Not announced here: only the engine knows whether a pass reaches the network, and a
+        // workspace with no remote commits locally without speaking to anybody.
         return engine.sync(commitMessage(reason, had)).also { _state.value = it }
     }
 
