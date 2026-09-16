@@ -289,7 +289,35 @@ class GitHubDeviceAuth(
         data class Broken(val why: String) : Post
     }
 
+    /**
+     * Posts, and tries a second time if the connection broke before GitHub said anything.
+     *
+     * **Why a retry is safe here, when it usually is not.** A POST may not be replayed in general,
+     * because the first one may have taken effect before the connection died. Neither request this
+     * class makes has an effect to repeat: asking for a device code twice yields a second code that
+     * is simply unused, and polling the token endpoint is a question about state, not a change to
+     * it. Both are idempotent in practice, which is what makes this allowed rather than merely
+     * convenient.
+     *
+     * **Why it is needed.** Polling reuses a pooled keep-alive connection every few seconds. When
+     * the far end closes an idle one at the same moment it is picked up, the write fails with
+     * `unexpected end of stream` or a reset — and Android will not retry a POST by itself, since it
+     * cannot know the request is repeatable. The result is one failed poll in an otherwise healthy
+     * sign-in, which recovers on its own a few seconds later and is exactly the "having trouble
+     * connecting and then it worked" this is chasing. A fresh connection is opened for the second
+     * attempt, so a stale socket cannot fail it twice.
+     *
+     * A retry only for a broken *connection*. Anything GitHub actually answers — including a
+     * refusal — is returned untouched, because a second identical question has the same answer and
+     * asking it again is just noise.
+     */
     private fun post(url: String, form: Map<String, String>, readErrorBody: Boolean = false): Post {
+        val first = postOnce(url, form, readErrorBody)
+        if (first is Post.Body) return first
+        return postOnce(url, form, readErrorBody)
+    }
+
+    private fun postOnce(url: String, form: Map<String, String>, readErrorBody: Boolean = false): Post {
         val encoded = form.entries.joinToString("&") { (k, v) ->
             "${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}"
         }

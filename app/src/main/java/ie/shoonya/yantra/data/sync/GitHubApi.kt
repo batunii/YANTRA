@@ -23,12 +23,35 @@ data class RepoRef(val owner: String, val name: String, val host: String = "gith
 
     companion object {
         /**
-         * Accepts the shapes people actually paste: a browser URL, a clone URL, an SSH remote, or
-         * just `owner/repo`. Anything else is null rather than a guess — pointing a workspace at the
-         * wrong repository is not a mistake worth being clever about.
+         * Accepts the shapes people actually paste: a browser URL from anywhere inside the
+         * repository, a clone URL, an SSH remote, or just `owner/repo`.
+         *
+         * **Deep links resolve rather than being refused.** This used to insist on exactly two path
+         * segments, so a URL copied from the address bar while looking at a file, an issue or a
+         * pull request — which is where you are when you decide to link the thing — was rejected as
+         * not a GitHub repository at all. It cost several attempts to link one workspace, and the
+         * message blamed the address rather than saying what was wrong with it.
+         *
+         * The old reasoning was that truncating an issue link would silently link the workspace to
+         * something the person had not asked for. But the first two segments of a github.com path
+         * *are* the repository — `/batunii/YANTRA/issues/4` cannot mean any repository other than
+         * `batunii/YANTRA`. There was never an ambiguity to protect against; the protection was
+         * against the user's intent, which is answered far better by showing them the `owner/name`
+         * this resolved to before anything is linked.
+         *
+         * Still null rather than a guess for anything with no repository in it: a bare name with no
+         * owner, a user's profile page, a sentence.
          */
         fun parse(input: String): RepoRef? {
-            val cleaned = input.trim().removeSuffix("/").removeSuffix(".git")
+            // Query and fragment go first, so `?tab=readme-ov-file` — which github.com puts in the
+            // address bar on the repository's own page — does not become part of the name on the
+            // slug path, where there is no URL parser to strip it.
+            val cleaned = input.trim()
+                .substringBefore('?')
+                .substringBefore('#')
+                .trim()
+                .removeSuffix("/")
+                .removeSuffix(".git")
             var host = "github.com"
             val path = when {
                 cleaned.startsWith("git@") -> {
@@ -44,8 +67,10 @@ data class RepoRef(val owner: String, val name: String, val host: String = "gith
                 else -> cleaned
             } ?: return null
             val parts = path.split('/').filter { it.isNotBlank() }
-            if (parts.size != 2) return null
-            return RepoRef(parts[0], parts[1], host.ifBlank { "github.com" })
+            if (parts.size < 2) return null
+            // `.git` again, because a deep link's repository segment can carry it in the middle of
+            // the path where `removeSuffix` never looked.
+            return RepoRef(parts[0], parts[1].removeSuffix(".git"), host.ifBlank { "github.com" })
         }
     }
 }

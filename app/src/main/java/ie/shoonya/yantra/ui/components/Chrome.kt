@@ -270,6 +270,10 @@ fun PageHeader(
                 )
             }
             if (!collapsed) Spacer(Modifier.weight(1f))
+            // Before the screen's own actions, so it never displaces them and never moves them by
+            // appearing. Every screen that has a header gets it for free, which is the point: the
+            // question "is it doing anything" is not about the screen you happen to be on.
+            NetworkPulse(Modifier.padding(end = 6.dp))
             actions()
         }
         AnimatedVisibility(
