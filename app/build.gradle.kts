@@ -69,16 +69,34 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // androidx.ink ships libink.so for four architectures and two of them are dead
-            // weight on a phone: x86 and x86_64 exist for emulators, and no Android handset has ever
-            // shipped either. Carrying both cost 3.1 MB of a 9.4 MB APK — a third of the download,
-            // for code that cannot run on the device receiving it.
-            //
-            // Release only, on purpose: debug keeps every ABI so the instrumented suite still runs
-            // on an x86_64 emulator, which is what CI has.
-            ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-            }
+        }
+    }
+
+    /**
+     * One APK per architecture, rather than one carrying every architecture.
+     *
+     * androidx.ink ships `libink.so` for four, and a device can only ever run one of them. Bundled
+     * together they were 2.25 MB of an 8.4 MB download — a quarter of it, for code that cannot
+     * execute on the machine receiving it.
+     *
+     * This replaces a release-only `ndk.abiFilters`. The two cannot both be set (AGP refuses the
+     * configuration outright), and splitting is the better of the two anyway: `abiFilters` makes
+     * one file that carries every architecture it did not exclude, where this makes a file per
+     * architecture and lets the store — or the person side-loading — take only the one that runs.
+     *
+     * **x86_64 is kept** because it is what an emulator is, and dropping it would leave the
+     * instrumented suite with nothing to run on in CI. It costs an unused artifact on a release
+     * build, which is cheaper than the alternative. Plain `x86` is genuinely dead and is not built.
+     *
+     * No universal APK: it would be exactly the oversized file this exists to stop shipping, and
+     * having it sit beside the split ones is how the wrong one comes to be the one downloaded.
+     */
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
         }
     }
     compileOptions {
