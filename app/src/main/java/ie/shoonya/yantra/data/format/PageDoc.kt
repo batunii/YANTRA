@@ -1,7 +1,10 @@
 package ie.shoonya.yantra.data.format
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 /**
  * A page, as it exists in the repo — see GIT_WORKSPACES_PLAN.md §2.
@@ -49,8 +52,22 @@ sealed interface DueValue {
     data class At(val instant: Instant) : DueValue
 }
 
-/** [reminderMin] is minutes *before* the due moment; negative means after. Null is no reminder. */
-data class DueSpec(val value: DueValue, val reminderMin: Int? = null)
+/**
+ * When a task is for, how long it is expected to take, and whether to say anything beforehand.
+ *
+ * [reminderMin] is minutes *before* the due moment; negative means after. Null is no reminder.
+ *
+ * [duration] is what makes a task drawable on a timeline beside an event — the "time blocking" every
+ * calendar app means by the phrase: a task from 14:00 to 15:00 is a block an hour tall, not a dot.
+ * It is null for an all-day task and for one that is merely *at* a time, because a moment and a span
+ * are different claims and only one of them can be drawn to scale. Blocks overlap freely; nothing
+ * here reserves anything.
+ */
+data class DueSpec(
+    val value: DueValue,
+    val reminderMin: Int? = null,
+    val duration: java.time.Duration? = null,
+)
 
 /**
  * One line of a page.
@@ -102,6 +119,15 @@ data class TaskRef(
      * would be noise in a file people read.
      */
     val doneAt: LocalDate? = null,
+    /**
+     * The meeting **in somebody else's calendar** this task is about — CALENDAR_PLAN.md §22.
+     *
+     * A task that carries one is a task *about* a meeting, not a copy of it: the day draws one block
+     * at the meeting's hours, the due date follows it when it moves, and the meeting's own details
+     * are read live rather than written here. What the file keeps is the minimum needed to find it
+     * again — a title, a time and this identity.
+     */
+    val external: ExternalRef? = null,
     override val raw: String? = null,
 ) : Block
 
@@ -109,3 +135,124 @@ data class TaskRef(
 data class InkRef(val id: String, override val indent: Int = 0, override val raw: String? = null) : Block
 
 data class ImageRef(val uri: String, override val indent: Int = 0, override val raw: String? = null) : Block
+
+/**
+ * When an event happens.
+ *
+ * **Local date-time and a zone, deliberately not an [Instant].** An instant is a point on the
+ * timeline, which is right for "remind me at this moment" and wrong for anything that repeats: a
+ * standup at 09:00 every weekday is 09:00 *local*, and expanding a rule from instants moves it by an
+ * hour at every DST boundary while the wall clock stays put. See CALENDAR_PLAN.md §2.1.
+ *
+ * [zone] being null means **floating** — "09:00 wherever you are". A birthday and a personal
+ * reminder are floating; a meeting with someone in another country is not. `CalendarContract` draws
+ * the same distinction, so this is not an invention.
+ *
+ * [end] is **exclusive**, so a duration is `end - start` with no off-by-one. All-day events are
+ * written in the file with an *inclusive* last date, because that is what somebody reading the line
+ * means by "the 11th to the 13th"; the codec converts, and [PageCodec] is where that seam lives.
+ */
+data class EventTime(
+    val start: LocalDateTime,
+    val end: LocalDateTime,
+    val zone: ZoneId? = null,
+    val allDay: Boolean = false,
+) {
+    val duration: Duration get() = Duration.between(start, end)
+
+    /** True for a moment rather than a span — a reminder-shaped event. */
+    val isInstantaneous: Boolean get() = start == end
+}
+
+/**
+ * The occurrence of a repeating event that this line replaces.
+ *
+ * [originalStart] identifies *which* occurrence, and is the start the rule would have produced —
+ * not where the override moved it to. Null means "the occurrence starting at this line's own start",
+ * which is the common case for a cancellation and keeps that line short.
+ */
+data class SeriesRef(val id: String, val originalStart: LocalDateTime? = null)
+
+/**
+ * The event **in somebody else's calendar** that this line is a note about — CALENDAR_PLAN.md §19.
+ *
+ * Written `ext:<uid>`, or `ext:<uid>@<occurrence start>` for one occurrence of a repeating one, the
+ * same `id@start` grammar [SeriesRef] uses.
+ *
+ * [uid] is the identity the *sync source* gave the event — its iCalendar UID, or failing that the
+ * id the account assigned it. Deliberately **not** the provider's local row id: that is a number
+ * this device made up, different on your other phone and gone after a reinstall, so a file carrying
+ * one would be claiming a relationship it cannot honour anywhere else. A UID is the same everywhere
+ * the event is, which is what makes it safe to write into a repository.
+ *
+ * A line carrying this is an **annotation, not an event**. It holds a cached title and time so the
+ * file reads sensibly and so something still draws when the calendar permission is off or the
+ * meeting has gone — but wherever the provider can be read, the provider is the truth and this is
+ * the thing that follows it.
+ */
+data class ExternalRef(val uid: String, val occurrence: LocalDateTime? = null)
+
+/**
+ * Something that happens, as opposed to something to be done.
+ *
+ * An event has a span and no done state — it is not finished, it simply passes. That is why it is
+ * not a [TaskRef] with extra fields and not a checkbox variant: there is no box to tick.
+ *
+ * Written `@ <when> <title> ^<id> <tokens…>`. The marker is `@ ` rather than `* ` because a leading
+ * asterisk is a bullet in every markdown editor there is, and a bullet somebody types by hand must
+ * not become a meeting — the same argument [PageCodec] already makes about the checkbox.
+ *
+ * [cancelled] only means anything alongside [series]: it is how one occurrence of a repeat is
+ * removed without rewriting the series line, which two devices cancelling two different days would
+ * otherwise collide on. See CALENDAR_PLAN.md §2.2.
+ */
+data class EventRef(
+    val id: String,
+    val title: String,
+    val time: EventTime,
+    /** RFC 5545 subset — see CALENDAR_PLAN.md §4. Stored verbatim, including rules we cannot expand. */
+    val rrule: String? = null,
+    /**
+     * The task this block is time set aside for — a **sitting**. See CALENDAR_PLAN.md §11.
+     *
+     * A sitting is an ordinary event with a referent, which is why it is a token here rather than a
+     * block type of its own: it wants everything an event already has. It carries no [title]; it
+     * draws with the task's, because storing the name twice would give you two places to rename it
+     * from and one of them would go stale.
+     */
+    val forTaskId: String? = null,
+    /**
+     * Somebody else's event that this line annotates — CALENDAR_PLAN.md §19.
+     *
+     * Non-null makes this line a **note about** a meeting rather than a meeting of your own. The
+     * calendar draws one block for the pair, using their times, and tapping it reaches these notes.
+     */
+    val external: ExternalRef? = null,
+    /**
+     * What colour it wears, by name — `col:teal`.
+     *
+     * A **name**, not a value, so the same word can be a slightly different ink on paper and at
+     * night. Storing the hex would freeze whichever theme happened to be on when it was chosen, and
+     * a light-mode colour on a dark ground is the one that goes muddy.
+     *
+     * Null means the workspace's colour, which is itself allowed to be nothing — see
+     * CALENDAR_PLAN.md §16. A word this build does not recognise is kept as written rather than
+     * dropped: an unknown colour should paint nothing, not lose somebody's line.
+     */
+    val color: String? = null,
+    val series: SeriesRef? = null,
+    val cancelled: Boolean = false,
+    val location: String? = null,
+    /** Minutes *before* the start; negative means after. Null is no reminder. Matches [DueSpec]. */
+    val reminderMin: Int? = null,
+    val labels: List<String> = emptyList(),
+    /**
+     * Who is involved, as `@name` — the same strings [TaskRef.assignee] uses, and carrying no more
+     * than a name. Nothing is sent to anybody; this is a note about who, not an invitation.
+     */
+    val attendees: List<String> = emptyList(),
+    val priority: String? = null,
+    override val indent: Int = 0,
+    override val raw: String? = null,
+) : Block
+

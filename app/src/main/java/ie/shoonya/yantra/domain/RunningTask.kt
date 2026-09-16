@@ -1,12 +1,17 @@
 package ie.shoonya.yantra.domain
 
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.data.db.SittingSpan
 import ie.shoonya.yantra.data.repo.NodeRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -33,6 +38,17 @@ class RunningTask(
     private val timer: FocusTimer,
     private val nodes: NodeRepository,
     scope: CoroutineScope,
+    /**
+     * Time already set aside for a task — CALENDAR_PLAN.md §13.
+     *
+     * A third source, combined here rather than folded into `inProgress()`, and the separation is
+     * deliberate: a sitting arriving is a claim about the *plan*, not about you. Writing `- [~]` at
+     * the stroke of two would mark a task picked up that you spent the hour in a meeting instead —
+     * in a file that syncs and commits. So the bar carries the readiness and the file carries the
+     * fact, and the fact is written when you press play.
+     */
+    sittings: Flow<List<SittingSpan>> = flowOf(emptyList()),
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     /**
      * One started task, as the bar draws it.
@@ -46,6 +62,8 @@ class RunningTask(
         val nodeId: String,
         val title: String,
         val elapsedSecs: Int?,
+        /** Its sitting is happening right now. Ready, whether or not anybody has picked it up. */
+        val scheduled: Boolean = false,
     ) {
         val hasSession: Boolean get() = elapsedSecs != null
     }
@@ -58,18 +76,71 @@ class RunningTask(
      * the point of showing it at all. The rest keep the newest-first order the query gave them.
      */
     val now: StateFlow<List<Now>> =
-        combine(nodes.inProgress(), timer.state) { started, session ->
-            val live = session?.takeIf { !it.isFinished }
-            started
-                .map { node ->
-                    Now(
-                        nodeId = node.id,
-                        title = Links.plain(node.title.orEmpty()),
-                        elapsedSecs = live?.takeIf { it.nodeId == node.id }?.elapsedSecs,
-                    )
-                }
-                .sortedByDescending { it.hasSession }
+        combine(nodes.inProgress(), timer.state, sittings, minutes()) { started, session, spans, at ->
+            stack(
+                started = started.map { it.id to Links.plain(it.title.orEmpty()) },
+                timing = session?.takeIf { !it.isFinished }?.let { it.nodeId to it.elapsedSecs },
+                sittings = spans,
+                at = at,
+            )
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** Ticks on the minute, so a sitting that has arrived is noticed without anybody opening a screen. */
+    private fun minutes(): Flow<Long> = flow {
+        while (true) {
+            val at = clock()
+            emit(at)
+            // To the next minute rather than every sixty seconds from whenever this started, so the
+            // bar changes as the clock does rather than up to a minute after it.
+            delay(60_000L - at % 60_000L)
+        }
+    }
+
+    companion object {
+        /**
+         * The bar, in order — pure, because the ordering is the part that is easy to get wrong and
+         * hard to see going wrong.
+         *
+         * Two sources, and neither is a subset of the other. A task you have picked up is on the go
+         * whatever the calendar says; a task whose sitting is happening now is **ready** even though
+         * nothing has been written about it anywhere. Both belong on the bar, once each.
+         *
+         * The order is a claim about what deserves the front card:
+         *
+         * 1. **The timed one**, always. It is the only card reporting something that changes, and
+         *    having to swipe to find out how long you have been at it defeats showing it at all.
+         * 2. **Then whatever is scheduled now.** Newest-first is a reasonable default with nothing
+         *    better to go on; a sitting is something better to go on — it is you, earlier, saying
+         *    this is the hour for this.
+         * 3. **Then the rest**, in the order they came, which is newest first.
+         */
+        fun stack(
+            started: List<Pair<String, String>>,
+            timing: Pair<String, Int>?,
+            sittings: List<SittingSpan>,
+            at: Long,
+        ): List<Now> {
+            val nowOn = sittings.filter { it.covers(at) }
+            val scheduledIds = nowOn.mapTo(HashSet()) { it.taskId }
+            val startedIds = started.mapTo(HashSet()) { it.first }
+            val cards = started.map { (id, title) ->
+                Now(
+                    nodeId = id,
+                    title = title,
+                    elapsedSecs = timing?.takeIf { it.first == id }?.second,
+                    scheduled = id in scheduledIds,
+                )
+            } + nowOn
+                // Two sittings for the same task in one hour is one card, not two.
+                .distinctBy { it.taskId }
+                .filter { it.taskId !in startedIds }
+                .map { Now(it.taskId, Links.plain(it.title.orEmpty()), elapsedSecs = null, scheduled = true) }
+            // Stable, so within each rank the order the sources gave is kept.
+            return cards.sortedWith(
+                compareByDescending<Now> { it.hasSession }.thenByDescending { it.scheduled }
+            )
+        }
+    }
 
     /** Which task holds the live clock. Null when things are started but nothing is being timed. */
     val timingId: String? get() = timer.state.value?.takeIf { !it.isFinished }?.nodeId

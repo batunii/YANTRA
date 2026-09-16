@@ -16,6 +16,15 @@ object NodeType {
     const val INK = "ink"
     const val IMAGE = "image"
     const val SMART_LIST = "smart_list"
+
+    /**
+     * Something that happens at a time — see [ie.shoonya.yantra.data.format.EventRef].
+     *
+     * Deliberately **not** in [TEXTUAL]. Those types convert freely between each other because a
+     * line of text is all any of them holds; an event also holds a span, and there is nothing
+     * honest to invent when a paragraph is asked to become one.
+     */
+    const val EVENT = "event"
     const val GROUP = "group"   // a Home banner grouping lists & smart lists (organizational only)
 
     /**
@@ -60,6 +69,8 @@ object SystemKey {
         // Scoped by workspace: every workspace has its own Inbox and its own Today, and a global
         // constraint would reject the second one on insert.
         Index(value = ["workspace_id", "system_key"], unique = true, name = "idx_node_system_key"),
+        // Every draw of the calendar overlay asks "is there a line about this meeting".
+        Index(value = ["ext_uid"], name = "idx_node_ext"),
     ]
 )
 data class NodeEntity(
@@ -102,6 +113,17 @@ data class NodeEntity(
     @ColumnInfo(name = "canvas_w") val canvasW: Double? = null,
     @ColumnInfo(name = "canvas_h") val canvasH: Double? = null,
     @ColumnInfo(name = "system_key") val systemKey: String? = null,  // see [SystemKey]
+    /**
+     * The meeting in somebody else's calendar this line is about — CALENDAR_PLAN.md §22.
+     *
+     * On **node** rather than on `event`, because it is a fact about a line of any kind: a task
+     * about a meeting is one node, not a task plus a linking event row. The identity stored is the
+     * sync source's, never this device's row id, which is what makes it mean the same thing on
+     * another phone.
+     */
+    @ColumnInfo(name = "ext_uid") val extUid: String? = null,
+    /** Which occurrence, for a repeating meeting. Null when it has only the one. */
+    @ColumnInfo(name = "ext_start") val extStart: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,    // LWW clock for sync
     @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,
@@ -147,6 +169,15 @@ data class PropertyValueEntity(
     @ColumnInfo(name = "v_number") val vNumber: Double? = null,
     @ColumnInfo(name = "v_date") val vDate: Long? = null,    // epoch millis: comparable + indexable
     @ColumnInfo(name = "v_bool") val vBool: Boolean? = null,
+    /**
+     * How long a dated value lasts, in minutes. Null for a moment.
+     *
+     * A column of its own rather than another meaning piled onto `v_number`, which already carries
+     * the reminder offset on this very def. Two numbers on one row cannot share one column, and
+     * encoding both into it would be the kind of cleverness that reads fine and then loses a
+     * reminder the first time somebody blocks out an hour.
+     */
+    @ColumnInfo(name = "v_duration_min") val vDurationMin: Int? = null,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
 
@@ -291,6 +322,82 @@ data class InkStrokeEntity(
     override fun equals(other: Any?): Boolean = other is InkStrokeEntity && other.id == id && other.updatedAt == updatedAt && other.deletedAt == deletedAt
     override fun hashCode(): Int = id.hashCode() * 31 + updatedAt.hashCode()
 }
+
+/**
+ * An event's own fields, beside the node row that carries its title and position.
+ *
+ * A separate table rather than [PropertyValueEntity] rows, which is where a task's due date lives.
+ * A due date is one value; an event is a span, a zone, an all-day flag, a rule and a series
+ * reference, and half of those want to be indexed columns so a month can be asked for in one query.
+ *
+ * **[startLocal] and [zone] are the truth; [startUtc] and [endUtc] are a convenience.** The local
+ * time is what the file says, and it is what a repeating event has to be expanded from — see
+ * CALENDAR_PLAN.md §2.1. The UTC pair exists only so a range query is a comparison rather than a
+ * parse, and it is derived by resolving the local time in [zone], or in *this device's* zone when
+ * that is null. A floating event therefore indexes differently on a phone in Dublin and a tablet in
+ * Tokyo, which is not a bug: floating means local, and the index is rebuilt per device from files
+ * that both agree on.
+ *
+ * A recurring event's span is only its **first** occurrence. Range queries have to include
+ * `rrule IS NOT NULL` rows whatever their span until expansion lands — see [EventDao.inRange].
+ */
+@Entity(
+    tableName = "event",
+    foreignKeys = [
+        ForeignKey(entity = NodeEntity::class, parentColumns = ["id"], childColumns = ["node_id"], onDelete = ForeignKey.CASCADE)
+    ],
+    indices = [
+        Index(value = ["workspace_id", "start_utc"], name = "idx_event_start"),
+        Index(value = ["series_id"], name = "idx_event_series"),
+        Index(value = ["for_node_id"], name = "idx_event_for"),
+        Index(value = ["ext_uid"], name = "idx_event_ext"),
+    ]
+)
+data class EventEntity(
+    @PrimaryKey @ColumnInfo(name = "node_id") val nodeId: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
+    /** ISO local date-time, exactly as the file spells it. Authoritative. */
+    @ColumnInfo(name = "start_local") val startLocal: String,
+    /** Exclusive, so a duration is a subtraction. See [ie.shoonya.yantra.data.format.EventTime]. */
+    @ColumnInfo(name = "end_local") val endLocal: String,
+    /** Null is floating — "09:00 wherever you are". */
+    val zone: String? = null,
+    @ColumnInfo(name = "all_day") val allDay: Boolean = false,
+    @ColumnInfo(name = "start_utc") val startUtc: Long,
+    @ColumnInfo(name = "end_utc") val endUtc: Long,
+    val rrule: String? = null,
+    /**
+     * The task this block is time set aside for — a sitting. See CALENDAR_PLAN.md §11.
+     *
+     * No foreign key, deliberately. A sitting outliving its task is a stale reference, not a
+     * corrupt one: it degrades to an ordinary block with no title rather than taking the row down,
+     * and the index is rebuilt from files where the `for:` token is simply a string.
+     */
+    @ColumnInfo(name = "for_node_id") val forNodeId: String? = null,
+    /**
+     * The colour it wears, by name. Null means whatever the workspace wears.
+     *
+     * A name rather than a value, for the reason [ie.shoonya.yantra.data.format.EventRef.color]
+     * gives: the same word is a different ink on paper and at night.
+     */
+    val color: String? = null,
+    /**
+     * **Dead. Read nothing from these.** The link to somebody else's meeting lives on `node` —
+     * CALENDAR_PLAN.md §22 — because it is a fact about a line of any kind.
+     *
+     * They are kept only so the table need not be recreated to drop them, and they are never
+     * written. Leaving them readable already cost one bug: the bucketer went on consulting the
+     * embedded column after the mapper stopped filling it, saw null for every line, and made a new
+     * page on every tap of the same meeting. Use [EventWithTitle.nodeExtUid].
+     */
+    @ColumnInfo(name = "ext_uid") val extUid: String? = null,
+    @ColumnInfo(name = "ext_start") val extStart: String? = null,
+    @ColumnInfo(name = "series_id") val seriesId: String? = null,
+    @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
+    val cancelled: Boolean = false,
+    val location: String? = null,
+    @ColumnInfo(name = "reminder_min") val reminderMin: Int? = null,
+)
 
 /**
  * A user-created tag: freely create, attach/detach per task, and delete — no schema ceremony.

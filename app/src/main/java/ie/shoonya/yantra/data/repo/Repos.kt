@@ -22,6 +22,7 @@ import ie.shoonya.yantra.data.filter.SortSpec
 import ie.shoonya.yantra.data.filter.workspacesNamed
 import ie.shoonya.yantra.data.filter.deriveApplyOnCreate
 import ie.shoonya.yantra.data.rank.Rank
+import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.Block
 import ie.shoonya.yantra.data.format.Bullet
 import ie.shoonya.yantra.data.format.Heading
@@ -221,8 +222,56 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     }
 
     /** Re-files a task under a different list. What the share sheet's "change list" does. */
+    /**
+     * Moves a node onto another list, in this workspace or any other — CALENDAR_PLAN.md §28.
+     *
+     * One entry point for both, because the caller cannot reasonably be asked which kind of move it
+     * is picking: a list picker shows every list the app has, and which repo each one lives in is
+     * not something a person is thinking about when they file something.
+     */
     suspend fun moveToList(taskId: String, listId: String) {
-        ws.writerFor(taskId).reparent(taskId, listId)
+        ws.moveAcross(taskId, listId)
+    }
+
+    /**
+     * The event behind a node, as the block it is written as — CALENDAR_PLAN.md §28.
+     *
+     * Here rather than on a view model because two screens now need the same answer: the calendar,
+     * where a tap on a block opens the sheet, and an event's own page, where the header is the way
+     * in. Two copies of this drifted once already — `forTaskId` was dropped from one of them, and a
+     * sitting quietly became an ordinary untitled event the first time anybody nudged its start.
+     */
+    suspend fun eventRefFor(nodeId: String): ie.shoonya.yantra.data.format.EventRef? =
+        db.eventDao().byId(nodeId)?.let { row ->
+            ie.shoonya.yantra.data.format.EventRef(
+                id = row.nodeId,
+                title = byId(nodeId)?.title.orEmpty(),
+                time = ie.shoonya.yantra.data.format.EventTime(
+                    start = java.time.LocalDateTime.parse(row.startLocal),
+                    end = java.time.LocalDateTime.parse(row.endLocal),
+                    zone = row.zone?.let { java.time.ZoneId.of(it) },
+                    allDay = row.allDay,
+                ),
+                rrule = row.rrule,
+                cancelled = row.cancelled,
+                location = row.location,
+                reminderMin = row.reminderMin,
+                color = row.color,
+                forTaskId = row.forNodeId,
+            )
+        }
+
+    /**
+     * Writes an event back to the line it came from.
+     *
+     * [Change.STRUCTURAL] rather than a deferred edit: the sheet can change the hour, and every
+     * block that draws this event is drawn from the index. A deferred reindex here is the
+     * two-hundred-millisecond spring-back that a screen recording caught on a drag.
+     */
+    suspend fun saveEvent(nodeId: String, event: ie.shoonya.yantra.data.format.EventRef) {
+        ws.writerFor(nodeId).editEvent(nodeId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            event.copy(id = nodeId)
+        }
     }
 
     /**
@@ -420,6 +469,7 @@ private fun renamed(b: Block, text: String): Block = when (b) {
     is Numbered -> b.copy(text = text)
     is Prose -> b.copy(text = text)
     is ImageRef -> b.copy(uri = text)
+    is EventRef -> b.copy(title = text)
     is InkRef -> b
 }
 
@@ -430,6 +480,7 @@ private fun indented(b: Block, indent: Int): Block = when (b) {
     is Numbered -> b.copy(indent = indent)
     is Prose -> b.copy(indent = indent)
     is ImageRef -> b.copy(indent = indent)
+    is EventRef -> b.copy(indent = indent)
     is InkRef -> b.copy(indent = indent)
 }
 

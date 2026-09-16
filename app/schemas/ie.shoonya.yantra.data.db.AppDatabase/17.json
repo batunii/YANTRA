@@ -1,0 +1,901 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 17,
+    "identityHash": "459c5aa6003229beda7ac5d86dc2d3a1",
+    "entities": [
+      {
+        "tableName": "node",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `parent_id` TEXT, `type` TEXT NOT NULL, `title` TEXT, `rank` TEXT NOT NULL, `done` INTEGER NOT NULL, `in_progress` INTEGER NOT NULL, `collapsed` INTEGER NOT NULL, `indent` INTEGER NOT NULL, `canvas_x` REAL, `canvas_y` REAL, `canvas_w` REAL, `canvas_h` REAL, `system_key` TEXT, `ext_uid` TEXT, `ext_start` TEXT, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`parent_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parent_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rank",
+            "columnName": "rank",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "done",
+            "columnName": "done",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inProgress",
+            "columnName": "in_progress",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collapsed",
+            "columnName": "collapsed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "indent",
+            "columnName": "indent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canvasX",
+            "columnName": "canvas_x",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "canvasY",
+            "columnName": "canvas_y",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "canvasW",
+            "columnName": "canvas_w",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "canvasH",
+            "columnName": "canvas_h",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "systemKey",
+            "columnName": "system_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "extUid",
+            "columnName": "ext_uid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "extStart",
+            "columnName": "ext_start",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deleted_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_node_parent",
+            "unique": false,
+            "columnNames": [
+              "parent_id",
+              "rank"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_node_parent` ON `${TABLE_NAME}` (`parent_id`, `rank`)"
+          },
+          {
+            "name": "idx_node_workspace",
+            "unique": false,
+            "columnNames": [
+              "workspace_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_node_workspace` ON `${TABLE_NAME}` (`workspace_id`)"
+          },
+          {
+            "name": "idx_node_system_key",
+            "unique": true,
+            "columnNames": [
+              "workspace_id",
+              "system_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `idx_node_system_key` ON `${TABLE_NAME}` (`workspace_id`, `system_key`)"
+          },
+          {
+            "name": "idx_node_ext",
+            "unique": false,
+            "columnNames": [
+              "ext_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_node_ext` ON `${TABLE_NAME}` (`ext_uid`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "parent_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "property_def",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `config` TEXT, `is_built_in` INTEGER NOT NULL DEFAULT 0, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config",
+            "columnName": "config",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isBuiltIn",
+            "columnName": "is_built_in",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deleted_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "property_value",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`node_id` TEXT NOT NULL, `def_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `v_text` TEXT, `v_number` REAL, `v_date` INTEGER, `v_bool` INTEGER, `v_duration_min` INTEGER, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`node_id`, `def_id`), FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`def_id`) REFERENCES `property_def`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defId",
+            "columnName": "def_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vText",
+            "columnName": "v_text",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "vNumber",
+            "columnName": "v_number",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "vDate",
+            "columnName": "v_date",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "vBool",
+            "columnName": "v_bool",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "vDurationMin",
+            "columnName": "v_duration_min",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "node_id",
+            "def_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_pv_def",
+            "unique": false,
+            "columnNames": [
+              "def_id",
+              "v_text",
+              "v_number",
+              "v_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_pv_def` ON `${TABLE_NAME}` (`def_id`, `v_text`, `v_number`, `v_date`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "node_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "property_def",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "def_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "focus_session",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `node_id` TEXT NOT NULL, `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `planned_secs` INTEGER NOT NULL, `actual_secs` INTEGER, `outcome` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "ended_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "plannedSecs",
+            "columnName": "planned_secs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actualSecs",
+            "columnName": "actual_secs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_focus_node",
+            "unique": false,
+            "columnNames": [
+              "node_id",
+              "started_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_focus_node` ON `${TABLE_NAME}` (`node_id`, `started_at`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "node_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "smart_list_def",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`node_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `scope_root_id` TEXT, `filter_json` TEXT NOT NULL, `sort_json` TEXT, `home_parent_id` TEXT, `apply_on_create_json` TEXT, PRIMARY KEY(`node_id`), FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopeRootId",
+            "columnName": "scope_root_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "filterJson",
+            "columnName": "filter_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortJson",
+            "columnName": "sort_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "homeParentId",
+            "columnName": "home_parent_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "applyOnCreateJson",
+            "columnName": "apply_on_create_json",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "node_id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "node_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "ink_stroke",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `node_id` TEXT NOT NULL, `data` BLOB NOT NULL, `bbox_x` REAL, `bbox_y` REAL, `bbox_w` REAL, `bbox_h` REAL, `rank` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `deleted_at` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "data",
+            "columnName": "data",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bboxX",
+            "columnName": "bbox_x",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bboxY",
+            "columnName": "bbox_y",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bboxW",
+            "columnName": "bbox_w",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bboxH",
+            "columnName": "bbox_h",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "rank",
+            "columnName": "rank",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deleted_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_stroke_node",
+            "unique": false,
+            "columnNames": [
+              "node_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_stroke_node` ON `${TABLE_NAME}` (`node_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "node_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`node_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `start_local` TEXT NOT NULL, `end_local` TEXT NOT NULL, `zone` TEXT, `all_day` INTEGER NOT NULL, `start_utc` INTEGER NOT NULL, `end_utc` INTEGER NOT NULL, `rrule` TEXT, `for_node_id` TEXT, `color` TEXT, `ext_uid` TEXT, `ext_start` TEXT, `series_id` TEXT, `series_original` TEXT, `cancelled` INTEGER NOT NULL, `location` TEXT, `reminder_min` INTEGER, PRIMARY KEY(`node_id`), FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startLocal",
+            "columnName": "start_local",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endLocal",
+            "columnName": "end_local",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zone",
+            "columnName": "zone",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "allDay",
+            "columnName": "all_day",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startUtc",
+            "columnName": "start_utc",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endUtc",
+            "columnName": "end_utc",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rrule",
+            "columnName": "rrule",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "forNodeId",
+            "columnName": "for_node_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "extUid",
+            "columnName": "ext_uid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "extStart",
+            "columnName": "ext_start",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "seriesId",
+            "columnName": "series_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "seriesOriginal",
+            "columnName": "series_original",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cancelled",
+            "columnName": "cancelled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reminderMin",
+            "columnName": "reminder_min",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "node_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_event_start",
+            "unique": false,
+            "columnNames": [
+              "workspace_id",
+              "start_utc"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_event_start` ON `${TABLE_NAME}` (`workspace_id`, `start_utc`)"
+          },
+          {
+            "name": "idx_event_series",
+            "unique": false,
+            "columnNames": [
+              "series_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_event_series` ON `${TABLE_NAME}` (`series_id`)"
+          },
+          {
+            "name": "idx_event_for",
+            "unique": false,
+            "columnNames": [
+              "for_node_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_event_for` ON `${TABLE_NAME}` (`for_node_id`)"
+          },
+          {
+            "name": "idx_event_ext",
+            "unique": false,
+            "columnNames": [
+              "ext_uid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_event_ext` ON `${TABLE_NAME}` (`ext_uid`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "node_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "label",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `name` TEXT NOT NULL, `color` INTEGER, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_label_name",
+            "unique": true,
+            "columnNames": [
+              "workspace_id",
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `idx_label_name` ON `${TABLE_NAME}` (`workspace_id`, `name`)"
+          }
+        ]
+      },
+      {
+        "tableName": "node_label",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`node_id` TEXT NOT NULL, `label_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`node_id`, `label_id`), FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`label_id`) REFERENCES `label`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "node_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labelId",
+            "columnName": "label_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workspaceId",
+            "columnName": "workspace_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "node_id",
+            "label_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_node_label_label",
+            "unique": false,
+            "columnNames": [
+              "label_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_node_label_label` ON `${TABLE_NAME}` (`label_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "node",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "node_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "label",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "label_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '459c5aa6003229beda7ac5d86dc2d3a1')"
+    ]
+  }
+}

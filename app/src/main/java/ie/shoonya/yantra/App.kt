@@ -60,6 +60,15 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First line of every session, so a log somebody sends is anchored to a build. It also
+        // proves the channel works: a trace that is stripped or retagged by R8 is worse than none,
+        // because it reads as "nothing happened".
+        Trace.log(
+            "app",
+            "started " + runCatching {
+                packageManager.getPackageInfo(packageName, 0).versionName
+            }.getOrNull().orEmpty(),
+        )
         // Channels first, and this is load-bearing rather than tidy. Constructing the container
         // starts the collector that revives a live focus session, which posts to a channel and now
         // also starts a foreground service that must be handed a notification on a channel that
@@ -242,7 +251,7 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
-    val running = RunningTask(timer, nodes, appScope)
+    val running = RunningTask(timer, nodes, appScope, db.eventDao().openSittings())
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 

@@ -31,6 +31,7 @@ data class WorkspaceIndex(
     val defs: List<PropertyDefEntity> = emptyList(),
     val smartLists: List<SmartListDefEntity> = emptyList(),
     val ink: List<InkStrokeEntity> = emptyList(),
+    val events: List<ie.shoonya.yantra.data.db.EventEntity> = emptyList(),
     val focus: List<FocusSessionEntity> = emptyList(),
     val problems: List<String> = emptyList(),
 )
@@ -88,6 +89,7 @@ object WorkspaceReconciler {
         val values = ArrayList<PropertyValueEntity>()
         val links = ArrayList<LabelLink>()
         val ink = ArrayList<InkStrokeEntity>()
+        val events = ArrayList<ie.shoonya.yantra.data.db.EventEntity>()
 
         mapped.forEach { m ->
             val parent = m.page.parentId
@@ -105,12 +107,21 @@ object WorkspaceReconciler {
                 // The file supplies identity and everything below the fold; the line supplies the
                 // fields that belong to a line. Taking the page row wholesale silently reset every
                 // task that owned a page back to open, at indent zero, in an arbitrary order.
+                //
+                // **Every line-owned field has to be listed here, and one being missed is invisible
+                // until the node earns a page.** `ext_uid` was, and the failure was a good example
+                // of the shape: an event about somebody else's meeting kept its link right up until
+                // the moment you wrote the first note on it — because that is when it first got a
+                // page — and then quietly lost it, so the calendar stopped recognising the meeting
+                // and the next tap made a second page for the same thing.
                 else -> m.page.copy(
                     title = line.title,
                     done = line.done,
                     inProgress = line.inProgress,
                     indent = line.indent,
                     rank = line.rank,
+                    extUid = line.extUid,
+                    extStart = line.extStart,
                 )
             }
 
@@ -121,6 +132,7 @@ object WorkspaceReconciler {
             values += m.values
             links += m.labels
             ink += strokesFor(store, m, stamp, problems, ws)
+            events += m.events
         }
 
         val labels = resolveLabels(store, links, stamp, ws)
@@ -155,6 +167,7 @@ object WorkspaceReconciler {
                 )
             },
             ink = ink,
+            events = events,
             // Every node, not only the pages. A session belongs to whatever you focused on, and
             // most tasks never own a page — a page exists only once a task holds something. Checking
             // against page ids therefore threw away the sessions of every plain task: appended to the
