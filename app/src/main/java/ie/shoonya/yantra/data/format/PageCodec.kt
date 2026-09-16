@@ -266,7 +266,8 @@ object PageCodec {
                 w.startsWith("for:") -> { forTask = w.removePrefix("for:").takeIf { it.isNotEmpty() }; forTask != null }
                 w.startsWith("series:") -> parseSeries(w.removePrefix("series:"))?.also { series = it } != null
                 w == "cancelled" -> { cancelled = true; true }
-                w.startsWith("loc:") -> { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }; location != null }
+                w.startsWith("loc:") ->
+                    { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }?.let(::decodeValue); location != null }
                 w.startsWith("col:") -> { color = w.removePrefix("col:").takeIf { it.isNotEmpty() }; color != null }
                 w.startsWith("ext:") -> parseExternal(w.removePrefix("ext:"))?.also { external = it } != null
                 w.startsWith("remind:") -> { reminder = w.removePrefix("remind:").toIntOrNull(); reminder != null }
@@ -308,14 +309,34 @@ object PageCodec {
      * one — `abc123@google.com` is the ordinary form — and splitting on the first would take the
      * domain for an occurrence start and lose the identity of every Google event there is.
      */
+    /**
+     * A token's value, with the spaces put back — CALENDAR_PLAN.md §27.
+     *
+     * **A token is one word.** The whole line grammar rests on it: tokens are scanned right to left
+     * and the first word that is not one ends the scan, everything before it being the title. So a
+     * value with a space in it does not merely look untidy, it *ends the scan early* and swallows
+     * every token written before it into the title — including `^id`, which is how an event came to
+     * lose its identity, be re-indexed under a positional one, and stop being findable at all.
+     *
+     * `%20` for a space and `%25` for a percent, which is the smallest encoding that is reversible
+     * and that somebody reading the file will recognise. A value with neither passes through
+     * untouched, which is almost all of them.
+     */
+    private fun decodeValue(raw: String): String =
+        if ('%' !in raw) raw else raw.replace("%20", " ").replace("%25", "%")
+
+    /** The inverse. Percent first, or encoding a space would then be re-encoded. */
+    private fun encodeValue(raw: String): String =
+        if (' ' !in raw && '%' !in raw) raw else raw.replace("%", "%25").replace(" ", "%20")
+
     private fun parseExternal(token: String): ExternalRef? {
         if (token.isEmpty()) return null
         val at = token.lastIndexOf('@')
-        if (at < 0) return ExternalRef(token)
+        if (at < 0) return ExternalRef(decodeValue(token))
         val tail = token.drop(at + 1)
-        val occurrence = parseLocal(tail) ?: return ExternalRef(token)   // an @ inside the uid
+        val occurrence = parseLocal(tail) ?: return ExternalRef(decodeValue(token))  // an @ in the uid
         val uid = token.take(at)
-        return if (uid.isEmpty()) null else ExternalRef(uid, occurrence)
+        return if (uid.isEmpty()) null else ExternalRef(decodeValue(uid), occurrence)
     }
 
     private fun parseSeries(token: String): SeriesRef? {
@@ -541,7 +562,7 @@ object PageCodec {
         // un-finishing clears it, so a task cannot claim to have been completed on a day it was not.
         t.doneAt?.takeIf { t.status == TaskStatus.DONE }?.let { append(" done:").append(it) }
         t.external?.let { x ->
-            append(" ext:").append(x.uid)
+            append(" ext:").append(encodeValue(x.uid))
             x.occurrence?.let { append('@').append(renderLocal(it)) }
         }
         t.priority?.let { append(" !").append(it) }
@@ -566,10 +587,10 @@ object PageCodec {
             s.originalStart?.takeIf { it != e.time.start }?.let { append('@').append(renderLocal(it)) }
         }
         if (e.cancelled) append(" cancelled")
-        e.location?.let { append(" loc:").append(it) }
+        e.location?.let { append(" loc:").append(encodeValue(it)) }
         e.color?.let { append(" col:").append(it) }
         e.external?.let { x ->
-            append(" ext:").append(x.uid)
+            append(" ext:").append(encodeValue(x.uid))
             // The occurrence only when there is one to name. A one-off meeting has a single
             // instance, and writing its start twice would be two places for two devices to disagree.
             x.occurrence?.let { append('@').append(renderLocal(it)) }

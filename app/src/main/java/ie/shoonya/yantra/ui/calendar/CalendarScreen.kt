@@ -414,10 +414,20 @@ private data class EventSheetTarget(
 )
 
 /**
- * An event opens where it can be changed; a task opens the page it lives on.
+ * Everything with a page opens its page — CALENDAR_PLAN.md §28.
  *
- * A task's time is one of many things about it and the rest of them are on its page, so sending a
- * tap to a sheet that could only edit the hour would be the wrong half of the task.
+ * This used to send your own event to a sheet and somebody else's meeting to a page, which made an
+ * event look like two different kinds of thing depending on who wrote it. It is one node type, and
+ * one node type should have one behaviour.
+ *
+ * The old rule — "an event opens where it can be changed" — was right when the page had no way to
+ * change one. The header carries **Edit** now, so the page *is* where it can be changed, and it is
+ * also where the notes are.
+ *
+ * **A sitting is the exception, and stays one.** It has no title of its own by design — it borrows
+ * the task's — so it has nothing a page could be about. The thing you tapped was a piece of time,
+ * and moving it or giving it back is what you came to do; the task it belongs to is one row away
+ * inside the sheet.
  */
 private fun openItem(
     item: DayItem,
@@ -439,9 +449,12 @@ private fun openItem(
     if (item is DayItem.Event) {
         scope.launch {
             val event = vm.eventFor(item.nodeId) ?: return@launch
-            // A sitting opens on its own terms, not the task's: the thing you tapped was a piece of
-            // time, and moving or giving it back is what you came to do. The task is one row away.
-            open(EventSheetTarget(item.nodeId, event, forTitle = event.forTaskId?.let { vm.titleOf(it) }))
+            val forTask = event.forTaskId
+            if (forTask != null) {
+                open(EventSheetTarget(item.nodeId, event, forTitle = vm.titleOf(forTask)))
+            } else {
+                nav.navigate(Routes.node(item.nodeId))
+            }
         }
     } else {
         nav.navigate(Routes.node(item.nodeId))

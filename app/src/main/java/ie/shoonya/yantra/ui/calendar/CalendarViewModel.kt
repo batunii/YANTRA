@@ -492,28 +492,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 
     /** The event behind a day-list row, for the sheet to open on. */
     suspend fun eventFor(nodeId: String): ie.shoonya.yantra.data.format.EventRef? =
-        container.db.eventDao().byId(nodeId)?.let { row ->
-            val title = container.nodes.byId(nodeId)?.title.orEmpty()
-            ie.shoonya.yantra.data.format.EventRef(
-                id = row.nodeId,
-                title = title,
-                time = ie.shoonya.yantra.data.format.EventTime(
-                    start = java.time.LocalDateTime.parse(row.startLocal),
-                    end = java.time.LocalDateTime.parse(row.endLocal),
-                    zone = row.zone?.let { java.time.ZoneId.of(it) },
-                    allDay = row.allDay,
-                ),
-                rrule = row.rrule,
-                cancelled = row.cancelled,
-                location = row.location,
-                reminderMin = row.reminderMin,
-                color = row.color,
-                // Carried, and it has to be: the sheet saves whatever it was handed, so dropping
-                // this here would quietly turn a sitting into an ordinary untitled event the first
-                // time anybody nudged its start time.
-                forTaskId = row.forNodeId,
-            )
-        }
+        container.nodes.eventRefFor(nodeId)
 
     /** A node's title, for the sheet to say whose time a sitting is. */
     suspend fun titleOf(nodeId: String): String? = container.nodes.byId(nodeId)?.title

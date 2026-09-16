@@ -95,11 +95,22 @@ class Indexer(private val db: AppDatabase) {
         val nodesChanged = was?.nodes != index.nodes
         val valuesChanged = was?.values != index.values
         val labelsChanged = was?.labels != index.labels
-        val linksChanged = was?.nodeLabels != index.nodeLabels
+        // `node_label` and `event` are the two tables that hang off `node` with ON DELETE CASCADE,
+        // so clearing nodes takes their rows with it whether or not they changed — and the skip
+        // below then never writes them back. `defer_foreign_keys` postpones the *check*; it does
+        // not cancel the *action*, which is why the other dependents survive this and these two do
+        // not.
+        //
+        // The shape of the failure, since it took a log line on a phone to see: you tap somebody's
+        // meeting, the page opens with its header, you type one word, and the header goes. Typing
+        // changes nodes and nothing else, so the event rows were cascaded away and then skipped —
+        // and because `last` had already been told they were written, every rebuild afterwards
+        // agreed they were there. Gone until the process restarted.
+        val linksChanged = nodesChanged || was?.nodeLabels != index.nodeLabels
         val defsChanged = was?.defs != index.defs
         val smartChanged = was?.smartLists != index.smartLists
         val inkChanged = !sameInk(was?.ink, index.ink)
-        val eventsChanged = was?.events != index.events
+        val eventsChanged = nodesChanged || was?.events != index.events
         val focusChanged = was?.focus != index.focus
 
         // Everything above points at node, so its rows can only be replaced once the dependents are

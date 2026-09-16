@@ -225,6 +225,34 @@ class NodePageViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /** Every list the app has, for the move picker — CALENDAR_PLAN.md §28. */
+    suspend fun listsToMoveInto(): List<ie.shoonya.yantra.data.db.NodeEntity> =
+        container.db.nodeDao().allListsOnce().filterNot { it.id == nodeId }
+
+    /**
+     * Files this page onto another list.
+     *
+     * Any list in any workspace: a node made by tapping a meeting lands in Inbox because something
+     * has to catch it, not because that is where it belongs.
+     */
+    fun moveToList(listId: String) {
+        viewModelScope.launch { container.nodes.moveToList(nodeId, listId) }
+    }
+
+    /**
+     * This page's own event, as the block it is written as — CALENDAR_PLAN.md §28.
+     *
+     * For the sheet to open on. [ownEvent] is the indexed row, which is what a header draws from;
+     * the sheet edits the line, and the line is the thing the file actually holds.
+     */
+    suspend fun eventRef(): ie.shoonya.yantra.data.format.EventRef? =
+        container.nodes.eventRefFor(nodeId)
+
+    /** Writes the sheet's answer back to this page's own event line. */
+    fun saveEvent(event: ie.shoonya.yantra.data.format.EventRef) {
+        viewModelScope.launch { container.nodes.saveEvent(nodeId, event) }
+    }
+
     /**
      * The times behind any event lines on this page, by node id.
      *

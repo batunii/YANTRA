@@ -61,12 +61,29 @@ private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
  * because none of it is yours to edit.
  */
 @Composable
-internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
+internal fun MeetingHeader(
+    row: EventWithTitle,
+    details: DeviceEventDetails?,
+    /**
+     * Opens this event for editing — CALENDAR_PLAN.md §28. Null where it is not yours to edit.
+     *
+     * The asymmetry is the point of the distinction. Somebody else's meeting is read-only and has
+     * to look it: this app holds no permission to write their calendar, so a control offering to
+     * change the time would be a promise it cannot keep. Your own event is a node like any other,
+     * and until now had no way to be changed from the one screen you open it on.
+     */
+    onEdit: (() -> Unit)? = null,
+) {
     val y = Yantra.colors
     val context = LocalContext.current
     val e = row.event
     val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull()
     val end = runCatching { LocalDateTime.parse(e.endLocal) }.getOrNull()
+    // Compact by default, and bigger when you ask — CALENDAR_PLAN.md §27. The when, the place and
+    // the way in are what a header is for; the guest list and the invitation's small print are what
+    // you look up once. Folded, the page under it is still a page rather than a wall of somebody
+    // else's text.
+    var expanded by remember(e.nodeId) { mutableStateOf(false) }
     val tint = e.color
         ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) }?.light }
         ?.let { Color(LabelPalette.display(it, y.isDark)) }
@@ -161,16 +178,20 @@ internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
             // A location that is only the video link says nothing the button above has not.
             ?.takeIf { it.trim() != conference?.url }
         val guests = details?.guests.orEmpty()
-        if (where != null || guests.isNotEmpty() || details?.organiser != null) {
+        // Where it is stays folded-in: it is half of what a header is for.
+        where?.let {
             Spacer(Modifier.height(12.dp))
-            where?.let { Field("Where", it) }
+            Field("Where", it)
+        }
+        if (expanded) {
             details?.organiser?.let { Field("Organiser", it) }
             if (guests.isNotEmpty()) {
-                // Capped: a company-wide invite runs to three hundred, and the page is for writing.
+                // Capped even when expanded: a company-wide invite runs to three hundred, and the
+                // page is for writing.
                 Field(
                     "Guests",
-                    guests.take(5).joinToString(", ") +
-                        if (guests.size > 5) "  +${guests.size - 5} more" else "",
+                    guests.take(12).joinToString(", ") +
+                        if (guests.size > 12) "  +${guests.size - 12} more" else "",
                 )
             }
         }
@@ -178,17 +199,13 @@ internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
         // Unwrapped, because Google's web client writes HTML and a description drawn raw is a wall
         // of `<br>`s. See MeetingText.readable.
         val description = MeetingText.readable(details?.description)
-        if (description.isNotBlank()) {
+        if (expanded && description.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
-            var expanded by remember(description) { mutableStateOf(false) }
             Text(
                 description,
                 fontSize = 12.5.sp,
                 lineHeight = 18.sp,
                 color = y.textSecondary,
-                maxLines = if (expanded) Int.MAX_VALUE else 5,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { expanded = !expanded },
             )
             // Every other link in it, as things you can press. An invitation routinely carries the
             // agenda, the deck and a dial-in page, and a URL you have to select and copy is a URL
@@ -212,8 +229,44 @@ internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
             }
         }
 
-        details?.let { d ->
+        // The header's own controls: how much of itself to show, and — on your own event — the way
+        // to change it. "More details" is hidden entirely when there is nothing more behind it, so
+        // it is never a button that does nothing.
+        val more = details != null &&
+            (details.organiser != null || guests.isNotEmpty() || description.isNotBlank())
+        if (more || onEdit != null) {
             Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (more) {
+                    Text(
+                        if (expanded) "Less  ‹" else "More details  ›",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.W700,
+                        color = y.accent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { expanded = !expanded }
+                            .padding(vertical = 4.dp, horizontal = 2.dp),
+                    )
+                }
+                onEdit?.let { edit ->
+                    if (more) Spacer(Modifier.width(14.dp))
+                    Text(
+                        "Edit",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.W700,
+                        color = y.accent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = edit)
+                            .padding(vertical = 4.dp, horizontal = 2.dp),
+                    )
+                }
+            }
+        }
+
+        if (expanded) details?.let { d ->
+            Spacer(Modifier.height(8.dp))
             // One row on the page you were going to anyway, rather than a choice made instead of
             // opening it. A tap on a meeting should not be able to throw you into another app.
             Text(
@@ -231,6 +284,68 @@ internal fun MeetingHeader(row: EventWithTitle, details: DeviceEventDetails?) {
                         }
                     }
                     .padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The same event, reduced to what survives a fold — CALENDAR_PLAN.md §28.
+ *
+ * The band folds when the keyboard comes up, because a header is space the page does not get and
+ * with the keyboard up there is very little to go round. For a task folding to nothing is right.
+ * For a meeting it is not: the details are what you are writing *against*, and taking them away the
+ * moment you start writing is the whole complaint this answers.
+ *
+ * So an event folds to this instead of to nothing — when it is, and the way in. Both fit on one
+ * line, and neither is something you should have to unfold the page to see.
+ */
+@Composable
+internal fun MeetingStrip(row: EventWithTitle, details: DeviceEventDetails?) {
+    val y = Yantra.colors
+    val context = LocalContext.current
+    val e = row.event
+    val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull()
+    val end = runCatching { LocalDateTime.parse(e.endLocal) }.getOrNull()
+    val conference = MeetingText.conferenceIn(details?.location ?: e.location, details?.description)
+
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            when {
+                start == null -> "—"
+                e.allDay -> "All day"
+                end == null || end == start -> start.format(CLOCK)
+                else -> "${start.format(CLOCK)}–${end.format(CLOCK)}"
+            },
+            fontFamily = YantraMono,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.W700,
+            color = y.textSecondary,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            start?.format(DAY) ?: "",
+            fontSize = 11.5.sp,
+            color = y.textDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        conference?.let { call ->
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Join \u203a",
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.W700,
+                color = y.accentText,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(y.accentFill)
+                    .clickable { open(context, call.url) }
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
             )
         }
     }

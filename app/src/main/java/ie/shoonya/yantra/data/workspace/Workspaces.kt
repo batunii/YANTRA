@@ -96,6 +96,39 @@ class Workspaces(
         return ws?.let { writers[it] } ?: primary()
     }
 
+    /**
+     * Moves a node, and everything under it, to a page in another workspace — CALENDAR_PLAN.md §28.
+     *
+     * **Why this cannot be [WorkspaceWriter.reparent].** A writer owns one store. `reparent` looks
+     * the destination page up in its own, so across workspaces it found nothing, appended the line
+     * to a page it had just invented in the *source* repo, and left the node in neither place a
+     * person could reach. Nothing exercised it, because until now no screen offered the move.
+     *
+     * Ordered so that a failure in the middle leaves **two copies rather than none**: the files are
+     * copied in first, then the line changes hands, and only then are the originals removed. A
+     * duplicate is a thing somebody can delete; a page that stopped existing halfway through a move
+     * is not.
+     */
+    suspend fun moveAcross(nodeId: String, newParent: String) {
+        val from = db.nodeDao().byId(nodeId)?.workspaceId ?: return
+        val to = db.nodeDao().byId(newParent)?.workspaceId ?: return
+        if (from == to) {
+            writers[from]?.reparent(nodeId, newParent)
+            return
+        }
+        val source = stores[from] ?: return
+        val dest = stores[to] ?: return
+        val sourceWriter = writers[from] ?: return
+        val destWriter = writers[to] ?: return
+
+        dest.adopt(source, nodeId)
+        // Null only if the line is not where the index says it is, which is a workspace already
+        // disagreeing with itself. The copy above is then a harmless orphan rather than a deletion.
+        val line = sourceWriter.takeLine(nodeId) ?: return
+        destWriter.putLine(line, newParent, nodeId)
+        sourceWriter.dropFiles(nodeId)
+    }
+
     /** Applies any index rebuild a deferred edit still owes. The app going to the background. */
     suspend fun flushIndexes() = writers.values.forEach { it.flushIndex() }
 

@@ -349,6 +349,57 @@ class WorkspaceStore(
         deleteSmartList(id)
     }
 
+    /**
+     * Every file the page tree under [id] owns — CALENDAR_PLAN.md §28.
+     *
+     * The same walk [deletePage] does, and deliberately so: what a move has to carry is exactly what
+     * a delete has to destroy, and the two going out of step is how a moved page comes to leave a
+     * drawing behind in the repo it left. A page, its ink sidecar, its pictures, and the same again
+     * for every page inside it — all three live in `pages/` named after the block, so a subtree is a
+     * list of files rather than a tree of directories.
+     *
+     * Missing files are simply absent from the list: most blocks own no ink and no picture, and a
+     * task that never held anything owns no page either.
+     */
+    fun subtreeFiles(id: String, seen: MutableSet<String> = HashSet()): List<File> {
+        if (!seen.add(id)) return emptyList()    // a malformed workspace can name a cycle
+        val found = ArrayList<File>()
+        listOf(pageFile(id), inkFile(id), imageFile(id)).filterTo(found) { it.exists() }
+        runCatching { PageCodec.decode(pageFile(id).readText()) }.getOrNull()?.blocks?.forEach { b ->
+            when (b) {
+                is ie.shoonya.yantra.data.format.InkRef -> {
+                    if (inkFile(b.id).exists()) found += inkFile(b.id)
+                }
+                is ie.shoonya.yantra.data.format.ImageRef ->
+                    if (imageFile(b.uri).exists()) found += imageFile(b.uri)
+                is ie.shoonya.yantra.data.format.TaskRef ->
+                    if (pageFile(b.id).exists()) found += subtreeFiles(b.id, seen)
+                is ie.shoonya.yantra.data.format.EventRef ->
+                    if (pageFile(b.id).exists()) found += subtreeFiles(b.id, seen)
+                else -> Unit
+            }
+        }
+        return found
+    }
+
+    /**
+     * Copies a page tree in from another workspace, keeping every id.
+     *
+     * Ids are unique across workspaces — they are random, not per-repo counters — so a move keeps
+     * them, and every link into the moved page goes on resolving. The caller removes the originals
+     * once this has returned; doing it the other way round is how a failed copy becomes a lost page.
+     */
+    fun adopt(from: WorkspaceStore, id: String) {
+        if (refuseWhenAhead("adopt($id)")) return
+        pagesDir.mkdirs()
+        from.subtreeFiles(id).forEach { src ->
+            val dest = File(pagesDir, src.name)
+            dest.writeBytesAtomically(src.readBytes())
+            pageCache.remove(dest.name)
+            inkCache.remove(dest.name)
+        }
+    }
+
     // ---- ink ----
 
     fun inkFile(id: String): File = File(pagesDir, "$id.ink")

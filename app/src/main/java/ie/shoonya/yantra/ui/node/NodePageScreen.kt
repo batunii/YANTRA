@@ -39,7 +39,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.offset
 import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
+import ie.shoonya.yantra.ui.calendar.EventSheet
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
@@ -212,6 +217,11 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val pageEvents by vm.events.collectAsStateWithLifecycle()
     val ownEvent by vm.ownEvent.collectAsStateWithLifecycle()
     val meeting by vm.meeting.collectAsStateWithLifecycle()
+    // The sheet this page's own event opens in — CALENDAR_PLAN.md §28. Null while closed; holds the
+    // line as it currently reads while open, because the sheet edits a block and not a row.
+    var editingEvent by remember(nodeId) {
+        mutableStateOf<ie.shoonya.yantra.data.format.EventRef?>(null)
+    }
     val defs by vm.defs.collectAsStateWithLifecycle()
     val ownValues by vm.ownValues.collectAsStateWithLifecycle()
     val allLabels by vm.allLabels.collectAsStateWithLifecycle()
@@ -236,6 +246,11 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
     var propertySheetFor by remember { mutableStateOf<String?>(null) }
     var deletingPage by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // The lists this page could be filed onto — CALENDAR_PLAN.md §28. Null while the picker is shut;
+    // read when it opens rather than watched, because it is a one-shot choice and a list appearing
+    // underneath a finger mid-tap is worse than a list that is a second out of date.
+    var movePicker by remember(nodeId) { mutableStateOf<List<NodeEntity>?>(null) }
     // Which block owns the handles. A column of ⋮ down the right edge is noise on every row to
     // serve the one row you actually want to act on, so a block earns its handle by being
     // touched: focused (text blocks) or long-pressed (anything).
@@ -297,7 +312,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // The page says what it is once it has settled. A node that never arrives is the difference
     // between "this page is empty" and "this page is not there", which look identical on a screen.
     val nodeLoaded by vm.nodeLoaded.collectAsStateWithLifecycle()
-    androidx.compose.runtime.LaunchedEffect(nodeId, nodeLoaded, current?.id, current?.type) {
+    androidx.compose.runtime.LaunchedEffect(nodeId, nodeLoaded, current?.id, current?.type, ownEvent != null) {
         val node = current
         if (node == null) {
             if (nodeLoaded) {
@@ -307,7 +322,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             ie.shoonya.yantra.Trace.log(
                 "page",
                 "opened ${ie.shoonya.yantra.Trace.id(nodeId)} type=${node.type} " +
-                    "ext=${ie.shoonya.yantra.Trace.uid(node.extUid)}",
+                    "ext=${ie.shoonya.yantra.Trace.uid(node.extUid)} " +
+                    // Whether the header has anything to draw. An event node with no row in the
+                    // `event` table is a page that looks blank for a reason nothing else reports.
+                    "header=${if (ownEvent != null) "yes" else "no"}",
             )
         }
     }
@@ -482,11 +500,35 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 nav.navigate(if (liveHere != null) Routes.FOCUS_CURRENT else Routes.focus(nodeId))
             },
             onDelete = { deletingPage = true },
+            // A top-level list has no line on any page, so there is nothing to pick up and move.
+            onMove = if (current?.parentId == null) null else ({
+                scope.launch { movePicker = vm.listsToMoveInto() }
+            }),
             onRename = vm::renamePage,
             onTitleFocusChanged = { titleFocused = it },
             onToggleDone = { done -> vm.setDone(nodeId, done) },
             onToggleInProgress = { on -> vm.setInProgress(nodeId, on) },
+            // An event's details belong to the header, not to the page — CALENDAR_PLAN.md §28.
+            //
+            // Three places before this one, and the first two were both wrong for the same reason.
+            // In the band, it folded away the moment the keyboard came up. Moved into the page to
+            // dodge that, it sat below your notes and went further down with every line you typed
+            // — the same disappearance by a different route. It is back in the band, and the fold
+            // rule is what changed: an event folds to MeetingStrip rather than to nothing.
+            collapsedExtra = { ownEvent?.let { MeetingStrip(it, meeting) } },
             properties = {
+                ownEvent?.let { event ->
+                    MeetingHeader(
+                        event,
+                        meeting,
+                        // Yours to change, or somebody else's to read. `nodeExtUid` is the whole
+                        // test: a line carrying one is about a meeting in a calendar this app can
+                        // only read.
+                        onEdit = if (event.nodeExtUid != null) null else ({
+                            scope.launch { editingEvent = vm.eventRef() }
+                        }),
+                    )
+                }
                 if (isTask) {
                     PropertyRow(
                         defs = defs,
@@ -894,17 +936,6 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // under the last line does in any editor: puts the caret on a new line. If the page
             // already ends in a blank block, that blank IS the new line, so it is focused instead
             // of another one being made.
-            // An event's header — CALENDAR_PLAN.md §23, §25. The **first thing in the page** rather
-            // than part of the band, which was a mistake worth naming: the band folds itself away
-            // when the keyboard comes up, to give a document room to be typed in. For a task that is
-            // right. For a meeting it meant the details vanished the moment you started writing the
-            // notes you opened the page to write — and writing about a meeting is exactly when you
-            // want to see who is in it.
-            //
-            // Here it scrolls with the page, so it goes when you push it away and not before.
-            ownEvent?.let { event ->
-                item(key = "meeting-header") { MeetingHeader(event, meeting) }
-            }
             if (isDocument) {
                 item(key = "page-tail") {
                     val tail = blocks.lastOrNull()
@@ -1092,6 +1123,33 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         )
     }
 
+    // Changing your own event, from its own page — CALENDAR_PLAN.md §28.
+    //
+    // The same sheet the calendar opens, deliberately: an event has four or five fields whether you
+    // reached it by tapping a block or by opening its page, and two editors for one thing is how
+    // they come to disagree about what a save means.
+    editingEvent?.let { ref ->
+        EventSheet(
+            initial = ref,
+            day = ref.time.start.toLocalDate(),
+            onSave = { vm.saveEvent(it); editingEvent = null },
+            // Deleting belongs to the page's own menu, which already has it and already asks first.
+            // A second way to delete, on a sheet reached from inside the thing being deleted, is a
+            // way to be left looking at a page that is no longer there.
+            onDelete = null,
+            onDismiss = { editingEvent = null },
+        )
+    }
+
+    movePicker?.let { lists ->
+        MoveToListDialog(
+            lists = lists,
+            currentParent = current?.parentId,
+            onDismiss = { movePicker = null },
+            onPick = { id -> movePicker = null; vm.moveToList(id) },
+        )
+    }
+
     if (deletingPage && current != null) {
         ConfirmDialog(
             title = "Delete \"${current.title.orEmpty()}\"?",
@@ -1104,6 +1162,54 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             },
         )
     }
+}
+
+/**
+ * Where to file this page — CALENDAR_PLAN.md §28.
+ *
+ * Every list the app has, not only this workspace's: a node made by tapping somebody's meeting
+ * lands in Inbox because something has to catch it, and where it belongs is a separate question
+ * answered later. Which repository a list lives in is not what somebody is thinking about while
+ * filing, so the picker does not ask — [ie.shoonya.yantra.data.workspace.Workspaces.moveAcross]
+ * sorts out which kind of move it turned out to be.
+ */
+@Composable
+private fun MoveToListDialog(
+    lists: List<NodeEntity>,
+    currentParent: String?,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    val y = Yantra.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Move to list") },
+        text = {
+            if (lists.isEmpty()) {
+                Text("There are no other lists to move this to.", color = y.textMuted)
+            } else {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    lists.forEach { list ->
+                        val here = list.id == currentParent
+                        Text(
+                            list.title.orEmpty().ifBlank { "Untitled list" },
+                            color = if (here) y.textDim else y.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // The list it is already on is shown and not offered: taking it out
+                                // of the picker would read as the list having been deleted.
+                                .clickable(enabled = !here) { onPick(list.id) }
+                                .padding(vertical = 11.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -1130,7 +1236,17 @@ private fun PageBand(
     onTitleFocusChanged: (Boolean) -> Unit,
     onToggleDone: (Boolean) -> Unit,
     onToggleInProgress: (Boolean) -> Unit,
+    /** Opens the list picker. Null on a page that has no line to move — a top-level list. */
+    onMove: (() -> Unit)?,
     properties: @Composable () -> Unit,
+    /**
+     * What survives the fold — CALENDAR_PLAN.md §28.
+     *
+     * Empty for almost everything, because a folded band is meant to be out of the way. An event
+     * is the exception: folding took away the one thing its page exists to be written against, so
+     * it folds to a line rather than to nothing.
+     */
+    collapsedExtra: @Composable () -> Unit = {},
 ) {
     val y = Yantra.colors
     val crumbCurrent = y.textSecondary
@@ -1268,10 +1384,18 @@ private fun PageBand(
                     iconSize = 18.dp,
                 )
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    onMove?.let { move ->
+                        DropdownMenuItem(
+                            text = { Text("Move to list\u2026") },
+                            onClick = { menu = false; move() },
+                        )
+                    }
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
                 }
             }
         }
+
+        if (collapsed) collapsedExtra()
 
         // The big title, checkbox, meta and properties fold away as you scroll.
         AnimatedVisibility(

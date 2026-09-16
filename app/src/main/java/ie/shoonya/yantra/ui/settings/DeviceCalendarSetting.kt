@@ -59,10 +59,14 @@ fun DeviceCalendarSetting() {
     var granted by remember { mutableStateOf(source.hasPermission()) }
     var calendars by remember { mutableStateOf<List<DeviceCalendar>>(emptyList()) }
     var chosen by remember { mutableStateOf(emptySet<Long>()) }
+    // Told apart from "nobody has chosen yet", which falls back to the owning app's own ticks. An
+    // empty *stored* choice is somebody saying no, and it has to survive a restart as a no.
+    var disconnected by remember { mutableStateOf(choice.chosen()?.isEmpty() == true) }
 
     fun reload() {
         calendars = source.calendars()
         chosen = choice.effective(source)
+        disconnected = choice.chosen()?.isEmpty() == true
     }
 
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -93,6 +97,45 @@ fun DeviceCalendarSetting() {
                     .clip(RoundedCornerShape(10.dp))
                     .clickable { ask.launch(Manifest.permission.READ_CALENDAR) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+        return
+    }
+
+    // Disconnected — CALENDAR_PLAN.md §27. Android will not let an app hand a permission back, so
+    // the honest version of "remove the connection" is two sentences: nothing is being read, and
+    // here is where the permission itself lives if you want that gone too.
+    if (disconnected) {
+        SettingCard {
+            Text("Calendars disconnected", color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Nothing from the phone's calendars is being read or drawn. Your own events, and " +
+                    "any notes you took on a meeting, are untouched.",
+                color = y.textMuted, fontSize = 11.5.sp, lineHeight = 16.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Connect again",
+                color = y.accent, fontSize = 13.sp, fontWeight = FontWeight.W700,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        // Back to the owning app's own visibility rather than to whatever was
+                        // ticked before: reconnecting should mean "my calendar", freshly asked.
+                        choice.clear()
+                        reload()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Take back the permission in Android settings  \u203a",
+                color = y.textDim, fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { openAppSettings(context) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
         return
@@ -169,6 +212,34 @@ fun DeviceCalendarSetting() {
                 }
             }
         }
+
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Disconnect calendars",
+            color = y.warning, fontSize = 12.5.sp, fontWeight = FontWeight.W600,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable {
+                    // An explicit empty choice, which is why `set` and not `clear`: clear means
+                    // "ask the owning app again", and would switch the overlay straight back on.
+                    choice.set(emptySet())
+                    chosen = emptySet()
+                    disconnected = true
+                }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/** The one screen an app cannot draw for itself: where Android keeps this app's permissions. */
+private fun openAppSettings(context: android.content.Context) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.fromParts("package", context.packageName, null),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 

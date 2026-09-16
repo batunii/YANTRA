@@ -353,6 +353,52 @@ class WorkspaceWriter(
     }
 
     /** Re-homes a page: its own frontmatter moves, and so does the line that points at it. */
+    /**
+     * Takes a line off its page and hands it back — CALENDAR_PLAN.md §28.
+     *
+     * Half of [reparent], separated because a move to another workspace cannot use the whole of it:
+     * the destination page lives in a different store, and one writer only has the one. The node's
+     * own files are deliberately left where they are — the caller copies them across first and
+     * removes them afterwards, so a failure in the middle leaves two copies rather than none.
+     */
+    suspend fun takeLine(nodeId: String): Block? = mutex.withLock {
+        val home = homePageOf(nodeId) ?: return@withLock null
+        val page = loadPage(home) ?: return@withLock null
+        val line = page.blocks.firstOrNull { blockIdOf(it, page.id, page.blocks) == nodeId }
+            ?: return@withLock null
+        store.writePage(
+            page.copy(
+                blocks = page.blocks.filterNot { blockIdOf(it, page.id, page.blocks) == nodeId },
+                modifiedAt = Instant.ofEpochMilli(now()), device = device,
+            )
+        )
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+        line
+    }
+
+    /** Puts a line at the end of a page, and points the page it owns at its new home. */
+    suspend fun putLine(block: Block, parentId: String, nodeId: String) = mutex.withLock {
+        ensurePage(parentId)
+        loadPage(parentId)?.let { p ->
+            store.writePage(
+                p.copy(blocks = p.blocks + block, modifiedAt = Instant.ofEpochMilli(now()), device = device)
+            )
+        }
+        loadPage(nodeId)?.let {
+            store.writePage(it.copy(parent = parentId, modifiedAt = Instant.ofEpochMilli(now()), device = device))
+        }
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+    }
+
+    /** Removes a node's own files, after its line has been taken somewhere else. */
+    suspend fun dropFiles(nodeId: String) = mutex.withLock {
+        store.deletePage(nodeId)
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+    }
+
     suspend fun reparent(nodeId: String, newParent: String?) = mutex.withLock {
         val old = homePageOf(nodeId)
         val page = loadPage(nodeId)

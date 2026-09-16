@@ -1059,3 +1059,160 @@ ends it is the app saying plainly what it just did.
 - **It stays out of the pure code.** A log call inside `CalendarBucketer` pulled `android.util.Log`
   into every JVM test of it, and they failed rather than ran. The bucketer stays pure; the view model
   does the talking.
+
+## 27. A token is one word, and a header is not a wall
+
+Three bugs found in one session's logs, all reported as "it opens a blank page sometimes". They are
+in one section because the fixes are one idea: **the file format decides what a line can hold, and
+the screen decides how much of it to show.**
+
+### A token is one word
+
+Every token on a line — `^id`, `due:`, `rrule:`, `loc:`, `ext:`, `col:` — is parsed right to left,
+and the first word the scanner does not recognise ends the scan. Everything before it is the title.
+That rule is what makes a title able to contain a colon without being mangled, and it is not
+negotiable.
+
+So a value with a space in it does not end the line, it **eats the line**:
+
+```
+@ Pluto x Napkin ^5bd49f48 loc:Microsoft Teams Meeting ext:_60q30…181
+                                            ^^^^^^^ ^^^^^^^
+```
+
+Scanning right to left, `ext:` is a token, `Meeting` is not — so the scan stops, and the title
+becomes everything up to it, `^id` and all. The id is gone. The line no longer points at its node,
+so the next tap makes another one, and the one after that makes another. That is the whole of the
+duplicate storm in the log: `made node 6de13710`, `made node 6b6e5f7e`, `made node 7fecb727`, five
+in eleven seconds, every one of them for the same meeting, every one immediately `no such node`
+because the page was looked up by an id the line had already lost.
+
+The meeting that failed had `location = "Microsoft Teams Meeting"`. The one that never failed, in
+the same log, in the same view, on the same taps, had no location at all.
+
+**Values are percent-encoded** — space as `%20`, `%` as `%25` — on the way out, and decoded on the
+way in. Only where it is needed, so a location without a space is written as it always was and an
+old file still reads. `TokenValueTest` holds the cases that matter: "Room 4", "Napkin HQ, 3rd
+floor", "Microsoft Teams Meeting", "50% full", a URL, and "Café — back room", each asserting that
+the `^id` on the line survives the round trip.
+
+### A header is the first thing on the page
+
+Twice wrong before this, and both times it read to the person using it as "the details disappear
+when I start typing":
+
+- **In the band.** The band folds away when the keyboard comes up, so touching the page took the
+  meeting's details off it.
+- **In the page, after the blocks.** It then sat below whatever you had written, and moved further
+  down with every line you typed. Same disappearance, different cause.
+
+It is the **first item in the list**, above everything you write. It is not a block, it is not
+editable, and nothing you type moves it.
+
+### And a cascade that took the details away
+
+Moving the header was necessary and not sufficient. Put in the right place, it still vanished the
+moment anything was typed — and the trace said why in one word:
+
+```
+page: opened dfc21be9 type=event ext=_60q30…181 header=yes
+page: opened dfc21be9 type=event ext=_60q30…181 header=no     ← after typing
+```
+
+The node was still there, still an event, still linked. The row in the `event` table was not.
+
+`Indexer.apply` skips any table whose rows are identical to last time; that optimisation is what
+stops a keystroke from waking every flow in the app. But `event` and `node_label` are the two tables
+that hang off `node` with `ON DELETE CASCADE`, so the node wipe a keystroke *does* cause took their
+rows with it — and the skip then declined to write them back. `PRAGMA defer_foreign_keys` postpones
+the *check*; it does not cancel the *action*. The other dependents survive because their foreign
+keys take no action on delete, which is exactly why the bug was invisible for so long: five tables
+behaved and two did not.
+
+Worse, it was sticky. `last` had already recorded the rows as written, so every rebuild afterwards
+agreed they were there. The details were gone until the process restarted.
+
+**A node change means those two tables are rewritten too.** `EventRowSurvivesTest` writes something
+unrelated and then asks whether the event is still there — three of its four cases fail without it.
+
+### Folded by default
+
+The when, the where and the way in are what a header is for. The guest list, the organiser and the
+invitation's small print are things you look up once. Folded, the page under a meeting is still a
+page rather than a wall of somebody else's text; **More details** grows it, and the control is
+absent entirely when there is nothing more to show, so it is never a button that does nothing.
+
+### Disconnecting
+
+Reading somebody's calendar needs a way to stop, and it has to be visible in the same place that
+started it. **Disconnect calendars** stores an *explicit empty choice* — `set(emptySet())`, not
+`clear()`, because clear means "ask the owning app again" and would switch the overlay straight back
+on at the next glance.
+
+What the card then says is the honest thing, because Android does not let an app hand a permission
+back: nothing is being read, your own events and any notes you took on a meeting are untouched, and
+here is the way to Android's own settings if you want the permission gone too.
+
+## 28. An event is a node, and its details belong to its header
+
+Three complaints, one answer: **stop treating an event as a special case and finish it as a node
+type.** `NodeType.EVENT` already existed, and local and external events already shared one renderer.
+What was missing was everything that makes a node type feel like one.
+
+### The details are the header
+
+They are in the band now, where they were asked for. The reason they were not is worth writing down,
+because it was a rule I dodged rather than a constraint:
+
+```kotlin
+collapsed = collapsed || (imeVisible && !titleFocused)
+```
+
+The band folds whenever the keyboard appears. For a task that is right — the header is space the
+page does not get, and with the keyboard up there is very little to go round. For a meeting it is
+wrong, because the details are what you are writing *against*. Moving the card into the page body
+dodged the rule and produced a second bug: it then sat below your notes and slid further down with
+every line you typed.
+
+The fold rule is what changed. **An event folds to `MeetingStrip` rather than to nothing** — the
+time, the day, and the way in, on one line. Folded or open, the details never leave the screen.
+
+### Yours to edit, theirs to read
+
+The header is read-only on somebody else's meeting and has to be: this app holds no permission to
+write their calendar, so a control offering to change the time would be a promise it cannot keep.
+On your own event that same read-only header was simply a gap — the one screen you open an event on
+had no way to change it.
+
+`nodeExtUid` is the whole test. When it is null the header carries **Edit**, which opens the same
+`EventSheet` the calendar uses. The same sheet deliberately: an event is four or five fields however
+you reached it, and two editors for one thing is how they come to disagree about what a save means.
+
+### Made in Inbox, filed anywhere
+
+A node made by tapping a meeting lands in Inbox because something has to catch it, not because that
+is where it belongs. **Move to list…** on the page menu offers every list the app has.
+
+`EventDao.inRange` is not scoped to a page, so the calendar draws an event wherever its node lives,
+and `reparent` carries the whole block — `ext:`, `loc:`, times and all. The model never required
+Inbox; there was simply no way to leave it.
+
+### The move that lost the page
+
+Offering the move exposed a path nothing had ever taken. `WorkspaceWriter.reparent` owns **one**
+store: across workspaces it looked the destination page up in the *source* repo, found nothing,
+invented one there, and appended the line to it. The node ended up in neither place a person could
+reach.
+
+`Workspaces.moveAcross` routes it instead — same-workspace moves still go through `reparent`, and a
+cross-workspace move copies the subtree in, hands the line over, and only then removes the original.
+That order matters: **a failure in the middle has to leave two copies rather than none.** A
+duplicate is something somebody can delete; a page that stopped existing halfway through a move is
+not.
+
+What a move carries is exactly what a delete destroys, so `subtreeFiles` walks the same tree
+`deletePage` does — the page, its ink sidecar, its pictures, and the same again for every page
+inside it. The two going out of step is how a moved page comes to leave a drawing behind in the repo
+it left.
+
+`MoveAcrossWorkspacesTest` covers it; three of its five cases fail against the old `reparent`.
