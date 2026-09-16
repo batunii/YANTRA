@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.ink.strokes.Stroke
+import ie.shoonya.yantra.data.ink.PAGE_WIDTH_DU
 import ie.shoonya.yantra.data.ink.StrokeCodec
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlin.math.min
@@ -32,8 +33,12 @@ class FinishedStrokesView(context: Context) : View(context) {
 
     /**
      * When set, render a true-scale crop of page 1 instead of shrinking everything to fit:
-     * the value is the width of the editor's document (its canvas width in px), so ink
-     * appears at the same proportions it was drawn at.
+     * the value is the width of the document in document units, so ink appears at the same
+     * proportions it was drawn at.
+     *
+     * This used to be handed `displayMetrics.widthPixels` — the preview *assumed* the document was
+     * as wide as whatever screen happened to be showing it, which was true only on the device that
+     * drew it. It is [PAGE_WIDTH_DU] now, and true everywhere.
      */
     var pageCropDocWidth: Float? = null
         set(value) {
@@ -94,7 +99,10 @@ class FinishedStrokesView(context: Context) : View(context) {
         val pad = 24f
         val contentW = (maxX - minX).coerceAtLeast(1f)
         val contentH = (maxY - minY).coerceAtLeast(1f)
-        val scale = min((width - pad * 2) / contentW, (height - pad * 2) / contentH).coerceAtMost(1.5f)
+        // Capped relative to page-native scale rather than at a bare 1.5 px/du, which would have
+        // been a different amount of magnification on every screen.
+        val cap = width / PAGE_WIDTH_DU * 1.5f
+        val scale = min((width - pad * 2) / contentW, (height - pad * 2) / contentH).coerceAtMost(cap)
         transform.postTranslate(-minX, -minY)
         transform.postScale(scale, scale)
         transform.postTranslate(
@@ -113,7 +121,7 @@ class FinishedStrokesView(context: Context) : View(context) {
     }
 }
 
-/** Doc-space padding kept above/below content in previews (px). */
+/** Doc-space padding kept above/below content in previews, in document units. */
 const val INK_CONTENT_PAD = 24f
 
 /**
@@ -132,14 +140,14 @@ fun InkPreview(strokes: List<Stroke>, modifier: Modifier = Modifier) {
         modifier = modifier,
         factory = { ctx ->
             FinishedStrokesView(ctx).apply {
-                pageCropDocWidth = ctx.resources.displayMetrics.widthPixels.toFloat()
+                pageCropDocWidth = PAGE_WIDTH_DU
             }
         },
         update = { view -> view.strokes = display },
     )
 }
 
-/** Content height of a stroke set in document px, matching InkPreview's crop window. */
+/** Content height of a stroke set in document units, matching InkPreview's crop window. */
 fun inkContentHeight(strokes: List<Stroke>): Float {
     var minY = Float.MAX_VALUE
     var maxY = 0f

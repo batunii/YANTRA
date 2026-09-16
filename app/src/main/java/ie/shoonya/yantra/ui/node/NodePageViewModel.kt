@@ -280,7 +280,7 @@ class NodePageViewModel(
         ink.strokesUnder(nodeId)
             .map { rows ->
                 rows.groupBy { it.nodeId }.mapValues { (_, list) ->
-                    list.mapNotNull { row -> runCatching { StrokeCodec.decode(row.data) }.getOrNull() }
+                    list.mapNotNull { row -> StrokeCodec.decodeOrNull(row.data) }
                 }
             }
             .flowOn(Dispatchers.Default)
