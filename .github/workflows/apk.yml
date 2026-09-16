@@ -160,8 +160,16 @@ jobs:
           # which one they have without unzipping it.
           cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk \
              "yantra-$GITHUB_REF_NAME-armeabi-v7a.apk" || true
+          # A tag with a hyphen in it — v0.4.2-rc1 — is a build to try, not a release to
+          # install. Marking it says so on the releases page, keeps it off "Latest", and stops it
+          # being the file somebody lands on when they go looking for the current version.
+          case "$GITHUB_REF_NAME" in
+            *-*) pre=--prerelease ;;
+            *)   pre= ;;
+          esac
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
+            $pre \
             "yantra-$GITHUB_REF_NAME-arm64.apk" \
             "yantra-$GITHUB_REF_NAME-armeabi-v7a.apk"
