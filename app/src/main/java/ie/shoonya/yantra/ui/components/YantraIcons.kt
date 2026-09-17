@@ -151,6 +151,14 @@ enum class YantraMark {
      */
     Lasso,
     Eraser,
+    /**
+     * A group: a container that holds lists.
+     *
+     * A gate with rules inside it, which is the two forms this language already uses for exactly
+     * these two ideas — [List] is bare rules, and a gated box is what holds something. Not a
+     * folder: a folder is a filing cabinet's metaphor, and nothing else here is filed.
+     */
+    Group,
 }
 
 object YantraIcons {
@@ -501,6 +509,12 @@ fun DrawScope.drawMark(mark: YantraMark, color: Color) {
         }
 
         // A loop that does not quite close — a lasso is a region you indicate, not a shape you draw.
+        YantraMark.Group -> {
+            box(4f, 6f, 20f, 16f, radius = 2f)
+            line(9f, 12.5f, 19f, 12.5f)
+            line(9f, 17f, 19f, 17f)
+        }
+
         YantraMark.Lasso -> {
             val dash = Stroke(
                 YantraIcons.STROKE * u, cap = StrokeCap.Round, join = StrokeJoin.Round,

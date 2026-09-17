@@ -111,10 +111,16 @@ import androidx.compose.ui.draw.clip
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
-private enum class CreateType(val label: String, val placeholder: String, val action: String) {
-    TASK("Task", "New task", "Create task"),
-    LIST("List", "New list", "Create list"),
-    GROUP("Group", "New group", "Create group"),
+private enum class CreateType(
+    val label: String,
+    val placeholder: String,
+    val action: String,
+    /** Its mark — ICONS.md §1. The chips here were words where every other chip bar is marked. */
+    val mark: YantraMark,
+) {
+    TASK("Task", "New task", "Create task", YantraMark.Task),
+    LIST("List", "New list", "Create list", YantraMark.List),
+    GROUP("Group", "New group", "Create group", YantraMark.Group),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -765,7 +771,14 @@ private fun CreatePanel(
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             CreateType.entries.forEach { t ->
-                SelectChip(t.label, selected = t == type, onClick = { type = t }, modifier = Modifier.weight(1f))
+                SelectChip(
+                    t.label,
+                    selected = t == type,
+                    mark = t.mark,
+                    stretch = true,
+                    onClick = { type = t },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
         // Only for the things that have no parent to inherit from. A task goes to the Inbox and a
