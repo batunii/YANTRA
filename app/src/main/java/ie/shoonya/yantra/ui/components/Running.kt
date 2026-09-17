@@ -71,6 +71,8 @@ import ie.shoonya.yantra.ui.theme.YantraType
 import androidx.compose.ui.draw.drawBehind
 import ie.shoonya.yantra.ui.theme.YantraRadius
 import ie.shoonya.yantra.ui.theme.YantraText
+import androidx.compose.foundation.layout.Arrangement
+import ie.shoonya.yantra.data.label.LabelPalette
 
 /**
  * The task you are on, for the few places that draw it.
@@ -253,8 +255,12 @@ fun NowPlayer(
     val dragState = rememberDraggableState { delta ->
         dragX = (dragX + delta).coerceIn(-commit * 1.8f, commit * 1.8f)
     }
-    // Full strength, for the spine and the eyebrow. Everything else on a running bar steps back.
+    // Full strength, for the eyebrow. Everything else on a running bar steps back.
     val accentInk = y.accent
+    val spineInk = current.colour
+        ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) } }
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+        ?: y.checkOutline
     val shape = RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet)
 
     Row(
@@ -268,9 +274,21 @@ fun NowPlayer(
             // already made the opposite call for a coloured block: replace the spine, tint the
             // wash, do not flood the fill. A bar is a block that happens to be at the bottom.
             .background(if (live) y.accentFill else y.band, shape)
-            // The shared spine — see Modifier.spine. Inset so it does not run into the bar's own
-            // rounded top corners, which is the one way this surface differs from a block.
-            .then(if (live) Modifier.spine(accentInk, inset = 10.dp) else Modifier)
+            // The spine is identity; the wash is state.
+            //
+            // It used to appear only while running, which made it a fourth way of saying something
+            // the wash, the glyph's ring and the eyebrow already said. Everywhere else in the app a
+            // spine carries the thing's own colour — CALENDAR_PLAN.md §16 for a block, and the same
+            // for an event line on a page — so here it carries the colour of the list the task
+            // lives on. The bar shows a title, and a title alone does not say whether "Draft the
+            // deck" is work or the side project.
+            //
+            // Always drawn, so the mark has exactly one meaning with no case to remember. A task on
+            // an uncoloured list gets frame ink, which is what "no colour chosen" looks like
+            // everywhere else.
+            //
+            // Inset, because this surface has rounded top corners and a block does not.
+            .spine(spineInk, inset = 10.dp)
             .then(
                 if (dealt.size < 2) Modifier else Modifier.draggable(
                     state = dragState,
@@ -346,6 +364,7 @@ fun NowPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     buildString {
                         append(
@@ -373,10 +392,57 @@ fun NowPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                DeckRings(dealt = dealt, index = index)
+                }
             }
         }
         Spacer(Modifier.width(8.dp))
         TransportKey(live = live, onClick = { onToggleClock(current) })
+    }
+}
+
+/**
+ * The deck counter — ICONS.md §6, CALENDAR_UI.md §4.
+ *
+ * One ring per card you can reach by swiping, which is what a position indicator is for. Three
+ * readings out of one shape: rest weight is on the go and not where you are, full weight is the
+ * card you are looking at, and [YantraMark.RingLive] in the accent is the one the clock is on.
+ * Everything past the deck is counted in the eyebrow instead — a ring for a card you cannot swipe
+ * to would be a position indicator pointing at nowhere.
+ *
+ * **Beside the eyebrow, not beside the transport key.** It was on the right at first, which reads
+ * fine at two rings and has nowhere to go at four: the key is fixed to the edge and the rings would
+ * have had to grow into the title. Here they grow into a line that is already short, and they sit
+ * with the state they qualify — "ON THE GO ○ ●" is one statement.
+ *
+ * The bindu was rejected for this. A row of dots with one filled is a gauge, and the bindu is the
+ * centre and never a gauge; it is also the done state of the task glyph, so a bare filled dot among
+ * rings would read as "finished" on the one card that is running.
+ */
+@Composable
+private fun DeckRings(dealt: List<RunningTask.Now>, index: Int) {
+    if (dealt.size < 2) return
+    val y = Yantra.colors
+    Spacer(Modifier.width(8.dp))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        dealt.forEachIndexed { i, card ->
+            YantraIcon(
+                if (card.hasSession) YantraMark.RingLive else YantraMark.Ring,
+                size = YantraIcons.Small,
+                tint = when {
+                    card.hasSession -> y.accent
+                    i == index -> y.textPrimary
+                    // Lifted rather than thinned. ICONS.md §8 flags 40% as possibly under the 3:1
+                    // hairline rule on OLED and says to raise the alpha rather than thicken the
+                    // stroke — a heavier rest ring would stop being the same mark.
+                    else -> y.textPrimary.copy(alpha = 0.55f)
+                },
+                contentDescription = null,
+            )
+        }
     }
 }
 

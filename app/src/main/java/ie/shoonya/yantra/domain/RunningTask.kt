@@ -48,6 +48,13 @@ class RunningTask(
      * fact, and the fact is written when you press play.
      */
     sittings: Flow<List<SittingSpan>> = flowOf(emptyList()),
+    /**
+     * Task id to the palette name of the list it lives on — what the player's spine carries.
+     *
+     * Defaulted empty so every test of the ordering, which is what this class is really about,
+     * carries nothing about colour.
+     */
+    colours: Flow<Map<String, String?>> = flowOf(emptyMap()),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     /**
@@ -64,6 +71,15 @@ class RunningTask(
         val elapsedSecs: Int?,
         /** Its sitting is happening right now. Ready, whether or not anybody has picked it up. */
         val scheduled: Boolean = false,
+        /**
+         * The colour of the list this task lives on, as a palette name — the colour law, as remade.
+         *
+         * What the player's spine carries. The bar shows a title, and a title alone does not say
+         * whether "Draft the deck" is work or the side project; the colour does, and it is the same
+         * thing a spine already means on a timeline block and an event line. Null where the list
+         * wears no colour.
+         */
+        val colour: String? = null,
     ) {
         val hasSession: Boolean get() = elapsedSecs != null
     }
@@ -76,12 +92,14 @@ class RunningTask(
      * the point of showing it at all. The rest keep the newest-first order the query gave them.
      */
     val now: StateFlow<List<Now>> =
-        combine(nodes.inProgress(), timer.state, sittings, minutes()) { started, session, spans, at ->
+        combine(nodes.inProgress(), timer.state, sittings, minutes(), colours) {
+            started, session, spans, at, hues ->
             stack(
                 started = started.map { it.id to Links.plain(it.title.orEmpty()) },
                 timing = session?.takeIf { !it.isFinished }?.let { it.nodeId to it.elapsedSecs },
                 sittings = spans,
                 at = at,
+                colours = hues,
             )
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
@@ -119,6 +137,8 @@ class RunningTask(
             timing: Pair<String, Int>?,
             sittings: List<SittingSpan>,
             at: Long,
+            /** Task id to the palette name of the list it lives on. Absent means no colour. */
+            colours: Map<String, String?> = emptyMap(),
         ): List<Now> {
             val nowOn = sittings.filter { it.covers(at) }
             val scheduledIds = nowOn.mapTo(HashSet()) { it.taskId }
@@ -129,12 +149,18 @@ class RunningTask(
                     title = title,
                     elapsedSecs = timing?.takeIf { it.first == id }?.second,
                     scheduled = id in scheduledIds,
+                    colour = colours[id],
                 )
             } + nowOn
                 // Two sittings for the same task in one hour is one card, not two.
                 .distinctBy { it.taskId }
                 .filter { it.taskId !in startedIds }
-                .map { Now(it.taskId, Links.plain(it.title.orEmpty()), elapsedSecs = null, scheduled = true) }
+                .map {
+                    Now(
+                        it.taskId, Links.plain(it.title.orEmpty()),
+                        elapsedSecs = null, scheduled = true, colour = colours[it.taskId],
+                    )
+                }
             // Stable, so within each rank the order the sources gave is kept.
             return cards.sortedWith(
                 compareByDescending<Now> { it.hasSession }.thenByDescending { it.scheduled }

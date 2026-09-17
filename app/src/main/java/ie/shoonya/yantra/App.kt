@@ -259,7 +259,13 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
-    val running = RunningTask(timer, nodes, appScope, db.eventDao().openSittings())
+    val running = RunningTask(
+        timer, nodes, appScope, db.eventDao().openSittings(),
+        // The colour of the list each task lives on, for the player's spine — the colour law, as
+        // remade. Only tasks whose list actually wears one come back, so this is a handful.
+        colours = db.nodeDao().taskColours()
+            .map { rows -> rows.associate { it.id to it.color } },
+    )
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
