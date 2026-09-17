@@ -266,11 +266,17 @@ fun NowPlayer(
     // is no telling those apart. The workspace wins it because there are two or three of them and
     // dozens of lists, and because it is the one fact with no room for its word on a widget row.
     //
-    // Frame ink while only one workspace is open, by the rule the app states twice: a colour that
-    // always means the same thing means nothing.
+    // **Nothing at all while only one workspace is open**, rather than a neutral rule.
+    //
+    // It drew in frame ink, which is what "no colour chosen" looks like on a list mark — and on a
+    // near-black bar frame ink is #B4B2A9, so the brightest thing on the player was a stripe with
+    // nothing to say. Neutral is not quiet here; it is just a different loud.
+    //
+    // It is also the rule the spine already rests on, followed one step further: a mark that always
+    // means the same thing means nothing, so when there is no repository to name there is no mark.
+    // The bar keeps its wash, its glyph and its eyebrow, all of which are saying something.
     val spineInk = LabelPalette.byName(current.workspaceColour)
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
-        ?: y.checkOutline
     // The list is a word in the eyebrow, wearing its own colour. A hue is a glance and a word is
     // the fact; neither has to carry the other, which is what makes a repeated hue a coincidence
     // rather than an ambiguity.
@@ -309,7 +315,7 @@ fun NowPlayer(
             // like everywhere else in the app.
             //
             // Inset, because this surface has rounded top corners and a block does not.
-            .spine(spineInk, inset = 10.dp)
+            .then(if (spineInk == null) Modifier else Modifier.spine(spineInk, inset = 10.dp))
             .then(
                 if (dealt.size < 2) Modifier else Modifier.draggable(
                     state = dragState,

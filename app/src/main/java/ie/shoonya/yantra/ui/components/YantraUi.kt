@@ -135,8 +135,11 @@ fun NeutralChip(
  * there was no way to tell which question a stripe was answering. Two questions cannot share one
  * 3dp rule. The other one got the fill, or a word.
  *
- * Drawn in **frame ink while only one workspace is open**, by the rule the app applies to every hue
- * it derives: a colour that always means the same thing means nothing. The exceptions are the two
+ * **With only one workspace open it is not drawn at all**, on any surface that has nothing else to
+ * say with it — the rule the app applies to every hue it derives, followed one step further. Frame
+ * ink was the first answer and the wrong one: neutral is #B4B2A9 on a dark ground, so a rule with
+ * nothing to say came out as the brightest thing on the player. Neutral is not quiet; it is a
+ * different loud. The exceptions are the surfaces where the edge has a second job, and the two
  * things that are not in a repository of yours:
  *
  *  - **the accent** — this is live: a session running, a block you are on, with no repo to name
