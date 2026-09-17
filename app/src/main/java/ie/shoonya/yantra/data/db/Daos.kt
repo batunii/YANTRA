@@ -708,6 +708,15 @@ interface LabelDao {
     @Query("SELECT * FROM node_label")
     fun allNodeLabels(): Flow<List<NodeLabelEntity>>
 
+    /**
+     * The same, asked once.
+     *
+     * Deleting a label needs to say how many tasks it is about to take the tag off, which is a
+     * question with an answer rather than something to subscribe to.
+     */
+    @Query("SELECT COUNT(*) FROM node_label WHERE label_id = :labelId")
+    suspend fun countUsage(labelId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun attach(nodeLabel: NodeLabelEntity)
 

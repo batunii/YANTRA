@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
@@ -91,13 +92,21 @@ fun PropertyRow(
     onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
     onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: (defId: String) -> Unit,
-    onAttachLabel: (LabelEntity) -> Unit,
     onDetachLabel: (LabelEntity) -> Unit,
-    onCreateAndAttachLabel: (String, Long?) -> Unit,
     onRecolourLabel: (LabelEntity, Long?) -> Unit,
+    /** Removes a label from the workspace entirely. Confirmed by the screen, not here. */
+    onDeleteLabel: (LabelEntity) -> Unit,
+    /**
+     * Opens the label picker, which the **screen** owns rather than this row.
+     *
+     * This row is drawn inside the page band, and the band folds away when the keyboard appears. A
+     * dialog composed here was destroyed by its own text field: the tap raised the IME, the IME
+     * collapsed the band, and the collapse took this row — and the state remembering that a picker
+     * was open — out of the composition with it. See [LabelPickerDialog].
+     */
+    onPickLabel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var picking by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
     // Only dissolve the edge when there is genuinely something past it, or the last pill of a
     // row that fits would fade for no reason.
@@ -130,20 +139,11 @@ fun PropertyRow(
                 label = label,
                 onClick = { onDetachLabel(label) },
                 onRecolour = { colour -> onRecolourLabel(label, colour) },
+                onDelete = { onDeleteLabel(label) },
             )
         }
-        GhostPill(label = "+ Label", dashed = true, onClick = { picking = true })
+        GhostPill(label = "+ Label", dashed = true, onClick = onPickLabel)
         Spacer(Modifier.width(12.dp))
-    }
-
-    if (picking) {
-        LabelPickerDialog(
-            allLabels = allLabels,
-            attachedIds = attachedLabels.map { it.id }.toSet(),
-            onDismiss = { picking = false },
-            onPick = { label -> onAttachLabel(label); picking = false },
-            onCreate = { name, colour -> onCreateAndAttachLabel(name, colour); picking = false },
-        )
     }
 }
 
@@ -241,7 +241,19 @@ private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long?) -> Unit = {}) {
+private fun LabelChip(
+    label: LabelEntity,
+    onClick: () -> Unit,
+    onRecolour: (Long?) -> Unit = {},
+    /**
+     * Removes the label from the workspace, not just from this task.
+     *
+     * Offered on the chip as well as in the picker because the picker only lists labels that are
+     * *not* on this task, so a label you can see is one the picker will not show you — and the one
+     * you are most likely to have decided you do not want.
+     */
+    onDelete: (() -> Unit)? = null,
+) {
     val s = chipStyleFor(label.color?.let { Color(it) })
     var recolouring by remember { mutableStateOf(false) }
     Row(
@@ -266,7 +278,13 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
                     onPick = { onRecolour(it); recolouring = false },
                 )
             },
-            confirmButton = {},
+            confirmButton = {
+                onDelete?.let {
+                    TextButton(onClick = { recolouring = false; it() }) {
+                        Text("Delete label", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
             dismissButton = { TextButton(onClick = { recolouring = false }) { Text("Cancel") } },
         )
     }
@@ -274,13 +292,31 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
 
 /** Tap an existing label to attach it, or type a new name and create it — attach/detach and
  * delete are both plain, symmetric operations, unlike the old global-property-def flow. */
+/**
+ * Picking or naming a label.
+ *
+ * **Shown by the screen, not by the row that opens it** — CALENDAR_PLAN.md §29. This row lives in
+ * the page band, and the band folds itself away when the keyboard appears. A dialog composed inside
+ * it therefore destroyed itself the instant you touched its own text field: the tap raised the IME,
+ * the IME collapsed the band, the collapse took this row out of the composition, and the remembered
+ * "a picker is open" went with it. Attaching an existing label worked, because that needs no
+ * keyboard; creating a new one was impossible, because it needs nothing else.
+ */
 @Composable
-private fun LabelPickerDialog(
+internal fun LabelPickerDialog(
     allLabels: List<LabelEntity>,
     attachedIds: Set<String>,
     onDismiss: () -> Unit,
     onPick: (LabelEntity) -> Unit,
     onCreate: (String, Long?) -> Unit,
+    /**
+     * Removes a label from the workspace entirely, rather than from this one task.
+     *
+     * Offered here because this list is the only place every label is visible at once, and a
+     * registry you can only add to is one that fills up with typos and one-offs. Null where the
+     * caller has no way to do it, in which case no delete is drawn at all.
+     */
+    onDelete: ((LabelEntity) -> Unit)? = null,
 ) {
     var query by remember { mutableStateOf("") }
     // Seeded from the name so a new tag is never colourless and two new tags rarely collide;
@@ -320,7 +356,22 @@ private fun LabelPickerDialog(
                                     .background(chipStyleFor(label.color?.let { Color(it) }).dot, CircleShape)
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(label.name)
+                            Text(label.name, modifier = Modifier.weight(1f))
+                            onDelete?.let { delete ->
+                                // Its own target, well away from the name: the row means "use this
+                                // label" and the cross means "there should be no such label", and
+                                // those two must not be a near-miss of each other.
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Delete the label ${label.name}",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { delete(label) }
+                                        .padding(6.dp)
+                                        .size(14.dp),
+                                )
+                            }
                         }
                     }
                     if (query.isNotBlank() && !exactMatch) {
