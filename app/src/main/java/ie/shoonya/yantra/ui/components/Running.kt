@@ -218,18 +218,20 @@ fun NowPlayer(
     val density = LocalDensity.current
 
     /**
-     * The deck holds ranks one and two — CALENDAR_UI.md §4.
+     * The deck holds everything you have picked up.
      *
-     * `RunningTask.stack` ranks by the timed card, then whatever is scheduled now, then everything
-     * else newest-first. The first two are about this moment. Rank three onwards is a list of
-     * claims you made and never cleared, which is why it grew without bound and why swiping through
-     * it was a chore rather than a control. Those are counted in the eyebrow instead.
+     * CALENDAR_UI.md §4 proposed ranks one and two only, on the grounds that rank three onwards is
+     * a list of claims you made and never cleared. That is true of the *list* and false of the
+     * *bar*: three tasks in progress and two on the deck means the third has no representation
+     * anywhere on the screen you are looking at, and a task you cannot see is a task you will not
+     * clear. Overruled deliberately — the count is the thing worth knowing, and the swipe is
+     * cheap.
      *
-     * The fallback when nothing is timed and nothing is scheduled is one card, the most recently
-     * started — which is what `stack` already puts first.
+     * `RunningTask.stack` still ranks it: the timed card, then whatever is scheduled now, then
+     * everything else newest-first. That ordering is what makes a long deck usable — the front of
+     * it is always about this moment.
      */
-    val dealt = remember(stack) { stack.take(2) }
-    val deck = stack.size - dealt.size
+    val dealt = stack
 
     /**
      * Which task is showing, held **by id rather than by position**.
@@ -377,12 +379,8 @@ fun NowPlayer(
                                 else -> "ON THE GO"
                             }
                         )
-                        // What the deck holds beyond this card — CALENDAR_UI.md §4. `stack` ranks
-                        // by the timed card, then whatever is scheduled now, then everything else
-                        // newest-first. The first two are about this moment; the rest is a list of
-                        // claims you made and never cleared, which is why it grows without bound.
-                        // It is counted, not dealt.
-                        if (deck > 1) append("  ·  $deck more")
+                        // Nothing to add: every card is on the deck, and the rings beside this
+                        // line say how many and which one you are on.
                     },
                     fontFamily = YantraMono,
                     fontSize = YantraType.section,
@@ -423,28 +421,57 @@ fun NowPlayer(
 private fun DeckRings(dealt: List<RunningTask.Now>, index: Int) {
     if (dealt.size < 2) return
     val y = Yantra.colors
+    val live = dealt.indexOfFirst { it.hasSession }
     Spacer(Modifier.width(8.dp))
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        dealt.forEachIndexed { i, card ->
+        if (dealt.size <= RINGS_MAX) {
+            dealt.forEachIndexed { i, card ->
+                YantraIcon(
+                    if (card.hasSession) YantraMark.RingLive else YantraMark.Ring,
+                    size = YantraIcons.Small,
+                    tint = when {
+                        card.hasSession -> y.accent
+                        i == index -> y.textPrimary
+                        // Lifted rather than thinned. ICONS.md §8 flags 40% as possibly under the
+                        // 3:1 hairline rule on OLED and says to raise the alpha rather than thicken
+                        // the stroke — a heavier rest ring would stop being the same mark.
+                        else -> y.textPrimary.copy(alpha = 0.55f)
+                    },
+                    contentDescription = null,
+                )
+            }
+        } else {
+            // Past the point where a row of rings can be read at a glance, one ring and a numeral
+            // — ICONS.md §6. A diagram you have to count is doing a table's job, and eight rings
+            // is counting.
             YantraIcon(
-                if (card.hasSession) YantraMark.RingLive else YantraMark.Ring,
+                if (live >= 0) YantraMark.RingLive else YantraMark.Ring,
                 size = YantraIcons.Small,
-                tint = when {
-                    card.hasSession -> y.accent
-                    i == index -> y.textPrimary
-                    // Lifted rather than thinned. ICONS.md §8 flags 40% as possibly under the 3:1
-                    // hairline rule on OLED and says to raise the alpha rather than thicken the
-                    // stroke — a heavier rest ring would stop being the same mark.
-                    else -> y.textPrimary.copy(alpha = 0.55f)
-                },
+                tint = if (live >= 0) y.accent else y.textPrimary,
                 contentDescription = null,
+            )
+            Text(
+                "${index + 1}/${dealt.size}",
+                fontFamily = YantraMono,
+                fontSize = YantraType.section,
+                fontWeight = FontWeight.W700,
+                color = y.textMuted,
             )
         }
     }
 }
+
+/**
+ * How many rings before the deck is counted instead of drawn.
+ *
+ * Five, which is where ICONS.md §6 puts it and which comfortably clears the four a reader asked to
+ * see before a number takes over. Below this you read the row; above it you would be counting, and
+ * counting is what the numeral is for.
+ */
+private const val RINGS_MAX = 5
 
 /**
  * The one control: play, or stop.
