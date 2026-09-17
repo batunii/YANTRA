@@ -25,6 +25,7 @@ import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * One selectable target in a widget picker. Shared by [WidgetConfigActivity] (choose one while
@@ -88,14 +89,14 @@ fun WidgetListRow(
         Column(Modifier.weight(1f)) {
             Text(
                 node.title?.ifBlank { "Untitled" } ?: "Untitled",
-                fontSize = 15.5.sp, fontWeight = FontWeight.W700,
+                fontSize = YantraType.card, fontWeight = FontWeight.W700,
                 color = if (selected) y.accent else y.textPrimary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     subtitle,
-                    fontSize = 12.sp, color = y.textMuted,
+                    fontSize = YantraType.section, color = y.textMuted,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 2.dp),
                 )

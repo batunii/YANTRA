@@ -34,6 +34,7 @@ import ie.shoonya.yantra.ui.appContainer
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Pull down to sync.
@@ -126,7 +127,7 @@ fun PullToSync(
             Text(
                 said.orEmpty(),
                 color = y.textSecondary,
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W600,
                 textAlign = TextAlign.Center,
                 modifier = Modifier

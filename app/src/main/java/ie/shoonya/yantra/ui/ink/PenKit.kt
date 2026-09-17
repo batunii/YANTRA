@@ -40,6 +40,7 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * The three pens the kit holds.
@@ -236,7 +237,7 @@ private fun KitColumn(
                 Text(
                     slot.label,
                     fontFamily = YantraMono,
-                    fontSize = 8.sp,
+                    fontSize = YantraType.dense,
                     letterSpacing = 0.8.sp,
                     fontWeight = FontWeight.W700,
                     color = if (on) y.accentText else y.textMuted,

@@ -185,6 +185,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -1263,7 +1264,7 @@ private fun PageBand(
                     // link in its name showed its id the moment you typed on its page.
                     inlinePlain(title, bandResolve).ifBlank { "Untitled" },
                     fontFamily = YantraDisplay,
-                    fontSize = 16.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.2).sp,
+                    fontSize = YantraType.card, fontWeight = FontWeight.W700, letterSpacing = (-0.2).sp,
                     color = y.textPrimary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
@@ -1294,7 +1295,7 @@ private fun PageBand(
                 Text(
                     trail,
                     fontFamily = YantraText,
-                    fontSize = 12.sp,
+                    fontSize = YantraType.section,
                     fontWeight = FontWeight.W500,
                     color = y.textMuted,
                     textAlign = TextAlign.Center,
@@ -1335,7 +1336,7 @@ private fun PageBand(
                         Text(
                             "%d:%02d".format(shown / 60, shown % 60),
                             fontFamily = YantraMono,
-                            fontSize = 12.sp,
+                            fontSize = YantraType.section,
                             fontWeight = FontWeight.W700,
                             letterSpacing = 0.5.sp,
                             color = y.accentText,
@@ -2036,7 +2037,7 @@ internal fun TextualBlockRow(
     // coral, seeded by the task id so a given task's strike is always the same wobble. The font's
     // ruler-straight line said "field disabled"; the strike says someone crossed it off.
     val style: TextStyle = when {
-        isHeading -> TextStyle(fontSize = 16.sp, fontWeight = FontWeight.W800, letterSpacing = (-0.2).sp, color = y.textPrimary)
+        isHeading -> TextStyle(fontSize = YantraType.card, fontWeight = FontWeight.W800, letterSpacing = (-0.2).sp, color = y.textPrimary)
         isTask -> MaterialTheme.typography.bodyLarge.copy(color = titleColor)
         // Primary, not secondary. Prose on a task's page IS the page — it is the thing you came
         // here to read — and it was being drawn in the colour reserved for supporting text, thin
@@ -2318,7 +2319,7 @@ internal fun TextualBlockRow(
                     Text(
                         if (late) due.label.removeSuffix(" · overdue") else due.label,
                         fontFamily = YantraMono,
-                        fontSize = 11.sp,
+                        fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
                         // The chip's own voice: crimson past, accent today, neutral further out.
                         // Read through chipStyleFor so this slot cannot drift from the chip the
@@ -2340,7 +2341,7 @@ internal fun TextualBlockRow(
                         .clickable(onClick = onOpen),
                 ) {
                     if (childCount > 0) {
-                        Text("$childCount", fontSize = 12.sp, fontWeight = FontWeight.W600, color = y.textMuted)
+                        Text("$childCount", fontSize = YantraType.section, fontWeight = FontWeight.W600, color = y.textMuted)
                     }
                     YantraIcon(YantraMark.Forward, tint = if (childCount > 0) y.textMuted else y.textDim, contentDescription = "Open as page")
                 }
@@ -2393,7 +2394,7 @@ internal fun TextualBlockRow(
                 // a busy one without the box being nailed shut.
                 if (meta.isEmpty()) AnnotatedString("\u2009") else meta,
                 fontFamily = YantraMono,
-                fontSize = 10.5.sp,
+                fontSize = YantraType.dense,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // A line height, not a box height. Clamping the box to 15dp cropped every
@@ -2622,7 +2623,7 @@ private fun DangerChip(text: String, onClick: () -> Unit, modifier: Modifier = M
     ) {
         YantraIcon(YantraMark.Delete, tint = y.overdue, contentDescription = null)
         Spacer(Modifier.width(6.dp))
-        Text(text, color = y.overdue, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
+        Text(text, color = y.overdue, fontSize = YantraType.label, fontWeight = FontWeight.W600)
     }
 }
 
@@ -2693,7 +2694,7 @@ private fun LinkedRow(
         Text(
             "LINKS TO",
             fontFamily = YantraText,
-            fontSize = 9.5.sp,
+            fontSize = YantraType.dense,
             fontWeight = FontWeight.W600,
             letterSpacing = 1.2.sp,
             color = y.textDim,
@@ -2768,7 +2769,7 @@ private fun TaskRail(
                     )
                     Text(
                         inlinePlain(task.title.orEmpty(), resolve).ifBlank { "Untitled" },
-                        fontSize = 14.5.sp,
+                        fontSize = YantraType.body,
                         fontWeight = if (here) FontWeight.W700 else FontWeight.W500,
                         color = if (task.done) y.textDim else y.textPrimary,
                         maxLines = 2,

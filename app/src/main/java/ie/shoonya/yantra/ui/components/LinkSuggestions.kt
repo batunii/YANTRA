@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * What a half-typed `[[` could mean, offered while there is still time to pick one.
@@ -55,7 +56,7 @@ fun LinkSuggestions(
                 if (draft.isBlank()) "Type to find a task or list to link"
                 else "Nothing called “$draft” to link to",
                 color = y.textDim,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
                 modifier = Modifier.padding(vertical = 6.dp),
             )
         } else {

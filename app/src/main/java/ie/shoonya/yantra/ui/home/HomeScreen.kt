@@ -108,6 +108,7 @@ import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.data.label.LabelPalette
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import ie.shoonya.yantra.ui.theme.YantraType
 
 private enum class CreateType(val label: String, val placeholder: String, val action: String) {
     TASK("Task", "New task", "Create task"),
@@ -477,7 +478,7 @@ private fun NextRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     event.title.orEmpty().ifBlank { "Untitled" },
-                    fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W500,
+                    fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
@@ -492,7 +493,7 @@ private fun NextRow(
                         if (minutesAway in 1..MINUTES_BEFORE) append("  ·  in ${minutesAway}m")
                         else if (minutesAway <= 0L) append("  ·  now")
                     },
-                    fontFamily = YantraMono, fontSize = 11.5.sp,
+                    fontFamily = YantraMono, fontSize = YantraType.caption,
                     color = if (accented) y.accent else y.textMuted,
                 )
             }
@@ -528,7 +529,7 @@ private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit)
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(date, fontFamily = YantraText, fontSize = 12.5.sp, fontWeight = FontWeight.W500, color = y.textMuted)
+            Text(date, fontFamily = YantraText, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted)
             Text(greeting, style = MaterialTheme.typography.headlineSmall, color = y.textPrimary, modifier = Modifier.padding(top = 3.dp))
             // What the day costs, not how it is filed — HOME_UI.md §5.
             //
@@ -552,7 +553,7 @@ private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit)
                         }
                     }
                 },
-                fontFamily = YantraText, fontSize = 12.5.sp, fontWeight = FontWeight.W500, color = y.textMuted,
+                fontFamily = YantraText, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted,
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
@@ -618,7 +619,7 @@ private fun HomeRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     node.title.orEmpty().ifBlank { "Untitled" },
-                    fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W500,
+                    fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 // Mono, per the type rule for numbers — HOME_UI.md §2. The subtitle is "0 of 4
@@ -626,7 +627,7 @@ private fun HomeRow(
                 Text(
                     subtitle,
                     fontFamily = YantraMono,
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                     color = y.textMuted,
                 )
             }
@@ -668,12 +669,12 @@ private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelet
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            title, fontFamily = YantraDisplay, fontSize = 14.sp, fontWeight = FontWeight.W700,
+            title, fontFamily = YantraDisplay, fontSize = YantraType.body, fontWeight = FontWeight.W700,
             color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
         Spacer(Modifier.width(8.dp))
-        Text("$count", fontFamily = YantraMono, fontSize = 10.sp, color = y.textDim)
+        Text("$count", fontFamily = YantraMono, fontSize = YantraType.dense, color = y.textDim)
         Spacer(Modifier.weight(1f))
         Box {
             IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
@@ -791,8 +792,8 @@ private fun CreatePanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Make this a smart list", color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W600, fontSize = 14.sp)
-                    Text("Auto-updates from conditions you set, instead of a fixed set of tasks", color = y.textMuted, fontSize = 11.5.sp)
+                    Text("Make this a smart list", color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W600, fontSize = YantraType.body)
+                    Text("Auto-updates from conditions you set, instead of a fixed set of tasks", color = y.textMuted, fontSize = YantraType.caption)
                 }
                 Switch(checked = makeSmart, onCheckedChange = { makeSmart = it })
             }

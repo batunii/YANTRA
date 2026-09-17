@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.AppMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * The app's one nav/action button: a small translucent circle. Round rather than a rounded
@@ -155,7 +156,7 @@ fun ComposedEmpty(
             tint = y.checkOutline.copy(alpha = 0.55f),
             checkTint = y.accent.copy(alpha = 0.45f),
         )
-        Text(line, fontSize = 13.sp, fontWeight = FontWeight.W500, color = y.textMuted)
+        Text(line, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted)
         if (action != null && onAction != null) {
             Row(
                 Modifier
@@ -164,7 +165,7 @@ fun ComposedEmpty(
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(action, fontSize = 12.sp, fontWeight = FontWeight.W700, color = y.accent)
+                Text(action, fontSize = YantraType.section, fontWeight = FontWeight.W700, color = y.accent)
             }
         }
     }
@@ -263,7 +264,7 @@ fun PageHeader(
                 Text(
                     title,
                     fontFamily = YantraDisplay,
-                    fontSize = 17.sp,
+                    fontSize = YantraType.sheetTitle,
                     fontWeight = FontWeight.W700,
                     letterSpacing = (-0.3).sp,
                     color = y.textPrimary,
@@ -287,7 +288,7 @@ fun PageHeader(
             Text(
                 title,
                 fontFamily = YantraDisplay,
-                fontSize = 32.sp,
+                fontSize = YantraType.hero,
                 lineHeight = 38.sp,
                 fontWeight = FontWeight.W700,
                 letterSpacing = (-0.6).sp,

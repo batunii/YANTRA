@@ -82,6 +82,7 @@ import ie.shoonya.yantra.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 class FocusViewModel(
     container: AppContainer,
@@ -282,7 +283,7 @@ private fun DurationChip(
     ) {
         Text(
             label,
-            fontSize = 17.sp,
+            fontSize = YantraType.sheetTitle,
             fontWeight = if (selected) FontWeight.W800 else FontWeight.W700,
             color = if (selected) y.accentText else y.textSecondary,
         )
@@ -319,7 +320,7 @@ private fun TimerSetup(
             Text(
                 Links.plain(node.title.orEmpty()).ifBlank { "Untitled task" },
                 fontFamily = YantraDisplay,
-                fontSize = 32.sp,
+                fontSize = YantraType.hero,
                 lineHeight = 39.sp,
                 fontWeight = FontWeight.W700,
                 letterSpacing = (-0.4).sp,
@@ -415,7 +416,7 @@ private fun TimerSetup(
             Text(
                 "Anything up to a few hours. 90 for a long stretch, 5 for a nudge.",
                 color = y.textDim,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -439,7 +440,7 @@ private fun TimerSetup(
             "A set length is a promise to yourself; the clock just records what you gave. Both go " +
                 "into the same history.",
             color = y.textDim,
-            fontSize = 11.5.sp,
+            fontSize = YantraType.caption,
         )
     }
 }
@@ -479,7 +480,7 @@ private fun ActiveTimer(
         ) {
             Text(
                 state.nodeTitle.ifBlank { "Untitled task" },
-                fontSize = 16.sp,
+                fontSize = YantraType.card,
                 fontWeight = FontWeight.W700,
                 color = y.textPrimary,
                 textAlign = TextAlign.Center,
@@ -545,7 +546,7 @@ private fun ActiveTimer(
                 }
             },
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             letterSpacing = 1.sp,
             color = y.textDim,
             modifier = Modifier.padding(top = 6.dp),
@@ -634,7 +635,7 @@ private fun DoneContent(
         Text(
             "Session complete",
             fontFamily = YantraDisplay,
-            fontSize = 24.sp,
+            fontSize = YantraType.screen,
             fontWeight = FontWeight.W700,
             letterSpacing = (-0.4).sp,
             color = y.textPrimary,
@@ -646,7 +647,7 @@ private fun DoneContent(
                 if (state.isOpen) append("${(state.actualOrElapsed()) / 60} min on $task")
                 else append("${state.plannedSecs / 60} min on $task")
             },
-            fontSize = 13.5.sp,
+            fontSize = YantraType.label,
             color = y.textMuted,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 6.dp),
@@ -660,7 +661,7 @@ private fun DoneContent(
                     .clickable(onClick = onStartAnother)
                     .padding(vertical = 13.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("Start another", fontSize = 14.sp, fontWeight = FontWeight.W600, color = y.textSecondary) }
+            ) { Text("Start another", fontSize = YantraType.body, fontWeight = FontWeight.W600, color = y.textSecondary) }
             YantraButton(
                 label = "Done",
                 modifier = Modifier.weight(1f),
@@ -687,7 +688,7 @@ private fun SessionRow(s: FocusSessionEntity) {
         if (ie.shoonya.yantra.data.db.FocusOutcome.keptItsPromise(s.outcome, s.plannedSecs)) {
             YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Ran its course")
         } else {
-            Text("◌", fontSize = 16.sp, color = y.textDim)
+            Text("◌", fontSize = YantraType.card, color = y.textDim)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -714,6 +715,6 @@ private fun SessionRow(s: FocusSessionEntity) {
                 color = y.textMuted,
             )
         }
-        Text("${s.plannedSecs / 60}m planned", fontSize = 11.sp, fontWeight = FontWeight.W600, color = y.textDim)
+        Text("${s.plannedSecs / 60}m planned", fontSize = YantraType.caption, fontWeight = FontWeight.W600, color = y.textDim)
     }
 }

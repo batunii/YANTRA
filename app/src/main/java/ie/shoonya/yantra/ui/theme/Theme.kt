@@ -174,6 +174,69 @@ private val AppTypography = Typography().let { base ->
     )
 }
 
+/**
+ * The sanctioned sizes, named by the job they do.
+ *
+ * **Why a size scale as well as [AppTypography].** The ramp gives a whole style — family, weight,
+ * tracking, line height — and that is right where a call site wants all of it. Most do not: a chip
+ * sets its own weight and colour and wants only the size, and until now it wrote a number. The
+ * audit found **232 of those across 41 files in 17 distinct sizes**, including 11, 11.5, 12 and
+ * 12.5 as four separate decisions nobody made.
+ *
+ * So every size a call site is allowed to use is named here, and each one maps to a role in the
+ * ramp. A call site that wants the whole style still takes `MaterialTheme.typography`; one that
+ * wants a number takes a name.
+ *
+ * **Two roles were missing, which is why the drift happened.** A scale that does not cover the app
+ * is a scale people go around, and both gaps were real work rather than carelessness:
+ *
+ *  - [dense] — the timeline's hour numerals, the rail's rows, a count beside a title. The ramp
+ *    bottomed out at 11sp, and a day from 07:00 to 23:00 does not fit at 11sp. This is the one
+ *    place the app is allowed to go smaller, and it is for data that is read as a column rather
+ *    than as a sentence.
+ *  - [sheetTitle] — the name at the top of a sheet. It sits between a card title (15.5) and a
+ *    screen title (22): a sheet is not a screen, and giving it the screen's size made a half-height
+ *    surface shout.
+ *
+ * An eyebrow is **not** one of the gaps. CALENDAR_UI.md §4 found one at 8.5sp carrying the only
+ * piece of state its bar reported — three and a half points under the scale's floor — and the
+ * answer there is [section] at 12sp, not a smaller token.
+ */
+object YantraType {
+    /**
+     * The wordmark, on the splash and nowhere else.
+     *
+     * A brand moment rather than a step in the scale: it appears once, for under a second, with no
+     * other text beside it to be in proportion to. It is named here anyway, because the alternative
+     * is the one number in the app with no home.
+     */
+    val wordmark = 46.sp
+    /** Page hero — `headlineMedium`. */
+    val hero = 32.sp
+    /** Screen title — `headlineSmall`. */
+    val screen = 24.sp
+    /** Smart-list and focus title — `titleLarge`. */
+    val title = 22.sp
+    /** Sheet title. Between a card and a screen; see the note above. */
+    val sheetTitle = 19.sp
+    /** Card title, block heading — `titleMedium`. */
+    val card = 15.5.sp
+    /** Row title — `bodyLarge`. */
+    val row = 15.sp
+    /** Paragraph — `bodyMedium`. */
+    val body = 14.5.sp
+    /** Button and pill text — `labelLarge`. */
+    val label = 13.5.sp
+    /** Meta and subtitle — `bodySmall`. */
+    val meta = 12.5.sp
+    /** Section label, eyebrow, chip — `titleSmall` / `labelMedium`. */
+    val section = 12.sp
+    /** Caption — `labelSmall`. */
+    val caption = 11.sp
+    /** Dense data only: timeline hours, rail rows, counts. See the note above. */
+    val dense = 10.sp
+}
+
 /** Space Mono ramp for the timer countdown and breadcrumb — set at call sites. */
 val MonoLarge = TextStyle(
     fontFamily = YantraMono, fontWeight = FontWeight.W700,

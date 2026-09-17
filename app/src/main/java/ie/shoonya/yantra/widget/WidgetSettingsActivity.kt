@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Settings for one placed widget, opened from the widget's own overflow button.
@@ -257,14 +258,14 @@ private fun SettingsScreen(
                             // against a rising percentage.
                             Text(
                                 "Higher covers more of the wallpaper",
-                                fontSize = 12.sp,
+                                fontSize = YantraType.section,
                                 color = y.textMuted,
                                 modifier = Modifier.padding(top = 2.dp),
                             )
                         }
                         Text(
                             "${opacity.toInt()}%",
-                            fontSize = 13.sp,
+                            fontSize = YantraType.meta,
                             fontWeight = FontWeight.W700,
                             color = y.accent,
                         )
@@ -345,7 +346,7 @@ private fun ToggleCard(
             Text(title, style = MaterialTheme.typography.titleMedium, color = y.textPrimary)
             Text(
                 subtitle,
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 color = y.textMuted,
                 modifier = Modifier.padding(top = 2.dp),
             )

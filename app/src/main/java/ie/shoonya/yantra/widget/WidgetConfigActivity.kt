@@ -35,6 +35,7 @@ import ie.shoonya.yantra.ui.theme.SuperTasksTheme
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import ie.shoonya.yantra.ui.theme.YantraType
 
 class WidgetConfigActivity : ComponentActivity() {
 
@@ -114,9 +115,9 @@ private fun ConfigScreen(
             .padding(horizontal = 20.dp),
     ) {
         Column(Modifier.padding(top = 16.dp, bottom = 8.dp)) {
-            Text("YANTRA", fontSize = 10.5.sp, fontWeight = FontWeight.W700, color = y.accentEyebrow)
+            Text("YANTRA", fontSize = YantraType.dense, fontWeight = FontWeight.W700, color = y.accentEyebrow)
             // Not "Choose a list" any more, because it no longer has to be one.
-            Text("What should it show?", fontSize = 24.sp, fontWeight = FontWeight.W800, color = y.textPrimary)
+            Text("What should it show?", fontSize = YantraType.screen, fontWeight = FontWeight.W800, color = y.textPrimary)
         }
         WidgetSearchField(query, { query = it }, Modifier.fillMaxWidth().padding(bottom = 4.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {

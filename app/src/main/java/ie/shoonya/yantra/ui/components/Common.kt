@@ -57,6 +57,7 @@ import ie.shoonya.yantra.ui.theme.YantraText
 import androidx.compose.ui.geometry.Size
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * What a chip *means*, over and above what it says. Kept out of [ChipData.color] because the
@@ -138,7 +139,7 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
         }
         Text(
             chip.label,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W600,
             color = s.text,
         )
@@ -156,7 +157,7 @@ fun FocusCount(count: Int, modifier: Modifier = Modifier) {
         YantraIcon(YantraMark.Focus, tint = Yantra.colors.accent, contentDescription = null)
         Text(
             "$count",
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W600,
             color = Yantra.colors.textSecondary,
         )
@@ -170,7 +171,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yan
         text.uppercase(),
         modifier = modifier,
         fontFamily = YantraText,
-        fontSize = 11.sp,
+        fontSize = YantraType.caption,
         fontWeight = FontWeight.W700,
         letterSpacing = 1.4.sp,
         color = color,

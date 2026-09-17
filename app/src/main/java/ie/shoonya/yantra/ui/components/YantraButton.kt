@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraText
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * How loudly a button speaks. Three, because the app already spoke in three.
@@ -107,7 +108,7 @@ fun YantraButton(
                 color = ink,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W700,
-                fontSize = 15.sp,
+                fontSize = YantraType.row,
                 maxLines = 1,
             )
         }

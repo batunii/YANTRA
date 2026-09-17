@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * The one text field.
@@ -49,7 +50,7 @@ fun YantraField(
     val y = Yantra.colors
     val shape = RoundedCornerShape(12.dp)
     val style = TextStyle(
-        fontSize = 15.sp,
+        fontSize = YantraType.row,
         color = if (enabled) y.textPrimary else y.textMuted,
         fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
     )
@@ -84,7 +85,7 @@ fun YantraField(
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
-                        Text(placeholder, fontSize = 15.sp, color = y.textDim, style = style.copy(color = y.textDim))
+                        Text(placeholder, fontSize = YantraType.row, color = y.textDim, style = style.copy(color = y.textDim))
                     }
                     inner()
                 }

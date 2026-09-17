@@ -54,6 +54,7 @@ import kotlinx.coroutines.launch
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Instant capture from the quick-add widget: translucent dialog-style activity, keyboard up
@@ -163,7 +164,7 @@ class QuickAddActivity : ComponentActivity() {
                             singleLine = true,
                             textStyle = MaterialTheme.typography.titleMedium.copy(
                                 color = y.textPrimary,
-                                fontSize = 16.5.sp,
+                                fontSize = YantraType.card,
                                 fontWeight = FontWeight.W500,
                             ),
                             cursorBrush = SolidColor(y.accent),
@@ -175,7 +176,7 @@ class QuickAddActivity : ComponentActivity() {
                                     if (text.isEmpty()) {
                                         Text(
                                             "What needs doing?",
-                                            fontSize = 16.5.sp,
+                                            fontSize = YantraType.card,
                                             fontWeight = FontWeight.W500,
                                             color = y.textMuted,
                                         )
@@ -275,6 +276,6 @@ private fun CaptureChip(
             tint = if (readOnly) y.textDim else tint,
         )
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.W600, color = tint)
+        Text(label, fontSize = YantraType.section, fontWeight = FontWeight.W600, color = tint)
     }
 }

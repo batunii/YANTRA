@@ -33,6 +33,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraColors
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * One task, one card.
@@ -161,7 +162,7 @@ fun QuickAddBar(
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.CenterStart) {
                             if (text.text.isEmpty()) {
-                                Text(placeholder, color = y.textDim, fontSize = 14.sp)
+                                Text(placeholder, color = y.textDim, fontSize = YantraType.body)
                             }
                             inner()
                         }

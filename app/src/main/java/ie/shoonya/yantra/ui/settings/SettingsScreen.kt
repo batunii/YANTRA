@@ -67,6 +67,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import androidx.compose.ui.graphics.Color
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 @Composable
 fun SettingsScreen(nav: NavHostController) {
@@ -161,7 +162,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "Each one is a repository. Today spans all of them.",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(10.dp))
             spaces.forEach { space ->
@@ -221,7 +222,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 syncStatus ?: "Every change is saved to a file and committed on its own",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             SelectChip(
@@ -239,7 +240,7 @@ fun SettingsScreen(nav: NavHostController) {
                 "Finished tasks leave your lists after a while. They stay in the repository and can " +
                     "be brought back — this is about keeping lists short, not deleting anything.",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -292,7 +293,7 @@ fun SettingsScreen(nav: NavHostController) {
             }
             said?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = y.textSecondary, fontSize = 12.5.sp)
+                Text(it, color = y.textSecondary, fontSize = YantraType.meta)
             }
 
             Spacer(Modifier.height(28.dp))
@@ -303,7 +304,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "The ink that means your effort",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -331,7 +332,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "Each colour means one thing, so a glance is enough",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             InkLegendRow(y.checkOutline, "Structure", "frames, tracks, text")
@@ -349,7 +350,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "Tap to complete · swipe a task right to mark what you are on",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(14.dp))
             Row(
@@ -398,9 +399,9 @@ private fun InkLegendRow(color: Color, name: String, where: String) {
     ) {
         Box(Modifier.size(14.dp).background(color, RoundedCornerShape(4.dp)))
         Spacer(Modifier.width(12.dp))
-        Text(name, color = y.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
+        Text(name, color = y.textPrimary, fontSize = YantraType.label, fontWeight = FontWeight.W600)
         Spacer(Modifier.width(8.dp))
-        Text(where, color = y.textMuted, fontSize = 12.sp)
+        Text(where, color = y.textMuted, fontSize = YantraType.section)
     }
 }
 
@@ -425,7 +426,7 @@ private fun GlyphSample(label: String, initial: TaskState) {
             size = 34.dp,
         )
         Spacer(Modifier.height(10.dp))
-        Text(label, color = y.textMuted, fontSize = 11.5.sp, fontWeight = FontWeight.W600)
+        Text(label, color = y.textMuted, fontSize = YantraType.caption, fontWeight = FontWeight.W600)
     }
 }
 
@@ -462,9 +463,9 @@ private fun SettingRow(
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(title, color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+            Text(title, color = y.textPrimary, fontSize = YantraType.body, fontWeight = FontWeight.W600)
             Spacer(Modifier.height(2.dp))
-            Text(subtitle, color = y.textMuted, fontSize = 11.5.sp)
+            Text(subtitle, color = y.textMuted, fontSize = YantraType.caption)
         }
         trailing?.invoke()
         if (onClick != null) {

@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.db.RailTask
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * The tasks beside the day — CALENDAR_PLAN.md §13.
@@ -102,7 +103,7 @@ fun TaskRail(
                 ) {
                     Text(
                         b.label,
-                        fontSize = 10.sp,
+                        fontSize = YantraType.dense,
                         fontWeight = if (on) FontWeight.W700 else FontWeight.W500,
                         color = if (on) y.accentText else y.textMuted,
                         maxLines = 1,
@@ -111,7 +112,7 @@ fun TaskRail(
                         Text(
                             count.toString(),
                             fontFamily = YantraMono,
-                            fontSize = 9.sp,
+                            fontSize = YantraType.dense,
                             color = if (on) y.accentText.copy(alpha = 0.7f) else y.textDim,
                             modifier = Modifier.padding(start = 4.dp),
                         )
@@ -124,7 +125,7 @@ fun TaskRail(
             // The instruction only exists while it is true. A standing hint is furniture.
             Text(
                 "Tap a time on the day",
-                fontSize = 10.sp,
+                fontSize = YantraType.dense,
                 fontWeight = FontWeight.W700,
                 color = y.accent,
                 modifier = Modifier.padding(bottom = 4.dp),
@@ -134,7 +135,7 @@ fun TaskRail(
         if (tasks.isEmpty()) {
             Text(
                 emptyWord(shelf),
-                fontSize = 11.sp,
+                fontSize = YantraType.caption,
                 color = y.textDim,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -232,7 +233,7 @@ private fun RailRow(
         Column(Modifier.weight(1f)) {
             Text(
                 task.title.orEmpty().ifEmpty { "Untitled" },
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W600,
                 color = if (armed) y.accentText else y.textPrimary,
                 maxLines = 2,
@@ -243,7 +244,7 @@ private fun RailRow(
             if (task.sittings > 1) {
                 Text(
                     "planned ${task.sittings}×",
-                    fontSize = 9.sp,
+                    fontSize = YantraType.dense,
                     color = if (armed) y.accentText.copy(alpha = 0.75f) else y.textDim,
                 )
             }
@@ -258,7 +259,7 @@ private fun RailRow(
                     .testTag("open:${task.nodeId}"),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("›", fontSize = 15.sp, color = if (armed) y.accentText else y.textDim)
+                Text("›", fontSize = YantraType.row, color = if (armed) y.accentText else y.textDim)
             }
         }
     }

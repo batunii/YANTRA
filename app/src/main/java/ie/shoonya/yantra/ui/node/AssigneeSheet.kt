@@ -35,6 +35,7 @@ import ie.shoonya.yantra.data.people.Person
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Everything a screen needs in order to offer people, in one value.
@@ -151,7 +152,7 @@ fun AssigneeSheet(
             // dismiss; and a roster that *was* fetched needs saying too, or a repository with one
             // collaborator looks exactly like a request that never happened.
             refreshNote?.let {
-                Text(it, fontSize = 12.sp, color = y.textMuted)
+                Text(it, fontSize = YantraType.section, color = y.textMuted)
             }
 
             Column {
@@ -181,7 +182,7 @@ fun AssigneeSheet(
                             "Nobody has been loaded for this repository yet — " +
                                 "press Collaborators, or type a login above."
                         },
-                        fontSize = 13.sp,
+                        fontSize = YantraType.meta,
                         color = y.textMuted,
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
@@ -241,11 +242,11 @@ private fun PersonRow(
         )
         if (person.isYou) {
             Spacer(Modifier.width(8.dp))
-            Text("you", fontSize = 11.5.sp, color = y.textMuted)
+            Text("you", fontSize = YantraType.caption, color = y.textMuted)
         }
         if (stranger) {
             Spacer(Modifier.width(8.dp))
-            Text("can't see this repo", fontSize = 11.5.sp, color = y.warning)
+            Text("can't see this repo", fontSize = YantraType.caption, color = y.warning)
         }
         Spacer(Modifier.weight(1f))
         if (selected) {

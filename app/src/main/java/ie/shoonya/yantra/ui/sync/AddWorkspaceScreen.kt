@@ -50,6 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Adding a workspace.
@@ -140,7 +141,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
             if (existing) {
                 SectionLabel("Repository")
                 Spacer(Modifier.height(2.dp))
-                Text("Paste the address, or type owner/name", color = y.textMuted, fontSize = 12.5.sp)
+                Text("Paste the address, or type owner/name", color = y.textMuted, fontSize = YantraType.meta)
                 Spacer(Modifier.height(12.dp))
                 YantraField(url, { url = it; note = null }, "github.com/you/project", mono = true)
                 // What this address resolved to, said before anything is linked.
@@ -157,7 +158,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                         resolved?.let { "Will use ${it.slug}" }
                             ?: "No repository in that — paste its address, or type owner/name",
                         color = if (resolved != null) y.textSecondary else y.textDim,
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                     )
                 }
                 Spacer(Modifier.height(10.dp))
@@ -165,12 +166,12 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                     "Tasks are kept on a branch called yantra-tasks. Your code is never downloaded "
                         + "and never changed — the two never share a commit.",
                     color = y.textDim,
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                 )
             } else {
                 SectionLabel("Name")
                 Spacer(Modifier.height(2.dp))
-                Text("A new private repository, for tasks only", color = y.textMuted, fontSize = 12.5.sp)
+                Text("A new private repository, for tasks only", color = y.textMuted, fontSize = YantraType.meta)
                 Spacer(Modifier.height(12.dp))
                 YantraField(name, { name = it; note = null }, "team-tasks", mono = true)
                 Spacer(Modifier.height(10.dp))
@@ -182,7 +183,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                         "Opens GitHub with the name and Private already filled in — press one button, "
                             + "then come back here.",
                     color = y.textDim,
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                 )
             }
 
@@ -190,14 +191,14 @@ fun AddWorkspaceScreen(nav: NavHostController) {
             SectionLabel("Access")
             Spacer(Modifier.height(2.dp))
             if (!ownToken && account != null) {
-                Text("Using your GitHub account, $account", color = y.textMuted, fontSize = 12.5.sp)
+                Text("Using your GitHub account, $account", color = y.textMuted, fontSize = YantraType.meta)
                 Spacer(Modifier.height(8.dp))
                 Link("Use a different token") { ownToken = true }
             } else {
                 Text(
                     "A fine-grained token with Contents: read and write on that repository",
                     color = y.textMuted,
-                    fontSize = 12.5.sp,
+                    fontSize = YantraType.meta,
                 )
                 Spacer(Modifier.height(12.dp))
                 YantraField(token, { token = it; note = null }, "github_pat_…", secret = true)

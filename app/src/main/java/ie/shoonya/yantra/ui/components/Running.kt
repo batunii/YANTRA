@@ -67,6 +67,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.absoluteValue
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * The task you are on, for the few places that draw it.
@@ -141,7 +142,7 @@ fun ElapsedSlot(nodeId: String, modifier: Modifier = Modifier) {
     Text(
         elapsedLabel(elapsed),
         fontFamily = YantraMono,
-        fontSize = 11.5.sp,
+        fontSize = YantraType.caption,
         fontWeight = FontWeight.W700,
         color = y.accent,
         maxLines = 1,
@@ -300,7 +301,7 @@ fun NowPlayer(
                     // One line in a bar: the markers have nothing to become here either.
                     inlinePlain(current.title).ifBlank { "Untitled" },
                     fontFamily = YantraDisplay,
-                    fontSize = 13.5.sp,
+                    fontSize = YantraType.label,
                     fontWeight = FontWeight.W700,
                     color = if (live) y.onAccent else y.textPrimary,
                     maxLines = 1,
@@ -321,7 +322,7 @@ fun NowPlayer(
                         if (stack.size > 1) append("  ·  ${index + 1}/${stack.size}")
                     },
                     fontFamily = YantraMono,
-                    fontSize = 8.5.sp,
+                    fontSize = YantraType.section,
                     fontWeight = FontWeight.W700,
                     letterSpacing = 1.2.sp,
                     color = if (live) y.onAccent.copy(alpha = 0.78f) else y.textMuted,
@@ -457,7 +458,7 @@ fun SwitchHereDialog(
                 Text(
                     "SWITCH HERE",
                     fontFamily = YantraMono,
-                    fontSize = 12.sp,
+                    fontSize = YantraType.section,
                     fontWeight = FontWeight.W700,
                     letterSpacing = 1.4.sp,
                     color = y.accent,

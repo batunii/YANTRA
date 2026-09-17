@@ -47,6 +47,7 @@ import ie.shoonya.yantra.widget.WidgetRefresh
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Yantra as somewhere to share *to*.
@@ -183,7 +184,7 @@ private fun Landed(
                     Text(
                         list.title.orEmpty().ifBlank { "Untitled list" },
                         color = y.textPrimary,
-                        fontSize = 15.sp,
+                        fontSize = YantraType.row,
                         fontWeight = FontWeight.W600,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -200,12 +201,12 @@ private fun Landed(
                         color = y.textPrimary,
                         fontFamily = YantraText,
                         fontWeight = FontWeight.W700,
-                        fontSize = 15.sp,
+                        fontSize = YantraType.row,
                     )
                     Text(
                         title,
                         color = y.textMuted,
-                        fontSize = 12.5.sp,
+                        fontSize = YantraType.meta,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -213,7 +214,7 @@ private fun Landed(
                 Text(
                     "Change list",
                     color = if (enabled) y.accentText else y.textDim,
-                    fontSize = 13.5.sp,
+                    fontSize = YantraType.label,
                     fontWeight = FontWeight.W700,
                     modifier = Modifier
                         .clickable(enabled = enabled, onClick = onChange)

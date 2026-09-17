@@ -62,6 +62,7 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
@@ -403,12 +404,12 @@ fun WeekTimeline(
                 ) {
                     Text(
                         d.dayOfWeek.getDisplayName(java.time.format.TextStyle.NARROW, locale),
-                        fontSize = 9.sp, color = y.textDim,
+                        fontSize = YantraType.dense, color = y.textDim,
                     )
                     Text(
                         d.dayOfMonth.toString(),
                         fontFamily = YantraMono,
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                         fontWeight = if (d == LocalDate.now()) FontWeight.W700 else FontWeight.W500,
                         color = if (d == LocalDate.now()) y.accent else y.textPrimary,
                     )
@@ -473,7 +474,7 @@ private fun HourRuler() {
                     Text(
                         // No leading zero. "9" is a time; "09" is a field in a form.
                         "$hour",
-                        fontSize = 10.sp,
+                        fontSize = YantraType.dense,
                         color = y.textDim,
                         textAlign = TextAlign.End,
                         // Lifted half a line so the number straddles its own hour rule rather than
@@ -790,7 +791,7 @@ private fun BlockChip(
                         theirs?.taskTitle?.takeIf { live == null }
                             ?: ("%d:%02d".format(startMin / 60, startMin % 60) +
                                 if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else ""),
-                        fontSize = 10.sp,
+                        fontSize = YantraType.dense,
                         fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
                         color = if (isEvent && !sitting && tint == null) y.accentText.copy(alpha = 0.85f) else y.textMuted,
                     )
@@ -1077,7 +1078,7 @@ private fun DraftBlock(range: IntRange) {
             "%d:%02d–%d:%02d".format(
                 range.first / 60, range.first % 60, range.last / 60 % 24, range.last % 60,
             ),
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = y.accentText,
         )

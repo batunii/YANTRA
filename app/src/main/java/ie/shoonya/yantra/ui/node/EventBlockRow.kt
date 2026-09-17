@@ -30,6 +30,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import ie.shoonya.yantra.ui.theme.YantraType
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
@@ -86,7 +87,7 @@ internal fun EventBlockRow(
                 // that, it is still a piece of time and says so rather than saying nothing.
                 row.displayTitle?.takeIf { it.isNotBlank() }
                     ?: if (sitting) "Time set aside" else "Event",
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 fontWeight = FontWeight.W600,
                 color = y.textPrimary,
                 maxLines = 1,
@@ -96,7 +97,7 @@ internal fun EventBlockRow(
             Text(
                 whenWords(start, end, e.allDay, sitting),
                 fontFamily = YantraMono,
-                fontSize = 10.5.sp,
+                fontSize = YantraType.dense,
                 color = y.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -107,7 +108,7 @@ internal fun EventBlockRow(
             Modifier.size(22.dp).clip(CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text("›", fontSize = 15.sp, color = y.textDim)
+            Text("›", fontSize = YantraType.row, color = y.textDim)
         }
     }
 }
@@ -155,7 +156,7 @@ internal fun EventWhenChip(row: EventWithTitle) {
         Text(
             whenWords(start, end, e.allDay, e.forNodeId != null),
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = y.accentText,
         )

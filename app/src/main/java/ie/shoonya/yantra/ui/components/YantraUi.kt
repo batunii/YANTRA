@@ -34,6 +34,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMotion
 import androidx.compose.ui.text.font.FontWeight
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Yantra's signature action affordance: a translucent accent fill + 1px accent border + accent
@@ -73,7 +74,7 @@ fun AccentPillButton(
             YantraIcon(mark, size = YantraIcons.Small, tint = y.accent)
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = y.accentText, fontSize = 13.5.sp, fontWeight = FontWeight.W700)
+        Text(text, color = y.accentText, fontSize = YantraType.label, fontWeight = FontWeight.W700)
     }
 }
 
@@ -100,7 +101,7 @@ fun NeutralChip(
             YantraIcon(mark, size = YantraIcons.Small, tint = y.textSecondary)
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = y.textSecondary, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
+        Text(text, color = y.textSecondary, fontSize = YantraType.label, fontWeight = FontWeight.W600)
     }
 }
 

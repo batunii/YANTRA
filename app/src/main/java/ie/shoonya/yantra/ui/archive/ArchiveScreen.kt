@@ -50,6 +50,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * What has left the working set.
@@ -108,7 +109,7 @@ fun ArchiveScreen(nav: NavHostController) {
                     "Finished tasks that left your lists. They are still in the repository — putting " +
                         "one back returns it exactly where it was.",
                     color = y.textMuted,
-                    fontSize = 12.5.sp,
+                    fontSize = YantraType.meta,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
             }
@@ -144,13 +145,13 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
                 color = y.textSecondary,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W600,
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             task.doneAt?.let {
                 Spacer(Modifier.height(2.dp))
-                Text("Finished ${finishedLabel(it)}", color = y.textDim, fontSize = 11.5.sp)
+                Text("Finished ${finishedLabel(it)}", color = y.textDim, fontSize = YantraType.caption)
             }
         }
         Spacer(Modifier.width(12.dp))

@@ -8,37 +8,9 @@ system nobody is using.
 
 **Rule owner:** Theme.kt AppTypography
 
-232 call sites across 41 files. The ramp already names every one of these roles; a literal here is a size nobody can change centrally, and the half-point neighbours (11.5, 12, 12.5) are drift rather than decisions.
+0 call sites across 0 files. The ramp already names every one of these roles; a literal here is a size nobody can change centrally, and the half-point neighbours (11.5, 12, 12.5) are drift rather than decisions.
 
-```
-  11.5sp × 35
-  12sp × 30
-  12.5sp × 27
-  11sp × 23
-  13sp × 22
-  14sp × 18
-  15sp × 15
-  13.5sp × 10
-  16sp × 9
-  10sp × 7
-  19sp × 5
-  10.5sp × 5
-  9sp × 4
-  17sp × 4
-  8.5sp × 3
-  32sp × 2
-  24sp × 2
-  16.5sp × 2
-  46sp × 1
-  25sp × 1
-  8sp × 1
-  21sp × 1
-  9.5sp × 1
-  14.5sp × 1
-  22sp × 1
-  30sp × 1
-  15.5sp × 1
-```
+Clean.
 
 ## Corner radii outside AppShapes
 

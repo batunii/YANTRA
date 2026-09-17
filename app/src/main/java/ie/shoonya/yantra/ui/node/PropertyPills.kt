@@ -68,6 +68,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Superlist-style always-visible properties: one pill per built-in property definition
@@ -254,7 +255,7 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
     ) {
         YantraIcon(YantraMark.Label, tint = s.dot, contentDescription = null)
         Spacer(Modifier.width(6.dp))
-        Text(label.name, fontSize = 11.5.sp, fontWeight = FontWeight.W600, color = s.text)
+        Text(label.name, fontSize = YantraType.caption, fontWeight = FontWeight.W600, color = s.text)
     }
 
     if (recolouring) {
@@ -414,7 +415,7 @@ private fun PropertyPill(
                     // thing twice in a row that has no room to. Every other field needs its name
                     // because "· High" alone means nothing.
                     if (isAssignee) chip.label else "${def.name} · ${chip.label}",
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                     fontWeight = FontWeight.W600,
                     color = s.text,
                 )
@@ -605,7 +606,7 @@ private fun GhostPill(label: String, dashed: Boolean, onClick: () -> Unit) {
     }
     Text(
         label,
-        fontSize = 11.5.sp,
+        fontSize = YantraType.caption,
         fontWeight = FontWeight.W600,
         color = y.textSecondary,
         modifier = bordered.padding(horizontal = 10.dp, vertical = 5.dp),

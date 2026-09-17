@@ -62,6 +62,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Short, and one line.
@@ -187,7 +188,7 @@ fun CalendarScreen(nav: NavHostController) {
                     .testTag("newEvent"),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("+", fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.accent)
+                Text("+", fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.accent)
             }
         }
 
@@ -256,7 +257,7 @@ fun CalendarScreen(nav: NavHostController) {
         ) {
             Text(
                 selected.format(DAY_LABEL),
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W700,
                 color = y.textDim,
                 modifier = Modifier.weight(1f),
@@ -266,7 +267,7 @@ fun CalendarScreen(nav: NavHostController) {
         if (items.isEmpty()) {
             Text(
                 "Nothing on this day.",
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 color = y.textMuted,
                 modifier = Modifier.padding(horizontal = PAGE_MARGIN, vertical = 12.dp),
             )
@@ -361,14 +362,14 @@ private fun PickForRange(
             Text(
                 "${from.format(MARKED_RANGE)}–${to.format(MARKED_RANGE)}",
                 fontFamily = YantraMono,
-                fontSize = 11.sp,
+                fontSize = YantraType.caption,
                 fontWeight = FontWeight.W700,
                 letterSpacing = 1.sp,
                 color = y.accent,
             )
             Text(
                 "What is this time for?",
-                fontSize = 19.sp,
+                fontSize = YantraType.sheetTitle,
                 fontWeight = FontWeight.W700,
                 color = y.textPrimary,
                 modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
@@ -388,7 +389,7 @@ private fun PickForRange(
             RailDividerHorizontal()
             Text(
                 "Something else — make an event",
-                fontSize = 13.sp,
+                fontSize = YantraType.meta,
                 fontWeight = FontWeight.W600,
                 color = y.accent,
                 modifier = Modifier
@@ -478,7 +479,7 @@ private fun MonthBar(
     ) {
         Text(
             heading(mode, month, selected, days),
-            fontSize = 16.sp,
+            fontSize = YantraType.card,
             fontWeight = FontWeight.W700,
             color = y.textPrimary,
             maxLines = 1,
@@ -490,7 +491,7 @@ private fun MonthBar(
         if (mode != CalendarMode.MONTH) {
             Text(
                 "Tasks",
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W700,
                 color = if (railOpen) y.accentText else y.textMuted,
                 modifier = Modifier
@@ -504,7 +505,7 @@ private fun MonthBar(
         }
         Text(
             "Today",
-            fontSize = 12.sp,
+            fontSize = YantraType.section,
             fontWeight = FontWeight.W700,
             color = y.accent,
             modifier = Modifier
@@ -545,7 +546,7 @@ private fun MonthGrid(
             grid.take(7).forEach { d ->
                 Text(
                     d.dayOfWeek.getDisplayName(TextStyle.NARROW, locale),
-                    fontSize = 10.sp,
+                    fontSize = YantraType.dense,
                     fontWeight = FontWeight.W700,
                     color = y.textDim,
                     modifier = Modifier.weight(1f),
@@ -599,7 +600,7 @@ private fun DayCell(
             Text(
                 day.dayOfMonth.toString(),
                 fontFamily = YantraMono,
-                fontSize = 13.sp,
+                fontSize = YantraType.meta,
                 fontWeight = if (isToday || isSelected) FontWeight.W700 else FontWeight.W500,
                 // Days from the neighbouring months are shown rather than blanked, so the grid keeps
                 // its shape, but dimmed so the month you are looking at is the one that reads.
@@ -648,7 +649,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
                 is DayItem.Task -> if (item.hasTime) item.at.format(TIME) else "due"
             },
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = if (item is DayItem.Event) y.accent else y.textDim,
             modifier = Modifier.width(52.dp),
@@ -656,7 +657,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(
                 item.title,
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 color = y.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -676,7 +677,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
                 is DayItem.Task -> ""
             }
             if (sub.isNotEmpty()) {
-                Text(sub, fontSize = 11.sp, color = y.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, fontSize = YantraType.caption, color = y.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         // Marked because only the first occurrence is drawn until expansion lands, so a repeat that
@@ -717,7 +718,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
                     // The segment says what it will actually show. "Week" on a phone that gives you
                     // three days is a label that lies about the button underneath it.
                     if (m == CalendarMode.WEEK && days < 7) "$days days" else m.label,
-                    fontSize = 11.sp,
+                    fontSize = YantraType.caption,
                     fontWeight = if (on) FontWeight.W700 else FontWeight.W500,
                     color = if (on) y.accentText else y.textMuted,
                     maxLines = 1,

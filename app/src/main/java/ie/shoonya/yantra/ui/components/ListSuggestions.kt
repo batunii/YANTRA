@@ -20,6 +20,7 @@ import ie.shoonya.yantra.data.capture.CaptureParse
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * What the token you are half-way through typing could mean, offered while there is still time.
@@ -117,7 +118,7 @@ private fun LinkStrip(
                 if (typed.isBlank()) "Type to find a task to link"
                 else "No task called \u201C$typed\u201D",
                 color = Yantra.colors.textDim,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
                 modifier = Modifier.padding(vertical = 6.dp),
             )
         } else {
@@ -249,7 +250,7 @@ private fun NewListChip(name: String, onEnd: () -> Unit) {
         Text(
             "tap to carry on with the task",
             color = Yantra.colors.textDim,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
         )
     }
 }

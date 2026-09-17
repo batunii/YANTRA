@@ -64,6 +64,7 @@ import ie.shoonya.yantra.ui.components.LocalLinkOpener
 import ie.shoonya.yantra.ui.components.LocalLinkResolver
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -153,7 +154,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 Text(
                     "SMART VIEW",
                     fontFamily = YantraText,
-                    fontSize = 11.sp,
+                    fontSize = YantraType.caption,
                     fontWeight = FontWeight.W600,
                     letterSpacing = 1.5.sp,
                     color = y.textMuted,
@@ -181,7 +182,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                     Text(
                         description,
                         fontFamily = YantraText,
-                        fontSize = 11.5.sp,
+                        fontSize = YantraType.caption,
                         fontWeight = FontWeight.W600,
                         color = y.textSecondary,
                         maxLines = 1,
@@ -391,7 +392,7 @@ private fun AbsentWorkspaces(names: List<String>) {
     }
     Text(
         "$what — tasks from ${if (names.size == 1) "it" else "them"} aren't shown here.",
-        fontSize = 12.sp,
+        fontSize = YantraType.section,
         color = y.textSecondary,
         modifier = Modifier
             .fillMaxWidth()
