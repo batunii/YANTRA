@@ -98,6 +98,55 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     val timerState: StateFlow<FocusTimer.State?> = container.timer.state
 
+    /**
+     * Today's events, for the byline and for NEXT — HOME_UI.md §5, §6.
+     *
+     * A day at a time, recomputed at midnight by the range moving rather than by a timer: the flow
+     * is keyed on the window, so a device left open overnight simply asks for a different day.
+     */
+    private val todayEvents: StateFlow<List<ie.shoonya.yantra.data.db.EventWithTitle>> =
+        container.db.eventDao()
+            .inRange(startOfToday(), startOfToday() + DAY_MS)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * How much of today is already spoken for, in minutes.
+     *
+     * **All-day events are excluded.** A passport renewal marked all day is not twenty-four hours
+     * of capacity, and counting it as such would make the one number Home reports useless on
+     * exactly the days it matters.
+     *
+     * Clipped to today at both ends, so a meeting running past midnight contributes the part of it
+     * that is actually today.
+     */
+    val bookedMinutes: StateFlow<Int> = todayEvents
+        .map { events ->
+            val from = startOfToday()
+            val to = from + DAY_MS
+            events.filterNot { it.event.allDay }.sumOf { e ->
+                val start = e.event.startUtc.coerceAtLeast(from)
+                val end = e.event.endUtc.coerceAtMost(to)
+                ((end - start).coerceAtLeast(0L) / 60_000L).toInt()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /**
+     * The next event today that has not yet ended — HOME_UI.md §6.
+     *
+     * Not *started*: one already running is still the thing you are next expected at, and dropping
+     * it the moment it begins would take the row away at the point it is most use. Null when there
+     * is nothing left today, so evenings are quiet rather than showing tomorrow morning.
+     */
+    val nextToday: StateFlow<ie.shoonya.yantra.data.db.EventWithTitle?> = todayEvents
+        .map { events ->
+            val now = System.currentTimeMillis()
+            events.filterNot { it.event.allDay }
+                .filter { it.event.endUtc > now }
+                .minByOrNull { it.event.startUtc }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** Built-in property definitions (Priority, Due), for the smart-list filter builder. */
     val defs: StateFlow<List<PropertyDefEntity>> =
         properties.builtInDefs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -182,4 +231,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     fun delete(id: String) {
         viewModelScope.launch { nodes.delete(id) }
     }
+
+    private fun startOfToday(): Long =
+        java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant().toEpochMilli()
 }
+
+private const val DAY_MS = 24L * 60 * 60 * 1000

@@ -100,6 +100,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import androidx.compose.foundation.combinedClickable
+import java.time.LocalDateTime
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
+import ie.shoonya.yantra.ui.components.YantraIcons
 
 private enum class CreateType(val label: String, val placeholder: String, val action: String) {
     TASK("Task", "New task", "Create task"),
@@ -141,7 +147,9 @@ fun HomeScreen(nav: NavHostController) {
     val openCount = allRegularLists
         .mapNotNull { counts[it.id] }
         .sumOf { (it.total - it.doneCount).coerceAtLeast(0) }
-    val listCount = allRegularLists.size
+    val booked by vm.bookedMinutes.collectAsStateWithLifecycle()
+    val next by vm.nextToday.collectAsStateWithLifecycle()
+    val live = timer
 
     val renderRow: @Composable (NodeEntity) -> Unit = { node ->
         val smart = node.type == NodeType.SMART_LIST
@@ -189,7 +197,7 @@ fun HomeScreen(nav: NavHostController) {
                     )
                 }
                 HomeTabBar(
-                    onCog = { showCreate = true },
+                    onCreate = { showCreate = true },
                     onStats = { nav.navigate(Routes.STATS) },
                     onCalendar = { nav.navigate(Routes.CALENDAR) },
                 )
@@ -204,9 +212,28 @@ fun HomeScreen(nav: NavHostController) {
                 item(key = "greet") {
                     Greeting(
                         openCount = openCount,
-                        listCount = listCount,
+                        bookedMinutes = booked,
                         onSettings = { nav.navigate(Routes.SETTINGS) },
                     )
+                }
+
+                // NEXT — HOME_UI.md §6. Above PINNED, today only, gone when there is nothing left.
+                //
+                // This gives Home the symmetry it lacked: NEXT at the top is what is coming, the
+                // now player at the bottom is what you are on. Both contextual, both vanish empty.
+                next?.let { event ->
+                    item(key = "next-header") { SectionHeader("Next") }
+                    item(key = "next-row") {
+                        NextRow(
+                            event = event,
+                            // Neutral while a session runs — HOME_UI.md §7. Two accented things at
+                            // opposite ends of the screen signal two kinds of urgency at once, and
+                            // the one you are *in* should win. The row stays, because what is
+                            // coming is exactly what you need while overrunning.
+                            accented = live == null,
+                            onClick = { nav.navigate(Routes.node(event.event.nodeId)) },
+                        )
+                    }
                 }
 
                 // The session used to be reported twice on this screen — a card up here and,
@@ -343,8 +370,74 @@ fun HomeScreen(nav: NavHostController) {
 
 private val dateFmt = DateTimeFormatter.ofPattern("EEEE · d MMM")
 
+/**
+ * The next thing today — HOME_UI.md §6.
+ *
+ * A row rather than a line in the band, because At-a-Glance-style information wants to be tappable
+ * and DESIGN.md §6 says nothing in the band is. As a row it opens the event and sits in the same
+ * grammar as PINNED and LISTS.
+ */
 @Composable
-private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
+private fun NextRow(
+    event: ie.shoonya.yantra.data.db.EventWithTitle,
+    accented: Boolean,
+    onClick: () -> Unit,
+) {
+    val y = Yantra.colors
+    val ink = if (accented) y.accent else y.checkOutline
+    val start = runCatching { LocalDateTime.parse(event.event.startLocal) }.getOrNull()
+    val end = runCatching { LocalDateTime.parse(event.event.endLocal) }.getOrNull()
+    val minutesAway = start?.let {
+        java.time.Duration.between(LocalDateTime.now(), it).toMinutes()
+    } ?: 0L
+    Column {
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                YantraIcon(YantraMark.Calendar, tint = ink)
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    event.title.orEmpty().ifBlank { "Untitled" },
+                    fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W500,
+                    color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    buildString {
+                        if (start != null && end != null) {
+                            append(start.format(CLOCK_FMT))
+                            append("–")
+                            append(end.format(CLOCK_FMT))
+                        }
+                        // How long until it starts, inside the same window that promotes a Join
+                        // control. Further out than that it is noise: you are not about to leave.
+                        if (minutesAway in 1..MINUTES_BEFORE) append("  ·  in ${minutesAway}m")
+                        else if (minutesAway <= 0L) append("  ·  now")
+                    },
+                    fontFamily = YantraMono, fontSize = 11.5.sp,
+                    color = if (accented) y.accent else y.textMuted,
+                )
+            }
+        }
+        HorizontalDivider(color = y.hairline, thickness = 1.dp)
+    }
+}
+
+/** The window inside which "in 12m" is worth saying — the same one that promotes a Join control. */
+private const val MINUTES_BEFORE = 30L
+
+private val CLOCK_FMT: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+/** "2h 20m", "45m" — how much of the day is already spoken for. */
+private fun bookedWords(minutes: Int): String =
+    if (minutes < 60) "${minutes}m" else "${minutes / 60}h ${minutes % 60}m".removeSuffix(" 0m")
+
+@Composable
+private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit) {
     val y = Yantra.colors
     val greeting = remember {
         when (LocalTime.now().hour) {
@@ -362,8 +455,28 @@ private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(date, fontFamily = YantraText, fontSize = 12.5.sp, fontWeight = FontWeight.W500, color = y.textMuted)
             Text(greeting, style = MaterialTheme.typography.headlineSmall, color = y.textPrimary, modifier = Modifier.padding(top = 3.dp))
+            // What the day costs, not how it is filed — HOME_UI.md §5.
+            //
+            // "across 2 lists" told you nothing you could not get by looking down the screen.
+            // Booked hours is the one figure Home cannot otherwise show, and the only one that
+            // makes tasks and events commensurable — which is this app's actual argument about
+            // time. Numerals in mono, per the type rule.
             Text(
-                if (openCount == 0) "Nothing open. Breathe." else "$openCount open across $listCount ${if (listCount == 1) "list" else "lists"}",
+                buildAnnotatedString {
+                    if (openCount == 0 && bookedMinutes == 0) {
+                        append("Nothing open. Breathe.")
+                    } else {
+                        withStyle(SpanStyle(fontFamily = YantraMono)) { append("$openCount") }
+                        append(" open")
+                        if (bookedMinutes > 0) {
+                            append(" · ")
+                            withStyle(SpanStyle(fontFamily = YantraMono)) {
+                                append(bookedWords(bookedMinutes))
+                            }
+                            append(" booked")
+                        }
+                    }
+                },
                 fontFamily = YantraText, fontSize = 12.5.sp, fontWeight = FontWeight.W500, color = y.textMuted,
                 modifier = Modifier.padding(top = 6.dp),
             )
@@ -398,21 +511,23 @@ private fun HomeRow(
     val y = Yantra.colors
     Column {
         Row(
-            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 11.dp),
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+                .padding(vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(34.dp).background(
-                    if (smart) Color.Transparent else y.accent.copy(alpha = 0.12f),
-                    RoundedCornerShape(10.dp),
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (smart) {
-                    YantraIcon(YantraMark.SmartList, tint = y.accent, contentDescription = null)
-                } else {
-                    YantraIcon(YantraMark.List, tint = y.accent)
-                }
+            // Both bare, in frame ink — HOME_UI.md §1.
+            //
+            // A list used to be a coral-tinted tile around its mark while a smart list was a bare
+            // mark: the same kind of thing in two treatments, and the tile was the heaviest element
+            // on the screen after the title. They are told apart by their drawing now, which is what
+            // the drawings are for.
+            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                YantraIcon(
+                    if (smart) YantraMark.SmartList else YantraMark.List,
+                    tint = y.checkOutline,
+                )
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
@@ -421,16 +536,26 @@ private fun HomeRow(
                     fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W500,
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = y.textMuted)
+                // Mono, per the type rule for numbers — HOME_UI.md §2. The subtitle is "0 of 4
+                // done", which is a count and reads as one.
+                Text(
+                    subtitle,
+                    fontFamily = YantraMono,
+                    fontSize = 11.5.sp,
+                    color = y.textMuted,
+                )
             }
-            if (showCompass) {
-                Compass(fraction = fraction, size = 30.dp)
-                Spacer(Modifier.width(4.dp))
-            }
+            // The ring is gone, and so is the trailing key.
+            //
+            // The ring said what "0 of 4 done" already said, less precisely — the same argument
+            // NAMING.md makes for keeping Rhythm as a numeral. It was also a collision: a ring means
+            // "a task you have taken up" in the deck counter, so one beside a list title claimed a
+            // state a list cannot be in.
+            //
+            // Four identical overflow keys at full ink ran down the right edge of a four-row screen.
+            // The menu is on long press, which also fixes the ragged edge where Inbox carried a key
+            // but no ring while its neighbours carried both.
             Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
-                    YantraIcon(YantraMark.More, tint = y.textDim, contentDescription = "Options")
-                }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(
@@ -595,7 +720,7 @@ private fun CreatePanel(
 
 
 @Composable
-private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit, onCalendar: () -> Unit) {
+private fun HomeTabBar(onCreate: () -> Unit, onStats: () -> Unit, onCalendar: () -> Unit) {
     val y = Yantra.colors
     // Three zones, one thing in each, and the cog in the middle where it can be found without
     // looking — it is the biggest, the only accented, and the only one whose position does not move
@@ -607,20 +732,28 @@ private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit, onCalendar: () ->
     // puts the two ways of *looking* at your work on either side of the one way of *adding* to it.
     Row(
         Modifier.fillMaxWidth().background(y.page).navigationBarsPadding()
-            .padding(start = 30.dp, end = 30.dp, top = 8.dp, bottom = 10.dp),
+            // 22dp, the one page margin — CALENDAR_UI.md §1 asked for the bars to agree, and
+            // PAGE_MARGIN is the number they should agree on rather than a third one.
+            .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 8.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) { CalendarGlyph() }
         }
-        // the cog — quick create
+        // The make-something key — HOME_UI.md §3.
+        //
+        // It wore `GearMark` while opening the create sheet, and Settings lived in the top-right
+        // circle wearing sliders. That is inverted from every other app on the phone: a cog means
+        // settings, and a person reaching for one found a new-list sheet. The key is `Add` now, at
+        // 56dp and radius 17 so it is the same object as the calendar's create key in size, shape
+        // and position — the make-something key is in one place on both board screens.
         Box(
-            Modifier.size(54.dp)
+            Modifier.size(56.dp)
                 .background(y.accentFill, RoundedCornerShape(17.dp))
                 .border(1.dp, y.accentBorder, RoundedCornerShape(17.dp))
-                .clickable(onClick = onCog),
+                .clickable(onClick = onCreate),
             contentAlignment = Alignment.Center,
-        ) { GearMark(Modifier.size(30.dp), tint = y.accent) }
+        ) { YantraIcon(YantraMark.Add, size = YantraIcons.Large, tint = y.accent) }
         Row(
             Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
