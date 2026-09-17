@@ -274,9 +274,15 @@ fun NowPlayer(
     // The list is a word in the eyebrow, wearing its own colour. A hue is a glance and a word is
     // the fact; neither has to carry the other, which is what makes a repeated hue a coincidence
     // rather than an ambiguity.
-    val listInk = LabelPalette.byName(current.listColour)
-        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
-        ?: y.textMuted
+    // Held back to 72%. A palette swatch is mixed to one lightness across every hue so no colour
+    // out-shouts another *at full strength* — which is right for a label you are meant to find, and
+    // too much for a line that is only telling you where you already are. The hue survives the
+    // knock-down; the shout does not.
+    val listInk = (
+        LabelPalette.byName(current.listColour)
+            ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+            ?: y.textMuted
+        ).copy(alpha = 0.72f)
     val shape = RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet)
 
     Row(
@@ -389,9 +395,10 @@ fun NowPlayer(
                 // **The name is quiet and the state is not.** Space Mono ships two weights, so
                 // the list name went out at the same 12sp bold as the state word — four loud things
                 // at once (size, weight, uppercase tracking, a saturated hue) under a 15sp title
-                // that is none of them. It read as a second title. It is a step down the scale and
-                // at the regular weight now, which is the app's existing small-mono voice
-                // (MonoBreadcrumb), and the colour is left to do the identifying on its own.
+                // that is none of them. It read as a second title. It is the bottom of the scale
+                // now, at the regular weight, tracked like MonoBreadcrumb and held to 72% ink —
+                // the app's quietest voice, which is the right one for a line that tells you where
+                // you already are rather than asking you to go anywhere.
                 //
                 // The state keeps the bold, deliberately: on one line the list is the standing fact
                 // and RUNNING · 3:45 is the news, and that is a hierarchy rather than an
@@ -416,9 +423,11 @@ fun NowPlayer(
                         Text(
                             list.uppercase(),
                             fontFamily = YantraMono,
-                            fontSize = YantraType.caption,
+                            // The bottom of the scale — the size the app gives dense data, which is
+                            // what this is. It sat one step up and still read as an announcement.
+                            fontSize = YantraType.dense,
                             fontWeight = FontWeight.W400,
-                            letterSpacing = 1.2.sp,
+                            letterSpacing = 1.sp,
                             color = listInk,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

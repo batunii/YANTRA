@@ -113,8 +113,7 @@ fun SettingsScreen(nav: NavHostController) {
                         id = store.id,
                         name = store.readManifest()?.name ?: "Workspace",
                         slug = container.slugOf(store.id),
-                        color = container.registry.entries()
-                            .firstOrNull { it.id == store.id }?.color,
+                        color = container.registry.colorOf(store.id),
                     )
                 }
             }

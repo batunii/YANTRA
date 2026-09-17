@@ -67,11 +67,33 @@ class WorkspaceRegistry(private val root: File) {
         write(entries().filterNot { it.id == entry.id } + entry)
     }
 
+    /**
+     * The colour a workspace wears, seeded from its name until somebody changes it.
+     *
+     * The local workspace is answered from its own file rather than from the registry, because the
+     * registry holds *linked repositories* and the local one deliberately is not in it — see the
+     * note at the top of this class. Giving it an entry to hold one colour would put a workspace
+     * with no repository into every list of repositories in the app.
+     */
+    fun colorOf(id: String): String? =
+        if (id.isEmpty()) localColor.takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
+        else entries().firstOrNull { it.id == id }?.color
+
     /** The colour a workspace wears, or null to take it off. Kept, so it can be corrected. */
     fun setColor(id: String, color: String?) {
+        if (id.isEmpty()) {
+            // The one workspace that is always there, and the one that used to fall out the bottom
+            // of this function: with no entry to copy, the picker saved nothing and the row put the
+            // new colour up anyway, so it looked like it had worked until the screen was reopened.
+            root.mkdirs()
+            if (color == null) localColor.delete() else localColor.writeText(color)
+            return
+        }
         val found = entries().firstOrNull { it.id == id } ?: return
         add(found.copy(color = color))
     }
+
+    private val localColor get() = File(root, "local-colour")
 
     fun remove(id: String) {
         write(entries().filterNot { it.id == id })

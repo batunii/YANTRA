@@ -217,8 +217,10 @@ class AppContainer(val app: Application) {
 
     /** The open workspaces, or none at all when there is only one of them to tell apart. */
     private fun distinguishable(): List<WorkspaceEntry> {
-        val open = (listOf(WorkspaceEntry(id = "", name = "Personal")) + registry.entries())
-            .filter { workspaces.isOpen(it.id) }
+        val open = (
+            listOf(WorkspaceEntry(id = "", name = "Personal", color = registry.colorOf("")))
+                + registry.entries()
+            ).filter { workspaces.isOpen(it.id) }
         return if (open.size < 2) emptyList() else open
     }
 
