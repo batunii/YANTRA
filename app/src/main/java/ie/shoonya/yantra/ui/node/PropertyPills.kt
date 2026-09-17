@@ -117,6 +117,13 @@ internal fun PillDialogHost(
     onAttachLabel: (LabelEntity) -> Unit,
     onCreateAndAttachLabel: (String, Long?) -> Unit,
     onRecolourLabel: (LabelEntity, Long?) -> Unit,
+    /**
+     * Take a label out of the workspace, not off this task.
+     *
+     * Asked for rather than done: the screen counts what carries it first, because "this is on 7
+     * tasks" is a question somebody can answer and "that was on 7 tasks" is not.
+     */
+    onDeleteLabel: (LabelEntity) -> Unit,
     onDismiss: () -> Unit,
 ) {
     when (request) {
@@ -127,6 +134,9 @@ internal fun PillDialogHost(
             onDismiss = onDismiss,
             onPick = { label -> onAttachLabel(label); onDismiss() },
             onCreate = { name, colour -> onCreateAndAttachLabel(name, colour); onDismiss() },
+            // The picker stays open behind the confirmation: deleting a label is tidying up, and
+            // tidying up is something you do to several at once.
+            onDelete = onDeleteLabel,
         )
         is PillRequest.Recolour -> AlertDialog(
             onDismissRequest = onDismiss,
@@ -137,7 +147,14 @@ internal fun PillDialogHost(
                     onPick = { onRecolourLabel(request.label, it); onDismiss() },
                 )
             },
-            confirmButton = {},
+            // On the chip's own dialog as well as in the picker, because the picker lists only
+            // labels that are *not* on this task — so a label you can see is precisely the one it
+            // will not show you, and the one you are most likely to have decided against.
+            confirmButton = {
+                TextButton(onClick = { onDismiss(); onDeleteLabel(request.label) }) {
+                    Text("Delete label", color = MaterialTheme.colorScheme.error)
+                }
+            },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         )
         is PillRequest.Assignee -> {
@@ -447,6 +464,16 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: () ->
 
 /** Tap an existing label to attach it, or type a new name and create it — attach/detach and
  * delete are both plain, symmetric operations, unlike the old global-property-def flow. */
+/**
+ * Picking or naming a label.
+ *
+ * **Shown by the screen, not by the row that opens it** — CALENDAR_PLAN.md §29. This row lives in
+ * the page band, and the band folds itself away when the keyboard appears. A dialog composed inside
+ * it therefore destroyed itself the instant you touched its own text field: the tap raised the IME,
+ * the IME collapsed the band, the collapse took this row out of the composition, and the remembered
+ * "a picker is open" went with it. Attaching an existing label worked, because that needs no
+ * keyboard; creating a new one was impossible, because it needs nothing else.
+ */
 @Composable
 internal fun LabelPickerDialog(
     allLabels: List<LabelEntity>,
@@ -454,6 +481,14 @@ internal fun LabelPickerDialog(
     onDismiss: () -> Unit,
     onPick: (LabelEntity) -> Unit,
     onCreate: (String, Long?) -> Unit,
+    /**
+     * Removes a label from the workspace entirely, rather than from this one task.
+     *
+     * Offered here because this list is the only place every label is visible at once, and a
+     * registry you can only add to is one that fills up with typos and one-offs. Null where the
+     * caller has no way to do it, in which case no delete is drawn at all.
+     */
+    onDelete: ((LabelEntity) -> Unit)? = null,
 ) {
     var query by remember { mutableStateOf("") }
     // Seeded from the name so a new tag is never colourless and two new tags rarely collide;
@@ -493,7 +528,22 @@ internal fun LabelPickerDialog(
                                     .background(chipStyleFor(label.color?.let { Color(it) }).dot, CircleShape)
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(label.name)
+                            Text(label.name, modifier = Modifier.weight(1f))
+                            onDelete?.let { delete ->
+                                // Its own target, well away from the name: the row means "use this
+                                // label" and the cross means "there should be no such label", and
+                                // those two must not be a near-miss of each other.
+                                YantraIcon(
+                                    YantraMark.Close,
+                                    size = YantraIcons.Small,
+                                    tint = Yantra.colors.textMuted,
+                                    contentDescription = "Delete the label ${label.name}",
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { delete(label) }
+                                        .padding(6.dp),
+                                )
+                            }
                         }
                     }
                     if (query.isNotBlank() && !exactMatch) {

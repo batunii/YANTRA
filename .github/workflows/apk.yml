@@ -101,7 +101,11 @@ jobs:
             echo "kind=release" >> "$GITHUB_OUTPUT"
           else
             ./gradlew :app:assembleDebug --no-daemon --stacktrace
-            echo "path=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+            # Split by architecture like the release variant, so there is no `app-debug.apk`
+            # either. This path had been left pointing at the old single-APK name, which would
+            # have failed a fork's pull request at the upload step with "no files found" — the
+            # one build that exists purely to tell a contributor their change compiles.
+            echo "path=app/build/outputs/apk/debug/app-arm64-v8a-debug.apk" >> "$GITHUB_OUTPUT"
             echo "kind=debug" >> "$GITHUB_OUTPUT"
           fi
 

@@ -639,4 +639,12 @@ class NodePageViewModel(
     fun setLabelColor(labelId: String, color: Long?) {
         viewModelScope.launch { labels.setColor(labelId, color) }
     }
+
+    /** How many tasks carry a label, asked before offering to delete it. */
+    suspend fun labelUsage(labelId: String): Int = labels.usageCount(labelId)
+
+    /** Deletes a label from the workspace and takes its tag off every task that had it. */
+    fun deleteLabel(labelId: String) {
+        viewModelScope.launch { labels.deleteLabel(labelId) }
+    }
 }

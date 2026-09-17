@@ -123,6 +123,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import ie.shoonya.yantra.data.db.LabelEntity
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.ui.Routes
@@ -235,6 +236,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // in the band, the band folds when the keyboard comes up, and an editor you have to type into
     // cannot live somewhere that disappears the moment you type.
     var pillRequest by remember { mutableStateOf<PillRequest?>(null) }
+    // The label a delete is being confirmed for, with the number of tasks that carry it. Held as a
+    // pair because the count is read once, when the cross is pressed — asking "this is on 7 tasks"
+    // is a question somebody can answer, where "that was on 7 tasks" is not.
+    var deletingLabel by remember { mutableStateOf<Pair<LabelEntity, Int>?>(null) }
     val scope = rememberCoroutineScope()
     // The lists this page could be filed onto — CALENDAR_PLAN.md §28. Null while the picker is shut;
     // read when it opens rather than watched, because it is a one-shot choice and a list appearing
@@ -1137,8 +1142,26 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         onAttachLabel = { label -> vm.attachLabel(nodeId, label.id) },
         onCreateAndAttachLabel = { name, colour -> vm.createAndAttachLabel(nodeId, name, colour) },
         onRecolourLabel = { label, colour -> vm.setLabelColor(label.id, colour) },
+        // Counted before it is offered, so the question names a number you can weigh.
+        onDeleteLabel = { label -> scope.launch { deletingLabel = label to vm.labelUsage(label.id) } },
         onDismiss = { pillRequest = null },
     )
+
+    deletingLabel?.let { (label, uses) ->
+        ConfirmDialog(
+            title = "Delete \"${label.name}\"?",
+            body = when (uses) {
+                0 -> "Nothing is using it, so nothing else changes."
+                1 -> "It will be taken off 1 task. The task itself is not deleted."
+                else -> "It will be taken off $uses tasks. The tasks themselves are not deleted."
+            },
+            onDismiss = { deletingLabel = null },
+            onConfirm = {
+                vm.deleteLabel(label.id)
+                deletingLabel = null
+            },
+        )
+    }
 
     movePicker?.let { lists ->
         MoveToListDialog(
