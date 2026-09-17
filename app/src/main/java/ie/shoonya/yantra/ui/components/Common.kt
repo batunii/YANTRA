@@ -4,12 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +55,8 @@ import kotlin.math.sin
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.ui.theme.YantraText
 import androidx.compose.ui.geometry.Size
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * What a chip *means*, over and above what it says. Kept out of [ChipData.color] because the
@@ -67,7 +69,8 @@ data class ChipData(
     val defId: String,
     val label: String,
     val color: Color?,
-    val icon: ImageVector? = null,
+    /** The mark — ICONS.md §1. Positional, where the ImageVector used to be. */
+    val mark: YantraMark? = null,
     val status: ChipStatus = ChipStatus.None,
     /** Set on the Priority chip so rows can carry priority on the checkbox too. */
     val isPriority: Boolean = false,
@@ -125,8 +128,11 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        if (chip.icon != null) {
-            Icon(chip.icon, contentDescription = null, tint = s.dot, modifier = Modifier.size(11.dp))
+        // 16dp, not 11: §2 puts a mark in a chip at Small. Eleven was below the stroke's own
+        // legibility — the 1.6/28 ratio comes out under half a pixel at that size.
+        if (chip.mark != null) {
+            YantraIcon(chip.mark, size = YantraIcons.Small, tint = s.dot)
+            Spacer(Modifier.width(5.dp))
         } else {
             Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
         }
@@ -147,12 +153,7 @@ fun FocusCount(count: Int, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Icon(
-            Icons.Default.Timer,
-            contentDescription = null,
-            tint = Yantra.colors.accent,
-            modifier = Modifier.size(12.dp),
-        )
+        YantraIcon(YantraMark.Focus, tint = Yantra.colors.accent, contentDescription = null)
         Text(
             "$count",
             fontSize = 11.sp,

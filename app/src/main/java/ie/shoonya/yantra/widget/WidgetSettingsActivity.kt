@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -57,6 +55,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * Settings for one placed widget, opened from the widget's own overflow button.
@@ -223,7 +222,7 @@ private fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Close",
                 onClick = onClose,
                 iconSize = 20.dp,

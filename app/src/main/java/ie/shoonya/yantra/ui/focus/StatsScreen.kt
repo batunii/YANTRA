@@ -24,11 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -89,6 +84,8 @@ import java.time.ZoneId
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 data class DayStat(val date: LocalDate, val completed: Int, val totalSecs: Int)
 
@@ -454,12 +451,7 @@ fun StatsScreen(nav: NavHostController) {
                             .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = "Back to all ${cut.label.lowercase()}",
-                            tint = y.accent,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        YantraIcon(YantraMark.Back, tint = y.accent, contentDescription = "Back to all ${cut.label.lowercase()}")
                         Text(
                             openedTitle.orEmpty(),
                             fontSize = 13.sp,
@@ -738,8 +730,7 @@ private fun BreakdownRow(
                     .clickable(onClick = onPlay),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                YantraIcon(if (running) YantraMark.Stop else YantraMark.Play,
                     contentDescription = if (running) "Stop the clock on ${row.title}" else "Start the clock on ${row.title}",
                     tint = if (running) y.accent else y.textMuted,
                     modifier = Modifier.size(19.dp),

@@ -23,10 +23,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,6 +60,8 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 /**
  * Short, and one line.
@@ -514,9 +512,9 @@ private fun MonthBar(
                 .clickable(onClick = onToday)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         )
-        NavCircle(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", onPrev, iconSize = 18.dp)
+        NavCircle(mark = YantraMark.Back, contentDescription = "Previous month", onClick = onPrev)
         Spacer(Modifier.width(6.dp))
-        NavCircle(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month", onNext, iconSize = 18.dp)
+        NavCircle(mark = YantraMark.Forward, contentDescription = "Next month", onClick = onNext)
     }
 }
 
@@ -684,12 +682,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
         // Marked because only the first occurrence is drawn until expansion lands, so a repeat that
         // showed once would otherwise look like a one-off somebody mistyped.
         if (item is DayItem.Event && item.repeating) {
-            Icon(
-                Icons.Default.Repeat,
-                contentDescription = "Repeats",
-                tint = y.textDim,
-                modifier = Modifier.size(14.dp),
-            )
+            YantraIcon(YantraMark.Repeat, tint = y.textDim, contentDescription = "Repeats")
         }
     }
 }

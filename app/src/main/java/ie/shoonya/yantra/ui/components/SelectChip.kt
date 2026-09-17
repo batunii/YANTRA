@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 /**
  * The one selectable chip.
@@ -41,13 +44,14 @@ fun SelectChip(
     selected: Boolean,
     modifier: Modifier = Modifier,
     size: ChipSize = ChipSize.Medium,
-    icon: ImageVector? = null,
     /**
      * True when the caller stretches the chip to a share of a row (a segmented control) rather
      * than letting it size to its label. Padding sized for a free-standing chip leaves too little
      * room inside a quarter-width one — it is what wrapped "System" onto two lines in Settings.
      */
     stretch: Boolean = false,
+    /** The mark, where one exists for it — ICONS.md §1. */
+    mark: YantraMark? = null,
     onClick: () -> Unit,
 ) {
     val y = Yantra.colors
@@ -68,13 +72,12 @@ fun SelectChip(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (selected) y.accentText else y.textSecondary,
-                modifier = Modifier.size(if (small) 12.dp else 15.dp),
-            )
+        val chipInk = if (selected) y.accentText else y.textSecondary
+        // §2's Small at both chip sizes. A mark is a fixed drawing at one of three sizes; scaling
+        // it to 12dp for a small chip is how nine sizes came about in the first place.
+        if (mark != null) {
+            YantraIcon(mark, size = YantraIcons.Small, tint = chipInk)
+            Spacer(Modifier.width(5.dp))
         }
         Text(
             label,

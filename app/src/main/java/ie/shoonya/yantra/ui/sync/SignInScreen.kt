@@ -21,11 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +73,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 /** Where the sign-in has got to. */
 /**
@@ -631,7 +628,7 @@ internal fun SignedIn(
             .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Check, null, tint = y.accent, modifier = Modifier.size(18.dp))
+        YantraIcon(YantraMark.Check, tint = y.accent)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(account, color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W700, fontSize = 15.sp)
@@ -661,7 +658,7 @@ internal fun SignedIn(
             YantraButton(
                 "Grant access on GitHub",
                 modifier = Modifier.fillMaxWidth(),
-                icon = Icons.AutoMirrored.Filled.OpenInNew,
+                mark = YantraMark.OpenOut,
                 onClick = onInstall,
             )
             Spacer(Modifier.height(10.dp))
@@ -704,7 +701,7 @@ internal fun SignedIn(
                 YantraButton(
                     label = "Create a private repository",
                     modifier = Modifier.fillMaxWidth(),
-                    icon = Icons.AutoMirrored.Filled.OpenInNew,
+                    mark = YantraMark.OpenOut,
                     busy = awaiting != null,
                     enabled = repoName.isNotBlank(),
                     onClick = onCreate,
@@ -792,7 +789,7 @@ private fun DeviceCodePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Icon(Icons.Default.ContentCopy, null, tint = y.textDim, modifier = Modifier.size(12.dp))
+                YantraIcon(YantraMark.Copy, tint = y.textDim)
                 Text(if (copied) "Copied" else "Tap to copy", color = y.textDim, fontSize = 11.5.sp)
             }
         }
@@ -801,7 +798,7 @@ private fun DeviceCodePanel(
     YantraButton(
         label = "Copy and open GitHub",
         modifier = Modifier.fillMaxWidth(),
-        icon = Icons.AutoMirrored.Filled.OpenInNew,
+        mark = YantraMark.OpenOut,
         onClick = onOpen,
     )
     Spacer(Modifier.height(8.dp))

@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,6 +49,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * What has left the working set.
@@ -159,7 +157,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
         // The way back, on the row itself. Restoring one thing should not require understanding the
         // archive as a whole, which is what a single "restore everything" would have demanded.
         NavCircle(
-            Icons.Default.Undo,
+            mark = YantraMark.Undo,
             contentDescription = "Put back",
             onClick = onRestore,
             accent = true,

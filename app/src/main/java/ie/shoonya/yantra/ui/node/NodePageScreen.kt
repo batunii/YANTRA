@@ -67,23 +67,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragIndicator
-import androidx.compose.material.icons.filled.Draw
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
-import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.OpenInFull
-import androidx.compose.material.icons.filled.CloseFullscreen
-import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -174,8 +157,6 @@ import ie.shoonya.yantra.ui.components.BottomBar
 import ie.shoonya.yantra.ui.components.SwitchHereDialog
 import ie.shoonya.yantra.ui.components.horizontalFadingEdge
 import ie.shoonya.yantra.ui.components.NeutralChip
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.CheckCircleOutline
 import ie.shoonya.yantra.ui.components.ChipSize
 import ie.shoonya.yantra.ui.components.SelectChip
 import ie.shoonya.yantra.ui.components.FocusCount
@@ -202,6 +183,8 @@ import androidx.compose.runtime.Stable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -813,8 +796,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     label = "gripAlpha",
                 )
                 if (gripAlpha > 0.01f) {
-                    Icon(
-                        Icons.Default.DragIndicator,
+                    YantraIcon(YantraMark.Drag,
                         contentDescription = "Drag to move",
                         tint = if (lifted) y.accent else y.textDim,
                         modifier = Modifier
@@ -1267,7 +1249,7 @@ private fun PageBand(
         // top row: back · (breadcrumb / collapsed title) · actions
         Row(verticalAlignment = Alignment.CenterVertically) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = onBack,
                 iconSize = 20.dp,
@@ -1323,7 +1305,7 @@ private fun PageBand(
             }
             if (onSolo != null) {
                 NavCircle(
-                    if (soloed) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
+                    mark = if (soloed) YantraMark.Collapse else YantraMark.Expand,
                     contentDescription = if (soloed) "Show the list beside this page" else "Just this page",
                     onClick = onSolo,
                     iconSize = 17.dp,
@@ -1349,12 +1331,7 @@ private fun PageBand(
                             .padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            Icons.Default.Timer,
-                            contentDescription = "Open the running session",
-                            tint = y.accent,
-                            modifier = Modifier.size(14.dp),
-                        )
+                        YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Open the running session")
                         Text(
                             "%d:%02d".format(shown / 60, shown % 60),
                             fontFamily = YantraMono,
@@ -1367,7 +1344,7 @@ private fun PageBand(
                     }
                 } else {
                     NavCircle(
-                        Icons.Default.Timer,
+                        mark = YantraMark.Focus,
                         contentDescription = "Focus on this task",
                         onClick = onFocus,
                         accent = true,
@@ -1378,7 +1355,7 @@ private fun PageBand(
             }
             Box {
                 NavCircle(
-                    Icons.Default.MoreVert,
+                    mark = YantraMark.More,
                     contentDescription = "Page options",
                     onClick = { menu = true },
                     iconSize = 18.dp,
@@ -2365,12 +2342,7 @@ internal fun TextualBlockRow(
                     if (childCount > 0) {
                         Text("$childCount", fontSize = 12.sp, fontWeight = FontWeight.W600, color = y.textMuted)
                     }
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Open as page",
-                        tint = if (childCount > 0) y.textMuted else y.textDim,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    YantraIcon(YantraMark.Forward, tint = if (childCount > 0) y.textMuted else y.textDim, contentDescription = "Open as page")
                 }
             }
         }
@@ -2457,7 +2429,7 @@ private fun InkBlockRow(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(vertical = 10.dp),
                 ) {
-                    Icon(Icons.Default.Draw, contentDescription = null, tint = y.textMuted.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                    YantraIcon(YantraMark.Ink, tint = y.textMuted.copy(alpha = 0.6f), contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Tap to sketch", color = y.textMuted.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium)
                 }
@@ -2583,18 +2555,18 @@ private fun BlockTypeBar(
         if (showTypes) {
             SelectChip("Task", selected = currentType == NodeType.TASK, onClick = onTask)
             SelectChip("Note", selected = currentType == NodeType.PARAGRAPH, onClick = onText)
-            SelectChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, icon = Icons.Default.Title)
+            SelectChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, mark = YantraMark.Heading)
             SelectChip(
                 "Bullet",
                 selected = currentType == NodeType.BULLET,
                 onClick = onBullet,
-                icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+                mark = YantraMark.List,
             )
             SelectChip(
                 "Numbered",
                 selected = currentType == NodeType.NUMBERED,
                 onClick = onNumbered,
-                icon = Icons.Default.FormatListNumbered,
+                mark = YantraMark.Numbered,
             )
             Box(
                 Modifier
@@ -2603,8 +2575,8 @@ private fun BlockTypeBar(
                     .width(1.dp)
                     .background(y.hairline),
             )
-            NeutralChip("Ink", onInk, icon = Icons.Default.Draw, modifier = noFocus)
-            NeutralChip("Image", onImage, icon = Icons.Default.Image, modifier = noFocus)
+            NeutralChip("Ink", onInk, mark = YantraMark.Ink, modifier = noFocus)
+            NeutralChip("Image", onImage, mark = YantraMark.Image, modifier = noFocus)
         }
         // What the ⋮ used to hide. Out here they are simply visible, and they only appear once a
         // block is actually selected, so the bar is never showing an action with no subject.
@@ -2619,16 +2591,16 @@ private fun BlockTypeBar(
                     .background(y.hairline),
             )
             if (onOutdent != null) {
-                NeutralChip("Outdent", onOutdent, icon = Icons.AutoMirrored.Filled.FormatIndentDecrease, modifier = noFocus)
+                NeutralChip("Outdent", onOutdent, mark = YantraMark.IndentOut, modifier = noFocus)
             }
             if (onIndent != null) {
-                NeutralChip("Indent", onIndent, icon = Icons.AutoMirrored.Filled.FormatIndentIncrease, modifier = noFocus)
+                NeutralChip("Indent", onIndent, mark = YantraMark.IndentIn, modifier = noFocus)
             }
             if (actOnTask && onProperties != null) {
-                NeutralChip("Props", onProperties, icon = Icons.Default.Flag, modifier = noFocus)
+                NeutralChip("Props", onProperties, mark = YantraMark.Properties, modifier = noFocus)
             }
             if (onFocusTask != null) {
-                NeutralChip("Focus", onFocusTask, icon = Icons.Default.Timer, modifier = noFocus)
+                NeutralChip("Focus", onFocusTask, mark = YantraMark.Focus, modifier = noFocus)
             }
             DangerChip("Delete", onDelete, modifier = noFocus)
         }
@@ -2648,7 +2620,7 @@ private fun DangerChip(text: String, onClick: () -> Unit, modifier: Modifier = M
             .padding(horizontal = 15.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Delete, contentDescription = null, tint = y.overdue, modifier = Modifier.size(15.dp))
+        YantraIcon(YantraMark.Delete, tint = y.overdue, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(text, color = y.overdue, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
     }
@@ -2731,8 +2703,8 @@ private fun LinkedRow(
                 label = target.title?.takeIf { it.isNotBlank() } ?: "Untitled",
                 selected = false,
                 size = ChipSize.Small,
-                icon = if (target.type == NodeType.TASK) Icons.Default.CheckCircleOutline
-                else Icons.AutoMirrored.Filled.List,
+                mark = if (target.type == NodeType.TASK) YantraMark.Task
+                else YantraMark.List,
                 onClick = { onOpen(target.id) },
             )
         }

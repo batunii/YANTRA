@@ -34,12 +34,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -117,6 +111,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 /**
  * A drawing session.
@@ -524,7 +520,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = { nav.popBackStack() },
                 iconSize = 20.dp,
@@ -561,12 +557,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.Timer,
-                        contentDescription = "Open the running session",
-                        tint = y.accent,
-                        modifier = Modifier.size(13.dp),
-                    )
+                    YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Open the running session")
                     Text(
                         "%d:%02d".format(shown / 60, shown % 60),
                         fontFamily = YantraMono,

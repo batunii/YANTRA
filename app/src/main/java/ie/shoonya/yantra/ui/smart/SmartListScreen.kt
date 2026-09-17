@@ -20,10 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +62,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.CompositionLocalProvider
 import ie.shoonya.yantra.ui.components.LocalLinkOpener
 import ie.shoonya.yantra.ui.components.LocalLinkResolver
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -112,7 +110,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 NavCircle(
-                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    mark = YantraMark.Back,
                     contentDescription = "Back",
                     onClick = { nav.popBackStack() },
                     iconSize = 20.dp,
@@ -123,7 +121,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 // change a view is to delete it and build another one from scratch.
                 Box {
                     NavCircle(
-                        Icons.Default.MoreVert,
+                        mark = YantraMark.More,
                         contentDescription = "Options",
                         onClick = { menu = true },
                         iconSize = 18.dp,
@@ -150,7 +148,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 Modifier.padding(top = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = y.accent, modifier = Modifier.size(13.dp))
+                YantraIcon(YantraMark.SmartList, tint = y.accent, contentDescription = null)
                 Spacer(Modifier.width(7.dp))
                 Text(
                     "SMART VIEW",

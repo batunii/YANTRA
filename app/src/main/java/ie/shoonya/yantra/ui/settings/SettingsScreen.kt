@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.remember
@@ -61,14 +59,14 @@ import ie.shoonya.yantra.ui.appContainer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import ie.shoonya.yantra.data.sync.Credentials
 import ie.shoonya.yantra.ui.Routes
 import ie.shoonya.yantra.ui.theme.Yantra
 import androidx.compose.ui.graphics.Color
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 @Composable
 fun SettingsScreen(nav: NavHostController) {
@@ -460,7 +458,7 @@ private fun SettingRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon) {
-            Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(18.dp))
+            YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {
@@ -470,10 +468,7 @@ private fun SettingRow(
         }
         trailing?.invoke()
         if (onClick != null) {
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
-                tint = y.textDim, modifier = Modifier.size(18.dp),
-            )
+            YantraIcon(YantraMark.Forward, tint = y.textDim, contentDescription = null)
         }
     }
 }

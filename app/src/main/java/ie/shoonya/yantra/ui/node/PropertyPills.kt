@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -67,6 +65,9 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import ie.shoonya.yantra.ui.components.selectOptionColor
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
 
 /**
  * Superlist-style always-visible properties: one pill per built-in property definition
@@ -251,7 +252,7 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
             .combinedClickable(onClick = onClick, onLongClick = { recolouring = true })
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
-        Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null, tint = s.dot, modifier = Modifier.size(12.dp))
+        YantraIcon(YantraMark.Label, tint = s.dot, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label.name, fontSize = 11.5.sp, fontWeight = FontWeight.W600, color = s.text)
     }
@@ -402,8 +403,8 @@ private fun PropertyPill(
                     .clickable(onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 5.dp),
             ) {
-                if (chip.icon != null) {
-                    Icon(chip.icon, contentDescription = null, tint = s.dot, modifier = Modifier.size(12.dp))
+                if (chip.mark != null) {
+                    YantraIcon(chip.mark, size = YantraIcons.Small, tint = s.dot)
                 } else {
                     Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
                 }

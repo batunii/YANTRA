@@ -13,9 +13,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +49,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * Adding a workspace.
@@ -213,7 +211,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
             YantraButton(
                 label = if (existing) "Add workspace" else "Create on GitHub",
                 modifier = Modifier.fillMaxWidth(),
-                icon = if (existing) null else Icons.AutoMirrored.Filled.OpenInNew,
+                mark = if (existing) null else YantraMark.OpenOut,
                 busy = busy || awaiting != null,
                 enabled = ready,
                 onClick = {

@@ -18,12 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +66,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.TextButton
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 private enum class ShowMode(val label: String) {
     OPEN("Open"),
@@ -209,7 +205,7 @@ fun SmartListBuilderSheet(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = y.accent, modifier = Modifier.size(22.dp))
+                YantraIcon(YantraMark.SmartList, tint = y.accent, contentDescription = null)
                 Spacer(Modifier.width(10.dp))
                 Text(
                     if (editing != null) "Edit smart list" else "New smart list",
@@ -571,7 +567,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
             }
         }
         Box(Modifier.size(28.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Close, "Remove condition", tint = y.textDim, modifier = Modifier.size(16.dp))
+            YantraIcon(YantraMark.Close, tint = y.textDim, contentDescription = "Remove condition")
         }
     }
 }
@@ -612,7 +608,7 @@ private fun LabelConditionCard(
             }
         }
         Box(Modifier.size(28.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Close, "Remove condition", tint = y.textDim, modifier = Modifier.size(16.dp))
+            YantraIcon(YantraMark.Close, tint = y.textDim, contentDescription = "Remove condition")
         }
     }
 }
@@ -727,7 +723,7 @@ private fun DropChip(label: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, fontSize = 13.sp, fontWeight = FontWeight.W600, color = y.textSecondary)
-        Icon(Icons.Default.ExpandMore, null, tint = y.textDim, modifier = Modifier.size(16.dp).padding(start = 2.dp))
+        YantraIcon(YantraMark.Down, modifier = Modifier.size(16.dp).padding(start = 2.dp), tint = y.textDim)
     }
 }
 
@@ -749,7 +745,7 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) =
         onClick = onClick,
         // The tick is what makes "selected" legible on a chip you tapped a moment ago and
         // then edited underneath; the shared chip's coral alone reads as decoration here.
-        icon = if (selected) Icons.Default.Check else null,
+        mark = if (selected) YantraMark.Check else null,
     )
 
 @Composable
@@ -762,7 +758,7 @@ private fun GhostButton(label: String, onClick: () -> Unit) {
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(16.dp))
+        YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label.removePrefix("+ "), fontSize = 13.5.sp, fontWeight = FontWeight.W700, color = y.accentText)
     }

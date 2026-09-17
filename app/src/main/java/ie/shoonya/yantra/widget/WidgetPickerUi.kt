@@ -11,11 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +23,8 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * One selectable target in a widget picker. Shared by [WidgetConfigActivity] (choose one while
@@ -76,15 +73,15 @@ fun WidgetListRow(
             Modifier.size(44.dp).background(accent.copy(alpha = 0.15f), RoundedCornerShape(13.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
+            YantraIcon(
                 // A task bound to the home screen is a project, and it should not be wearing a
-                // list's icon while it sits next to actual lists.
+                // list's mark while it sits next to actual lists.
                 when {
-                    smartList -> Icons.Default.AutoAwesome
-                    node.type == NodeType.TASK -> Icons.Default.CheckCircleOutline
-                    else -> Icons.AutoMirrored.Filled.List
+                    smartList -> YantraMark.SmartList
+                    node.type == NodeType.TASK -> YantraMark.Task
+                    else -> YantraMark.List
                 },
-                contentDescription = null, tint = accent, modifier = Modifier.size(20.dp),
+                tint = accent,
             )
         }
         Spacer(Modifier.width(14.dp))
@@ -106,11 +103,10 @@ fun WidgetListRow(
         }
         if (selected) {
             Spacer(Modifier.width(10.dp))
-            Icon(
-                Icons.Default.Check,
-                contentDescription = "Showing on this widget",
+            YantraIcon(
+                YantraMark.Check,
                 tint = y.accent,
-                modifier = Modifier.size(20.dp),
+                contentDescription = "Showing on this widget",
             )
         }
     }

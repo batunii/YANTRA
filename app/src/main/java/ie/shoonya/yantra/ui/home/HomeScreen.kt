@@ -21,13 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -105,6 +98,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 private enum class CreateType(val label: String, val placeholder: String, val action: String) {
     TASK("Task", "New task", "Create task"),
@@ -414,9 +409,9 @@ private fun HomeRow(
                 contentAlignment = Alignment.Center,
             ) {
                 if (smart) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = y.accent, modifier = Modifier.size(19.dp))
+                    YantraIcon(YantraMark.SmartList, tint = y.accent, contentDescription = null)
                 } else {
-                    Icon(Icons.AutoMirrored.Filled.List, null, tint = y.accent, modifier = Modifier.size(18.dp))
+                    YantraIcon(YantraMark.List, tint = y.accent)
                 }
             }
             Spacer(Modifier.width(13.dp))
@@ -434,7 +429,7 @@ private fun HomeRow(
             }
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.MoreVert, "Options", tint = y.textDim, modifier = Modifier.size(20.dp))
+                    YantraIcon(YantraMark.More, tint = y.textDim, contentDescription = "Options")
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
@@ -468,7 +463,7 @@ private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelet
         Spacer(Modifier.weight(1f))
         Box {
             IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Default.MoreVert, "Group options", tint = y.textDim, modifier = Modifier.size(20.dp))
+                YantraIcon(YantraMark.More, tint = y.textDim, contentDescription = "Group options")
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
@@ -730,7 +725,7 @@ private fun MoveToGroupDialog(
                     Modifier.fillMaxWidth().clickable(onClick = onNewGroup).padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(18.dp))
+                    YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("New group…", color = y.accentText, fontWeight = FontWeight.W700)
                 }
@@ -755,7 +750,7 @@ private fun MoveRow(label: String, selected: Boolean, onClick: () -> Unit) {
             ).border(2.dp, if (selected) y.accent else y.checkOutline, RoundedCornerShape(5.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            if (selected) Icon(Icons.Default.Check, null, tint = y.onAccent, modifier = Modifier.size(12.dp))
+            if (selected) YantraIcon(YantraMark.Check, tint = y.onAccent)
         }
         Spacer(Modifier.width(12.dp))
         Text(label, color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)

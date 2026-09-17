@@ -22,13 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +80,7 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 class FocusViewModel(
     container: AppContainer,
@@ -178,7 +172,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                 .navigationBarsPadding(),
         ) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = { nav.popBackStack() },
                 iconSize = 22.dp,
@@ -334,8 +328,7 @@ private fun TimerSetup(
                 // Hugs its text, so the chevron follows the title rather than the screen edge.
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            YantraIcon(YantraMark.Forward,
                 contentDescription = "Open as page",
                 tint = y.textMuted,
                 // Scaled to the headline it sits beside, not to the 18dp the body rows use.
@@ -495,8 +488,7 @@ private fun ActiveTimer(
                 // stranded at the screen edge, and a long one still ellipsises before reaching it.
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            YantraIcon(YantraMark.Forward,
                 contentDescription = "Open as page",
                 tint = y.textMuted,
                 modifier = Modifier.padding(start = 2.dp).size(18.dp),
@@ -567,8 +559,7 @@ private fun ActiveTimer(
                 .clickable { if (state.isRunning) onPause() else onResume() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (state.isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+            YantraIcon(if (state.isRunning) YantraMark.Pause else YantraMark.Play,
                 contentDescription = if (state.isRunning) "Pause" else "Resume",
                 tint = y.accent,
                 modifier = Modifier.size(30.dp),
@@ -586,7 +577,7 @@ private fun ActiveTimer(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            YantraButton("Finish", stopping(onComplete), tone = ButtonTone.Soft, icon = Icons.Default.Timer)
+            YantraButton("Finish", stopping(onComplete), tone = ButtonTone.Soft, mark = YantraMark.Focus)
             YantraButton("Drop", stopping(onAbandon), tone = ButtonTone.Quiet)
         }
 
@@ -636,7 +627,7 @@ private fun DoneContent(
                     .background(y.accent, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = y.onAccent, modifier = Modifier.size(26.dp))
+                YantraIcon(YantraMark.Check, tint = y.onAccent, contentDescription = null)
             }
         }
         Text(
@@ -693,7 +684,7 @@ private fun SessionRow(s: FocusSessionEntity) {
     ) {
         // A filled mark for a promise kept; an open one for time given without one. Both are time.
         if (ie.shoonya.yantra.data.db.FocusOutcome.keptItsPromise(s.outcome, s.plannedSecs)) {
-            Icon(Icons.Default.Timer, contentDescription = "Ran its course", tint = y.accent, modifier = Modifier.size(16.dp))
+            YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Ran its course")
         } else {
             Text("◌", fontSize = 16.sp, color = y.textDim)
         }

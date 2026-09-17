@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -21,8 +19,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.data.capture.CaptureParse
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.format.Links
-import androidx.compose.material.icons.filled.CheckCircleOutline
-import androidx.compose.material.icons.filled.Person
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * What the token you are half-way through typing could mean, offered while there is still time.
@@ -97,7 +94,7 @@ private fun PeopleStrip(
                 label = "@$login",
                 selected = false,
                 size = ChipSize.Small,
-                icon = Icons.Default.Person,
+                mark = YantraMark.Person,
                 onClick = { onPick(settle(text, span, "@$login")) },
             )
         }
@@ -130,7 +127,7 @@ private fun LinkStrip(
                     label = title,
                     selected = false,
                     size = ChipSize.Small,
-                    icon = Icons.Default.CheckCircleOutline,
+                    mark = YantraMark.Task,
                     onClick = { onPick(settle(text, span, Links.encode(title, task.id))) },
                 )
             }
@@ -246,7 +243,7 @@ private fun NewListChip(name: String, onEnd: () -> Unit) {
             label = "New list \u201C$name\u201D",
             selected = false,
             size = ChipSize.Small,
-            icon = Icons.Default.Add,
+            mark = YantraMark.Add,
             onClick = onEnd,
         )
         Text(

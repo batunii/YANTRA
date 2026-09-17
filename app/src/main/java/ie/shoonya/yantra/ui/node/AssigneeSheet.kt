@@ -12,11 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PersonOff
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.people.Person
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 /**
  * Everything a screen needs in order to offer people, in one value.
@@ -132,7 +129,7 @@ fun AssigneeSheet(
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else if (onRefresh != null) {
                     TextButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        YantraIcon(YantraMark.Refresh, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
                         Text("Collaborators")
                     }
@@ -230,8 +227,7 @@ private fun PersonRow(
             Modifier.size(26.dp).background(tint.copy(alpha = 0.18f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (stranger) Icons.Default.PersonOff else Icons.Default.Person,
+            YantraIcon(if (stranger) YantraMark.PersonOff else YantraMark.Person,
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier.size(15.dp),
@@ -253,7 +249,7 @@ private fun PersonRow(
         }
         Spacer(Modifier.weight(1f))
         if (selected) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = y.accent, modifier = Modifier.size(18.dp))
+            YantraIcon(YantraMark.Check, tint = y.accent, contentDescription = null)
         }
     }
 }

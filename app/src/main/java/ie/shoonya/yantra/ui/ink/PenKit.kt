@@ -15,12 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +37,9 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.ink.StrokeCodec
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
 
 /**
  * The three pens the kit holds.
@@ -198,8 +195,7 @@ private fun KitColumn(
                 .clickable(onClick = onFold),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (folded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            YantraIcon(if (folded) YantraMark.Up else YantraMark.Down,
                 contentDescription = if (folded) "Show the whole kit" else "Fold the kit",
                 tint = y.textDim,
                 modifier = Modifier.size(20.dp),
@@ -263,7 +259,7 @@ private fun KitColumn(
             },
         )
         KitTool(
-            icon = Icons.Default.Category,
+            mark = YantraMark.Shapes,
             label = when {
                 mode == InkMode.SHAPE -> "Drawing shapes"
                 snap -> "Shape snapping on"
@@ -396,7 +392,7 @@ private fun KitTool(
     label: String,
     on: Boolean,
     onClick: () -> Unit,
-    icon: ImageVector? = null,
+    mark: YantraMark? = null,
     glyph: (@Composable (Color) -> Unit)? = null,
 ) {
     val y = Yantra.colors
@@ -415,7 +411,7 @@ private fun KitTool(
     ) {
         val tint = if (on) y.accent else y.textMuted
         if (glyph != null) glyph(tint)
-        else Icon(icon!!, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+        else YantraIcon(mark!!, size = YantraIcons.Large, tint = tint)
     }
 }
 
@@ -437,13 +433,13 @@ fun UndoPair(
 ) {
     val y = Yantra.colors
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        UndoKey(Icons.AutoMirrored.Filled.Undo, "Undo", canUndo, onUndo)
-        UndoKey(Icons.AutoMirrored.Filled.Redo, "Redo", canRedo, onRedo)
+        UndoKey(YantraMark.Undo, "Undo", canUndo, onUndo)
+        UndoKey(YantraMark.Redo, "Redo", canRedo, onRedo)
     }
 }
 
 @Composable
-private fun UndoKey(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun UndoKey(mark: YantraMark, label: String, enabled: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
     Box(
         Modifier
@@ -454,8 +450,8 @@ private fun UndoKey(icon: ImageVector, label: String, enabled: Boolean, onClick:
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon,
+        YantraIcon(
+            mark,
             contentDescription = label,
             tint = if (enabled) y.textSecondary else y.textDim.copy(alpha = 0.4f),
             modifier = Modifier.size(22.dp),

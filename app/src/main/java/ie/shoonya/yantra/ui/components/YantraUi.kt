@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMotion
 import androidx.compose.ui.text.font.FontWeight
+import ie.shoonya.yantra.ui.components.YantraIcon
 
 /**
  * Yantra's signature action affordance: a translucent accent fill + 1px accent border + accent
@@ -44,7 +45,8 @@ fun AccentPillButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null,
+    /** The mark — ICONS.md §1. See the note on YantraButton. */
+    mark: YantraMark? = null,
     shape: RoundedCornerShape = RoundedCornerShape(10.dp),
     horizontalPadding: Dp = 16.dp,
     verticalPadding: Dp = 9.dp,
@@ -67,8 +69,8 @@ fun AccentPillButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = y.accent, modifier = Modifier.size(15.dp))
+        if (mark != null) {
+            YantraIcon(mark, size = YantraIcons.Small, tint = y.accent)
             Spacer(Modifier.width(6.dp))
         }
         Text(text, color = y.accentText, fontSize = 13.5.sp, fontWeight = FontWeight.W700)
@@ -81,7 +83,8 @@ fun NeutralChip(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null,
+    /** The mark — ICONS.md §1. See the note on YantraButton. */
+    mark: YantraMark? = null,
 ) {
     val y = Yantra.colors
     val shape = RoundedCornerShape(10.dp)
@@ -93,8 +96,8 @@ fun NeutralChip(
             .padding(horizontal = 15.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(15.dp))
+        if (mark != null) {
+            YantraIcon(mark, size = YantraIcons.Small, tint = y.textSecondary)
             Spacer(Modifier.width(6.dp))
         }
         Text(text, color = y.textSecondary, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
