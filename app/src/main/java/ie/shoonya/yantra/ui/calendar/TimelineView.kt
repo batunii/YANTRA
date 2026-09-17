@@ -64,6 +64,8 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.components.spine
+import ie.shoonya.yantra.ui.components.SPINE_WIDTH
 
 /** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
@@ -759,12 +761,8 @@ private fun BlockChip(
             .pointerInput(block.item.nodeId) { detectTapGestures { onClick() } },
     ) {
         Row(Modifier.fillMaxSize()) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(spine),
-            )
+            // See Modifier.spine — the same rule the page row and the now player draw.
+            Box(Modifier.width(SPINE_WIDTH).fillMaxHeight().spine(spine))
             Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
                 Text(
                     item.title,

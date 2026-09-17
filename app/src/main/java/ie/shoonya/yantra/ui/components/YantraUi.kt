@@ -36,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 
 /**
  * Yantra's signature action affordance: a translucent accent fill + 1px accent border + accent
@@ -105,6 +108,47 @@ fun NeutralChip(
         Text(text, color = y.textSecondary, fontSize = YantraType.label, fontWeight = FontWeight.W600)
     }
 }
+
+/**
+ * The spine — a rule down a surface's leading edge.
+ *
+ * **The app's way of saying "this one".** It began as three separate hand-rolled Boxes that had all
+ * independently arrived at 3dp and all called themselves a spine in their own comments: the block
+ * on the timeline, the event line on a page, and then the now player. Three of the same idea is a
+ * design element; it just had no name and so could not be kept consistent.
+ *
+ * It is what the app uses instead of filling a surface with colour. CALENDAR_PLAN.md §16 made that
+ * call for a coloured block — *replace the spine, tint the wash, do not flood the fill* — because a
+ * flooded surface forces every word on it to a reversed colour and becomes louder than the thing it
+ * is reporting. The now player used to flood, and proved the rule by being the loudest object on
+ * Home.
+ *
+ * So a spine says one of two things, and the colour says which:
+ *
+ *  - **the accent** — this is live: a session running, a block you are on
+ *  - **a colour of yours** — a label's hue, an event's own colour
+ *
+ * It never means structure. A surface that is merely selected, or merely focused, gets a wash or a
+ * border; the spine is reserved for a thing having a state or an identity.
+ */
+fun Modifier.spine(
+    colour: Color,
+    /** How far in from the top and bottom, for a spine on a row rather than on a block. */
+    inset: Dp = 0.dp,
+): Modifier = drawBehind {
+    val top = inset.toPx()
+    val height = (size.height - top * 2).coerceAtLeast(0f)
+    val width = SPINE_WIDTH.toPx()
+    drawRoundRect(
+        color = colour,
+        topLeft = Offset(0f, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(width / 2f),
+    )
+}
+
+/** Three points. Wide enough to read as a rule, narrow enough not to read as a panel. */
+val SPINE_WIDTH = 3.dp
 
 /**
  * The Yantra app mark: the bhupura with the bindu at its centre — the same path the launcher icon,

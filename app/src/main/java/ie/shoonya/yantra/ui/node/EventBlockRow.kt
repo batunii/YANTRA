@@ -32,6 +32,8 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.components.spine
+import ie.shoonya.yantra.ui.components.SPINE_WIDTH
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
@@ -72,15 +74,10 @@ internal fun EventBlockRow(
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The same spine the calendar draws, so a line on a page and a block on a day read as the
-        // same object seen from two sides.
-        Box(
-            Modifier
-                .width(3.dp)
-                .height(30.dp)
-                .clip(RoundedCornerShape(YantraRadius.tiny))
-                .background(tint),
-        )
+        // The same spine the calendar draws and the player draws — see Modifier.spine. A line on a
+        // page and a block on a day are the same object seen from two sides, and now they are also
+        // the same code.
+        Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(tint))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(

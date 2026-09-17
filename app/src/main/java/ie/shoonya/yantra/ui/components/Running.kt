@@ -268,15 +268,9 @@ fun NowPlayer(
             // already made the opposite call for a coloured block: replace the spine, tint the
             // wash, do not flood the fill. A bar is a block that happens to be at the bottom.
             .background(if (live) y.accentFill else y.band, shape)
-            .drawBehind {
-                if (!live) return@drawBehind
-                // The spine, along the leading edge. It is the one thing at full strength, so the
-                // bar reads as running from the corner of the eye without shouting the words.
-                drawRect(
-                    color = accentInk,
-                    size = androidx.compose.ui.geometry.Size(SPINE.toPx(), size.height),
-                )
-            }
+            // The shared spine — see Modifier.spine. Inset so it does not run into the bar's own
+            // rounded top corners, which is the one way this surface differs from a block.
+            .then(if (live) Modifier.spine(accentInk, inset = 10.dp) else Modifier)
             .then(
                 if (dealt.size < 2) Modifier else Modifier.draggable(
                     state = dragState,
@@ -324,9 +318,18 @@ fun NowPlayer(
                 .clickable(onClick = { onOpen(current) }),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Neutral frame, accent ring — always, now.
+            //
+            // These used to switch to `onAccent` while running, which is the ink meant for text
+            // *on* solid coral. That was right while the bar flooded and wrong the moment it
+            // stopped: a light ink on a dark wash left the bhupura all but invisible, which is
+            // exactly what a reader reported. RunningGlyph's own doc already said what the tints
+            // are — the frame is neutral because structure is not a hue, the ring is the accent
+            // because being on something is your own effort — and with no flood there is nothing
+            // to make an exception for.
             RunningGlyph(
-                frameTint = if (live) y.onAccent else y.checkOutline,
-                ringTint = if (live) y.onAccent else y.accent,
+                frameTint = y.checkOutline,
+                ringTint = y.accent,
                 size = 20.dp,
             )
             Spacer(Modifier.width(11.dp))
@@ -376,9 +379,6 @@ fun NowPlayer(
         TransportKey(live = live, onClick = { onToggleClock(current) })
     }
 }
-
-/** The coral spine along a running bar's leading edge — CALENDAR_UI.md §4. */
-private val SPINE = 3.dp
 
 /**
  * The one control: play, or stop.
