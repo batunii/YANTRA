@@ -35,10 +35,26 @@ sealed interface DayItem {
         /** The task this block is time for, when it is a sitting rather than an appointment. */
         val forTaskId: String? = null,
         /**
-         * The colour it wears, already resolved through its workspace — a stored [LabelPalette]
-         * value, swapped for its dark twin at render. Null paints it in the accent.
+         * The colour the **block** wears — a stored [LabelPalette] value, swapped for its dark twin
+         * at render. Null paints it in the accent.
+         *
+         * Its own `col:` if the line carries one; failing that, and only for a sitting, the colour
+         * of the list the task lives on — a sitting *is* that task, seen as an hour, so it wears
+         * what the task wears everywhere else. An appointment nobody coloured has no list to borrow
+         * from and stays in the accent, which is what an uncoloured thing looks like here.
+         *
+         * The workspace is deliberately **not** in this chain any more: it is [workspaceTint], and
+         * it is drawn as the spine. One rule cannot answer both "whose day is this in" and "what
+         * kind of thing is this" — see [EventTint].
          */
         val tint: Long? = null,
+        /**
+         * The repository this block came from, as a stored palette value — the **spine**.
+         *
+         * Null while only one workspace is open, and then the spine falls back to saying what it
+         * said before any of this: the accent for something happening, frame ink for a deadline.
+         */
+        val workspaceTint: Long? = null,
         override val sortKey: Long,
     ) : DayItem
 
@@ -206,11 +222,19 @@ object CalendarBucketer {
         /**
          * Workspace id → the hue that repository wears, when there is more than one open.
          *
-         * Inheritance is resolved here rather than at the screen so it is decided in one place and
-         * can be checked without one: an event's own colour wins, its workspace's is the fallback,
-         * and nothing at all means the app's accent.
+         * Carried straight through to [DayItem.Event.workspaceTint] and drawn as the spine. It used
+         * to be the *fallback* for the block's own colour, which meant one rule said two things and
+         * a block could not be both somebody's repository and an uncoloured appointment.
          */
         workspaceTints: Map<String, Long> = emptyMap(),
+        /**
+         * Task id → the colour of the list that task lives on.
+         *
+         * Only a sitting reads this, and only when its own line says nothing: the block is drawn as
+         * the task, so it is coloured as the task. Resolved by the view model from the same query
+         * the now player uses, so a task is one colour on both.
+         */
+        listTints: Map<String, Long> = emptyMap(),
         from: LocalDate,
         toExclusive: LocalDate,
         zone: ZoneId,
@@ -314,7 +338,9 @@ object CalendarBucketer {
                         repeating = e.rrule != null,
                         cancelled = false,
                         forTaskId = sittingOf[e.nodeId],
-                        tint = EventTint.resolve(e.color, workspaceTints[e.workspaceId]),
+                        tint = EventTint.storedOf(e.color)
+                            ?: sittingOf[e.nodeId]?.let { listTints[it] },
+                        workspaceTint = workspaceTints[e.workspaceId],
                         // All-day first, then by clock. A day reads top to bottom as it happens.
                         sortKey = if (e.allDay) Long.MIN_VALUE else start.toLocalTime().toNanoOfDay(),
                     )

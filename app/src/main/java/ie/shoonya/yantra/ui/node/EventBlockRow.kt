@@ -59,25 +59,29 @@ internal fun EventBlockRow(
     val sitting = e.forNodeId != null
     val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull()
     val end = runCatching { LocalDateTime.parse(e.endLocal) }.getOrNull()
-    val tint = e.color
-        ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) }?.light }
-        ?.let { Color(LabelPalette.display(it, y.isDark)) }
-        ?: y.accent
+    // The same two colours a block on the day wears, and for the same reasons — the fill is what
+    // this thing is, the spine is whose repository it is in. A line on a page and a block on a day
+    // are one object seen from two sides; they had better not disagree about colour.
+    val tint = LabelPalette.byName(e.color)
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+    val workspaceInk = LabelPalette.byName(ie.shoonya.yantra.ui.appContainer().workspaceColours()[e.workspaceId])
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
 
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .clip(RoundedCornerShape(YantraRadius.control))
-            .background(y.cardBg)
+            .background(tint?.copy(alpha = 0.16f) ?: y.cardBg)
             .clickable(onClick = onOpen)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The same spine the calendar draws and the player draws — see Modifier.spine. A line on a
-        // page and a block on a day are the same object seen from two sides, and now they are also
-        // the same code.
-        Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(tint))
+        // The same spine the calendar draws and the player draws — see Modifier.spine. On a page
+        // every row is from one repository, so this is usually one colour down the whole document:
+        // that is the point. It is the same mark meaning the same thing, and the day this page is
+        // read beside a list from another repo it is already saying which.
+        Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(workspaceInk ?: tint ?: y.accent))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(

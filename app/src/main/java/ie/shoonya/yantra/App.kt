@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import ie.shoonya.yantra.data.label.LabelPalette
 
 class App : Application() {
     lateinit var container: AppContainer
@@ -191,6 +192,37 @@ class AppContainer(val app: Application) {
     val registry = WorkspaceRegistry(File(app.filesDir, "workspaces"))
 
     /**
+     * Every open workspace's colour, by id — the one resolver, so no surface derives its own.
+     *
+     * Stored if it has one, seeded from the name if not, and **absent entirely while only one
+     * workspace is open**, which is the rule the app already applied to the hue it used to
+     * recompute: a colour that always means the same thing means nothing. The local workspace is
+     * not in the registry and is named here so it is not the one repo without a colour.
+     *
+     * This is what the spine carries, everywhere. It is deliberately not a Flow: workspaces do not
+     * open and close while a screen is up, and every caller already recomposes when they do.
+     */
+    fun workspaceColours(): Map<String, String> =
+        distinguishable().associate { it.id to (it.color ?: LabelPalette.defaultNameFor(it.name)) }
+
+    /**
+     * Every open workspace's *name*, by id, under the same gate as [workspaceColours].
+     *
+     * The two go together by design: the law this colour system rests on is that **a colour is
+     * never more than a glance from its name**, so any surface with room for the word shows the
+     * word and lets the hue be the glance. A surface with no room — a widget row, a block on a day
+     * — shows only the spine, and the word it stands for is one screen away.
+     */
+    fun workspaceNames(): Map<String, String> = distinguishable().associate { it.id to it.name }
+
+    /** The open workspaces, or none at all when there is only one of them to tell apart. */
+    private fun distinguishable(): List<WorkspaceEntry> {
+        val open = (listOf(WorkspaceEntry(id = "", name = "Personal")) + registry.entries())
+            .filter { workspaces.isOpen(it.id) }
+        return if (open.size < 2) emptyList() else open
+    }
+
+    /**
      * One indexer for the whole app, deliberately.
      *
      * It remembers what each workspace's tables already hold so a rebuild can skip the ones that did
@@ -261,10 +293,16 @@ class AppContainer(val app: Application) {
     val timer = FocusTimer(focus, appScope)
     val running = RunningTask(
         timer, nodes, appScope, db.eventDao().openSittings(),
-        // The colour of the list each task lives on, for the player's spine — the colour law, as
-        // remade. Only tasks whose list actually wears one come back, so this is a handful.
-        colours = db.nodeDao().taskColours()
-            .map { rows -> rows.associate { it.id to it.color } },
+        // Where each task lives: the list gives the bar its word and its hue, the workspace gives
+        // the spine its colour. Two facts because they are drawn two ways — a word you can read and
+        // a rule you cannot, which is what keeps five swatches from having to mean two things.
+        lists = db.nodeDao().taskOrigins()
+            .map { rows -> rows.associate { it.id to (it.listName to it.listColor) } },
+        workspaceColours = db.nodeDao().taskOrigins()
+            .map { rows ->
+                val hues = workspaceColours()
+                rows.associate { it.id to hues[it.workspaceId] }
+            },
     )
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)

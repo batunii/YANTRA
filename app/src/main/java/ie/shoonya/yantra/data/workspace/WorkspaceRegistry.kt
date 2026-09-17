@@ -18,6 +18,23 @@ data class WorkspaceEntry(
     val id: String,
     val name: String,
     val slug: String? = null,
+    /**
+     * The colour this workspace wears, as a palette name.
+     *
+     * **Stored and editable, exactly as a label's is.** It used to be recomputed on every read from
+     * `LabelPalette.defaultFor(name)` — a hash of the name — and that was the whole of the case
+     * against it: a hue nobody picked, that collided with a colour somebody *had* picked about one
+     * time in five, and that a reader who could not tell Blue from Violet had no way to correct.
+     *
+     * None of that was a principle. A label's colour is seeded by the same hash; the only
+     * difference was that a label's is kept and a workspace's was not. So it is kept now, seeded
+     * the same way on first sight and changed in Settings.
+     *
+     * Null means it has never been seen by a build that stores it — [Workspaces] seeds it rather
+     * than leaving it to be recomputed, so a workspace keeps the colour it already appeared to
+     * have.
+     */
+    val color: String? = null,
 )
 
 /**
@@ -48,6 +65,12 @@ class WorkspaceRegistry(private val root: File) {
     /** Adds, or replaces an entry with the same id. */
     fun add(entry: WorkspaceEntry) {
         write(entries().filterNot { it.id == entry.id } + entry)
+    }
+
+    /** The colour a workspace wears, or null to take it off. Kept, so it can be corrected. */
+    fun setColor(id: String, color: String?) {
+        val found = entries().firstOrNull { it.id == id } ?: return
+        add(found.copy(color = color))
     }
 
     fun remove(id: String) {

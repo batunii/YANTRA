@@ -123,10 +123,28 @@ fun NeutralChip(
  * is reporting. The now player used to flood, and proved the rule by being the loudest object on
  * Home.
  *
- * So a spine says one of two things, and the colour says which:
+ * **It means the workspace.** One mark, one meaning, on every surface that draws one: the player,
+ * a widget row, a block on the day, an event line on a page. It is the only fact in the app with
+ * nowhere else to go — a widget row is two lines of text with no room for a word, and a block on an
+ * hour has less — while a list has a word on every surface it appears on and can wear its colour
+ * there instead.
  *
- *  - **the accent** — this is live: a session running, a block you are on
- *  - **a colour of yours** — a label's hue, an event's own colour
+ * It used to carry whichever colour the surface had nearest to hand: the list here, the block's own
+ * colour there. That is what made it unreadable rather than quiet — the same green meant "the work
+ * repo" on the widget and "the Groceries list" on the player, and with five swatches seeding both
+ * there was no way to tell which question a stripe was answering. Two questions cannot share one
+ * 3dp rule. The other one got the fill, or a word.
+ *
+ * Drawn in **frame ink while only one workspace is open**, by the rule the app applies to every hue
+ * it derives: a colour that always means the same thing means nothing. The exceptions are the two
+ * things that are not in a repository of yours:
+ *
+ *  - **the accent** — this is live: a session running, a block you are on, with no repo to name
+ *  - **somebody else's calendar's colour** — on a device event, which is that calendar's identity
+ *
+ * And the law the whole scheme rests on: **a colour is never more than a glance from its name.**
+ * Home prints the workspace's name in its colour under every list, so the stripe is learned once
+ * and read everywhere after.
  *
  * It never means structure. A surface that is merely selected, or merely focused, gets a wash or a
  * border; the spine is reserved for a thing having a state or an identity.

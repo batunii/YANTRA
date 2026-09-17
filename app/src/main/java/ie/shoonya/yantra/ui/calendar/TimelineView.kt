@@ -608,18 +608,30 @@ private fun BlockChip(
     // writes is offered on one**, and that is enforced here rather than trusted to the handlers:
     // there is no node behind it, so there is nothing a drag could edit even if it wanted to.
     val theirs = item as? DayItem.Device
-    // The block's own colour, its workspace's, or the accent — resolved in [CalendarBucketer], so
-    // by the time it arrives here it is one word or none. A coloured block replaces the *spine*
-    // and tints the wash rather than flooding the fill: a day of solid colour blocks is a chart,
-    // and the words on them stop being the thing you read.
+    // The block's own colour — its `col:`, or for a sitting the colour of its task's list, both
+    // resolved in [CalendarBucketer]. It tints the **wash** rather than flooding the fill: a day of
+    // solid colour blocks is a chart, and the words on them stop being the thing you read.
     val tint = (item as? DayItem.Event)?.tint?.let {
         androidx.compose.ui.graphics.Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
     // A device event wears the colour its own calendar gives it, unmapped. That colour is the
     // other app's identity and the whole point of drawing it is that you recognise it.
     } ?: theirs?.color?.let { androidx.compose.ui.graphics.Color(it) }
+    // The spine is the repository, here as on the player and on a widget row — one idiom, one
+    // meaning, on every surface that has one.
+    //
+    // It used to carry whatever the block itself was wearing, which made it a second, louder copy
+    // of the wash and left the repository with nowhere to be said. Splitting them is what lets a
+    // block answer two questions at once: the edge says whose day this is in, the fill says what
+    // kind of thing it is. Null — a single open workspace — falls back to what the spine said
+    // before: the accent for something happening, frame ink for a deadline landing.
+    val workspaceInk = (item as? DayItem.Event)?.workspaceTint?.let {
+        androidx.compose.ui.graphics.Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
+    }
     val spine = when {
+        // Somebody else's keeps its own calendar's colour on the edge: it is not in a repository of
+        // yours, so there is nothing of ours for the edge to say about it.
         theirs != null -> (tint ?: y.textDim).copy(alpha = 0.75f)
-        tint != null -> tint
+        workspaceInk != null -> workspaceInk
         isEvent || sitting -> y.accent
         else -> y.textDim.copy(alpha = 0.5f)
     }

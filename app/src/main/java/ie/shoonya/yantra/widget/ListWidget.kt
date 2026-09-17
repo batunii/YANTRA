@@ -142,6 +142,15 @@ data class WidgetRow(
      * spare text to carry it and the edge is width nothing else wants.
      */
     val workspaceHue: Long? = null,
+    /**
+     * The colour of the list this row came from, as a stored palette value.
+     *
+     * The list gets a *word* and the repository gets the *edge*, which is the whole of how a widget
+     * row carries two facts on two lines of text. Hue alone could not: five swatches seed both, so
+     * the same green can be a list here and a repository there, and a reader with one stripe and
+     * one tinted word can still tell which is which by where it sits.
+     */
+    val listColor: Long? = null,
 )
 
 /** One label on a widget row: what it says and the ink it says it in. */
@@ -218,6 +227,8 @@ internal fun buildRows(
     hideTodayDue: Boolean = false,
     labels: Map<String, List<WidgetLabel>> = emptyMap(),
     workspaceHues: Map<String, Long> = emptyMap(),
+    /** Source list id → the colour that list wears, on the widgets that name a source list. */
+    parentColors: Map<String, Long> = emptyMap(),
 ): List<WidgetRow> {
     val byNode = values.groupBy { it.nodeId }
     val todayStart = todayMidnight()
@@ -242,6 +253,7 @@ internal fun buildRows(
             listName = n.parentId?.let { parentTitles[it] },
             labels = labels[n.id].orEmpty(),
             workspaceHue = workspaceHues[n.workspaceId],
+            listColor = n.parentId?.let { parentColors[it] },
         )
     }
 }
@@ -414,10 +426,16 @@ open class YantraListWidget : GlanceAppWidget() {
                     val parentTitles = if (isSmart) {
                         lists.associate { it.id to (it.title?.ifBlank { "Untitled" } ?: "Untitled") }
                     } else emptyMap()
+                    // A name, resolved to a value here so the row model stays Glance-free and the
+                    // widget can swap it for its dark twin against whatever theme it is drawn in.
+                    val parentColors = if (!isSmart) emptyMap() else lists.mapNotNull { l ->
+                        LabelPalette.byName(l.color)?.let { l.id to it.light }
+                    }.toMap()
                     val rows = buildRows(
                         tasks, values, defIds.due, defIds.deadline, defIds.priority,
                         priorityColors, parentTitles, hideTodayDue = forceToday,
                         labels = labels, workspaceHues = workspaceHues,
+                        parentColors = parentColors,
                     )
                     // Capped: the completed section is a record of the day, not an archive, and
                     // it must never push the open work off the widget.
@@ -425,6 +443,7 @@ open class YantraListWidget : GlanceAppWidget() {
                         doneTasks.take(DONE_LIMIT), emptyList(), defIds.due, defIds.deadline,
                         defIds.priority, priorityColors, parentTitles, hideTodayDue = true,
                         labels = labels, workspaceHues = workspaceHues,
+                        parentColors = parentColors,
                     )
                     WidgetData(
                         title = Links.plain(node?.title.orEmpty()).ifBlank { if (forceToday) "Today" else "List" },
@@ -789,18 +808,34 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
                             ),
                         )
                     }
-                    val rest = listOfNotNull(
-                        row.deadlineLabel.takeIf { row.dueLabel != null },
-                        row.listName,
-                    )
-                    if (rest.isNotEmpty()) {
+                    val second = row.deadlineLabel.takeIf { row.dueLabel != null }
+                    var written = dated != null || row.labels.isNotEmpty()
+                    if (second != null) {
                         Text(
-                            (if (dated != null || row.labels.isNotEmpty()) " · " else "") +
-                                rest.joinToString(" · "),
+                            (if (written) " · " else "") + second,
                             maxLines = 1,
                             style = TextStyle(
                                 fontSize = m.meta,
                                 color = GlanceTheme.colors.onSurfaceVariant,
+                            ),
+                        )
+                        written = true
+                    }
+                    // The list, in the list's own colour — its own Text for that reason alone.
+                    // It is the last thing on the line because the line carries what the task *is*
+                    // before where it lives, and it is coloured because the same row already wears
+                    // its repository as a rule down the edge: two facts, a word and an edge, so
+                    // neither has to be read out of a hue.
+                    if (row.listName != null) {
+                        Text(
+                            (if (written) " · " else "") + row.listName,
+                            maxLines = 1,
+                            style = TextStyle(
+                                fontSize = m.meta,
+                                fontWeight = if (row.listColor != null) FontWeight.Medium else FontWeight.Normal,
+                                color = row.listColor
+                                    ?.let { ColorProvider(Color(LabelPalette.display(it, status.isDark))) }
+                                    ?: GlanceTheme.colors.onSurfaceVariant,
                             ),
                         )
                     }

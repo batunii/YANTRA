@@ -259,10 +259,24 @@ fun NowPlayer(
     }
     // Full strength, for the eyebrow. Everything else on a running bar steps back.
     val accentInk = y.accent
-    val spineInk = current.colour
-        ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) } }
+    // The spine is the workspace, here and everywhere it appears. One device, one meaning.
+    //
+    // It carried the list before, which put two questions on one 3dp rule: on a widget row the same
+    // idiom meant "which repository" and here it meant "which list", and with five swatches there
+    // is no telling those apart. The workspace wins it because there are two or three of them and
+    // dozens of lists, and because it is the one fact with no room for its word on a widget row.
+    //
+    // Frame ink while only one workspace is open, by the rule the app states twice: a colour that
+    // always means the same thing means nothing.
+    val spineInk = LabelPalette.byName(current.workspaceColour)
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
         ?: y.checkOutline
+    // The list is a word in the eyebrow, wearing its own colour. A hue is a glance and a word is
+    // the fact; neither has to carry the other, which is what makes a repeated hue a coincidence
+    // rather than an ambiguity.
+    val listInk = LabelPalette.byName(current.listColour)
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+        ?: y.textMuted
     val shape = RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet)
 
     Row(
@@ -279,15 +293,14 @@ fun NowPlayer(
             // The spine is identity; the wash is state.
             //
             // It used to appear only while running, which made it a fourth way of saying something
-            // the wash, the glyph's ring and the eyebrow already said. Everywhere else in the app a
-            // spine carries the thing's own colour — CALENDAR_PLAN.md §16 for a block, and the same
-            // for an event line on a page — so here it carries the colour of the list the task
-            // lives on. The bar shows a title, and a title alone does not say whether "Draft the
-            // deck" is work or the side project.
+            // the wash, the glyph's ring and the eyebrow already said. Now it says the one thing
+            // this bar could not otherwise say: which repository the task you are on came from.
+            // The list is already a word in the eyebrow, in the list's own colour, so neither fact
+            // is read out of a hue alone.
             //
-            // Always drawn, so the mark has exactly one meaning with no case to remember. A task on
-            // an uncoloured list gets frame ink, which is what "no colour chosen" looks like
-            // everywhere else.
+            // Always drawn, so the mark has exactly one meaning with no case to remember. With a
+            // single workspace open it is frame ink, which is what "nothing to tell apart" looks
+            // like everywhere else in the app.
             //
             // Inset, because this surface has rounded top corners and a block does not.
             .spine(spineInk, inset = 10.dp)
@@ -366,30 +379,64 @@ fun NowPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // The eyebrow: which list, then what is happening on it.
+                //
+                // The list leads, because it is the fact the bar could not otherwise give you — a
+                // title alone does not say whether "Draft the deck" is work or the side project,
+                // and the spine beside it answers a different question (the repository). It wears
+                // its list's colour so the same hue you see on Home's marks is on the bar.
+                //
+                // **"ON THE GO" is dropped when there is a list to name.** A line this narrow — a
+                // deck of five rings takes a third of it — cannot carry both, and of the two that
+                // one is the absence of news: the glyph's ring and the ▶ on the transport key both
+                // already say a task is taken up and not counting. RUNNING and IT IS TIME are news
+                // and keep their place beside the name.
+                val state = when {
+                    current.elapsedSecs != null -> "RUNNING · ${elapsedLabel(current.elapsedSecs)}"
+                    // Its hour has come and nobody has pressed anything. The bar says so; the file
+                    // says nothing, which is the whole arrangement — see RunningTask.stack.
+                    current.scheduled -> "IT IS TIME"
+                    // Only when the name is missing — a task whose list could not be resolved would
+                    // otherwise have a blank eyebrow and look broken.
+                    else -> "ON THE GO".takeIf { current.listName.isNullOrBlank() }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    buildString {
-                        append(
-                            when {
-                                current.elapsedSecs != null -> "RUNNING · ${elapsedLabel(current.elapsedSecs)}"
-                                // Its hour has come and nobody has pressed anything. The bar says
-                                // so; the file says nothing, which is the whole arrangement — see
-                                // RunningTask.stack.
-                                current.scheduled -> "IT IS TIME"
-                                else -> "ON THE GO"
-                            }
+                    current.listName?.takeIf { it.isNotBlank() }?.let { list ->
+                        Text(
+                            list.uppercase(),
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.section,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = 1.2.sp,
+                            color = listInk,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // Yields first. The clock and the rings are fixed-width facts; a list
+                            // name is the only thing here that can be shortened and still be read.
+                            modifier = Modifier.weight(1f, fill = false),
                         )
-                        // Nothing to add: every card is on the deck, and the rings beside this
-                        // line say how many and which one you are on.
-                    },
-                    fontFamily = YantraMono,
-                    fontSize = YantraType.section,
-                    fontWeight = FontWeight.W700,
-                    letterSpacing = 1.2.sp,
-                    color = if (live) accentInk else y.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                        if (state != null) {
+                            Text(
+                                "  ·  ",
+                                fontFamily = YantraMono,
+                                fontSize = YantraType.section,
+                                fontWeight = FontWeight.W700,
+                                color = y.textDim,
+                            )
+                        }
+                    }
+                    if (state != null) {
+                        Text(
+                            state,
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.section,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = 1.2.sp,
+                            color = if (live) accentInk else y.textMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 DeckRings(dealt = dealt, index = index)
                 }
             }

@@ -86,7 +86,7 @@ Not all of these are page margins — a chip has its own inset — but a screen-
 Three shapes for one job. Which one a question gets is currently a matter of who wrote it.
 
 ```
-  AlertDialog × 12
+  AlertDialog × 13
   ModalBottomSheet × 8
   Dialog × 1
 ```

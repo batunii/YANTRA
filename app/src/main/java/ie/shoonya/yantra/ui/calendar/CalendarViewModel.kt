@@ -137,7 +137,17 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     device.instances(fromUtc, toUtc, calendarChoice.effective(device))
                 }
 
-            combine(events, tasks, theirs) { e, t, d ->
+            // Task id → its list's colour, for the sittings on screen. The same query the now
+            // player reads, so a task that is teal on the bar is teal as an hour on the day.
+            val origins = container.db.nodeDao().taskOrigins()
+                .map { rows ->
+                    rows.mapNotNull { r ->
+                        ie.shoonya.yantra.data.label.LabelPalette.byName(r.listColor)
+                            ?.let { r.id to it.light }
+                    }.toMap()
+                }
+
+            combine(events, tasks, theirs, origins) { e, t, d, listTints ->
                 // Before drawing, not after: a block drawn from a stale due date would be visibly
                 // wrong for one frame and then jump.
                 reconcile(e, t, d)
@@ -160,6 +170,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                     // already follow — including the part where a single open repository gets none,
                     // because then it distinguishes nothing and would only tint the whole app.
                     workspaceTints = workspaceTints(),
+                    listTints = listTints,
                     events = e,
                     // A sitting is drawn as its task, and tapping it should reach the task.
                     sittingOf = e.mapNotNull { row -> row.event.forNodeId?.let { row.event.nodeId to it } }.toMap(),
@@ -369,12 +380,17 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
     val selectedItems: StateFlow<List<DayItem>> = combine(days, _selected) { d, day -> d[day].orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    /** Which hue each open repository wears, or nothing at all when only one is open. */
-    private fun workspaceTints(): Map<String, Long> {
-        val open = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
-        return if (open.size < 2) emptyMap()
-        else open.associate { it.id to ie.shoonya.yantra.data.label.LabelPalette.defaultFor(it.name) }
-    }
+    /**
+     * Which hue each open repository wears, or nothing at all when only one is open.
+     *
+     * Asked of the container rather than recomputed here, because a workspace's colour is now
+     * *stored* and correctable — recomputing it from the name would quietly ignore the one the user
+     * picked in Settings, and this screen would be the only place it disagreed.
+     */
+    private fun workspaceTints(): Map<String, Long> =
+        container.workspaceColours().mapNotNull { (id, name) ->
+            ie.shoonya.yantra.data.label.LabelPalette.byName(name)?.let { id to it.light }
+        }.toMap()
 
     private fun dueDefId() = container.db.propertyDao().observeBuiltInDefIdByName(BuiltIns.DUE_NAME)
 

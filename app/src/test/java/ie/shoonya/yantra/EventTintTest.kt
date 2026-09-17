@@ -8,12 +8,15 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Which colour a block ends up wearing — CALENDAR_PLAN.md §16.
+ * The word a line carries, resolved to an ink — CALENDAR_PLAN.md §16.
  *
- * The rule is a chain of fallbacks and every link matters: an event's own word wins, a workspace's
- * hue is what it falls back to, and nothing at either level leaves it in the accent. The case worth
- * guarding hardest is a **word this build does not know** — it must inherit, exactly as though the
- * line had said nothing, rather than paint nothing and make the block vanish.
+ * There is no chain of fallbacks here any more: the workspace moved to the spine, so this answers
+ * one question and answers it from one word. The case worth guarding hardest is a **word this build
+ * does not know** — it must come back as nothing, exactly as though the line had said nothing, so a
+ * file written by a newer app looks ordinary here rather than making the block vanish.
+ *
+ * What a block does with a null is [ie.shoonya.yantra.ui.calendar.CalendarBucketer]'s business, and
+ * [CalendarBucketTest] holds it: a sitting borrows its task's list, an appointment takes the accent.
  */
 class EventTintTest {
 
@@ -22,33 +25,23 @@ class EventTintTest {
 
     @Test
     fun `a known colour is its own`() {
-        assertEquals(teal, EventTint.resolve(own = "Teal", workspace = null))
+        assertEquals(teal, EventTint.storedOf("Teal"))
     }
 
     @Test
     fun `the word is not case-sensitive, because a file is written by hand`() {
-        assertEquals(teal, EventTint.resolve(own = "teal", workspace = null))
+        assertEquals(teal, EventTint.storedOf("teal"))
+        assertEquals(plum, EventTint.storedOf("  PLUM  ".trim()))
     }
 
     @Test
-    fun `no colour of its own takes the workspace's`() {
-        assertEquals(plum, EventTint.resolve(own = null, workspace = plum))
+    fun `a colour this build does not know is nothing, not a wrong colour`() {
+        assertNull(EventTint.storedOf("Vermilion"))
     }
 
     @Test
-    fun `its own beats the workspace's`() {
-        assertEquals(teal, EventTint.resolve(own = "Teal", workspace = plum))
-    }
-
-    @Test
-    fun `a colour this build does not know inherits rather than disappearing`() {
-        assertEquals(plum, EventTint.resolve(own = "Vermilion", workspace = plum))
-    }
-
-    @Test
-    fun `nothing anywhere is nothing, which is the accent`() {
-        assertNull(EventTint.resolve(own = null, workspace = null))
-        assertNull(EventTint.resolve(own = "Vermilion", workspace = null))
+    fun `no word at all is nothing, which is the accent`() {
+        assertNull(EventTint.storedOf(null))
     }
 
     @Test

@@ -69,6 +69,9 @@ import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.data.label.LabelPalette
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 
 @Composable
 fun SettingsScreen(nav: NavHostController) {
@@ -91,6 +94,9 @@ fun SettingsScreen(nav: NavHostController) {
     // silently failed.
     var account by remember { mutableStateOf<String?>(null) }
     var spaces by remember { mutableStateOf<List<WorkspaceRow>>(emptyList()) }
+    /** The workspace whose colour is being chosen. */
+    var colouring by remember { mutableStateOf<WorkspaceRow?>(null) }
+
     /** The workspace being let go of, while the confirm is up. */
     var forgetting by remember { mutableStateOf<WorkspaceRow?>(null) }
     val settingsScope = rememberCoroutineScope()
@@ -107,6 +113,8 @@ fun SettingsScreen(nav: NavHostController) {
                         id = store.id,
                         name = store.readManifest()?.name ?: "Workspace",
                         slug = container.slugOf(store.id),
+                        color = container.registry.entries()
+                            .firstOrNull { it.id == store.id }?.color,
                     )
                 }
             }
@@ -170,6 +178,27 @@ fun SettingsScreen(nav: NavHostController) {
                 SettingRow(
                     title = space.name,
                     subtitle = space.slug ?: "On this device only",
+                    // The colour this workspace wears, and the one place it can be changed.
+                    //
+                    // It is seeded from the name — the same hash a label's colour starts from — and
+                    // then kept, which is the whole difference between a colour you can correct and
+                    // one you cannot. It is what the spine carries on the player, the widget and
+                    // the calendar, so this swatch is the legend for all three.
+                    leading = {
+                        val swatch = LabelPalette.byName(
+                            space.color ?: LabelPalette.defaultNameFor(space.name)
+                        )
+                        Box(
+                            Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    swatch?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+                                        ?: y.checkOutline
+                                )
+                                .clickable { colouring = space },
+                        )
+                    },
                     // Nothing to open yet — the switcher is Phase 5. Showing where each workspace
                     // points is the part that is useful now, and a row that navigated nowhere would
                     // be worse than one that does not pretend to.
@@ -183,6 +212,51 @@ fun SettingsScreen(nav: NavHostController) {
                 )
                 Spacer(Modifier.height(8.dp))
             }
+            colouring?.let { space ->
+                AlertDialog(
+                    onDismissRequest = { colouring = null },
+                    title = { Text(space.name) },
+                    text = {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // No "none" here, unlike a label or a list. This colour is the spine
+                            // everywhere the spine appears, so a workspace without one would leave
+                            // the widget with nothing to separate its rows by — which is the cue
+                            // this whole arrangement exists to keep.
+                            val current = space.color ?: LabelPalette.defaultNameFor(space.name)
+                            LabelPalette.swatches.forEach { swatch ->
+                                val on = swatch.name.equals(current, ignoreCase = true)
+                                Box(
+                                    Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            if (on) 2.dp else 0.dp,
+                                            if (on) y.textPrimary else Color.Transparent,
+                                            CircleShape,
+                                        )
+                                        .padding(if (on) 4.dp else 0.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(LabelPalette.display(swatch.light, y.isDark)))
+                                        .clickable {
+                                            container.registry.setColor(space.id, swatch.name)
+                                            spaces = spaces.map {
+                                                if (it.id == space.id) it.copy(color = swatch.name) else it
+                                            }
+                                            colouring = null
+                                        },
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { colouring = null }) { Text("Cancel") } },
+                )
+            }
+
             forgetting?.let { space ->
                 ConfirmDialog(
                     title = "Forget ${space.name}?",
@@ -432,7 +506,13 @@ private fun GlyphSample(label: String, initial: TaskState) {
 }
 
 /** One workspace, as the settings list needs it: what it is called and where it points. */
-private data class WorkspaceRow(val id: String, val name: String, val slug: String?)
+private data class WorkspaceRow(
+    val id: String,
+    val name: String,
+    val slug: String?,
+    /** The colour it wears, seeded from the name until somebody changes it. */
+    val color: String?,
+)
 
 /**
  * A settings line with somewhere to go.
@@ -447,6 +527,8 @@ private fun SettingRow(
     subtitle: String,
     onClick: (() -> Unit)?,
     icon: Boolean = false,
+    /** Something that belongs before the title — a workspace's colour, say. */
+    leading: (@Composable () -> Unit)? = null,
     /** An action that belongs to this row rather than to opening it. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -459,6 +541,10 @@ private fun SettingRow(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leading?.let {
+            it()
+            Spacer(Modifier.width(12.dp))
+        }
         if (icon) {
             YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
             Spacer(Modifier.width(12.dp))

@@ -163,6 +163,13 @@ fun HomeScreen(nav: NavHostController) {
     val next by vm.nextToday.collectAsStateWithLifecycle()
     val live = timer
 
+    // Which repository each list came from, as a word and a hue — the one resolver in AppContainer,
+    // so Home does not derive a colour of its own. Both maps are empty while a single workspace is
+    // open, and then the row says nothing about a distinction there is nothing to distinguish.
+    val app = ie.shoonya.yantra.ui.appContainer()
+    val spaceNames = remember { app.workspaceNames() }
+    val spaceHues = remember { app.workspaceColours() }
+
     val renderRow: @Composable (NodeEntity) -> Unit = { node ->
         val smart = node.type == NodeType.SMART_LIST
         val c = counts[node.id]
@@ -181,6 +188,8 @@ fun HomeScreen(nav: NavHostController) {
             onDelete = { deleting = node },
             onMove = { movingNode = node },
             onColour = { colouring = node },
+            workspace = spaceNames[node.workspaceId],
+            workspaceColour = spaceHues[node.workspaceId],
         )
     }
 
@@ -590,6 +599,10 @@ private fun HomeRow(
     onDelete: () -> Unit,
     onMove: () -> Unit,
     onColour: () -> Unit,
+    /** The repository this list came from, or null while there is only one of them. */
+    workspace: String? = null,
+    /** That repository's colour, as a palette name. */
+    workspaceColour: String? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -631,12 +644,41 @@ private fun HomeRow(
                 )
                 // Mono, per the type rule for numbers — HOME_UI.md §2. The subtitle is "0 of 4
                 // done", which is a count and reads as one.
-                Text(
-                    subtitle,
-                    fontFamily = YantraMono,
-                    fontSize = YantraType.caption,
-                    color = y.textMuted,
-                )
+                //
+                // The repository's name rides on the end of it, in the repository's colour. This is
+                // the line the whole colour system is built on: **a colour is never more than a
+                // glance from its name.** The spine on a widget row and on a block is the same hue
+                // with no room for a word beside it, and this is where you learn which word it is.
+                // The mark above already wears the *list's* colour, so the two facts a row carries
+                // are told apart by where they sit — a fill for the list, a word for the repo — and
+                // never by hue alone, which five swatches could not do.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        subtitle,
+                        fontFamily = YantraMono,
+                        fontSize = YantraType.caption,
+                        color = y.textMuted,
+                    )
+                    if (workspace != null) {
+                        Text(
+                            "  ·  ",
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.caption,
+                            color = y.textDim,
+                        )
+                        Text(
+                            workspace,
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.caption,
+                            fontWeight = FontWeight.W600,
+                            color = LabelPalette.byName(workspaceColour)
+                                ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+                                ?: y.textMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
             // The ring is gone, and so is the trailing key.
             //

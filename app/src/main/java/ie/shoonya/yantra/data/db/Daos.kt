@@ -265,21 +265,32 @@ interface NodeDao {
     fun inProgress(): Flow<List<NodeEntity>>
 
     /**
-     * Each task that sits on a coloured list, with that colour — the colour law, as remade.
+     * Each task with the list it belongs to and the repository it is in.
      *
-     * Only the rows where the parent actually wears one, so this is a handful rather than every
-     * task in the workspace: the join is the filter. A task on an uncoloured list is simply absent,
-     * which is the same as saying it has no colour of its own.
+     * **Walks to the owning list, not one level up.** A task's `parent_id` is the page it is written
+     * on, and a task that holds anything *is* a page — so a subtask's parent is another task, and a
+     * single join returned nothing for it. The bar then showed no colour for exactly the tasks that
+     * are nested, which is most of the ones anybody is actually working on.
+     *
+     * Depth is capped at twelve. A malformed workspace can name a cycle, and a recursive query that
+     * meets one does not return.
      */
     @Query(
         """
-        SELECT n.id AS id, p.color AS color
-          FROM node n
-          JOIN node p ON p.id = n.parent_id
-         WHERE p.color IS NOT NULL AND n.deleted_at IS NULL
+        WITH RECURSIVE chain(task, node, depth) AS (
+            SELECT id, parent_id, 0 FROM node WHERE deleted_at IS NULL AND type = 'task'
+            UNION ALL
+            SELECT c.task, p.parent_id, c.depth + 1
+              FROM chain c JOIN node p ON p.id = c.node
+             WHERE p.type <> 'list' AND c.depth < 12
+        )
+        SELECT c.task AS id, l.title AS listName, l.color AS listColor, l.workspace_id AS workspaceId
+          FROM chain c
+          JOIN node l ON l.id = c.node
+         WHERE l.type = 'list' AND l.deleted_at IS NULL
         """
     )
-    fun taskColours(): Flow<List<TaskColour>>
+    fun taskOrigins(): Flow<List<TaskOrigin>>
 
     @Query("UPDATE node SET collapsed = :collapsed, updated_at = :now WHERE id = :id")
     suspend fun setCollapsed(id: String, collapsed: Boolean, now: Long)
@@ -969,5 +980,10 @@ interface InkDao {
     suspend fun softDeleteById(id: String, now: Long)
 }
 
-/** A task and the colour of the list it lives on. */
-data class TaskColour(val id: String, val color: String?)
+/** A task, the list it belongs to, and the repository that list is in. */
+data class TaskOrigin(
+    val id: String,
+    val listName: String?,
+    val listColor: String?,
+    val workspaceId: String,
+)
