@@ -670,7 +670,10 @@ private fun HomeRow(
                             workspace,
                             fontFamily = YantraMono,
                             fontSize = YantraType.caption,
-                            fontWeight = FontWeight.W600,
+                            // The count beside it is W400; bolding this one made the least
+                            // important fact on the row the heaviest thing on its line. The hue is
+                            // the mark — it does not need a weight as well.
+                            fontWeight = FontWeight.W400,
                             color = LabelPalette.byName(workspaceColour)
                                 ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
                                 ?: y.textMuted,

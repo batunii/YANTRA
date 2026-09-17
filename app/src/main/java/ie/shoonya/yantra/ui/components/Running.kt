@@ -386,6 +386,17 @@ fun NowPlayer(
                 // and the spine beside it answers a different question (the repository). It wears
                 // its list's colour so the same hue you see on Home's marks is on the bar.
                 //
+                // **The name is quiet and the state is not.** Space Mono ships two weights, so
+                // the list name went out at the same 12sp bold as the state word — four loud things
+                // at once (size, weight, uppercase tracking, a saturated hue) under a 15sp title
+                // that is none of them. It read as a second title. It is a step down the scale and
+                // at the regular weight now, which is the app's existing small-mono voice
+                // (MonoBreadcrumb), and the colour is left to do the identifying on its own.
+                //
+                // The state keeps the bold, deliberately: on one line the list is the standing fact
+                // and RUNNING · 3:45 is the news, and that is a hierarchy rather than an
+                // inconsistency.
+                //
                 // **"ON THE GO" is dropped when there is a list to name.** A line this narrow — a
                 // deck of five rings takes a third of it — cannot carry both, and of the two that
                 // one is the absence of news: the glyph's ring and the ▶ on the transport key both
@@ -405,8 +416,8 @@ fun NowPlayer(
                         Text(
                             list.uppercase(),
                             fontFamily = YantraMono,
-                            fontSize = YantraType.section,
-                            fontWeight = FontWeight.W700,
+                            fontSize = YantraType.caption,
+                            fontWeight = FontWeight.W400,
                             letterSpacing = 1.2.sp,
                             color = listInk,
                             maxLines = 1,
@@ -419,8 +430,7 @@ fun NowPlayer(
                             Text(
                                 "  ·  ",
                                 fontFamily = YantraMono,
-                                fontSize = YantraType.section,
-                                fontWeight = FontWeight.W700,
+                                fontSize = YantraType.caption,
                                 color = y.textDim,
                             )
                         }
@@ -429,7 +439,7 @@ fun NowPlayer(
                         Text(
                             state,
                             fontFamily = YantraMono,
-                            fontSize = YantraType.section,
+                            fontSize = YantraType.caption,
                             fontWeight = FontWeight.W700,
                             letterSpacing = 1.2.sp,
                             color = if (live) accentInk else y.textMuted,
