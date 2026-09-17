@@ -26,6 +26,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * One selectable target in a widget picker. Shared by [WidgetConfigActivity] (choose one while
@@ -64,14 +65,14 @@ fun WidgetListRow(
             .fillMaxWidth()
             .background(
                 if (selected) y.accent.copy(alpha = 0.14f) else y.cardBg,
-                RoundedCornerShape(16.dp),
+                RoundedCornerShape(YantraRadius.card),
             )
             .clickable { onPick(node) }
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(44.dp).background(accent.copy(alpha = 0.15f), RoundedCornerShape(13.dp)),
+            Modifier.size(44.dp).background(accent.copy(alpha = 0.15f), RoundedCornerShape(YantraRadius.panel)),
             contentAlignment = Alignment.Center,
         ) {
             YantraIcon(

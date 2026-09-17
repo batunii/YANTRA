@@ -69,6 +69,7 @@ import androidx.compose.material3.TextButton
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private enum class ShowMode(val label: String) {
     OPEN("Open"),
@@ -363,8 +364,8 @@ fun SmartListBuilderSheet(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(14.dp))
-                    .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(14.dp)) else Modifier)
+                    .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(YantraRadius.card))
+                    .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card)) else Modifier)
                     .clickable(enabled = valid) {
                         onCreate(name.trim(), buildFilter(show, conds, extras, reach), buildSort(conds), homeId)
                     }
@@ -512,7 +513,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.tileWarm2, RoundedCornerShape(14.dp))
+            .background(y.tileWarm2, RoundedCornerShape(YantraRadius.card))
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -590,7 +591,7 @@ private fun LabelConditionCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.tileWarm2, RoundedCornerShape(14.dp))
+            .background(y.tileWarm2, RoundedCornerShape(YantraRadius.card))
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -619,7 +620,7 @@ private fun LabelConditionCard(
 private fun LabelNameChip(name: String) {
     val y = Yantra.colors
     Box(
-        Modifier.background(y.cardBg, RoundedCornerShape(7.dp)).padding(horizontal = 9.dp, vertical = 5.dp),
+        Modifier.background(y.cardBg, RoundedCornerShape(YantraRadius.block)).padding(horizontal = 9.dp, vertical = 5.dp),
     ) {
         Text(name, fontSize = YantraType.section, fontWeight = FontWeight.W600, color = y.textSecondary)
     }
@@ -717,8 +718,8 @@ private fun DropChip(label: String, onClick: () -> Unit) {
     val y = Yantra.colors
     Row(
         Modifier
-            .background(y.cardBg, RoundedCornerShape(9.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(9.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.block))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.block))
             .clickable(onClick = onClick)
             .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -752,7 +753,7 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) =
 @Composable
 private fun GhostButton(label: String, onClick: () -> Unit) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(YantraRadius.control)
     Row(
         Modifier
             .clickable(onClick = onClick)
@@ -770,8 +771,8 @@ private fun Field(value: String, onValue: (String) -> Unit, placeholder: String,
     Box(
         Modifier
             .fillMaxWidth()
-            .background(y.tileWarm2, RoundedCornerShape(12.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(12.dp))
+            .background(y.tileWarm2, RoundedCornerShape(YantraRadius.panel))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .padding(horizontal = 14.dp, vertical = 13.dp),
     ) {
         BasicTextField(
@@ -797,8 +798,8 @@ private fun ValueField(value: String, numeric: Boolean, y: YantraColors, onValue
     Box(
         Modifier
             .width(if (numeric) 84.dp else 150.dp)
-            .background(y.cardBg, RoundedCornerShape(9.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(9.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.block))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.block))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         BasicTextField(

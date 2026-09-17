@@ -65,6 +65,7 @@ import ie.shoonya.yantra.ui.components.LocalLinkResolver
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -172,8 +173,8 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 Row(
                     Modifier
                         .padding(top = 12.dp)
-                        .background(y.page, RoundedCornerShape(99.dp))
-                        .border(1.dp, y.tileBorder, RoundedCornerShape(99.dp))
+                        .background(y.page, RoundedCornerShape(YantraRadius.pill))
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.pill))
                         .padding(horizontal = 11.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -397,7 +398,7 @@ private fun AbsentWorkspaces(names: List<String>) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
-            .background(y.warningChipBg, RoundedCornerShape(10.dp))
+            .background(y.warningChipBg, RoundedCornerShape(YantraRadius.control))
             .padding(horizontal = 12.dp, vertical = 9.dp),
     )
 }

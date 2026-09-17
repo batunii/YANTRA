@@ -58,6 +58,7 @@ import androidx.compose.ui.geometry.Size
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * What a chip *means*, over and above what it says. Kept out of [ChipData.color] because the
@@ -124,7 +125,7 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
     val s = chipStyleFor(chip)
     Row(
         modifier = modifier
-            .background(s.bg, RoundedCornerShape(5.dp))
+            .background(s.bg, RoundedCornerShape(YantraRadius.tiny))
             .padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -135,7 +136,7 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
             YantraIcon(chip.mark, size = YantraIcons.Small, tint = s.dot)
             Spacer(Modifier.width(5.dp))
         } else {
-            Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
+            Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(YantraRadius.tiny)))
         }
         Text(
             chip.label,

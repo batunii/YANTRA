@@ -35,6 +35,7 @@ import ie.shoonya.yantra.ui.theme.YantraMotion
 import androidx.compose.ui.text.font.FontWeight
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Yantra's signature action affordance: a translucent accent fill + 1px accent border + accent
@@ -48,7 +49,7 @@ fun AccentPillButton(
     modifier: Modifier = Modifier,
     /** The mark — ICONS.md §1. See the note on YantraButton. */
     mark: YantraMark? = null,
-    shape: RoundedCornerShape = RoundedCornerShape(10.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(YantraRadius.control),
     horizontalPadding: Dp = 16.dp,
     verticalPadding: Dp = 9.dp,
 ) {
@@ -88,7 +89,7 @@ fun NeutralChip(
     mark: YantraMark? = null,
 ) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(YantraRadius.control)
     Row(
         modifier = modifier
             .background(y.tileWarm2, shape)

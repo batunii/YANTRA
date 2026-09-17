@@ -51,6 +51,7 @@ import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * What has left the working set.
@@ -135,7 +136,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp)
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -31,6 +31,7 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
@@ -65,7 +66,7 @@ internal fun EventBlockRow(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(YantraRadius.control))
             .background(y.cardBg)
             .clickable(onClick = onOpen)
             .padding(horizontal = 10.dp, vertical = 9.dp),
@@ -77,7 +78,7 @@ internal fun EventBlockRow(
             Modifier
                 .width(3.dp)
                 .height(30.dp)
-                .clip(RoundedCornerShape(2.dp))
+                .clip(RoundedCornerShape(YantraRadius.tiny))
                 .background(tint),
         )
         Spacer(Modifier.width(10.dp))
@@ -148,7 +149,7 @@ internal fun EventWhenChip(row: EventWithTitle) {
     Row(
         Modifier
             .padding(top = 6.dp)
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(y.accentFill)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,

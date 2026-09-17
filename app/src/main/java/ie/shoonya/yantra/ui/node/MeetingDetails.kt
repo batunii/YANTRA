@@ -40,6 +40,7 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
@@ -94,7 +95,7 @@ internal fun MeetingHeader(
         Modifier
             .fillMaxWidth()
             .padding(top = 10.dp)
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -158,7 +159,7 @@ internal fun MeetingHeader(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .background(y.accentFill)
                     .clickable { open(context, call.url) }
                     .padding(horizontal = 12.dp, vertical = 11.dp),
@@ -222,7 +223,7 @@ internal fun MeetingHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable { open(context, url) }
                             .padding(vertical = 3.dp),
                     )
@@ -245,7 +246,7 @@ internal fun MeetingHeader(
                         fontWeight = FontWeight.W700,
                         color = y.accent,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable { expanded = !expanded }
                             .padding(vertical = 4.dp, horizontal = 2.dp),
                     )
@@ -258,7 +259,7 @@ internal fun MeetingHeader(
                         fontWeight = FontWeight.W700,
                         color = y.accent,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable(onClick = edit)
                             .padding(vertical = 4.dp, horizontal = 2.dp),
                     )
@@ -276,7 +277,7 @@ internal fun MeetingHeader(
                 fontWeight = FontWeight.W700,
                 color = y.accent,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .clickable {
                         runCatching {
                             context.startActivity(
@@ -343,7 +344,7 @@ internal fun MeetingStrip(row: EventWithTitle, details: DeviceEventDetails?) {
                 fontWeight = FontWeight.W700,
                 color = y.accentText,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .background(y.accentFill)
                     .clickable { open(context, call.url) }
                     .padding(horizontal = 9.dp, vertical = 5.dp),

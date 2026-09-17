@@ -56,6 +56,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneOffset
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** Durations offered by name, because "an hour" is what people mean rather than 60. */
 private val LENGTHS = listOf(
@@ -373,7 +374,7 @@ private fun PickerDialog(
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(YantraRadius.sheet))
                 .background(y.cardBg)
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

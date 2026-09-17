@@ -83,6 +83,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 class FocusViewModel(
     container: AppContainer,
@@ -274,9 +275,9 @@ private fun DurationChip(
     val y = Yantra.colors
     Box(
         modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(YantraRadius.card))
             .background(if (selected) y.accent.copy(alpha = 0.16f) else y.cardBg)
-            .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
+            .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.card)) else Modifier)
             .clickable(onClick = onClick)
             .padding(vertical = 16.dp),
         contentAlignment = Alignment.Center,
@@ -312,7 +313,7 @@ private fun TimerSetup(
         Row(
             modifier = Modifier
                 .padding(top = 6.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(YantraRadius.card))
                 .clickable(onClick = onOpenTask)
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -472,7 +473,7 @@ private fun ActiveTimer(
         Row(
             modifier = Modifier
                 .padding(start = 24.dp, end = 24.dp, top = 8.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(YantraRadius.panel))
                 .clickable(onClick = onOpenTask)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -657,7 +658,7 @@ private fun DoneContent(
             Box(
                 Modifier
                     .weight(1f)
-                    .background(y.secondaryButton, RoundedCornerShape(12.dp))
+                    .background(y.secondaryButton, RoundedCornerShape(YantraRadius.panel))
                     .clickable(onClick = onStartAnother)
                     .padding(vertical = 13.dp),
                 contentAlignment = Alignment.Center,

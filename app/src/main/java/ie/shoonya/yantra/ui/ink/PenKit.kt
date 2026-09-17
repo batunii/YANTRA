@@ -41,6 +41,7 @@ import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The three pens the kit holds.
@@ -177,8 +178,8 @@ private fun KitColumn(
     Column(
         Modifier
             .alpha(if (dimmed) 0.55f else 1f)
-            .background(y.cardBg, RoundedCornerShape(26.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(26.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.hero))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.hero))
             .padding(horizontal = 9.dp, vertical = 11.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(9.dp),
@@ -192,7 +193,7 @@ private fun KitColumn(
         Box(
             Modifier
                 .size(width = 56.dp, height = 26.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable(onClick = onFold),
             contentAlignment = Alignment.Center,
         ) {
@@ -212,10 +213,10 @@ private fun KitColumn(
             Column(
                 Modifier
                     .size(56.dp)
-                    .clip(RoundedCornerShape(15.dp))
+                    .clip(RoundedCornerShape(YantraRadius.card))
                     .background(if (on) y.accentFill else Color.Transparent)
                     .then(
-                        if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(15.dp))
+                        if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.card))
                         else Modifier
                     )
                     .combinedClickable(
@@ -336,9 +337,9 @@ private fun KitTool(
     Box(
         Modifier
             .size(48.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(YantraRadius.card))
             .background(if (on) y.accentFill else Color.Transparent)
-            .then(if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
+            .then(if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.card)) else Modifier)
             .clickable(onClick = onClick)
             // A drawn glyph carries no description of its own, unlike an Icon — so the key says
             // what it is here, once, however it happens to be painted. Without this the two tools
@@ -381,9 +382,9 @@ private fun UndoKey(mark: YantraMark, label: String, enabled: Boolean, onClick: 
     Box(
         Modifier
             .size(52.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(YantraRadius.sheet))
             .background(y.cardBg)
-            .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

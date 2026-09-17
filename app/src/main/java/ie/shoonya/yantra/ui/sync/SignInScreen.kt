@@ -76,6 +76,7 @@ import kotlinx.coroutines.withContext
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** Where the sign-in has got to. */
 /**
@@ -625,7 +626,7 @@ internal fun SignedIn(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -770,8 +771,8 @@ private fun DeviceCodePanel(
     Box(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
             .clickable(onClick = onCopy)
             .padding(vertical = 20.dp),
         contentAlignment = Alignment.Center,

@@ -107,12 +107,49 @@ internal fun materialScheme(y: YantraColors) = if (y.isDark) {
 
 // Yantra shape scale: pills 5, chips/buttons 10, icon tiles 12–13, cards/tiles 16–18, FAB 20.
 // extraLarge follows M3 Expressive's rounder sheets (bottom-sheet top corners app-wide).
+/**
+ * The sanctioned radii, named by the surface they belong to.
+ *
+ * Same finding as [YantraType], and the same answer. The audit counted **130 corner radii in 23
+ * distinct values, 90 of them outside AppShapes** — 7, 8 and 9 all doing "a small clipped thing",
+ * 13, 15 and 22 existing because one screen invented its own set. A radius is a family resemblance:
+ * one that is two off does not read as a distinction, it reads as a mistake.
+ *
+ * AppShapes was five Material slots and the app needed eight surfaces, so it was gone around. The
+ * names here are the surfaces that actually exist, and AppShapes is expressed in terms of them so
+ * there is one source rather than two that nearly agree.
+ *
+ * [card] is 14, not Material's 16, because 14 is what the app already used twenty-four times for a
+ * card — more than any other radius in the codebase. The convention was already there; it just had
+ * no name.
+ */
+object YantraRadius {
+    /** A capsule: a pill whose radius is half its height, whatever that turns out to be. */
+    val pill = 999.dp
+    /** The smallest mark that still has corners — a swatch, a dot with a square shoulder. */
+    val tiny = 4.dp
+    /** A block on the timeline, a row in the rail: small, clipped, many of them at once. */
+    val block = 8.dp
+    /** A button, a field, a chip. Material's `small`. */
+    val control = 10.dp
+    /** A secondary surface inside something else — a panel in the ink kit, a tool tray. */
+    val panel = 12.dp
+    /** A card on the page. The most used radius in the app. */
+    val card = 14.dp
+    /** A band, a bottom sheet, the header's rounded foot. Material's `large`. */
+    val sheet = 18.dp
+    /** The largest: a full-height surface that still wants a corner. Material's `extraLarge`. */
+    val hero = 28.dp
+}
+
 private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(5.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    // Expressed in the named scale, so Material's components and the app's own surfaces cannot
+    // drift apart. `medium` is the card radius the app actually uses rather than Material's 16.
+    extraSmall = RoundedCornerShape(YantraRadius.tiny),
+    small = RoundedCornerShape(YantraRadius.control),
+    medium = RoundedCornerShape(YantraRadius.card),
+    large = RoundedCornerShape(YantraRadius.sheet),
+    extraLarge = RoundedCornerShape(YantraRadius.hero),
 )
 
 /**

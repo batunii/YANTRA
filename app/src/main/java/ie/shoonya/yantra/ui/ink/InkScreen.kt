@@ -114,6 +114,7 @@ import androidx.compose.ui.text.TextStyle
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * A drawing session.
@@ -551,9 +552,9 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 // sketch to reach, which is the one thing you were avoiding by drawing here.
                 Row(
                     Modifier
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(YantraRadius.card))
                         .background(y.accentFill)
-                        .border(1.dp, y.accentBorder, RoundedCornerShape(14.dp))
+                        .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card))
                         .clickable { nav.navigate(Routes.FOCUS_CURRENT) }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -732,9 +733,9 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(12.dp)
-                        .clip(RoundedCornerShape(13.dp))
+                        .clip(RoundedCornerShape(YantraRadius.panel))
                         .background(y.cardBg)
-                        .border(1.dp, y.tileBorder, RoundedCornerShape(13.dp))
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
                         .clickable { canvasRef?.fitWidth() }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -815,8 +816,8 @@ private fun KitControls(
             // costs you the thing you opened it to fix.
             .padding(bottom = 78.dp)
             .width(232.dp)
-            .background(y.cardBg, RoundedCornerShape(22.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(22.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -876,7 +877,7 @@ private fun KitControls(
         Row(
             Modifier
                 .padding(top = 10.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable(onClick = onHanded)
                 .padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -977,7 +978,7 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(1.6f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(YantraRadius.card))
                     .background(Brush.horizontalGradient(listOf(Color.White, Color.hsv(hue, 1f, 1f))))
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
                     .pointerInput(Unit) {
@@ -1015,7 +1016,7 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).background(current, RoundedCornerShape(10.dp)).border(1.dp, y.tileBorder, RoundedCornerShape(10.dp)))
+                Box(Modifier.size(40.dp).background(current, RoundedCornerShape(YantraRadius.control)).border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.control)))
                 Spacer(Modifier.weight(1f))
                 YantraButton(
                     label = "Use colour",
@@ -1063,8 +1064,8 @@ private fun BoxScope.SelectionBar(
                     (at.y + gap).coerceIn(0f, (bounds.height - barH).coerceAtLeast(0f)).toInt(),
                 )
             }
-            .background(y.cardBg, RoundedCornerShape(15.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(15.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
             .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1098,7 +1099,7 @@ private fun BarAction(
     val y = Yantra.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(11.dp))
+            .clip(RoundedCornerShape(YantraRadius.control))
             .background(if (accent) y.accentFill else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 10.dp),

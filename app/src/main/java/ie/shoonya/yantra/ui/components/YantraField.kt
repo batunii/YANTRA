@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The one text field.
@@ -48,7 +49,7 @@ fun YantraField(
     enabled: Boolean = true,
 ) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(YantraRadius.panel)
     val style = TextStyle(
         fontSize = YantraType.row,
         color = if (enabled) y.textPrimary else y.textMuted,

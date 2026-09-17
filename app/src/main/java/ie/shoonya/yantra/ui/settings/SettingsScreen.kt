@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 @Composable
 fun SettingsScreen(nav: NavHostController) {
@@ -356,7 +357,7 @@ fun SettingsScreen(nav: NavHostController) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .background(y.cardBg, RoundedCornerShape(16.dp))
+                    .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
                     .padding(vertical = 18.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
@@ -397,7 +398,7 @@ private fun InkLegendRow(color: Color, name: String, where: String) {
         Modifier.fillMaxWidth().padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(14.dp).background(color, RoundedCornerShape(4.dp)))
+        Box(Modifier.size(14.dp).background(color, RoundedCornerShape(YantraRadius.tiny)))
         Spacer(Modifier.width(12.dp))
         Text(name, color = y.textPrimary, fontSize = YantraType.label, fontWeight = FontWeight.W600)
         Spacer(Modifier.width(8.dp))
@@ -453,7 +454,7 @@ private fun SettingRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

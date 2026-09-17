@@ -34,6 +34,7 @@ import ie.shoonya.yantra.ui.theme.YantraColors
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * One task, one card.
@@ -57,7 +58,7 @@ fun ListGroupRow(
     content: @Composable () -> Unit,
 ) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(YantraRadius.card)
     Column(
         modifier
             .fillMaxWidth()
@@ -144,8 +145,8 @@ fun QuickAddBar(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .background(y.cardBg, RoundedCornerShape(18.dp))
-                    .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
+                    .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+                    .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
                     .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -172,8 +173,8 @@ fun QuickAddBar(
                 Box(
                     Modifier
                         .size(40.dp)
-                        .background(y.accentFill, RoundedCornerShape(12.dp))
-                        .border(1.dp, y.accentBorder, RoundedCornerShape(12.dp))
+                        .background(y.accentFill, RoundedCornerShape(YantraRadius.panel))
+                        .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.panel))
                         .clickable(onClick = send),
                     contentAlignment = Alignment.Center,
                 ) {

@@ -46,6 +46,7 @@ import ie.shoonya.yantra.data.db.RailTask
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The tasks beside the day — CALENDAR_PLAN.md §13.
@@ -95,7 +96,7 @@ fun TaskRail(
                 val count = shelves[b].orEmpty().size
                 Row(
                     Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(YantraRadius.block))
                         .then(if (on) Modifier.background(y.accentFill) else Modifier)
                         .clickable { onShelf(b) }
                         .padding(horizontal = 8.dp, vertical = 5.dp),
@@ -205,9 +206,9 @@ private fun RailRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(if (armed) y.accentFill else y.cardBg)
-            .then(if (armed) Modifier.border(1.dp, y.accent, RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (armed) Modifier.border(1.dp, y.accent, RoundedCornerShape(YantraRadius.block)) else Modifier)
             .clickable(onClick = onTap)
             .onGloballyPositioned { coords = it }
             .pointerInput(task.nodeId) {

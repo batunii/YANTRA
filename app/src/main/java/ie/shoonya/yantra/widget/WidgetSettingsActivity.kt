@@ -57,6 +57,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Settings for one placed widget, opened from the widget's own overflow button.
@@ -243,7 +244,7 @@ private fun SettingsScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(y.cardBg, RoundedCornerShape(18.dp))
+                        .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -338,7 +339,7 @@ private fun ToggleCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(18.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
             .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

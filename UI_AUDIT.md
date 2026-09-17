@@ -12,32 +12,13 @@ system nobody is using.
 
 Clean.
 
-## Corner radii outside AppShapes
+## Raw corner radii instead of the named scale
 
-**Rule owner:** Theme.kt AppShapes {5, 10, 16, 18, 28}
+**Rule owner:** Theme.kt YantraRadius
 
-90 of 130 radii are not in the set. A radius is a family resemblance; one that is two off reads as a mistake rather than a distinction.
+A radius is a family resemblance: one that is two off does not read as a distinction, it reads as a mistake. Every surface the app has is named in YantraRadius, so a number here is a surface nobody named.
 
-```
-  14dp × 24
-  12dp × 14
-  8dp × 10
-  9dp × 6
-  7dp × 5
-  99dp × 4
-  22dp × 4
-  15dp × 4
-  13dp × 3
-  11dp × 2
-  2dp × 2
-  1dp × 2
-  24dp × 2
-  6dp × 2
-  17dp × 2
-  26dp × 2
-  20dp × 1
-  4dp × 1
-```
+Clean.
 
 ## Icon sizes outside the three
 

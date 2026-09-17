@@ -38,6 +38,7 @@ import ie.shoonya.yantra.data.device.DeviceCalendar
 import ie.shoonya.yantra.data.device.DeviceCalendarSource
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Whether to draw the phone's own calendars behind yours, and which of them — CALENDAR_PLAN.md §5.
@@ -95,7 +96,7 @@ fun DeviceCalendarSetting() {
                 "Allow reading",
                 color = y.accent, fontSize = YantraType.meta, fontWeight = FontWeight.W700,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .clickable { ask.launch(Manifest.permission.READ_CALENDAR) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
@@ -120,7 +121,7 @@ fun DeviceCalendarSetting() {
                 "Connect again",
                 color = y.accent, fontSize = YantraType.meta, fontWeight = FontWeight.W700,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .clickable {
                         // Back to the owning app's own visibility rather than to whatever was
                         // ticked before: reconnecting should mean "my calendar", freshly asked.
@@ -134,7 +135,7 @@ fun DeviceCalendarSetting() {
                 "Take back the permission in Android settings  \u203a",
                 color = y.textDim, fontSize = YantraType.caption,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .clickable { openAppSettings(context) }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
@@ -167,7 +168,7 @@ fun DeviceCalendarSetting() {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .clickable {
                         chosen = if (on) chosen - cal.id else chosen + cal.id
                         choice.set(chosen)
@@ -219,7 +220,7 @@ fun DeviceCalendarSetting() {
             "Disconnect calendars",
             color = y.warning, fontSize = YantraType.meta, fontWeight = FontWeight.W600,
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable {
                     // An explicit empty choice, which is why `set` and not `clear`: clear means
                     // "ask the owning app again", and would switch the overlay straight back on.
@@ -250,7 +251,7 @@ private fun SettingCard(content: @Composable androidx.compose.foundation.layout.
     Column(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.Top,
         content = content,

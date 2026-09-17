@@ -63,6 +63,7 @@ import java.time.format.TextStyle
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Short, and one line.
@@ -182,7 +183,7 @@ fun CalendarScreen(nav: NavHostController) {
             Box(
                 Modifier
                     .size(34.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .background(y.accentFill)
                     .clickable { sheet = EventSheetTarget(null, null) }
                     .testTag("newEvent"),
@@ -495,7 +496,7 @@ private fun MonthBar(
                 fontWeight = FontWeight.W700,
                 color = if (railOpen) y.accentText else y.textMuted,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(YantraRadius.panel))
                     .then(if (railOpen) Modifier.background(y.accentFill) else Modifier)
                     .clickable(onClick = onRail)
                     .padding(horizontal = 8.dp, vertical = 6.dp)
@@ -509,7 +510,7 @@ private fun MonthBar(
             fontWeight = FontWeight.W700,
             color = y.accent,
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(YantraRadius.panel))
                 .clickable(onClick = onToday)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         )
@@ -590,9 +591,9 @@ private fun DayCell(
             // tying height to it made the cells grow without limit on a wide screen.
             .height(CELL_HEIGHT)
             .padding(2.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(YantraRadius.control))
             .then(if (isSelected) Modifier.background(y.accentFill) else Modifier)
-            .then(if (isToday && !isSelected) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (isToday && !isSelected) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.control)) else Modifier)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -635,9 +636,9 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(YantraRadius.panel))
             .background(y.cardBg)
-            .border(1.dp, y.tileBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .clickable(onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -698,7 +699,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
     // other, so a miss landed on the neighbour rather than on nothing.
     Row(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(YantraRadius.control))
             .background(y.cardBg)
             .padding(2.dp),
     ) {
@@ -707,7 +708,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
             Box(
                 Modifier
                     .height(30.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .then(if (on) Modifier.background(y.accentFill) else Modifier)
                     .clickable { onMode(m) },
                 contentAlignment = Alignment.Center,

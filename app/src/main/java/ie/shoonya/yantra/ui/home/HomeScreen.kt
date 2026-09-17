@@ -109,6 +109,7 @@ import ie.shoonya.yantra.data.label.LabelPalette
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private enum class CreateType(val label: String, val placeholder: String, val action: String) {
     TASK("Task", "New task", "Create task"),
@@ -841,8 +842,8 @@ private fun HomeTabBar(onCreate: () -> Unit, onStats: () -> Unit, onCalendar: ()
         // and position — the make-something key is in one place on both board screens.
         Box(
             Modifier.size(56.dp)
-                .background(y.accentFill, RoundedCornerShape(17.dp))
-                .border(1.dp, y.accentBorder, RoundedCornerShape(17.dp))
+                .background(y.accentFill, RoundedCornerShape(YantraRadius.card))
+                .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card))
                 .clickable(onClick = onCreate),
             contentAlignment = Alignment.Center,
         ) { YantraIcon(YantraMark.Add, size = YantraIcons.Large, tint = y.accent) }
@@ -906,8 +907,8 @@ private fun MoveRow(label: String, selected: Boolean, onClick: () -> Unit) {
         Box(
             Modifier.size(18.dp).background(
                 if (selected) y.accent else Color.Transparent,
-                RoundedCornerShape(5.dp),
-            ).border(2.dp, if (selected) y.accent else y.checkOutline, RoundedCornerShape(5.dp)),
+                RoundedCornerShape(YantraRadius.tiny),
+            ).border(2.dp, if (selected) y.accent else y.checkOutline, RoundedCornerShape(YantraRadius.tiny)),
             contentAlignment = Alignment.Center,
         ) {
             if (selected) YantraIcon(YantraMark.Check, tint = y.onAccent)

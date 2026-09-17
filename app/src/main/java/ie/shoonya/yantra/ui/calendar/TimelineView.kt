@@ -63,6 +63,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
@@ -396,7 +397,7 @@ fun WeekTimeline(
                 Column(
                     Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(YantraRadius.block))
                         .then(if (isSel) Modifier.background(y.accentFill) else Modifier)
                         .clickable { onSelectDay(d) }
                         .padding(vertical = 4.dp),
@@ -661,7 +662,7 @@ private fun BlockChip(
             // UI test can address one block — these gestures cannot be driven from `adb input`.
             .testTag("block:${block.item.nodeId}")
             .padding(end = 4.dp, bottom = 2.dp)
-            .clip(RoundedCornerShape(7.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(
                 when {
                     // Fainter for somebody else's: it is a backdrop your own day is drawn against,
@@ -676,7 +677,7 @@ private fun BlockChip(
             // Picked out, so the two handles on its edges read as belonging to *this* block.
             .then(
                 if (!selected) Modifier
-                else Modifier.border(1.5.dp, y.accent, RoundedCornerShape(7.dp))
+                else Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.block))
             )
             .then(
                 if (!writable) Modifier else Modifier.pointerInput(
@@ -921,7 +922,7 @@ private fun BoxScope.Handle(where: Alignment, tint: Color, lit: Boolean) {
             .padding(vertical = 2.dp)
             .width(if (lit) 34.dp else 26.dp)
             .height(3.dp)
-            .clip(RoundedCornerShape(2.dp))
+            .clip(RoundedCornerShape(YantraRadius.tiny))
             // The block's own colour, not the accent: a coloured block with accent handles reads
             // as two things stuck together rather than one thing with edges.
             .background(tint.copy(alpha = if (lit) 1f else 0.5f)),
@@ -980,7 +981,7 @@ private fun AllDayChip(item: DayItem, compact: Boolean = false, onClick: () -> U
     Box(
         Modifier
             .padding(vertical = 1.dp)
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(YantraRadius.tiny))
             .background(if (isEvent) y.accentFill else y.cardBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 5.dp, vertical = 2.dp),
@@ -1069,9 +1070,9 @@ private fun DraftBlock(range: IntRange) {
             .fillMaxWidth()
             .height(hourHeight * ((range.last - range.first) / 60f))
             .padding(end = 4.dp)
-            .clip(RoundedCornerShape(7.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(y.accentFill.copy(alpha = 0.6f))
-            .border(1.dp, y.accent, RoundedCornerShape(7.dp)),
+            .border(1.dp, y.accent, RoundedCornerShape(YantraRadius.block)),
         contentAlignment = Alignment.Center,
     ) {
         Text(

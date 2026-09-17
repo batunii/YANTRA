@@ -186,6 +186,7 @@ import androidx.compose.ui.text.style.TextAlign
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -741,9 +742,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         .then(
                             if (lifted) {
                                 Modifier
-                                    .shadow(12.dp, RoundedCornerShape(14.dp))
-                                    .background(y.tileWarm, RoundedCornerShape(14.dp))
-                                    .border(1.dp, y.tileBorder, RoundedCornerShape(14.dp))
+                                    .shadow(12.dp, RoundedCornerShape(YantraRadius.card))
+                                    .background(y.tileWarm, RoundedCornerShape(YantraRadius.card))
+                                    .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
                             } else Modifier
                         )
                         // Long-press anywhere in the block's own space to pick it up. It cannot
@@ -1325,9 +1326,9 @@ private fun PageBand(
                     val shown = if (live.isOpen) live.elapsedSecs else live.remainingSecs
                     Row(
                         Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(YantraRadius.card))
                             .background(y.accentFill)
-                            .border(1.dp, y.accentBorder, RoundedCornerShape(14.dp))
+                            .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card))
                             .clickable(onClick = onFocus)
                             .padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1653,7 +1654,7 @@ private fun Wrapper(
                 .padding(start = inset)
                 // After the inset, so the wash lines up with the block and not with the gutter.
                 .then(
-                    if (started) Modifier.background(y.startedWash, RoundedCornerShape(10.dp))
+                    if (started) Modifier.background(y.startedWash, RoundedCornerShape(YantraRadius.control))
                     else Modifier
                 )
         ) { content() }
@@ -1817,7 +1818,7 @@ private class BlockEditing(
 private fun Modifier.activeBlock(active: Boolean): Modifier {
     val y = Yantra.colors
     return if (active) {
-        this.background(y.accent.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+        this.background(y.accent.copy(alpha = 0.05f), RoundedCornerShape(YantraRadius.control))
     } else this
 }
 
@@ -2500,7 +2501,7 @@ private fun ImageBlockRow(
             modifier = Modifier
                 .weight(1f)
                 .clickable(onClick = { onActivate() }),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(YantraRadius.card),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             AsyncImage(
@@ -2612,7 +2613,7 @@ private fun BlockTypeBar(
 @Composable
 private fun DangerChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(YantraRadius.control)
     Row(
         modifier
             .background(y.overdueChipBg, shape)
@@ -2747,7 +2748,7 @@ private fun TaskRail(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 2.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(YantraRadius.panel))
                         // The page you are on is marked, not selected: it is where you are, and a
                         // selection would imply it could be deselected.
                         .background(if (here) y.startedWash else Color.Transparent)

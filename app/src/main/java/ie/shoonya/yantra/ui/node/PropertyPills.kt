@@ -69,6 +69,7 @@ import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Superlist-style always-visible properties: one pill per built-in property definition
@@ -249,7 +250,7 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(s.bg, RoundedCornerShape(5.dp))
+            .background(s.bg, RoundedCornerShape(YantraRadius.tiny))
             .combinedClickable(onClick = onClick, onLongClick = { recolouring = true })
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
@@ -400,14 +401,14 @@ private fun PropertyPill(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .background(s.bg, RoundedCornerShape(5.dp))
+                    .background(s.bg, RoundedCornerShape(YantraRadius.tiny))
                     .clickable(onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 5.dp),
             ) {
                 if (chip.mark != null) {
                     YantraIcon(chip.mark, size = YantraIcons.Small, tint = s.dot)
                 } else {
-                    Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(1.dp)))
+                    Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(YantraRadius.tiny)))
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(
@@ -583,7 +584,7 @@ private const val GHOST_ALPHA = 0.55f
 @Composable
 private fun GhostPill(label: String, dashed: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(5.dp)
+    val shape = RoundedCornerShape(YantraRadius.tiny)
     val borderColor = y.textPrimary.copy(alpha = if (dashed) 0.28f else 0.22f)
     val base = Modifier
         .alpha(GHOST_ALPHA)

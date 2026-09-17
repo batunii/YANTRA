@@ -75,17 +75,17 @@ note("Raw font sizes instead of the type ramp", "Theme.kt AppTypography",
      "decisions.")
 
 # ---- shape ------------------------------------------------------------------------------------
-rows = collections.Counter()
+rows = collections.Counter(); where = []
 for p, s in kt():
     if p.name in THEME: continue
     for m in re.finditer(r"RoundedCornerShape\(([0-9.]+)\.dp", s):
         rows[m.group(1)] += 1
-off = {n: c for n, c in rows.items() if float(n) not in SHAPES}
-note("Corner radii outside AppShapes", "Theme.kt AppShapes {5, 10, 16, 18, 28}",
-     [f"{n}dp × {c}" for n, c in sorted(off.items(), key=lambda kv: -kv[1])],
-     f"{sum(off.values())} of {sum(rows.values())} radii are not in the set. "
-     "A radius is a family resemblance; one that is two off reads as a mistake rather than a "
-     "distinction.")
+        where.append((rel(p), s[:m.start()].count("\n") + 1, m.group(1)))
+note("Raw corner radii instead of the named scale", "Theme.kt YantraRadius",
+     [f"{f}:{l} → {n}dp" for f, l, n in where] or ["none"],
+     "A radius is a family resemblance: one that is two off does not read as a distinction, it "
+     "reads as a mistake. Every surface the app has is named in YantraRadius, so a number here is "
+     "a surface nobody named.")
 
 # ---- icon sizes -------------------------------------------------------------------------------
 bad = []

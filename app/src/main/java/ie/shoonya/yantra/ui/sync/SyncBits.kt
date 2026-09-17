@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** What a setup screen says back, and whether it should be read as a refusal. */
 internal data class Said(val ok: Boolean, val message: String)
@@ -40,7 +41,7 @@ internal fun Note(text: String, bad: Boolean = false, good: Boolean = false) {
                     good -> y.successChipBg
                     else -> y.neutralChipBg
                 },
-                RoundedCornerShape(10.dp),
+                RoundedCornerShape(YantraRadius.control),
             )
             .padding(horizontal = 12.dp, vertical = 10.dp),
     )

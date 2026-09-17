@@ -48,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Yantra as somewhere to share *to*.
@@ -172,7 +173,7 @@ private fun Landed(
         Modifier
             .fillMaxWidth()
             .padding(12.dp)
-            .background(y.band, RoundedCornerShape(18.dp))
+            .background(y.band, RoundedCornerShape(YantraRadius.sheet))
             .padding(16.dp)
             .navigationBarsPadding(),
     ) {

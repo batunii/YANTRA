@@ -52,6 +52,7 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.AppMark
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The app's one nav/action button: a small translucent circle. Round rather than a rounded
@@ -160,7 +161,7 @@ fun ComposedEmpty(
         if (action != null && onAction != null) {
             Row(
                 Modifier
-                    .background(y.accentFill, RoundedCornerShape(99.dp))
+                    .background(y.accentFill, RoundedCornerShape(YantraRadius.pill))
                     .clickable(onClick = onAction)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

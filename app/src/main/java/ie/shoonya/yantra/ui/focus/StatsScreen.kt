@@ -87,6 +87,7 @@ import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 data class DayStat(val date: LocalDate, val completed: Int, val totalSecs: Int)
 
@@ -412,7 +413,7 @@ fun StatsScreen(nav: NavHostController) {
                             fontWeight = if (span == option) FontWeight.W700 else FontWeight.W500,
                             color = if (span == option) y.accentText else y.textMuted,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(YantraRadius.block))
                                 .clickable { span = option }
                                 .padding(horizontal = 4.dp, vertical = 3.dp),
                         )
@@ -447,7 +448,7 @@ fun StatsScreen(nav: NavHostController) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(YantraRadius.control))
                             .clickable { openedKey = null; openedTitle = null }
                             .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -682,7 +683,7 @@ private fun BreakdownRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(YantraRadius.panel))
             .then(if (onOpen == null) Modifier else Modifier.clickable(onClick = onOpen))
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

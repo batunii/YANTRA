@@ -55,6 +55,7 @@ import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Instant capture from the quick-add widget: translucent dialog-style activity, keyboard up
@@ -153,8 +154,8 @@ class QuickAddActivity : ComponentActivity() {
                         Modifier
                             .fillMaxWidth()
                             .padding(20.dp)
-                            .background(y.cardBg, RoundedCornerShape(22.dp))
-                            .border(1.dp, y.tileBorder, RoundedCornerShape(22.dp))
+                            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+                            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
@@ -225,7 +226,7 @@ class QuickAddActivity : ComponentActivity() {
                                     .size(38.dp)
                                     .background(
                                         if (text.isBlank()) y.neutralChipBg else y.accentFill,
-                                        RoundedCornerShape(12.dp),
+                                        RoundedCornerShape(YantraRadius.panel),
                                     )
                                     .clickable(onClick = send),
                                 contentAlignment = Alignment.Center,
@@ -264,7 +265,7 @@ private fun CaptureChip(
         Modifier
             .background(
                 if (on) (onColor ?: y.accent).copy(alpha = 0.14f) else y.neutralChipBg,
-                RoundedCornerShape(99.dp),
+                RoundedCornerShape(YantraRadius.pill),
             )
             .let { if (onClick != null && !readOnly) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 11.dp, vertical = 6.dp),
