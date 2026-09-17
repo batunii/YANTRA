@@ -114,7 +114,7 @@ fun NeutralChip(
  * no longer has, and the tick is precisely the gesture the bindu was introduced to retire.
  */
 @Composable
-fun YantraMark(
+fun AppMark(
     modifier: Modifier = Modifier,
     tint: Color = Yantra.colors.checkOutline,
     checkTint: Color = Yantra.colors.accent,

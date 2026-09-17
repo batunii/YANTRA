@@ -74,6 +74,7 @@ import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import ie.shoonya.yantra.ui.components.AppMark
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraMono
@@ -224,7 +225,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
-                        YantraMark(
+                        AppMark(
                             Modifier.size(60.dp),
                             tint = y.checkOutline,
                             checkTint = y.accent.copy(alpha = 0.55f),

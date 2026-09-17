@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraIcon
-import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.AppMark
 
 /**
  * The app's one nav/action button: a small translucent circle. Round rather than a rounded
@@ -150,7 +150,7 @@ fun ComposedEmpty(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        YantraMark(
+        AppMark(
             Modifier.size(34.dp),
             tint = y.checkOutline.copy(alpha = 0.55f),
             checkTint = y.accent.copy(alpha = 0.45f),
