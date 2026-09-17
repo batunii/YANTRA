@@ -606,6 +606,10 @@ private fun MonthGrid(
     }
 }
 
+/** A day mark: the width and weight of one rule under a date — CALENDAR_UI.md §2. */
+private val MARK_WIDTH = 9.dp
+private val MARK_THICKNESS = 1.5.dp
+
 @Composable
 private fun DayCell(
     day: LocalDate,
@@ -624,8 +628,15 @@ private fun DayCell(
             .height(CELL_HEIGHT)
             .padding(2.dp)
             .clip(RoundedCornerShape(YantraRadius.control))
+            // One shape in the grid, and it is the selected wash — CALENDAR_UI.md §2.
+            //
+            // Today used to be a 1dp accent border on the same 10dp rounded rect the selected day
+            // fills. An outline and a fill of the same shape are one gesture at two strengths, so
+            // today and selected read as competing rather than as different facts, and the cell
+            // carried an `isToday && !isSelected` special case to keep them from stacking. Today is
+            // said in ink instead — the accent hue at W700 against neutral siblings — and the case
+            // goes with the border.
             .then(if (isSelected) Modifier.background(y.accentFill) else Modifier)
-            .then(if (isToday && !isSelected) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.control)) else Modifier)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -644,19 +655,32 @@ private fun DayCell(
                     else -> y.textPrimary
                 },
             )
-            Spacer(Modifier.height(2.dp))
-            // A dot means "something here", and up to three mean "more than one thing" without
-            // asking anyone to read a number off a 40dp square.
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Spacer(Modifier.height(6.dp))
+            // Short rules, not dots — CALENDAR_UI.md §2.
+            //
+            // Up to three of them mean "more than one thing here" without asking anyone to read a
+            // number off a 40dp square. They were filled dots, which is the one shape this app
+            // cannot spare: **a filled dot is the done state** — the bindu at the centre of the task
+            // glyph — so three of them under a date read as three things finished. A rule says
+            // "a line of something" and is the same mark the List glyph is drawn from.
+            //
+            // Muted, even on today. They are a count, not a claim, and today is already saying what
+            // it has to say in the numeral above them. On the selected day they take the accent,
+            // because everything in that cell does.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                // Fixed, so a day with nothing on it sits at the same height as a day with three.
+                modifier = Modifier.height(MARK_THICKNESS),
+            ) {
                 repeat(minOf(count, 3)) {
                     Box(
                         Modifier
-                            .size(4.dp)
-                            .clip(CircleShape)
-                            .background(if (isSelected) y.accentText else y.accent),
+                            .size(width = MARK_WIDTH, height = MARK_THICKNESS)
+                            // Rounded ends, matching the round caps every drawn mark uses.
+                            .clip(RoundedCornerShape(YantraRadius.tiny))
+                            .background(if (isSelected) y.accentText else y.textMuted),
                     )
                 }
-                if (count == 0) Spacer(Modifier.size(4.dp))
             }
         }
     }
