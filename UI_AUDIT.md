@@ -69,8 +69,8 @@ Clean.
 Not all of these are page margins — a chip has its own inset — but a screen-level one that is not PAGE_MARGIN is drift.
 
 ```
-  20dp × 16
-  8dp × 15
+  20dp × 15
+  8dp × 14
   12dp × 12
   10dp × 11
   14dp × 11
