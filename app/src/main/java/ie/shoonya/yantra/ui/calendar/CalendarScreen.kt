@@ -628,15 +628,22 @@ private fun DayCell(
             .height(CELL_HEIGHT)
             .padding(2.dp)
             .clip(RoundedCornerShape(YantraRadius.control))
-            // One shape in the grid, and it is the selected wash — CALENDAR_UI.md §2.
+            // Two marks, two facts — CALENDAR_UI.md §2, as amended.
             //
-            // Today used to be a 1dp accent border on the same 10dp rounded rect the selected day
-            // fills. An outline and a fill of the same shape are one gesture at two strengths, so
-            // today and selected read as competing rather than as different facts, and the cell
-            // carried an `isToday && !isSelected` special case to keep them from stacking. Today is
-            // said in ink instead — the accent hue at W700 against neutral siblings — and the case
-            // goes with the border.
-            .then(if (isSelected) Modifier.background(y.accentFill) else Modifier)
+            //  - **the fill is today.** A permanent fact about the world, and the mark that is
+            //    always somewhere on the grid, so it takes the solid one.
+            //  - **the hollow box is what you selected.** Transient — it moves every time you tap
+            //    — so it takes the lighter mark, and reads as pointing rather than colouring.
+            //
+            // Both were on one cell before: today was an outline and selected a fill of the *same*
+            // 10dp shape, which is one gesture at two strengths and read as the two competing. The
+            // fix is not to drop one of them but to stop them saying the same thing. They now stack
+            // on the day that is both, where the pair reads as "today, and you are on it".
+            .then(if (isToday) Modifier.background(y.accentFill) else Modifier)
+            .then(
+                if (!isSelected) Modifier
+                else Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.control))
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -648,10 +655,12 @@ private fun DayCell(
                 fontWeight = if (isToday || isSelected) FontWeight.W700 else FontWeight.W500,
                 // Days from the neighbouring months are shown rather than blanked, so the grid keeps
                 // its shape, but dimmed so the month you are looking at is the one that reads.
+                // Ink follows the fill, not the selection: a selected day is marked by the box
+                // around it, and colouring the numeral as well would be the third way of saying
+                // one thing. Only today is coloured, and it is coloured because it is filled.
                 color = when {
-                    isSelected -> y.accentText
+                    isToday -> y.accentText
                     !inMonth -> y.textDim.copy(alpha = 0.45f)
-                    isToday -> y.accent
                     else -> y.textPrimary
                 },
             )
@@ -664,9 +673,9 @@ private fun DayCell(
             // glyph — so three of them under a date read as three things finished. A rule says
             // "a line of something" and is the same mark the List glyph is drawn from.
             //
-            // Muted, even on today. They are a count, not a claim, and today is already saying what
-            // it has to say in the numeral above them. On the selected day they take the accent,
-            // because everything in that cell does.
+            // Muted everywhere but today, where they take the accent because everything sitting on
+            // that wash does. They are a count, not a claim: a selected day leaves them alone,
+            // since the box around the cell has already said which day you are on.
             Row(
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 // Fixed, so a day with nothing on it sits at the same height as a day with three.
@@ -678,7 +687,7 @@ private fun DayCell(
                             .size(width = MARK_WIDTH, height = MARK_THICKNESS)
                             // Rounded ends, matching the round caps every drawn mark uses.
                             .clip(RoundedCornerShape(YantraRadius.tiny))
-                            .background(if (isSelected) y.accentText else y.textMuted),
+                            .background(if (isToday) y.accentText else y.textMuted),
                     )
                 }
             }
