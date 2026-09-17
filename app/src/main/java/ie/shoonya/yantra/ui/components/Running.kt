@@ -68,6 +68,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.absoluteValue
 import ie.shoonya.yantra.ui.theme.YantraType
+import androidx.compose.ui.draw.drawBehind
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.theme.YantraText
 
 /**
  * The task you are on, for the few places that draw it.
@@ -213,6 +216,20 @@ fun NowPlayer(
     val density = LocalDensity.current
 
     /**
+     * The deck holds ranks one and two — CALENDAR_UI.md §4.
+     *
+     * `RunningTask.stack` ranks by the timed card, then whatever is scheduled now, then everything
+     * else newest-first. The first two are about this moment. Rank three onwards is a list of
+     * claims you made and never cleared, which is why it grew without bound and why swiping through
+     * it was a chore rather than a control. Those are counted in the eyebrow instead.
+     *
+     * The fallback when nothing is timed and nothing is scheduled is one card, the most recently
+     * started — which is what `stack` already puts first.
+     */
+    val dealt = remember(stack) { stack.take(2) }
+    val deck = stack.size - dealt.size
+
+    /**
      * Which task is showing, held **by id rather than by position**.
      *
      * The list re-sorts whenever a clock starts or stops — the timed task is dealt to the front —
@@ -223,8 +240,8 @@ fun NowPlayer(
      * fallback.
      */
     var selected by remember { mutableStateOf<String?>(null) }
-    val index = stack.indexOfFirst { it.nodeId == selected }.takeIf { it >= 0 } ?: 0
-    val current = stack[index]
+    val index = dealt.indexOfFirst { it.nodeId == selected }.takeIf { it >= 0 } ?: 0
+    val current = dealt[index]
     val live = current.hasSession
 
     // Live drag offset, read only inside graphicsLayer — a draw-phase read, so swiping the player
@@ -236,15 +253,32 @@ fun NowPlayer(
     val dragState = rememberDraggableState { delta ->
         dragX = (dragX + delta).coerceIn(-commit * 1.8f, commit * 1.8f)
     }
-    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    // Full strength, for the spine and the eyebrow. Everything else on a running bar steps back.
+    val accentInk = y.accent
+    val shape = RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet)
 
     Row(
         modifier
             .fillMaxWidth()
             .onSizeChanged { barW = it.width }
-            .background(if (live) y.accent else y.band, shape)
+            // Running is a wash and a spine, not a flood — CALENDAR_UI.md §4.
+            //
+            // The bar used to fill solid with the accent, which made every word on it a reversed
+            // colour and the whole surface the loudest thing on the screen. CALENDAR_PLAN.md §16
+            // already made the opposite call for a coloured block: replace the spine, tint the
+            // wash, do not flood the fill. A bar is a block that happens to be at the bottom.
+            .background(if (live) y.accentFill else y.band, shape)
+            .drawBehind {
+                if (!live) return@drawBehind
+                // The spine, along the leading edge. It is the one thing at full strength, so the
+                // bar reads as running from the corner of the eye without shouting the words.
+                drawRect(
+                    color = accentInk,
+                    size = androidx.compose.ui.geometry.Size(SPINE.toPx(), size.height),
+                )
+            }
             .then(
-                if (stack.size < 2) Modifier else Modifier.draggable(
+                if (dealt.size < 2) Modifier else Modifier.draggable(
                     state = dragState,
                     orientation = Orientation.Horizontal,
                     onDragStopped = { velocity ->
@@ -261,8 +295,8 @@ fun NowPlayer(
                                 dragX, if (fwd) -out else out, initialVelocity = velocity,
                                 animationSpec = tween(130, easing = LinearOutSlowInEasing),
                             ) { v, _ -> dragX = v }
-                            val next = ((index + if (fwd) 1 else -1) % stack.size + stack.size) % stack.size
-                            selected = stack[next].nodeId
+                            val next = ((index + if (fwd) 1 else -1) % dealt.size + dealt.size) % dealt.size
+                            selected = dealt[next].nodeId
                             dragX = if (fwd) out else -out
                             animate(
                                 dragX, 0f,
@@ -300,10 +334,12 @@ fun NowPlayer(
                 Text(
                     // One line in a bar: the markers have nothing to become here either.
                     inlinePlain(current.title).ifBlank { "Untitled" },
-                    fontFamily = YantraDisplay,
-                    fontSize = YantraType.label,
-                    fontWeight = FontWeight.W700,
-                    color = if (live) y.onAccent else y.textPrimary,
+                    // The row-title spec — CALENDAR_UI.md §4. It was the Display face at 13.5sp:
+                    // the smallest text in the app wearing its largest voice. A bar is a row.
+                    fontFamily = YantraText,
+                    fontSize = YantraType.row,
+                    fontWeight = FontWeight.W500,
+                    color = y.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -319,13 +355,18 @@ fun NowPlayer(
                                 else -> "ON THE GO"
                             }
                         )
-                        if (stack.size > 1) append("  ·  ${index + 1}/${stack.size}")
+                        // What the deck holds beyond this card — CALENDAR_UI.md §4. `stack` ranks
+                        // by the timed card, then whatever is scheduled now, then everything else
+                        // newest-first. The first two are about this moment; the rest is a list of
+                        // claims you made and never cleared, which is why it grows without bound.
+                        // It is counted, not dealt.
+                        if (deck > 1) append("  ·  $deck more")
                     },
                     fontFamily = YantraMono,
                     fontSize = YantraType.section,
                     fontWeight = FontWeight.W700,
                     letterSpacing = 1.2.sp,
-                    color = if (live) y.onAccent.copy(alpha = 0.78f) else y.textMuted,
+                    color = if (live) accentInk else y.textMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -335,6 +376,9 @@ fun NowPlayer(
         TransportKey(live = live, onClick = { onToggleClock(current) })
     }
 }
+
+/** The coral spine along a running bar's leading edge — CALENDAR_UI.md §4. */
+private val SPINE = 3.dp
 
 /**
  * The one control: play, or stop.
@@ -346,34 +390,29 @@ fun NowPlayer(
 @Composable
 private fun TransportKey(live: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
-    val tint = if (live) y.onAccent else y.accent
     Box(
         Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(if (live) y.onAccent.copy(alpha = 0.16f) else y.accentFill)
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = if (live) "Stop the clock" else "Start the clock" },
+            .background(y.accentFill)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(15.dp)) {
-            if (live) {
-                drawRoundRect(tint, cornerRadius = CornerRadius(size.minDimension * 0.16f))
-            } else {
-                val w = size.width
-                val h = size.height
-                // Nudged right so the triangle looks centred rather than measuring centred.
-                drawPath(
-                    Path().apply {
-                        moveTo(w * 0.12f, 0f)
-                        lineTo(w, h / 2f)
-                        lineTo(w * 0.12f, h)
-                        close()
-                    },
-                    tint,
-                )
-            }
-        }
+        // From the set — CALENDAR_UI.md §4.
+        //
+        // The comment that used to be here justified drawing the triangle and the square by hand:
+        // Material's versions arrive with their own padding and optical centre, which would not
+        // agree with a 20dp glyph beside them. True of Material, and no longer true of anything —
+        // once every mark is one 28-unit space at one stroke, "it will not sit right next to the
+        // others" is the argument *for* using the set.
+        //
+        // Both are filled, which is the second and last fill exception; see YantraIcons' header.
+        YantraIcon(
+            if (live) YantraMark.Stop else YantraMark.Play,
+            size = YantraIcons.Medium,
+            tint = y.accent,
+            contentDescription = if (live) "Stop the clock" else "Start the clock",
+        )
     }
 }
 
