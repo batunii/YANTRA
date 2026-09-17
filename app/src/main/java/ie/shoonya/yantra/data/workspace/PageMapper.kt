@@ -137,6 +137,7 @@ object PageMapper {
                 title = page.title,
                 rank = Rank.after(null),
                 systemKey = page.systemKey,
+                color = page.color,
                 createdAt = ts,
                 updatedAt = ts,
             ),

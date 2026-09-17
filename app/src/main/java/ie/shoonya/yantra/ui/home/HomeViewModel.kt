@@ -207,6 +207,11 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     val defaultWorkspaceId: String
         get() = workspaces.firstOrNull { it.id.isEmpty() }?.id ?: workspaces.firstOrNull()?.id ?: ""
 
+    /** The colour a list wears, or null to take it off — the colour law, as remade. */
+    fun setListColor(listId: String, color: String?) {
+        viewModelScope.launch { container.nodes.setListColor(listId, color) }
+    }
+
     fun moveToGroup(id: String, groupId: String?) {
         viewModelScope.launch { nodes.moveToGroup(id, groupId) }
     }

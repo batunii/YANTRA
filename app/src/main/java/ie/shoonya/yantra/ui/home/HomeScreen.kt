@@ -105,6 +105,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.withStyle
 import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.data.label.LabelPalette
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 
 private enum class CreateType(val label: String, val placeholder: String, val action: String) {
     TASK("Task", "New task", "Create task"),
@@ -146,6 +149,8 @@ fun HomeScreen(nav: NavHostController) {
     val openCount = allRegularLists
         .mapNotNull { counts[it.id] }
         .sumOf { (it.total - it.doneCount).coerceAtLeast(0) }
+    // The list whose colour is being chosen — the colour law, as remade.
+    var colouring by remember { mutableStateOf<NodeEntity?>(null) }
     val booked by vm.bookedMinutes.collectAsStateWithLifecycle()
     val next by vm.nextToday.collectAsStateWithLifecycle()
     val live = timer
@@ -167,6 +172,7 @@ fun HomeScreen(nav: NavHostController) {
             onRename = { renaming = node },
             onDelete = { deleting = node },
             onMove = { movingNode = node },
+            onColour = { colouring = node },
         )
     }
 
@@ -332,6 +338,14 @@ fun HomeScreen(nav: NavHostController) {
             onConfirm = { vm.createGroup(it, vm.defaultWorkspaceId); showNewGroup = false },
         )
     }
+    colouring?.let { node ->
+        ListColourDialog(
+            current = node.color,
+            onDismiss = { colouring = null },
+            onPick = { name -> vm.setListColor(node.id, name); colouring = null },
+        )
+    }
+
     movingNode?.let { node ->
         MoveToGroupDialog(
             groups = groups,
@@ -368,6 +382,68 @@ fun HomeScreen(nav: NavHostController) {
 }
 
 private val dateFmt = DateTimeFormatter.ofPattern("EEEE · d MMM")
+
+/**
+ * Choosing the colour a list wears.
+ *
+ * The same closed strip a label uses, and deliberately the same one: two palettes would mean two
+ * vocabularies for the one idea, and the swatches are curated so a mark stays legible on warm paper
+ * and on dark. "None" is first and is not a colour — it is how a list goes back to frame ink, which
+ * has to be as easy to reach as any hue or the screen fills up with colour nobody chose.
+ */
+@Composable
+private fun ListColourDialog(
+    current: String?,
+    onDismiss: () -> Unit,
+    onPick: (String?) -> Unit,
+) {
+    val y = Yantra.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Colour") },
+        text = {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Frame ink, shown as a swatch so "no colour" is a choice on the same row as the
+                // colours rather than a link underneath them.
+                ColourDot(
+                    colour = y.checkOutline,
+                    selected = current == null,
+                    onClick = { onPick(null) },
+                )
+                LabelPalette.swatches.forEach { swatch ->
+                    ColourDot(
+                        colour = Color(LabelPalette.display(swatch.light, y.isDark)),
+                        selected = current.equals(swatch.name, ignoreCase = true),
+                        onClick = { onPick(swatch.name) },
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ColourDot(colour: Color, selected: Boolean, onClick: () -> Unit) {
+    val y = Yantra.colors
+    Box(
+        Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            // The ring says which one is on. It is drawn outside the fill rather than over it, so
+            // the swatch is still the colour you are judging.
+            .border(if (selected) 2.dp else 0.dp, if (selected) y.textPrimary else Color.Transparent, CircleShape)
+            .padding(if (selected) 4.dp else 0.dp)
+            .clip(CircleShape)
+            .background(colour)
+            .clickable(onClick = onClick),
+    )
+}
 
 /**
  * The next thing today — HOME_UI.md §6.
@@ -505,6 +581,7 @@ private fun HomeRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onMove: () -> Unit,
+    onColour: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -516,16 +593,25 @@ private fun HomeRow(
                 .padding(vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Both bare, in frame ink — HOME_UI.md §1.
+            // Both bare, and wearing whatever colour you gave them — HOME_UI.md §1, and the
+            // colour law as remade.
             //
             // A list used to be a coral-tinted tile around its mark while a smart list was a bare
             // mark: the same kind of thing in two treatments, and the tile was the heaviest element
-            // on the screen after the title. They are told apart by their drawing now, which is what
-            // the drawings are for.
+            // on the screen after the title. They are told apart by their drawing now.
+            //
+            // The colour is *yours*, not the app's. The accent means your own effort and a list is
+            // not effort, so it cannot borrow the accent — but it can carry a hue you chose, the
+            // way a label already does, and then the colour on this screen comes from your data
+            // rather than from the app having one loud idea. Uncoloured lists stay frame ink, which
+            // is what makes a coloured one mean something.
+            val mine = node.color
+                ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) } }
+                ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
             Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
                 YantraIcon(
                     if (smart) YantraMark.SmartList else YantraMark.List,
-                    tint = y.checkOutline,
+                    tint = mine ?: y.checkOutline,
                 )
             }
             Spacer(Modifier.width(13.dp))
@@ -557,6 +643,10 @@ private fun HomeRow(
             Box {
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+                    DropdownMenuItem(
+                        text = { Text("Colour…") },
+                        onClick = { menu = false; onColour() },
+                    )
                     DropdownMenuItem(
                         text = { Text(if (grouped) "Move to another group…" else "Move to group…") },
                         onClick = { menu = false; onMove() },

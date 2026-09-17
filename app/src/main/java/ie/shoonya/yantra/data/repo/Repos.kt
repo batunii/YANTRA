@@ -229,6 +229,18 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * is picking: a list picker shows every list the app has, and which repo each one lives in is
      * not something a person is thinking about when they file something.
      */
+    /**
+     * The colour a list wears, or null to take it off.
+     *
+     * [Change.STRUCTURAL] because every row drawing this list is drawn from the index, and a colour
+     * that arrived a beat after the tap would read as the tap having missed.
+     */
+    suspend fun setListColor(listId: String, color: String?) {
+        ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            it.copy(color = color)
+        }
+    }
+
     suspend fun moveToList(taskId: String, listId: String) {
         ws.moveAcross(taskId, listId)
     }

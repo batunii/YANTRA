@@ -102,6 +102,19 @@ data class NodeEntity(
     @ColumnInfo(name = "in_progress") val inProgress: Boolean = false,
     val collapsed: Boolean = false,
     /**
+     * The colour a list wears — DESIGN.md's colour law, as remade.
+     *
+     * The accent means *your own effort* and nothing else, which is why a list row went neutral
+     * when its coral tile came off. A list is not effort, so it cannot borrow the accent — but it
+     * can carry a colour you chose, the way a label already does. The colour on this screen then
+     * comes from your data rather than from the app's one hue.
+     *
+     * A palette **name**, not a value, for the same reason every other colour here is: a hex is
+     * chosen against one theme, and the light and dark twins of a swatch are not the same number.
+     * See [LabelPalette.display].
+     */
+    val color: String? = null,
+    /**
      * How far this block is indented on its page, purely visually. Deliberately *not* parentage:
      * indenting a block under a task must not move the block into that task, so how a line is laid
      * out and where it lives are two separate facts. Nesting is what a task's own page is for.

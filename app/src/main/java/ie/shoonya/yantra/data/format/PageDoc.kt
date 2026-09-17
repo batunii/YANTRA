@@ -41,6 +41,16 @@ data class PageDoc(
      * them silently is how "it worked on my phone and lost a field on my laptop" happens.
      */
     val unknownKeys: Map<String, String> = emptyMap(),
+    /**
+     * The colour this list wears, as a palette name.
+     *
+     * In the file, because it is a choice somebody made and the file is where choices live: a list
+     * coloured on the phone is the same colour on the laptop, and `rm -rf` on the database costs
+     * nothing. See [ie.shoonya.yantra.data.db.NodeEntity.color] for why it is a name.
+     *
+     * Last in the list, because PageDoc is built positionally in places.
+     */
+    val color: String? = null,
 )
 
 /** How a task line renders its glyph. Mirrors `done` + `in_progress`, which are never both set. */
