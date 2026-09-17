@@ -64,8 +64,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import ie.shoonya.yantra.ui.components.CaptureSuggestions
 import ie.shoonya.yantra.ui.components.rememberCaptureHighlight
 import ie.shoonya.yantra.ui.components.YantraButton
-import ie.shoonya.yantra.ui.components.Compass
 import ie.shoonya.yantra.ui.components.ConfirmDialog
+import ie.shoonya.yantra.ui.components.NavCircle
 import ie.shoonya.yantra.ui.components.NavCircleSurface
 import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.components.SelectChip
@@ -81,7 +81,6 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.smart.SmartListBuilderSheet
-import ie.shoonya.yantra.ui.components.GearMark
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.text.KeyboardActions
@@ -485,7 +484,7 @@ private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit)
         // also the screen most likely to be open while a sync runs, since that is where you land
         // after writing something.
         ie.shoonya.yantra.ui.components.NetworkPulse(Modifier.padding(top = 10.dp, end = 8.dp))
-        NavCircleSurface(onClick = onSettings, size = 40.dp) { SettingsGlyph() }
+        NavCircle(mark = YantraMark.Settings, contentDescription = "Settings", onClick = onSettings, size = 40.dp)
     }
 }
 
@@ -738,7 +737,9 @@ private fun HomeTabBar(onCreate: () -> Unit, onStats: () -> Unit, onCalendar: ()
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) { CalendarGlyph() }
+            Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) {
+                YantraIcon(YantraMark.Calendar, size = YantraIcons.Large, tint = y.textSecondary, contentDescription = "Calendar")
+            }
         }
         // The make-something key — HOME_UI.md §3.
         //
@@ -759,81 +760,16 @@ private fun HomeTabBar(onCreate: () -> Unit, onStats: () -> Unit, onCalendar: ()
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) { StatsGlyph() }
+            Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) {
+                YantraIcon(YantraMark.Stats, size = YantraIcons.Large, tint = y.textSecondary, contentDescription = "Stats")
+            }
         }
     }
 }
 
 
-@Composable
-private fun SettingsGlyph() {
-    val y = Yantra.colors
-    // three sliders — a settings mark distinct from the create cog
-    Canvas(Modifier.size(18.dp)) {
-        val w = size.width
-        fun line(cy: Float) = drawLine(y.textSecondary, Offset(0f, cy), Offset(w, cy), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
-        line(w * 0.22f); line(w * 0.5f); line(w * 0.78f)
-        fun knob(cx: Float, cy: Float) { drawCircle(y.page, radius = w * 0.13f, center = Offset(cx, cy)); drawCircle(y.accent, radius = w * 0.11f, center = Offset(cx, cy)) }
-        knob(w * 0.68f, w * 0.22f); knob(w * 0.34f, w * 0.5f); knob(w * 0.72f, w * 0.78f)
-    }
-}
 
-@Composable
-private fun StatsGlyph() {
-    val y = Yantra.colors
-    Canvas(Modifier.size(20.dp)) {
-        val w = 3.6f / 20f * size.width
-        val unit = size.height / 18f
-        fun bar(x: Float, h: Float, c: Color) {
-            drawRoundRect(
-                color = c,
-                topLeft = Offset(x / 20f * size.width, size.height - h * unit),
-                size = Size(w, h * unit),
-                cornerRadius = CornerRadius(1.2f * unit, 1.2f * unit),
-            )
-        }
-        bar(2f, 8f, y.textDim); bar(8.2f, 12f, y.textDim); bar(14.4f, 16f, y.accent)
-    }
-}
 
-/** A page of a month: a ruled box with today marked. Drawn rather than an icon, like its neighbours. */
-@Composable
-private fun CalendarGlyph() {
-    val y = Yantra.colors
-    Canvas(Modifier.size(20.dp)) {
-        val unit = size.width / 20f
-        val frame = 1.7f * unit
-        // A day, not a month.
-        //
-        // The old mark was a wall calendar: a sheet with two rings hanging off the top and one
-        // square in a corner. At twenty points the rings are a pair of hairlines poking out of the
-        // frame with nothing to attach to, and the lone square sat low and left, so the whole thing
-        // read as lopsided and slightly broken rather than as a calendar.
-        //
-        // This is what the screen behind it actually shows: a ruled day with a block on it. Two
-        // hours as hairlines, one filled block sitting across the middle in the accent, in the same
-        // language as the stats mark beside it — a frame, and one thing in it that is yours.
-        drawRoundRect(
-            color = y.textDim,
-            topLeft = Offset(2f * unit, 2.6f * unit),
-            size = Size(16f * unit, 14.8f * unit),
-            cornerRadius = CornerRadius(3.4f * unit, 3.4f * unit),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = frame),
-        )
-        // The hours. Faint enough to be the ruling rather than part of the frame.
-        val rule = y.textDim.copy(alpha = 0.45f)
-        listOf(7.4f, 12.6f).forEach { at ->
-            drawLine(rule, Offset(4.4f * unit, at * unit), Offset(15.6f * unit, at * unit), 1.1f * unit)
-        }
-        // The block, crossing a rule so it reads as something with a length rather than a dot.
-        drawRoundRect(
-            color = y.accent,
-            topLeft = Offset(5.6f * unit, 8.3f * unit),
-            size = Size(8.8f * unit, 3.9f * unit),
-            cornerRadius = CornerRadius(1.4f * unit, 1.4f * unit),
-        )
-    }
-}
 
 @Composable
 private fun MoveToGroupDialog(

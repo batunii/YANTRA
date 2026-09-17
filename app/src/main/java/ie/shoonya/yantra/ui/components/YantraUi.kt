@@ -126,21 +126,4 @@ fun YantraMark(
     }
 }
 
-/** Gear / cog — blunt-toothed ring with a hub. The "organize / grouping" motif from the yantra. */
-@Composable
-fun GearMark(modifier: Modifier = Modifier, tint: Color = Yantra.colors.accent) {
-    Canvas(modifier) {
-        val s = size.minDimension / 24f
-        val c = Offset(12f * s, 12f * s)
-        val ring = 6.2f * s
-        drawCircle(color = tint, radius = ring, center = c, style = Stroke(width = 2f * s))
-        for (i in 0 until 8) {
-            val a = Math.toRadians(i * 45.0)
-            val p1 = Offset(c.x + (ring * kotlin.math.cos(a)).toFloat(), c.y + (ring * kotlin.math.sin(a)).toFloat())
-            val p2 = Offset(c.x + (9f * s * kotlin.math.cos(a)).toFloat(), c.y + (9f * s * kotlin.math.sin(a)).toFloat())
-            drawLine(tint, p1, p2, strokeWidth = 2.6f * s, cap = StrokeCap.Round)
-        }
-        drawCircle(color = tint, radius = 1.9f * s, center = c)
-    }
-}
 

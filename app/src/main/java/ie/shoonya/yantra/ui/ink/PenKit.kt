@@ -249,7 +249,7 @@ private fun KitColumn(
         Box(Modifier.width(34.dp).height(1.dp).background(y.hairline))
 
         KitTool(
-            glyph = { tint -> LassoGlyph(tint) },
+            mark = YantraMark.Lasso,
             label = "Lasso",
             on = mode == InkMode.LASSO,
             // The lasso has nothing to set: it is a gesture, and what it catches is the setting.
@@ -284,7 +284,7 @@ private fun KitColumn(
         // no pen anywhere near them — removing it would take erasing away from most of the people
         // who have it now.
         KitTool(
-            glyph = { tint -> EraserGlyph(tint) },
+            mark = YantraMark.Eraser,
             label = "Eraser",
             on = mode == InkMode.ERASE,
             onClick = {
@@ -296,71 +296,7 @@ private fun KitColumn(
     }
 }
 
-/** A loop with a tail — what the gesture looks like, which is what the tool is. */
-@Composable
-private fun LassoGlyph(tint: Color, modifier: Modifier = Modifier.size(21.dp)) {
-    Canvas(modifier) {
-        val w = size.width
-        val stroke = Stroke(
-            width = w * 0.085f,
-            cap = StrokeCap.Round,
-            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
-                floatArrayOf(w * 0.13f, w * 0.10f),
-            ),
-        )
-        drawOval(
-            color = tint,
-            topLeft = Offset(w * 0.10f, w * 0.10f),
-            size = androidx.compose.ui.geometry.Size(w * 0.80f, w * 0.62f),
-            style = stroke,
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.50f, w * 0.72f),
-            end = Offset(w * 0.62f, w * 0.92f),
-            strokeWidth = w * 0.085f,
-            cap = StrokeCap.Round,
-        )
-    }
-}
 
-/**
- * An eraser, drawn.
- *
- * It was a backspace key borrowed from the icon set, which is a key that deletes the character
- * behind a caret — nothing on this screen has a caret, and the one person who asked what it was
- * guessed it was a fold control. The app draws its own marks everywhere else it needs one that
- * means something specific; this is one of those.
- *
- * A tilted block with a band across it: the rubber and the sleeve, which is what an eraser looks
- * like to anyone who has held one.
- */
-@Composable
-private fun EraserGlyph(tint: Color, modifier: Modifier = Modifier.size(21.dp)) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        rotate(-32f) {
-            val body = androidx.compose.ui.geometry.Rect(
-                left = w * 0.20f, top = h * 0.30f, right = w * 0.80f, bottom = h * 0.78f,
-            )
-            drawRoundRect(
-                color = tint,
-                topLeft = androidx.compose.ui.geometry.Offset(body.left, body.top),
-                size = androidx.compose.ui.geometry.Size(body.width, body.height),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.10f),
-                style = Stroke(width = w * 0.085f),
-            )
-            // The sleeve: the line that makes it an eraser rather than a rounded rectangle.
-            drawLine(
-                color = tint,
-                start = androidx.compose.ui.geometry.Offset(body.left, body.top + body.height * 0.55f),
-                end = androidx.compose.ui.geometry.Offset(body.right, body.top + body.height * 0.55f),
-                strokeWidth = w * 0.085f,
-            )
-        }
-    }
-}
 
 /** A slot drawn as the stroke it makes — the label is a name, the drawing is the answer. */
 @Composable

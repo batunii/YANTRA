@@ -140,6 +140,17 @@ enum class YantraMark {
      */
     Person,
     PersonOff,
+
+    /**
+     * The ink kit's two tools — ICONS.md §1's other half.
+     *
+     * §1 counted "six hand-drawn Canvas glyphs living as private composables inside screen files,
+     * with no shared source and no rule" alongside the stock Material marks. Migrating only the
+     * Material half left Home drawing its own calendar while [Calendar] sat unused in the set: two
+     * calendars in one app, which is the fault stated exactly.
+     */
+    Lasso,
+    Eraser,
 }
 
 object YantraIcons {
@@ -487,6 +498,29 @@ fun DrawScope.drawMark(mark: YantraMark, color: Color) {
                 color = color, startAngle = 180f, sweepAngle = 180f, useCenter = false,
                 topLeft = Offset(6f * u, 15f * u), size = Size(16f * u, 16f * u), style = stroke,
             )
+        }
+
+        // A loop that does not quite close — a lasso is a region you indicate, not a shape you draw.
+        YantraMark.Lasso -> {
+            val dash = Stroke(
+                YantraIcons.STROKE * u, cap = StrokeCap.Round, join = StrokeJoin.Round,
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                    floatArrayOf(2.6f * u, 2.2f * u), 0f,
+                ),
+            )
+            drawArc(
+                color = color, startAngle = 110f, sweepAngle = 320f, useCenter = false,
+                topLeft = Offset(4.5f * u, 4.5f * u), size = Size(19f * u, 17f * u), style = dash,
+            )
+            line(8f, 21f, 6.5f, 25f)
+        }
+
+        // The block, tilted, with the rule it is riding along.
+        YantraMark.Eraser -> {
+            path {
+                at(9f, 19f); to(17f, 6f); to(24f, 10f); to(16f, 23f); close()
+            }
+            line(4f, 23f, 20f, 23f)
         }
 
         YantraMark.PersonOff -> {

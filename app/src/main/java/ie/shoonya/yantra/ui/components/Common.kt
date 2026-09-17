@@ -177,45 +177,6 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yan
     )
 }
 
-/**
- * The compass — Yantra's progress indicator. The brass arc reads the fraction done over four
- * faint cardinal ticks (a compass dial at rest). No needle. At 100% the ring closes.
- */
-@Composable
-fun Compass(fraction: Float, modifier: Modifier = Modifier, size: Dp = 30.dp) {
-    val y = Yantra.colors
-    val ring = y.textPrimary.copy(alpha = 0.13f)
-    val tickC = y.textPrimary.copy(alpha = 0.34f)
-    val acc = y.accent
-    Canvas(modifier.size(size)) {
-        val sw = this.size.minDimension * 0.09f
-        val r = this.size.minDimension / 2f - sw / 2f - 0.5f
-        val c = Offset(this.size.width / 2f, this.size.height / 2f)
-        drawCircle(color = ring, radius = r, center = c, style = Stroke(width = sw))
-        val f = fraction.coerceIn(0f, 1f)
-        if (f >= 1f) {
-            drawCircle(color = acc, radius = r, center = c, style = Stroke(width = sw))
-        } else if (f > 0f) {
-            drawArc(
-                color = acc, startAngle = -90f, sweepAngle = 360f * f, useCenter = false,
-                topLeft = Offset(c.x - r, c.y - r),
-                size = Size(r * 2f, r * 2f),
-                style = Stroke(width = sw, cap = StrokeCap.Round),
-            )
-        }
-        for (i in 0 until 4) {
-            val ang = (i * 90.0) * PI / 180.0
-            val ca = cos(ang).toFloat()
-            val sa = sin(ang).toFloat()
-            drawLine(
-                color = tickC,
-                start = Offset(c.x + ca * (r + sw * 0.55f), c.y + sa * (r + sw * 0.55f)),
-                end = Offset(c.x + ca * (r - sw * 0.55f), c.y + sa * (r - sw * 0.55f)),
-                strokeWidth = sw * 0.42f + 0.6f, cap = StrokeCap.Round,
-            )
-        }
-    }
-}
 
 @Composable
 fun TextFieldDialog(
