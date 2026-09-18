@@ -72,6 +72,174 @@ import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
+ * Something a pill needs the **page** to open on its behalf.
+ *
+ * Every editor behind a property pill is a dialog or a sheet, and the row those pills live in is in
+ * the page's header band — which folds the moment the keyboard comes up. A dialog whose open/closed
+ * flag is remembered inside that row dies with the row, mid-keystroke, and the app looks like it
+ * crashed. It did exactly that with the label picker, and five more were one keystroke behind it.
+ *
+ * So a pill does not open anything. It *asks*, the page holds the request, and [PillDialogHost]
+ * draws it somewhere the band cannot reach — see the note on [PropertyRow.onRequest].
+ *
+ * `FoldableDialogOwnershipTest` fails the build if a component in the band starts owning one again.
+ */
+internal sealed interface PillRequest {
+    /** A plain date — the picker. */
+    data class Date(val def: PropertyDefEntity, val value: PropertyValueEntity?) : PillRequest
+    /** Due, which is a date plus a time plus a reminder, and has its own sheet. */
+    data class Due(val def: PropertyDefEntity, val value: PropertyValueEntity?) : PillRequest
+    /** Text or a number — the one you type into, and so the one that folds the band. */
+    data class Text(val def: PropertyDefEntity, val value: PropertyValueEntity?) : PillRequest
+    /** The roster. */
+    data class Assignee(val def: PropertyDefEntity, val value: PropertyValueEntity?) : PillRequest
+    /** Recolouring a label already attached, from its chip. */
+    data class Recolour(val label: LabelEntity) : PillRequest
+    /** The label picker: search the ones that exist, or type a new name. */
+    data object Label : PillRequest
+}
+
+/**
+ * Draws whatever the property row asked for — **call this from the screen, never from the row**.
+ *
+ * It is one composable rather than six call sites so the page adds a single line and cannot wire
+ * four of the five by accident.
+ */
+@Composable
+internal fun PillDialogHost(
+    request: PillRequest?,
+    allLabels: List<LabelEntity>,
+    attachedLabels: List<LabelEntity>,
+    onSet: (def: PropertyDefEntity, text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
+    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSetDeadline: (dateMillis: Long) -> Unit,
+    onClear: (defId: String) -> Unit,
+    onAttachLabel: (LabelEntity) -> Unit,
+    onCreateAndAttachLabel: (String, Long?) -> Unit,
+    onRecolourLabel: (LabelEntity, Long?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    when (request) {
+        null -> Unit
+        is PillRequest.Label -> LabelPickerDialog(
+            allLabels = allLabels,
+            attachedIds = attachedLabels.map { it.id }.toSet(),
+            onDismiss = onDismiss,
+            onPick = { label -> onAttachLabel(label); onDismiss() },
+            onCreate = { name, colour -> onCreateAndAttachLabel(name, colour); onDismiss() },
+        )
+        is PillRequest.Recolour -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(request.label.name) },
+            text = {
+                SwatchStrip(
+                    selected = request.label.color,
+                    onPick = { onRecolourLabel(request.label, it); onDismiss() },
+                )
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        )
+        is PillRequest.Assignee -> {
+            val source = LocalPeople.current
+            AssigneeSheet(
+                current = request.value?.vText,
+                people = source.people,
+                onRefresh = source.onRefresh,
+                refreshing = source.refreshing,
+                refreshNote = source.note,
+                onPick = { login -> onSet(request.def, login, null, null, null); onDismiss() },
+                onClear = { onClear(request.def.id); onDismiss() },
+                onDismiss = onDismiss,
+            )
+        }
+        is PillRequest.Due -> DueSheet(
+            initialDateMillis = request.value?.vDate,
+            initialHasTime = request.value?.vBool == true,
+            initialReminderMin = request.value?.vNumber?.toInt(),
+            onDismiss = onDismiss,
+            onSet = { d, hasTime, rem -> onSetDue(d, hasTime, rem); onDismiss() },
+            onClear = request.value?.let { { onClear(request.def.id); onDismiss() } },
+        )
+        is PillRequest.Date -> {
+            val isDeadline = request.def.kind == PropertyKind.DATE &&
+                request.def.name == BuiltIns.DEADLINE_NAME
+            // Initial value: local date re-encoded as the picker's UTC-midnight convention.
+            val state = rememberDatePickerState(
+                initialSelectedDateMillis = request.value?.vDate?.let {
+                    Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                        .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+                }
+            )
+            DatePickerDialog(
+                onDismissRequest = onDismiss,
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            state.selectedDateMillis?.let { picked ->
+                                // Picker yields UTC-midnight; convert to the local-day instant.
+                                val local = Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC)
+                                    .toLocalDate().atStartOfDay(ZoneId.systemDefault())
+                                    .toInstant().toEpochMilli()
+                                if (isDeadline) onSetDeadline(local)
+                                else onSet(request.def, null, null, local, null)
+                            }
+                            onDismiss()
+                        },
+                    ) { Text("Set") }
+                },
+                dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+            ) {
+                DatePicker(state = state)
+            }
+        }
+        is PillRequest.Text -> {
+            val isNumber = request.def.kind == PropertyKind.NUMBER
+            var text by remember(request) {
+                mutableStateOf(
+                    if (isNumber) request.value?.vNumber?.let {
+                        if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
+                    }.orEmpty()
+                    else request.value?.vText.orEmpty()
+                )
+            }
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { Text(request.def.name) },
+                text = {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        singleLine = true,
+                        placeholder = { Text(if (isNumber) "0" else "Value") },
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (isNumber) text.toDoubleOrNull()
+                                ?.let { onSet(request.def, null, it, null, null) }
+                            else if (text.isNotBlank()) onSet(request.def, text.trim(), null, null, null)
+                            onDismiss()
+                        },
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    Row {
+                        if (request.value != null) {
+                            TextButton(onClick = { onClear(request.def.id); onDismiss() }) {
+                                Text("Clear", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        TextButton(onClick = onDismiss) { Text("Cancel") }
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
  * Superlist-style always-visible properties: one pill per built-in property definition
  * (Priority, Due — the fixed set) plus the task's labels, directly on the task page. Set values
  * render filled with the value; unset render as dimmed ghost "+ Name" pills. Tapping edits in
@@ -85,32 +253,28 @@ import ie.shoonya.yantra.ui.theme.YantraRadius
  * turned the top of every task page into a form.
  */
 @Composable
-fun PropertyRow(
+internal fun PropertyRow(
     defs: List<PropertyDefEntity>,
     values: Map<String, PropertyValueEntity>,
     allLabels: List<LabelEntity>,
     attachedLabels: List<LabelEntity>,
     onSet: (def: PropertyDefEntity, text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
-    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
-    onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: (defId: String) -> Unit,
-    onAttachLabel: (LabelEntity) -> Unit,
     onDetachLabel: (LabelEntity) -> Unit,
-    onCreateAndAttachLabel: (String, Long?) -> Unit,
-    onRecolourLabel: (LabelEntity, Long?) -> Unit,
     /**
-     * Open the label picker — **the caller owns it, and must draw it outside this row**.
+     * Ask the page to open an editor — **this row must never open one itself**.
      *
-     * This row lives in the page's header band, and the band folds away the moment the keyboard
-     * comes up (`collapsed || (imeVisible && !titleFocused)`). A dialog remembered in here went
-     * with it: tapping into "Search or create…" raised the keyboard, the band folded, this
-     * composable left composition, and the picker vanished mid-keystroke. It reads as a crash and
-     * was reported as one.
+     * The row lives in the page's header band, and the band folds the moment the keyboard comes up
+     * (`collapsed || (imeVisible && !titleFocused)`). Anything remembered in here goes with it:
+     * tapping into "Search or create…" raised the keyboard, the band folded, this composable left
+     * composition, and the picker vanished mid-keystroke. It reads as a crash and was reported as
+     * one — and the label picker was only the first of six.
      *
-     * The meeting header learned this first — see the note on `collapsedExtra` in NodePageScreen —
-     * and the rule is the same. **A dialog does not belong to the thing that opened it.**
+     * The meeting header learned this first; see the note on `collapsedExtra` in NodePageScreen.
+     * **A dialog does not belong to the thing that opened it.** The page holds the request and
+     * [PillDialogHost] draws it. `FoldableDialogOwnershipTest` keeps it that way.
      */
-    onPickLabel: () -> Unit,
+    onRequest: (PillRequest) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
@@ -135,19 +299,18 @@ fun PropertyRow(
                 def = def,
                 value = values[def.id],
                 onSet = { t, n, d, b -> onSet(def, t, n, d, b) },
-                onSetDue = onSetDue,
-                onSetDeadline = onSetDeadline,
                 onClear = { onClear(def.id) },
+                onRequest = onRequest,
             )
         }
         attachedLabels.forEach { label ->
             LabelChip(
                 label = label,
                 onClick = { onDetachLabel(label) },
-                onRecolour = { colour -> onRecolourLabel(label, colour) },
+                onRecolour = { onRequest(PillRequest.Recolour(label)) },
             )
         }
-        GhostPill(label = "+ Label", dashed = true, onClick = onPickLabel)
+        GhostPill(label = "+ Label", dashed = true, onClick = { onRequest(PillRequest.Label) })
         Spacer(Modifier.width(12.dp))
     }
 }
@@ -167,7 +330,11 @@ fun LabelChipsRow(
     onRecolour: (LabelEntity, Long?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // This row is on the property sheet, not in the page's folding band, so it may own its own
+    // dialogs — nothing here leaves composition when the keyboard arrives. The band's copy of the
+    // same controls (PropertyRow) may not; see PillRequest.
     var picking by remember { mutableStateOf(false) }
+    var recolouring by remember { mutableStateOf<LabelEntity?>(null) }
     FlowRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -177,7 +344,7 @@ fun LabelChipsRow(
             LabelChip(
                 label = label,
                 onClick = { onDetach(label) },
-                onRecolour = { colour -> onRecolour(label, colour) },
+                onRecolour = { recolouring = label },
             )
         }
         GhostPill(label = "+ Label", dashed = true, onClick = { picking = true })
@@ -190,6 +357,21 @@ fun LabelChipsRow(
             onDismiss = { picking = false },
             onPick = { label -> onAttach(label); picking = false },
             onCreate = { name, colour -> onCreateAndAttach(name, colour); picking = false },
+        )
+    }
+
+    recolouring?.let { label ->
+        AlertDialog(
+            onDismissRequest = { recolouring = null },
+            title = { Text(label.name) },
+            text = {
+                SwatchStrip(
+                    selected = label.color,
+                    onPick = { onRecolour(label, it); recolouring = null },
+                )
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { recolouring = null }) { Text("Cancel") } },
         )
     }
 }
@@ -246,14 +428,14 @@ private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long?) -> Unit = {}) {
+private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: () -> Unit = {}) {
     val s = chipStyleFor(label.color?.let { Color(it) })
-    var recolouring by remember { mutableStateOf(false) }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .background(s.bg, RoundedCornerShape(YantraRadius.tiny))
-            .combinedClickable(onClick = onClick, onLongClick = { recolouring = true })
+            .combinedClickable(onClick = onClick, onLongClick = onRecolour)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         YantraIcon(YantraMark.Label, tint = s.dot, contentDescription = null)
@@ -261,20 +443,6 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
         Text(label.name, fontSize = YantraType.caption, fontWeight = FontWeight.W600, color = s.text)
     }
 
-    if (recolouring) {
-        AlertDialog(
-            onDismissRequest = { recolouring = false },
-            title = { Text(label.name) },
-            text = {
-                SwatchStrip(
-                    selected = label.color,
-                    onPick = { onRecolour(it); recolouring = false },
-                )
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { recolouring = false }) { Text("Cancel") } },
-        )
-    }
 }
 
 /** Tap an existing label to attach it, or type a new name and create it — attach/detach and
@@ -358,15 +526,14 @@ private fun PropertyPill(
     def: PropertyDefEntity,
     value: PropertyValueEntity?,
     onSet: (text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
-    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
-    onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: () -> Unit,
+    /** Every editor this pill offers is drawn by the page — see [PillRequest]. */
+    onRequest: (PillRequest) -> Unit,
 ) {
+    // The menu may stay. It is a dropdown anchored to this pill, it raises no keyboard, and a menu
+    // that closes when its anchor folds away is a menu behaving correctly — unlike a dialog, which
+    // is a window of its own and has no business tracking the life of the chip that opened it.
     var menu by remember { mutableStateOf(false) }
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showDueSheet by remember { mutableStateOf(false) }
-    var showTextDialog by remember { mutableStateOf(false) }
-    var showAssignee by remember { mutableStateOf(false) }
     val isDue = def.kind == PropertyKind.DATE && def.name == BuiltIns.DUE_NAME
     val isDeadline = def.kind == PropertyKind.DATE && def.name == BuiltIns.DEADLINE_NAME
     // By id, not by name. A workspace scaffolded by an older build could carry a def called
@@ -386,13 +553,14 @@ private fun PropertyPill(
     Box {
         val onClick: () -> Unit = {
             when {
-                isAssignee -> showAssignee = true
+                isAssignee -> onRequest(PillRequest.Assignee(def, value))
                 def.kind == PropertyKind.SELECT -> menu = true
-                isDue -> if (value?.vDate != null) menu = true else showDueSheet = true
-                def.kind == PropertyKind.DATE -> if (value?.vDate != null) menu = true else showDatePicker = true
+                isDue -> if (value?.vDate != null) menu = true else onRequest(PillRequest.Due(def, value))
+                def.kind == PropertyKind.DATE ->
+                    if (value?.vDate != null) menu = true else onRequest(PillRequest.Date(def, value))
                 def.kind == PropertyKind.CHECKBOX ->
                     if (value?.vBool == true) onClear() else onSet(null, null, null, true)
-                else -> showTextDialog = true
+                else -> onRequest(PillRequest.Text(def, value))
             }
         }
 
@@ -433,7 +601,7 @@ private fun PropertyPill(
                 isDue -> {
                     DropdownMenuItem(
                         text = { Text("Change…") },
-                        onClick = { menu = false; showDueSheet = true },
+                        onClick = { menu = false; onRequest(PillRequest.Due(def, value)) },
                     )
                     DropdownMenuItem(
                         text = { Text("Clear", color = MaterialTheme.colorScheme.error) },
@@ -467,7 +635,7 @@ private fun PropertyPill(
                 PropertyKind.DATE -> {
                     DropdownMenuItem(
                         text = { Text("Change date…") },
-                        onClick = { menu = false; showDatePicker = true },
+                        onClick = { menu = false; onRequest(PillRequest.Date(def, value)) },
                     )
                     DropdownMenuItem(
                         text = { Text("Clear", color = MaterialTheme.colorScheme.error) },
@@ -480,104 +648,6 @@ private fun PropertyPill(
         }
     }
 
-    if (showAssignee) {
-        val source = LocalPeople.current
-        AssigneeSheet(
-            current = value?.vText,
-            people = source.people,
-            onRefresh = source.onRefresh,
-            refreshing = source.refreshing,
-            refreshNote = source.note,
-            onPick = { login -> onSet(login, null, null, null); showAssignee = false },
-            onClear = { onClear(); showAssignee = false },
-            onDismiss = { showAssignee = false },
-        )
-    }
-
-    if (showDueSheet) {
-        DueSheet(
-            initialDateMillis = value?.vDate,
-            initialHasTime = value?.vBool == true,
-            initialReminderMin = value?.vNumber?.toInt(),
-            onDismiss = { showDueSheet = false },
-            onSet = onSetDue,
-            onClear = value?.let { { onClear() } },
-        )
-    }
-
-    if (showDatePicker) {
-        // Initial value: local date re-encoded as the picker's UTC-midnight convention.
-        val state = rememberDatePickerState(
-            initialSelectedDateMillis = value?.vDate?.let {
-                Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-            }
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        state.selectedDateMillis?.let { picked ->
-                            // Picker yields UTC-midnight; convert to the local-day instant.
-                            val local = Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate()
-                                .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                            if (isDeadline) onSetDeadline(local) else onSet(null, null, local, null)
-                        }
-                        showDatePicker = false
-                    },
-                ) { Text("Set") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-            },
-        ) {
-            DatePicker(state = state)
-        }
-    }
-
-    if (showTextDialog) {
-        val isNumber = def.kind == PropertyKind.NUMBER
-        var text by remember {
-            mutableStateOf(
-                if (isNumber) value?.vNumber?.let {
-                    if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
-                }.orEmpty()
-                else value?.vText.orEmpty()
-            )
-        }
-        AlertDialog(
-            onDismissRequest = { showTextDialog = false },
-            title = { Text(def.name) },
-            text = {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    singleLine = true,
-                    placeholder = { Text(if (isNumber) "0" else "Value") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (isNumber) text.toDoubleOrNull()?.let { onSet(null, it, null, null) }
-                        else if (text.isNotBlank()) onSet(text.trim(), null, null, null)
-                        showTextDialog = false
-                    },
-                ) { Text("Save") }
-            },
-            dismissButton = {
-                Row {
-                    if (value != null) {
-                        TextButton(onClick = { onClear(); showTextDialog = false }) {
-                            Text("Clear", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                    TextButton(onClick = { showTextDialog = false }) { Text("Cancel") }
-                }
-            },
-        )
-    }
 }
 
 /** Ghost pills are offers, not facts — [GHOST_ALPHA] keeps them findable without competing. */
