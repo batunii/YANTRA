@@ -207,7 +207,9 @@ fun HomeScreen(nav: NavHostController) {
     Scaffold(
         containerColor = y.page,
         bottomBar = {
-            Column {
+            // One dock, two rows — see NowDock. Home's keys and whatever is running are the same
+            // object at the foot of the screen, not a panel parked on top of a bar.
+            ie.shoonya.yantra.ui.components.NowDock {
                 // The same bar as every other screen, above the strip rather than replacing it —
                 // Home's capture is already a key in that strip (the cog), so there is nothing here
                 // for the now bar to take.
@@ -221,6 +223,8 @@ fun HomeScreen(nav: NavHostController) {
                     },
                     onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
                 )
+                // Only when there is a player above them to be separated from.
+                if (stack.isNotEmpty()) ie.shoonya.yantra.ui.components.NowDockSeam()
                 val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
                 timingOccupied?.let {
                     SwitchHereDialog(
@@ -977,7 +981,10 @@ private fun HomeTabBar(onCreate: () -> Unit, onStats: () -> Unit, onCalendar: ()
     // the best-reachable corner of the bar to do it. The calendar has that corner now, which also
     // puts the two ways of *looking* at your work on either side of the one way of *adding* to it.
     Row(
-        Modifier.fillMaxWidth().background(y.page).navigationBarsPadding()
+        // No ground and no navigation-bar inset of its own: it is a row inside the dock, which
+        // carries both. It painted y.page here, which is what made the player above it read as a
+        // separate panel rather than the top of this one.
+        Modifier.fillMaxWidth()
             // 22dp, the one page margin — CALENDAR_UI.md §1 asked for the bars to agree, and
             // PAGE_MARGIN is the number they should agree on rather than a third one.
             .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 8.dp, bottom = 10.dp),

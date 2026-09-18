@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableFloatStateOf
@@ -293,7 +296,9 @@ fun NowPlayer(
             ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
             ?: y.textMuted
         ).copy(alpha = 0.72f)
-    val shape = RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet)
+    // No shape of its own: it is a row inside the dock, which is what carries the rounded top.
+    // The wash still fills the row while a session runs, so running lights this part of the dock up
+    // rather than introducing a second surface on top of it.
 
     Row(
         modifier
@@ -305,7 +310,7 @@ fun NowPlayer(
             // colour and the whole surface the loudest thing on the screen. CALENDAR_PLAN.md §16
             // already made the opposite call for a coloured block: replace the spine, tint the
             // wash, do not flood the fill. A bar is a block that happens to be at the bottom.
-            .background(if (live) y.accentFill else y.band, shape)
+            .background(if (live) y.accentFill else Color.Transparent)
             // The spine is identity; the wash is state.
             //
             // It used to appear only while running, which made it a fourth way of saying something
@@ -318,7 +323,7 @@ fun NowPlayer(
             // single workspace open it is frame ink, which is what "nothing to tell apart" looks
             // like everywhere else in the app.
             //
-            // Inset, because this surface has rounded top corners and a block does not.
+            // Inset, because the dock above it has rounded top corners and a block does not.
             .then(if (spineInk == null) Modifier else Modifier.spine(spineInk, inset = 10.dp))
             .then(
                 if (dealt.size < 2) Modifier else Modifier.draggable(
@@ -445,8 +450,15 @@ fun NowPlayer(
                     else -> "ON THE GO".takeIf { current.listName.isNullOrBlank() }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                  // **Takes the whole line, so the rings cannot move.**
+                  //
+                  // It sized to its text before, which put the rings immediately after the list
+                  // name — and a list name is a different width on every card, so the indicator
+                  // slid left and right as you swiped. Fixed to the text is not fixed: the point of
+                  // holding the rings still is that the eye can stay on them, and it cannot if they
+                  // are somewhere new each time. Filling the row pins them to its end.
                   Row(
-                      modifier = travels.then(Modifier.weight(1f, fill = false)),
+                      modifier = travels.then(Modifier.weight(1f)),
                       verticalAlignment = Alignment.CenterVertically,
                   ) {
                     current.listName?.takeIf { it.isNotBlank() }?.let { list ->
@@ -645,7 +657,47 @@ private fun TransportKey(live: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * The bottom of a screen that can capture: the field, and under it the player when something is on
+ * The dock: one surface at the foot of a screen, holding whatever that screen puts there.
+ *
+ * The player used to be its own panel — its own ground, its own rounded top — stacked above the
+ * tab bar's or the capture field's. Two surfaces, one above the other, read as two objects that
+ * happen to be adjacent, and the player looked bolted on rather than part of the furniture.
+ *
+ * One ground, one rounded top, and the contents sit inside it: on Home the player above the three
+ * keys, on a list the player above the capture field. The screen's permanent bar and the thing that
+ * is running are then the same object, and the player arriving no longer introduces a new surface —
+ * it fills a row of one that was already there.
+ */
+/**
+ * The seam between two rows of the dock.
+ *
+ * One surface holding two things needs to say they are two things. Without it the player's words
+ * and the keys beneath them float on one ground with nothing between them, which is the opposite
+ * failure to the one the dock fixed: it read as two objects, and then as none.
+ *
+ * The app's hairline, so it is the same mark that ends a run on Home — a line is a boundary here
+ * too, just a horizontal one inside a surface rather than between rows of a list.
+ */
+@Composable
+fun NowDockSeam() {
+    HorizontalDivider(color = Yantra.colors.hairline, thickness = 1.dp)
+}
+
+@Composable
+fun NowDock(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val y = Yantra.colors
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet))
+            .background(y.band)
+            .navigationBarsPadding(),
+        content = content,
+    )
+}
+
+/**
+ * The bottom of a screen that can capture: the field, and above it the player when something is on
  * the go.
  *
  * **Capture is always open.** It used to hide behind a key whenever anything was running, which made
@@ -686,13 +738,14 @@ fun BottomBar(
     // A no-op once granted, and once denied: the launcher only fires when the permission is
     // actually missing, so pressing play repeatedly does not re-ask.
     val askNotifications = rememberNotificationPermissionRequest()
-    Column(modifier.fillMaxWidth()) {
+    NowDock(modifier) {
         if (shown.isNotEmpty()) {
             NowPlayer(
                 stack = shown,
                 onOpen = onOpenNow,
                 onToggleClock = { now -> askNotifications(); onToggleClock(now) },
             )
+            NowDockSeam()
         }
         // One number, not two. The field is the outermost thing now, so its breathing room at the
         // screen edge is the same whether or not a player is above it — which is the whole point of
