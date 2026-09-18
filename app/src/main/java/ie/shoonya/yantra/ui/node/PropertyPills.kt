@@ -98,9 +98,21 @@ fun PropertyRow(
     onDetachLabel: (LabelEntity) -> Unit,
     onCreateAndAttachLabel: (String, Long?) -> Unit,
     onRecolourLabel: (LabelEntity, Long?) -> Unit,
+    /**
+     * Open the label picker — **the caller owns it, and must draw it outside this row**.
+     *
+     * This row lives in the page's header band, and the band folds away the moment the keyboard
+     * comes up (`collapsed || (imeVisible && !titleFocused)`). A dialog remembered in here went
+     * with it: tapping into "Search or create…" raised the keyboard, the band folded, this
+     * composable left composition, and the picker vanished mid-keystroke. It reads as a crash and
+     * was reported as one.
+     *
+     * The meeting header learned this first — see the note on `collapsedExtra` in NodePageScreen —
+     * and the rule is the same. **A dialog does not belong to the thing that opened it.**
+     */
+    onPickLabel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var picking by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
     // Only dissolve the edge when there is genuinely something past it, or the last pill of a
     // row that fits would fade for no reason.
@@ -135,18 +147,8 @@ fun PropertyRow(
                 onRecolour = { colour -> onRecolourLabel(label, colour) },
             )
         }
-        GhostPill(label = "+ Label", dashed = true, onClick = { picking = true })
+        GhostPill(label = "+ Label", dashed = true, onClick = onPickLabel)
         Spacer(Modifier.width(12.dp))
-    }
-
-    if (picking) {
-        LabelPickerDialog(
-            allLabels = allLabels,
-            attachedIds = attachedLabels.map { it.id }.toSet(),
-            onDismiss = { picking = false },
-            onPick = { label -> onAttachLabel(label); picking = false },
-            onCreate = { name, colour -> onCreateAndAttachLabel(name, colour); picking = false },
-        )
     }
 }
 
@@ -278,7 +280,7 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: (Long
 /** Tap an existing label to attach it, or type a new name and create it — attach/detach and
  * delete are both plain, symmetric operations, unlike the old global-property-def flow. */
 @Composable
-private fun LabelPickerDialog(
+internal fun LabelPickerDialog(
     allLabels: List<LabelEntity>,
     attachedIds: Set<String>,
     onDismiss: () -> Unit,

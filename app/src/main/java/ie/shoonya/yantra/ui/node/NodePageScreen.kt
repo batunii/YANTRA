@@ -231,6 +231,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
     var propertySheetFor by remember { mutableStateOf<String?>(null) }
     var deletingPage by remember { mutableStateOf(false) }
+    // Screen level, not inside the property row — see the note on PropertyRow.onPickLabel. The row
+    // is in the band, the band folds when the keyboard comes up, and a picker you have to type into
+    // cannot live somewhere that disappears the moment you type.
+    var pickingLabel by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // The lists this page could be filed onto — CALENDAR_PLAN.md §28. Null while the picker is shut;
     // read when it opens rather than watched, because it is a one-shot choice and a list appearing
@@ -528,6 +532,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         onDetachLabel = { label -> vm.detachLabel(nodeId, label.id) },
                         onCreateAndAttachLabel = { name, colour -> vm.createAndAttachLabel(nodeId, name, colour) },
                         onRecolourLabel = { label, colour -> vm.setLabelColor(label.id, colour) },
+                        onPickLabel = { pickingLabel = true },
                         modifier = Modifier.padding(top = 16.dp),
                     )
                     LinkedRow(
@@ -1122,6 +1127,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // way to be left looking at a page that is no longer there.
             onDelete = null,
             onDismiss = { editingEvent = null },
+        )
+    }
+
+    if (pickingLabel) {
+        LabelPickerDialog(
+            allLabels = allLabels,
+            attachedIds = ownLabels.map { it.id }.toSet(),
+            onDismiss = { pickingLabel = false },
+            onPick = { label -> vm.attachLabel(nodeId, label.id); pickingLabel = false },
+            onCreate = { name, colour ->
+                vm.createAndAttachLabel(nodeId, name, colour)
+                pickingLabel = false
+            },
         )
     }
 
