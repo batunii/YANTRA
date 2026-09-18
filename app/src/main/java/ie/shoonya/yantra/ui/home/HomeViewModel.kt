@@ -216,6 +216,14 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { nodes.moveToGroup(id, groupId) }
     }
 
+    /**
+     * Fold a group on Home. Device-local by design — see [NodeRepository.setCollapsed]: whether a
+     * section is folded is about this screen, not about the work, so it never reaches the file.
+     */
+    fun setCollapsed(id: String, collapsed: Boolean) {
+        viewModelScope.launch { nodes.setCollapsed(id, collapsed) }
+    }
+
     fun deleteGroup(id: String) {
         viewModelScope.launch { nodes.deleteGroup(id) }
     }

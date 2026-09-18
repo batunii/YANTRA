@@ -324,11 +324,15 @@ fun HomeScreen(nav: NavHostController) {
                             GroupBanner(
                                 title = group.title.orEmpty().ifBlank { "Untitled group" },
                                 count = byGroup[group.id]?.size ?: 0,
+                                collapsed = group.collapsed,
+                                onToggle = { vm.setCollapsed(group.id, !group.collapsed) },
                                 onRename = { renaming = group },
                                 onDelete = { deleting = group },
                             )
                         }
-                        items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                        if (!group.collapsed) {
+                            items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                        }
                     }
                 }
 
@@ -762,30 +766,69 @@ private fun HomeRow(
     }
 }
 
+/**
+ * A group of lists, inside the repository that owns it.
+ *
+ * **It is a heading, and it was louder than both its neighbours.** The Display face at 14.5/W700 in
+ * full ink put it above the rows it heads (15/W500) in weight and far above the workspace heading
+ * that contains it (11/W700, muted) — a child heading shouting over its parent. Three levels now
+ * step down in the order they nest: the repository is tracked caps in its own hue, a group is a
+ * quiet secondary line, a list row is the loudest thing because it is the thing you came for.
+ *
+ * **It folds, and remembers.** Every app with folders lets you collapse them, and the app already
+ * had the machinery — `node.collapsed` with a deliberately device-local write, on the grounds that
+ * whether a section is folded is about this screen and not about the work. A group on Home is that
+ * exact case, so it reuses it rather than inventing a second kind of memory.
+ *
+ * The trailing overflow key is gone, for the reason HomeRow gave when it dropped its own: a column
+ * of identical keys down the right edge. Tap folds, long-press is the menu — the same gesture the
+ * rows beneath it already use, so there is one rule on this screen rather than two.
+ */
 @Composable
-private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun GroupBanner(
+    title: String,
+    count: Int,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val y = Yantra.colors
     var menu by remember { mutableStateOf(false) }
-    Row(
-        Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            title, fontFamily = YantraDisplay, fontSize = YantraType.body, fontWeight = FontWeight.W700,
-            color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text("$count", fontFamily = YantraMono, fontSize = YantraType.dense, color = y.textDim)
-        Spacer(Modifier.weight(1f))
-        Box {
-            IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
-                YantraIcon(YantraMark.More, tint = y.textDim, contentDescription = "Group options")
-            }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
-                DropdownMenuItem(text = { Text("Delete group") }, onClick = { menu = false; onDelete() })
-            }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onToggle, onLongClick = { menu = true })
+                .padding(top = 16.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // One drawing at two rotations — see YantraMark.Up. The wedge is the fold's only
+            // affordance now, so it is the one part of this line that is not muted into the paper.
+            YantraIcon(
+                if (collapsed) YantraMark.Forward else YantraMark.Down,
+                size = YantraIcons.Small,
+                tint = y.textMuted,
+                contentDescription = if (collapsed) "Expand group" else "Collapse group",
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                title,
+                fontFamily = YantraText,
+                fontSize = YantraType.label,
+                fontWeight = FontWeight.W600,
+                color = y.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(8.dp))
+            // The count is what a folded group still has to say: it is the only thing left of it.
+            Text("$count", fontFamily = YantraMono, fontSize = YantraType.dense, color = y.textDim)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+            DropdownMenuItem(text = { Text("Delete group") }, onClick = { menu = false; onDelete() })
         }
     }
 }
