@@ -280,10 +280,11 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
                 .lastOrNull { it.type == NodeType.LIST }
                 ?.let { it.id to Links.plain(it.title.orEmpty()).ifBlank { "Untitled list" } }
         }
-        // Names live in the registry rather than on the store, and Personal is in there too — it is
-        // the entry with the empty id, which is also what a session written before workspaces
-        // existed carries.
-        val wsNames = container.registry.entries().associate { it.id to it.name }
+        // Personal is **not** in the registry — the comment here used to say it was, which is the
+        // belief this whole class of bug is made of. The registry lists linked repositories; the
+        // container is what knows the local workspace exists. The empty id is Personal's, and is
+        // also what a session written before workspaces existed carries.
+        val wsNames = container.openWorkspaces().associate { it.id to it.name }
 
         fun cuts(rows: List<FocusSessionEntity>) = Breakdown(
             tasks = rollup(rows, stateOf) { taskOf[it.nodeId] },

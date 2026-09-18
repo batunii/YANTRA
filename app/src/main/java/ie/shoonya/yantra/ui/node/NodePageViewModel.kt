@@ -155,7 +155,7 @@ class NodePageViewModel(
     val workspaceName: StateFlow<String> =
         node.map { current ->
             val id = current?.workspaceId ?: return@map "Workspace"
-            container.registry.entries().firstOrNull { it.id == id }?.name ?: "Workspace"
+            container.openWorkspaces().firstOrNull { it.id == id }?.name ?: "Workspace"
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Workspace")
 
     /** Titles of this page's ancestors, root → parent, for the header breadcrumb. */

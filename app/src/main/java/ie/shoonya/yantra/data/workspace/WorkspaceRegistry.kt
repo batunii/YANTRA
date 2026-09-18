@@ -76,8 +76,13 @@ class WorkspaceRegistry(private val root: File) {
      * with no repository into every list of repositories in the app.
      */
     fun colorOf(id: String): String? =
-        if (id.isEmpty()) localColor.takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
-        else entries().firstOrNull { it.id == id }?.color
+        if (id.isEmpty()) {
+            // The file this class writes wins, then whatever a listed entry happens to carry: some
+            // builds wrote the local workspace into the registry as well, and a colour picked in
+            // Settings goes to the file.
+            localColor.takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
+                ?: entries().firstOrNull { it.id.isEmpty() }?.color
+        } else entries().firstOrNull { it.id == id }?.color
 
     /** The colour a workspace wears, or null to take it off. Kept, so it can be corrected. */
     fun setColor(id: String, color: String?) {

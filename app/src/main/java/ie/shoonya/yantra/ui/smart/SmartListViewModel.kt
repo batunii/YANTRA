@@ -68,11 +68,11 @@ class SmartListViewModel(
     /**
      * The workspaces the builder may offer as a rule's reach.
      *
-     * Registry order, filtered to what is actually open — a repo listed but not opened cannot be
-     * searched, and offering it would let someone write a rule that silently matches nothing.
+     * Registry order with the local workspace at the front, filtered to what is actually open — a
+     * repo listed but not opened cannot be searched, and offering it would let someone write a rule
+     * that silently matches nothing.
      */
-    val workspaces: List<WorkspaceEntry> =
-        container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+    val workspaces: List<WorkspaceEntry> = container.openWorkspaces()
 
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -90,7 +90,7 @@ class SmartListViewModel(
     val absentWorkspaces: StateFlow<List<String>> =
         def.map { d ->
             if (d == null) emptyList() else {
-                val names = container.registry.entries().associate { it.id to it.name }
+                val names = container.openWorkspaces().associate { it.id to it.name }
                 smartLists.absentWorkspaces(d).map { names[it] ?: "an unknown workspace" }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -126,8 +126,7 @@ class SmartListViewModel(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val origins: StateFlow<Map<String, Origin>> =
         tasks.map { rows ->
-            val open = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
-            val names = open.associate { it.id to it.name }
+            val names = container.openWorkspaces().associate { it.id to it.name }
             // The workspace as a hue rather than a word.
             //
             // **Not grouped, and that stays.** Grouping by repository was the textbook answer and
@@ -355,9 +354,9 @@ class SmartListViewModel(
         if (d == null) return ""
         val defById = defs.associateBy { it.id }
         val labelById = labels.associateBy { it.id }
-        // Named from the registry, not the index: a rule may name a workspace this device has since
-        // forgotten, and "from 93c907a5-…" is worse than nothing on a one-line pill.
-        val wsById = container.registry.entries().associate { it.id to it.name }
+        // Named from the workspace list, not the index: a rule may name a workspace this device
+        // has since forgotten, and "from 93c907a5-…" is worse than nothing on a one-line pill.
+        val wsById = container.openWorkspaces().associate { it.id to it.name }
         val parts = mutableListOf<String>()
         val filter = runCatching { FilterJson.decodeFromString(Filter.serializer(), d.filterJson) }.getOrNull()
         collectParts(filter, defById, labelById, wsById, parts)

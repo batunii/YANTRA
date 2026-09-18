@@ -356,12 +356,16 @@ open class YantraListWidget : GlanceAppWidget() {
             ?: emptyMap()
 
         // The repository as a colour, resolved once: workspaces do not open and close while a
-        // widget is on screen, and the widget re-renders from scratch when they do. Null for a
-        // single open repository, by the same rule the smart list screen follows.
-        val openWs = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
-        val workspaceHues: Map<String, Long> =
-            if (openWs.size < 2) emptyMap()
-            else openWs.associate { it.id to LabelPalette.defaultFor(it.name) }
+        // widget is on screen, and the widget re-renders from scratch when they do.
+        //
+        // Asked of the container, which is the only thing that knows the local workspace exists and
+        // the only thing that reads the colour somebody actually chose. Counted from the registry
+        // before, so a device with Personal and one linked repo counted *one* workspace and drew no
+        // spine at all — on the surface that has nothing but the spine to say which repo a row came
+        // from.
+        val workspaceHues: Map<String, Long> = container.workspaceColours()
+            .mapNotNull { (id, name) -> LabelPalette.byName(name)?.let { id to it.light } }
+            .toMap()
 
         // Two flows folded into one so the combine below stays inside its five-argument overload.
         val labelFlow = combine(

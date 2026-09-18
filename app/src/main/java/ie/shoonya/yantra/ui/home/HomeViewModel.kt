@@ -50,11 +50,16 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     /**
      * The workspaces the builder may offer as a rule's reach.
      *
-     * Registry order, filtered to what is actually open — a repo listed but not opened cannot be
-     * searched, and offering it would let someone write a rule that silently matches nothing.
+     * Registry order with the local workspace at the front, filtered to what is actually open — a
+     * repo listed but not opened cannot be searched, and offering it would let someone write a rule
+     * that silently matches nothing.
+     *
+     * It asked the registry directly before, which does not list the local workspace: the picker
+     * never offered Personal, never appeared at all for anyone with exactly one repo linked, and
+     * [defaultWorkspaceId] fell through its own first branch to the first *linked* repo. A group
+     * made on Home landed in a repository nobody had chosen. See [AppContainer.openWorkspaces].
      */
-    val workspaces: List<WorkspaceEntry> =
-        container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+    val workspaces: List<WorkspaceEntry> = container.openWorkspaces()
 
     val topLevel: StateFlow<List<NodeEntity>> =
         nodes.topLevel().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

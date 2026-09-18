@@ -215,14 +215,36 @@ class AppContainer(val app: Application) {
      */
     fun workspaceNames(): Map<String, String> = distinguishable().associate { it.id to it.name }
 
-    /** The open workspaces, or none at all when there is only one of them to tell apart. */
-    private fun distinguishable(): List<WorkspaceEntry> {
-        val open = (
-            listOf(WorkspaceEntry(id = "", name = "Personal", color = registry.colorOf("")))
-                + registry.entries()
-            ).filter { workspaces.isOpen(it.id) }
-        return if (open.size < 2) emptyList() else open
+    /**
+     * Every workspace this device has open, **including the local one**.
+     *
+     * The registry holds linked repositories and says so at the top of its own file: the local
+     * workspace is not in there. So anything reaching for `registry.entries()` is quietly asking
+     * "which repositories have I linked", and gets an answer missing the workspace most people keep
+     * most of their work in.
+     *
+     * That is not hypothetical. It is why a new list defaulted to the first *linked* repo despite a
+     * default that says it should go to the local one, why the workspace picker never appeared for
+     * someone with exactly one repo linked — one entry is not "more than one" — and why the colour
+     * chosen for Personal in Settings had nowhere to be written. One resolver, so the next thing
+     * that needs the list of workspaces cannot get a different answer.
+     */
+    fun openWorkspaces(): List<WorkspaceEntry> {
+        val listed = registry.entries()
+        // **Deduplicated by id, and the local one is not assumed absent.** The registry is supposed
+        // to hold linked repositories only, but some builds have written an entry for the local
+        // workspace too — App.kt has to filter `id.isNotEmpty()` before linking for exactly that
+        // reason. Prepending a second Personal put it in the picker twice; Home hid it only because
+        // it keys by id and a map collapses the pair.
+        val local = listed.firstOrNull { it.id.isEmpty() } ?: WorkspaceEntry(id = "", name = "Personal")
+        return (listOf(local.copy(color = registry.colorOf(""))) + listed)
+            .distinctBy { it.id }
+            .filter { workspaces.isOpen(it.id) }
     }
+
+    /** The open workspaces, or none at all when there is only one of them to tell apart. */
+    private fun distinguishable(): List<WorkspaceEntry> =
+        openWorkspaces().takeIf { it.size >= 2 }.orEmpty()
 
     /**
      * One indexer for the whole app, deliberately.
