@@ -37,6 +37,15 @@ import ie.shoonya.yantra.domain.TimingRequest
 /** Where a row lives, for the views that gather across lists and repositories. */
 data class Origin(
     val list: String?,
+    /**
+     * The list's own colour — the same one its mark wears on Home and its name wears on the player.
+     *
+     * It used to be the *workspace's* hue on this text, which made one list two colours: violet on
+     * Home, plum here, because Personal is plum. Two screens disagreeing about what colour a list
+     * is, is the whole failure the colour law exists to prevent. The repository moved to the spine,
+     * where it is on every other surface.
+     */
+    val listHue: Long?,
     val workspace: String?,
     /** The repository's own hue, or null when there is only one and it distinguishes nothing. */
     val workspaceHue: Long?,
@@ -121,23 +130,29 @@ class SmartListViewModel(
             val names = open.associate { it.id to it.name }
             // The workspace as a hue rather than a word.
             //
-            // Grouping by it was the textbook answer and it costs too much here: this view is
-            // ordered by what is most pressing, and cutting it into per-repository runs puts a
-            // high-priority task in one below a quiet one in another. The ordering is the point of
-            // the view. So the workspace rides on the list name the row already prints — one piece
-            // of text carrying two facts and taking the width of one, which is what Reminders does
-            // with a list's colour.
+            // **Not grouped, and that stays.** Grouping by repository was the textbook answer and
+            // it costs too much here: this view is ordered by what is most pressing, and cutting it
+            // into per-repository runs puts a high-priority task in one below a quiet one in
+            // another. The ordering is the point of the view — which is exactly why an aggregated
+            // view carries its provenance *per row* instead, the way All Inboxes does.
             //
-            // Null when only one repository is open: a colour that always means the same thing
-            // means nothing, and the list name is better off neutral.
-            val hue = if (open.size < 2) null else open.associate { it.id to LabelPalette.defaultFor(it.name) }
+            // The repository is the **spine** on that row, as it is everywhere else in the app, and
+            // the list keeps its own colour on its own name. It used to be the other way round: the
+            // workspace's hue was painted onto the list's name, so one list came out violet on Home
+            // and plum here. One fact, one place, and never a hue doing two jobs.
+            //
+            // Both are null when only one repository is open: a colour that always means the same
+            // thing means nothing.
+            val hue = container.workspaceColours().mapNotNull { (id, name) ->
+                LabelPalette.byName(name)?.let { id to it.light }
+            }.toMap()
             rows.associate { task ->
+                val parent = task.parentId?.let { nodes.byId(it) }
                 task.id to Origin(
-                    list = task.parentId?.let { nodes.byId(it) }
-                        ?.let { Links.plain(it.title.orEmpty()) }
-                        ?.takeIf { it.isNotBlank() },
+                    list = parent?.let { Links.plain(it.title.orEmpty()) }?.takeIf { it.isNotBlank() },
+                    listHue = LabelPalette.byName(parent?.color)?.light,
                     workspace = names[task.workspaceId],
-                    workspaceHue = hue?.get(task.workspaceId),
+                    workspaceHue = hue[task.workspaceId],
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())

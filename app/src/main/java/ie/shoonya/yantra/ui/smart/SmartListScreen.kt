@@ -56,6 +56,8 @@ import ie.shoonya.yantra.ui.components.startedTaskIds
 import ie.shoonya.yantra.ui.components.NavCircle
 import ie.shoonya.yantra.ui.node.TextualBlockRow
 import ie.shoonya.yantra.ui.container
+import androidx.compose.ui.graphics.Color
+import ie.shoonya.yantra.ui.components.spine
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraText
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -219,10 +221,21 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
 
         @Composable
         fun SmartTaskRow(task: NodeEntity) {
+            // The repository, as the spine — the same mark it is on the player, a widget row and a
+            // block on the day. This view gathers tasks from every open repo and is ordered by what
+            // is most pressing rather than by where things live, so it cannot group by repository;
+            // an aggregated view carries its provenance on each row instead. Absent while a single
+            // repository is open, when there is nothing to tell apart.
+            val spineInk = origins[task.id]?.workspaceHue
+                ?.let { Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark)) }
             ListGroupRow(started = task.inProgress) {
                 // A row here cannot be typed into, so a link in a title is collapsed and tappable —
                 // and tapping it goes where it points rather than opening the task it sits on.
-                Box(Modifier.padding(horizontal = 14.dp)) {
+                Box(
+                    Modifier
+                        .then(if (spineInk == null) Modifier else Modifier.spine(spineInk, inset = 7.dp))
+                        .padding(horizontal = 14.dp)
+                ) {
                 CompositionLocalProvider(
                     LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
                     LocalLinkResolver provides resolveLink,

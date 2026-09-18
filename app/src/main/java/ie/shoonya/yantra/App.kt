@@ -299,7 +299,17 @@ class AppContainer(val app: Application) {
         // the spine its colour. Two facts because they are drawn two ways — a word you can read and
         // a rule you cannot, which is what keeps five swatches from having to mean two things.
         lists = db.nodeDao().taskOrigins()
-            .map { rows -> rows.associate { it.id to (it.listName to it.listColor) } },
+            // "Untitled" rather than nothing, the way Home and the widget already name a list
+            // nobody got round to naming. A blank title used to fall through every
+            // `takeIf { isNotBlank() }` downstream and leave the player's eyebrow saying ON THE GO
+            // — which reads as "this task is in no list" when it is in one, and the spine beside it
+            // is already saying which repository that list is in.
+            .map { rows ->
+                rows.associate { row ->
+                    val name = row.listName?.ifBlank { null } ?: "Untitled"
+                    row.id to (name to row.listColor)
+                }
+            },
         workspaceColours = db.nodeDao().taskOrigins()
             .map { rows ->
                 val hues = workspaceColours()

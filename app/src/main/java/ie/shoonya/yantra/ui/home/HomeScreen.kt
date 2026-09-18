@@ -169,6 +169,18 @@ fun HomeScreen(nav: NavHostController) {
     val app = ie.shoonya.yantra.ui.appContainer()
     val spaceNames = remember { app.workspaceNames() }
     val spaceHues = remember { app.workspaceColours() }
+    // One section per open repository, in registry order (the local one first), or a single
+    // untitled-by-repo section when there is only one and the split would say nothing. A null id
+    // means "everything", which is also the safety net for a list whose repository has since been
+    // closed — it lands in a section rather than vanishing off the screen.
+    val sections: List<Pair<String?, String>> = remember(spaceNames, allLists) {
+        if (spaceNames.size < 2) listOf(null to "Lists")
+        else {
+            val known = spaceNames.keys
+            val strays = allLists.map { it.workspaceId }.filterNot { it in known }.distinct()
+            spaceNames.map { (id, name) -> id as String? to name } + strays.map { it as String? to "Workspace" }
+        }
+    }
 
     val renderRow: @Composable (NodeEntity) -> Unit = { node ->
         val smart = node.type == NodeType.SMART_LIST
@@ -188,8 +200,6 @@ fun HomeScreen(nav: NavHostController) {
             onDelete = { deleting = node },
             onMove = { movingNode = node },
             onColour = { colouring = node },
-            workspace = spaceNames[node.workspaceId],
-            workspaceColour = spaceHues[node.workspaceId],
         )
     }
 
@@ -278,20 +288,48 @@ fun HomeScreen(nav: NavHostController) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
                     items(ungroupedSmart, key = { it.id }) { renderRow(it) }
                 }
-                if (ungroupedLists.isNotEmpty()) {
-                    item(key = "lists-header") { SectionHeader("Lists") }
-                    items(ungroupedLists, key = { it.id }) { renderRow(it) }
-                }
-                groups.forEach { group ->
-                    item(key = "g-${group.id}") {
-                        GroupBanner(
-                            title = group.title.orEmpty().ifBlank { "Untitled group" },
-                            count = byGroup[group.id]?.size ?: 0,
-                            onRename = { renaming = group },
-                            onDelete = { deleting = group },
+                // Lists under the repository they belong to, and groups nested inside it.
+                //
+                // Said once instead of on every row. The workspace *replaces* the "Lists" heading
+                // rather than sitting above it, so the screen gains a fact and no depth: it was
+                // LISTS → group → row and it is PERSONAL → group → row. This is the shape every
+                // app with more than one account converges on — Todoist's team workspaces, Notion's
+                // teamspaces, an account section in Notes and in Mail — and it holds here for the
+                // reason it holds there: a list belongs to exactly one repository, so the grouping
+                // is a fact about the data rather than a view someone chose.
+                //
+                // **Pinned is deliberately not grouped.** A smart list's rule spans every open repo
+                // unless it names one, so it has no repository to sit under, and heading it with a
+                // repo name would be a claim the rule contradicts. It goes on top, ungrouped, which
+                // is where All Inboxes sits in Mail and All Notes in Notes.
+                //
+                // With a single repository open there is nothing to tell apart, so it goes back to
+                // being one section called "Lists".
+                sections.forEach { (id, name) ->
+                    val loose = ungroupedLists.filter { id == null || it.workspaceId == id }
+                    val mine = groups.filter { id == null || it.workspaceId == id }
+                    if (loose.isEmpty() && mine.isEmpty()) return@forEach
+                    item(key = "ws-$id") {
+                        SectionHeader(
+                            name,
+                            // The heading is the legend the spine is read against — DESIGN.md §4.7.
+                            // A hue is a glance and its name is right here, once.
+                            ink = LabelPalette.byName(spaceHues[id])
+                                ?.let { Color(LabelPalette.display(it.light, y.isDark)) },
                         )
                     }
-                    items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                    items(loose, key = { it.id }) { renderRow(it) }
+                    mine.forEach { group ->
+                        item(key = "g-${group.id}") {
+                            GroupBanner(
+                                title = group.title.orEmpty().ifBlank { "Untitled group" },
+                                count = byGroup[group.id]?.size ?: 0,
+                                onRename = { renaming = group },
+                                onDelete = { deleting = group },
+                            )
+                        }
+                        items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                    }
                 }
 
                 item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
@@ -365,7 +403,15 @@ fun HomeScreen(nav: NavHostController) {
 
     movingNode?.let { node ->
         MoveToGroupDialog(
-            groups = groups,
+            // Only groups from this list's own repository — the rule Todoist arrived at for the
+            // same shape (a folder is scoped to one workspace, and cannot span two).
+            //
+            // It offered every group before, and `moveToGroup` only reparents: it does not move a
+            // node between repositories. So a Personal list could be given a v2-tasks parent, and
+            // the parent id it then carried does not exist in Personal's files — the group is
+            // unresolvable on any device that has not added v2-tasks. It was a broken write before
+            // Home grouped by repository; grouping is what makes it visible.
+            groups = groups.filter { it.workspaceId == node.workspaceId },
             currentGroupId = node.parentId,
             onDismiss = { movingNode = null },
             onPick = { groupId -> vm.moveToGroup(node.id, groupId); movingNode = null },
@@ -582,8 +628,12 @@ private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit)
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    SectionLabel(text, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp))
+private fun SectionHeader(text: String, ink: Color? = null) {
+    SectionLabel(
+        text,
+        modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
+        color = ink ?: Yantra.colors.textMuted,
+    )
 }
 
 @Composable

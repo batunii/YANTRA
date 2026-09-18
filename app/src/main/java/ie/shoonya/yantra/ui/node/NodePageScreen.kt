@@ -2398,10 +2398,9 @@ internal fun TextualBlockRow(
                 // workspace, the assignee and a session count.
                 origin?.list?.let { list ->
                     sep()
-                    // Tinted by the repository it belongs to, when there is more than one. One
-                    // piece of text saying both which list and which workspace, at the width of the
-                    // list name alone.
-                    val ink = origin.workspaceHue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
+                    // The list's own colour — the same one its mark wears on Home. The repository is
+                    // the spine at the row's leading edge, not a second meaning for this word.
+                    val ink = origin.listHue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
                     withStyle(SpanStyle(color = ink ?: y.textDim)) { append(list) }
                 }
             }
