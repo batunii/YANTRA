@@ -3,7 +3,9 @@ package ie.shoonya.yantra.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
@@ -12,6 +14,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -62,6 +65,7 @@ import ie.shoonya.yantra.domain.sessionClock
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.theme.YantraMotion
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -353,14 +357,17 @@ fun NowPlayer(
             .padding(start = 18.dp, end = 10.dp, top = 11.dp, bottom = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // **The card moves; the frame does not.**
+        //
+        // This whole row used to travel with the drag, which took four things with it: the glyph,
+        // the title, the eyebrow and the deck rings. Two of those are not the card. The glyph is
+        // the app's mark for "a task is up" and belongs to the bar; the rings are a position
+        // indicator, and an indicator that slides away with the thing it is indicating has stopped
+        // indicating anything — no pager moves its own dots. Only the words travel now, which is
+        // also what makes the movement legible: one object crossing a fixed frame, rather than the
+        // whole bar sliding sideways inside itself.
         Row(
-            Modifier
-                .weight(1f)
-                .graphicsLayer {
-                    translationX = dragX
-                    alpha = 1f - (dragX.absoluteValue / (commit * 2.4f)).coerceIn(0f, 0.85f)
-                }
-                .clickable(onClick = { onOpen(current) }),
+            Modifier.weight(1f).clickable(onClick = { onOpen(current) }),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Neutral frame, accent ring — always, now.
@@ -378,6 +385,13 @@ fun NowPlayer(
                 size = 20.dp,
             )
             Spacer(Modifier.width(11.dp))
+            // What travels: the words, and only the words. The glyph is the bar's mark and the
+            // deck rings are a position indicator, so both stay where they are while a card crosses
+            // between them.
+            val travels = Modifier.graphicsLayer {
+                translationX = dragX
+                alpha = 1f - (dragX.absoluteValue / (commit * 2.4f)).coerceIn(0f, 0.85f)
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     // One line in a bar: the markers have nothing to become here either.
@@ -390,6 +404,7 @@ fun NowPlayer(
                     color = y.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = travels,
                 )
                 // The eyebrow: which list, then what is happening on it.
                 //
@@ -430,6 +445,10 @@ fun NowPlayer(
                     else -> "ON THE GO".takeIf { current.listName.isNullOrBlank() }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                  Row(
+                      modifier = travels.then(Modifier.weight(1f, fill = false)),
+                      verticalAlignment = Alignment.CenterVertically,
+                  ) {
                     current.listName?.takeIf { it.isNotBlank() }?.let { list ->
                         Text(
                             list.uppercase(),
@@ -467,7 +486,10 @@ fun NowPlayer(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                DeckRings(dealt = dealt, index = index)
+                  }
+                  // Still beside the eyebrow, where the spec put it — it just no longer travels
+                  // with the card it is counting.
+                  DeckRings(dealt = dealt, index = index)
                 }
             }
         }
@@ -493,6 +515,13 @@ fun NowPlayer(
  * The bindu was rejected for this. A row of dots with one filled is a gauge, and the bindu is the
  * centre and never a gauge; it is also the done state of the task glyph, so a bare filled dot among
  * rings would read as "finished" on the one card that is running.
+ *
+ * **The rings hold still and the mark slides between them.** They used to travel with the card on a
+ * drag and then change tint on arrival — so the indicator left the screen with the thing it was
+ * indicating, and the new state appeared rather than being arrived at. Now the row is fixed, a
+ * full-ink ring rides from position to position on the spatial spring, and every tint animates:
+ * taking a card up gains the accent over a beat instead of switching to it. Colour arriving slowly
+ * is the difference between a state you watched change and one you have to notice changed.
  */
 @Composable
 private fun DeckRings(dealt: List<RunningTask.Now>, index: Int) {
@@ -505,19 +534,48 @@ private fun DeckRings(dealt: List<RunningTask.Now>, index: Int) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (dealt.size <= RINGS_MAX) {
-            dealt.forEachIndexed { i, card ->
+            // One ring's width plus the gap: what the mark travels to move one place.
+            val pitch = YantraIcons.Small + 4.dp
+            val slide by animateDpAsState(
+                targetValue = pitch * index,
+                animationSpec = YantraMotion.spatial(),
+                label = "deckSlide",
+            )
+            Box {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    dealt.forEach { card ->
+                        // A card that is running but not the one you are looking at still says so.
+                        val tint by animateColorAsState(
+                            targetValue = if (card.hasSession) y.accent
+                            // Lifted rather than thinned. ICONS.md §8 flags 40% as possibly under
+                            // the 3:1 hairline rule on OLED and says to raise the alpha rather than
+                            // thicken the stroke — a heavier rest ring would stop being the mark.
+                            else y.textPrimary.copy(alpha = 0.55f),
+                            animationSpec = YantraMotion.effects(),
+                            label = "ringTint",
+                        )
+                        YantraIcon(
+                            if (card.hasSession) YantraMark.RingLive else YantraMark.Ring,
+                            size = YantraIcons.Small,
+                            tint = tint,
+                            contentDescription = null,
+                        )
+                    }
+                }
+                // Where you are, riding over the row rather than being one of it. Full ink on top
+                // of a rest ring reads as the same mark picked out, which is what selection is.
+                val hereLive = dealt[index].hasSession
+                val markTint by animateColorAsState(
+                    targetValue = if (hereLive) y.accent else y.textPrimary,
+                    animationSpec = YantraMotion.effects(),
+                    label = "deckMark",
+                )
                 YantraIcon(
-                    if (card.hasSession) YantraMark.RingLive else YantraMark.Ring,
+                    if (hereLive) YantraMark.RingLive else YantraMark.Ring,
                     size = YantraIcons.Small,
-                    tint = when {
-                        card.hasSession -> y.accent
-                        i == index -> y.textPrimary
-                        // Lifted rather than thinned. ICONS.md §8 flags 40% as possibly under the
-                        // 3:1 hairline rule on OLED and says to raise the alpha rather than thicken
-                        // the stroke — a heavier rest ring would stop being the same mark.
-                        else -> y.textPrimary.copy(alpha = 0.55f)
-                    },
+                    tint = markTint,
                     contentDescription = null,
+                    modifier = Modifier.offset(x = slide),
                 )
             }
         } else {
