@@ -595,8 +595,15 @@ private fun TransportKey(live: Boolean, onClick: () -> Unit) {
  * the highest-frequency action in the app for no reason but that something else wanted the space.
  * Writing something down should never cost a mode.
  *
- * The player sits *below* the field, at the very edge — it is the outermost thing, the reflection of
- * the header at the other end of the sheet, and the field stays where the thumb already expects it.
+ * **The player sits directly above the field**, which is the same rule Home follows with its nav
+ * strip: the player is never the outermost thing on a screen that has a permanent bar, it slots in
+ * above it. One rule, so the bottom of the app does not reshuffle itself between screens.
+ *
+ * It was the other way round, on the argument that the field should stay where the thumb expects it
+ * — and did the opposite, because a player appearing *underneath* pushes the field up by its own
+ * height. The edge padding dropped from 22dp to 10dp to soften that, which is a way of admitting the
+ * move rather than a way of stopping it. Above, the field is pinned to the screen edge and never
+ * moves at all, whatever is or is not running.
  *
  * **Both stand down while the keyboard is up.** A bar over the line you are typing is worse than no
  * bar: what is running is a thing you can check in a moment, and what you are writing is a thing you
@@ -622,9 +629,6 @@ fun BottomBar(
     // actually missing, so pressing play repeatedly does not re-ask.
     val askNotifications = rememberNotificationPermissionRequest()
     Column(modifier.fillMaxWidth()) {
-        // The field keeps its own breathing room at the screen edge, and gives most of it back when
-        // the player is underneath to catch it.
-        capture(if (shown.isEmpty()) 22.dp else 10.dp)
         if (shown.isNotEmpty()) {
             NowPlayer(
                 stack = shown,
@@ -632,6 +636,10 @@ fun BottomBar(
                 onToggleClock = { now -> askNotifications(); onToggleClock(now) },
             )
         }
+        // One number, not two. The field is the outermost thing now, so its breathing room at the
+        // screen edge is the same whether or not a player is above it — which is the whole point of
+        // moving it there.
+        capture(22.dp)
     }
 }
 
