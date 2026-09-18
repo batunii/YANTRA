@@ -620,6 +620,18 @@ private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit)
         }
     }
     val date = remember { LocalDate.now().format(dateFmt) }
+    // **The pulse is drawn over the header, not laid out inside it.**
+    //
+    // It sat in this Row, and a Row shares its width out: the pill expanding took width from the
+    // weighted column beside it, the greeting re-wrapped to fit what was left, the header grew a
+    // line taller, and the whole screen moved down — every time a sync started, and back up when it
+    // finished. A report that something is happening in the background must not rearrange the
+    // foreground; that is the one thing it was built not to do.
+    //
+    // Chrome's shared header does not have the problem and does not need this: the pill eats a
+    // flexible spacer there, and the title beside it is one line with an ellipsis, so nothing it
+    // takes can make anything taller.
+    Box(Modifier.fillMaxWidth()) {
     Row(
         Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.Top,
@@ -653,11 +665,15 @@ private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit)
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+        NavCircle(mark = YantraMark.Settings, contentDescription = "Settings", onClick = onSettings, size = 40.dp)
+    }
         // Home has its own header rather than the shared one, so it needs this explicitly. It is
         // also the screen most likely to be open while a sync runs, since that is where you land
-        // after writing something.
-        ie.shoonya.yantra.ui.components.NetworkPulse(Modifier.padding(top = 10.dp, end = 8.dp))
-        NavCircle(mark = YantraMark.Settings, contentDescription = "Settings", onClick = onSettings, size = 40.dp)
+        // after writing something. Aligned past the cog's 40dp and its gap, into the space beside
+        // the date, which is empty on every screen width this app supports.
+        ie.shoonya.yantra.ui.components.NetworkPulse(
+            Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 48.dp),
+        )
     }
 }
 
