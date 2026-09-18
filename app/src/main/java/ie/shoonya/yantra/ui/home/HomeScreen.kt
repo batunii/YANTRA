@@ -182,7 +182,7 @@ fun HomeScreen(nav: NavHostController) {
         }
     }
 
-    val renderRow: @Composable (NodeEntity) -> Unit = { node ->
+    val renderRow: @Composable (NodeEntity, Boolean) -> Unit = { node, closesRun ->
         val smart = node.type == NodeType.SMART_LIST
         val c = counts[node.id]
         HomeRow(
@@ -200,6 +200,7 @@ fun HomeScreen(nav: NavHostController) {
             onDelete = { deleting = node },
             onMove = { movingNode = node },
             onColour = { colouring = node },
+            closesRun = closesRun,
         )
     }
 
@@ -286,7 +287,9 @@ fun HomeScreen(nav: NavHostController) {
                 }
                 if (ungroupedSmart.isNotEmpty()) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
-                    items(ungroupedSmart, key = { it.id }) { renderRow(it) }
+                    items(ungroupedSmart, key = { it.id }) { node ->
+                        renderRow(node, node.id == ungroupedSmart.last().id)
+                    }
                 }
                 // Lists under the repository they belong to, and groups nested inside it.
                 //
@@ -327,10 +330,15 @@ fun HomeScreen(nav: NavHostController) {
                                 ?.let { Color(LabelPalette.display(it.light, y.isDark)) },
                         )
                     }
-                    entries.forEach { node ->
+                    entries.forEachIndexed { i, node ->
                         if (node.type != NodeType.GROUP) {
-                            item(key = node.id) { renderRow(node) }
-                            return@forEach
+                            // A loose row closes its run when a group — or the end of the
+                            // repository — comes next.
+                            val next = entries.getOrNull(i + 1)
+                            item(key = node.id) {
+                                renderRow(node, next == null || next.type == NodeType.GROUP)
+                            }
+                            return@forEachIndexed
                         }
                         item(key = "g-${node.id}") {
                             GroupBanner(
@@ -343,7 +351,10 @@ fun HomeScreen(nav: NavHostController) {
                             )
                         }
                         if (!node.collapsed) {
-                            items(byGroup[node.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                            val kids = byGroup[node.id].orEmpty()
+                            items(kids, key = { it.id }) { kid ->
+                                renderRow(kid, kid.id == kids.last().id)
+                            }
                         }
                     }
                 }
@@ -665,10 +676,16 @@ private fun HomeRow(
     onDelete: () -> Unit,
     onMove: () -> Unit,
     onColour: () -> Unit,
-    /** The repository this list came from, or null while there is only one of them. */
-    workspace: String? = null,
-    /** That repository's colour, as a palette name. */
-    workspaceColour: String? = null,
+    /**
+     * Whether to close the run with a hairline.
+     *
+     * **A line ends a run; it does not separate two rows inside one.** Every row used to carry one,
+     * which drew four rules through a four-row screen and read as padding — and it was saying what
+     * the heading above already said, since a heading and the space under it is what groups these
+     * rows in the first place. Now the only rule is the one under the last row before the next
+     * heading, which is a boundary and therefore worth a mark.
+     */
+    closesRun: Boolean = true,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -709,45 +726,14 @@ private fun HomeRow(
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 // Mono, per the type rule for numbers — HOME_UI.md §2. The subtitle is "0 of 4
-                // done", which is a count and reads as one.
-                //
-                // The repository's name rides on the end of it, in the repository's colour. This is
-                // the line the whole colour system is built on: **a colour is never more than a
-                // glance from its name.** The spine on a widget row and on a block is the same hue
-                // with no room for a word beside it, and this is where you learn which word it is.
-                // The mark above already wears the *list's* colour, so the two facts a row carries
-                // are told apart by where they sit — a fill for the list, a word for the repo — and
-                // never by hue alone, which five swatches could not do.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        subtitle,
-                        fontFamily = YantraMono,
-                        fontSize = YantraType.caption,
-                        color = y.textMuted,
-                    )
-                    if (workspace != null) {
-                        Text(
-                            "  ·  ",
-                            fontFamily = YantraMono,
-                            fontSize = YantraType.caption,
-                            color = y.textDim,
-                        )
-                        Text(
-                            workspace,
-                            fontFamily = YantraMono,
-                            fontSize = YantraType.caption,
-                            // The count beside it is W400; bolding this one made the least
-                            // important fact on the row the heaviest thing on its line. The hue is
-                            // the mark — it does not need a weight as well.
-                            fontWeight = FontWeight.W400,
-                            color = LabelPalette.byName(workspaceColour)
-                                ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
-                                ?: y.textMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                // done", which is a count and reads as one — and only that, now that the repository
+                // is named once at the top of its section rather than on every row under it.
+                Text(
+                    subtitle,
+                    fontFamily = YantraMono,
+                    fontSize = YantraType.caption,
+                    color = y.textMuted,
+                )
             }
             // The ring is gone, and so is the trailing key.
             //
@@ -774,7 +760,7 @@ private fun HomeRow(
                 }
             }
         }
-        HorizontalDivider(color = y.hairline, thickness = 1.dp)
+        if (closesRun) HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
