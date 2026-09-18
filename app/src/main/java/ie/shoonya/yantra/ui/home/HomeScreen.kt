@@ -306,9 +306,18 @@ fun HomeScreen(nav: NavHostController) {
                 // With a single repository open there is nothing to tell apart, so it goes back to
                 // being one section called "Lists".
                 sections.forEach { (id, name) ->
-                    val loose = ungroupedLists.filter { id == null || it.workspaceId == id }
-                    val mine = groups.filter { id == null || it.workspaceId == id }
-                    if (loose.isEmpty() && mine.isEmpty()) return@forEach
+                    // Lists and groups **in one rank order**, not lists-then-groups.
+                    //
+                    // They were rendered as two buckets, which put every group at the bottom of its
+                    // repository however you had arranged them — the ordering you dragged into
+                    // place was thrown away on the way to the screen. A group is a sibling of a
+                    // top-level list: `topLevel()` already returns both in rank order, and the only
+                    // thing that had to change is not taking them apart again.
+                    val entries = nodes.filter {
+                        (it.type == NodeType.LIST || it.type == NodeType.GROUP) &&
+                            (id == null || it.workspaceId == id)
+                    }
+                    if (entries.isEmpty()) return@forEach
                     item(key = "ws-$id") {
                         SectionHeader(
                             name,
@@ -318,20 +327,23 @@ fun HomeScreen(nav: NavHostController) {
                                 ?.let { Color(LabelPalette.display(it.light, y.isDark)) },
                         )
                     }
-                    items(loose, key = { it.id }) { renderRow(it) }
-                    mine.forEach { group ->
-                        item(key = "g-${group.id}") {
+                    entries.forEach { node ->
+                        if (node.type != NodeType.GROUP) {
+                            item(key = node.id) { renderRow(node) }
+                            return@forEach
+                        }
+                        item(key = "g-${node.id}") {
                             GroupBanner(
-                                title = group.title.orEmpty().ifBlank { "Untitled group" },
-                                count = byGroup[group.id]?.size ?: 0,
-                                collapsed = group.collapsed,
-                                onToggle = { vm.setCollapsed(group.id, !group.collapsed) },
-                                onRename = { renaming = group },
-                                onDelete = { deleting = group },
+                                title = node.title.orEmpty().ifBlank { "Untitled group" },
+                                count = byGroup[node.id]?.size ?: 0,
+                                collapsed = node.collapsed,
+                                onToggle = { vm.setCollapsed(node.id, !node.collapsed) },
+                                onRename = { renaming = node },
+                                onDelete = { deleting = node },
                             )
                         }
-                        if (!group.collapsed) {
-                            items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                        if (!node.collapsed) {
+                            items(byGroup[node.id].orEmpty(), key = { it.id }) { renderRow(it) }
                         }
                     }
                 }
