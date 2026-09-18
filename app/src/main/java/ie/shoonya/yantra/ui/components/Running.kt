@@ -410,15 +410,20 @@ fun NowPlayer(
                 // and RUNNING · 3:45 is the news, and that is a hierarchy rather than an
                 // inconsistency.
                 //
-                // **"ON THE GO" is dropped when there is a list to name.** A line this narrow — a
-                // deck of five rings takes a third of it — cannot carry both, and of the two that
-                // one is the absence of news: the glyph's ring and the ▶ on the transport key both
-                // already say a task is taken up and not counting. RUNNING and IT IS TIME are news
-                // and keep their place beside the name.
+                // **Only what the line cannot say without a word.**
+                //
+                // It said "ON THE GO" when idle and "RUNNING · 3:45" when counting, and both were
+                // labels on something already said. The first went because a deck of five rings
+                // takes a third of this line and the glyph's ring and the ▶ key both report a task
+                // taken up and not counting. And once *no word* means "not running", the word
+                // RUNNING is redundant in the same way: a clock that is ticking, in the accent,
+                // beside a ⏸, is the state. The number is the news; RUNNING was a caption on it.
+                //
+                // IT IS TIME keeps its words, because it is the one state with no numeral to carry
+                // it: the hour has come and nothing is counting. The bar says so; the file says
+                // nothing, which is the whole arrangement — see RunningTask.stack.
                 val state = when {
-                    current.elapsedSecs != null -> "RUNNING · ${elapsedLabel(current.elapsedSecs)}"
-                    // Its hour has come and nobody has pressed anything. The bar says so; the file
-                    // says nothing, which is the whole arrangement — see RunningTask.stack.
+                    current.elapsedSecs != null -> elapsedLabel(current.elapsedSecs)
                     current.scheduled -> "IT IS TIME"
                     // Only when the name is missing — a task whose list could not be resolved would
                     // otherwise have a blank eyebrow and look broken.
