@@ -557,7 +557,10 @@ private fun NextRow(
     } ?: 0L
     Column {
         Row(
-            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 11.dp),
+            // 8, not 11 — the same step the list rows took. The mark is 34dp tall, so the row is
+            // still 50 and clear of the 48dp a finger needs; the space was doing nothing the mark's
+            // own height was not already doing.
+            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
@@ -694,7 +697,10 @@ private fun HomeRow(
             Modifier
                 .fillMaxWidth()
                 .combinedClickable(onClick = onClick, onLongClick = { menu = true })
-                .padding(vertical = 11.dp),
+                // 8dp against a 34dp mark: a 50dp row, which still clears the 48 a finger needs.
+                // Rows were separated by a rule when this was 11, and a line and a gap were both
+                // paying for the same separation; with the rules gone the gap can come in.
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Both bare, and wearing whatever colour you gave them — HOME_UI.md §1, and the
