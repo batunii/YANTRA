@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -449,7 +450,18 @@ fun NowPlayer(
                     // otherwise have a blank eyebrow and look broken.
                     else -> "ON THE GO".takeIf { current.listName.isNullOrBlank() }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Capped, so a wide window does not fling the rings across it.
+                //
+                // The words take the whole line to keep the rings from sliding about as a list name
+                // changes length — which is right on a phone, where the whole line is 270dp. On a
+                // tablet the dock is a thousand points wide and the same rule put the indicator an
+                // arm's length from the state it qualifies, at the other end of the bar. A measure
+                // fixes both: the rings sit a readable distance from the words at every width, and
+                // still in the same place on every card.
+                Row(
+                    modifier = Modifier.widthIn(max = EYEBROW_MEASURE),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                   // **Takes the whole line, so the rings cannot move.**
                   //
                   // It sized to its text before, which put the rings immediately after the list
@@ -610,6 +622,14 @@ private fun DeckRings(dealt: List<RunningTask.Now>, index: Int) {
         }
     }
 }
+
+/**
+ * How far the eyebrow runs before the deck rings sit down.
+ *
+ * Wider than the line ever is on a phone, so it changes nothing there; it exists for the window
+ * that is wider than a sentence needs to be.
+ */
+private val EYEBROW_MEASURE = 300.dp
 
 /**
  * How many rings before the deck is counted instead of drawn.
