@@ -22,13 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -81,12 +74,16 @@ import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import ie.shoonya.yantra.ui.components.AppMark
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 class FocusViewModel(
     container: AppContainer,
@@ -178,7 +175,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                 .navigationBarsPadding(),
         ) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = { nav.popBackStack() },
                 iconSize = 22.dp,
@@ -230,7 +227,7 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
-                        YantraMark(
+                        AppMark(
                             Modifier.size(60.dp),
                             tint = y.checkOutline,
                             checkTint = y.accent.copy(alpha = 0.55f),
@@ -278,16 +275,16 @@ private fun DurationChip(
     val y = Yantra.colors
     Box(
         modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(YantraRadius.card))
             .background(if (selected) y.accent.copy(alpha = 0.16f) else y.cardBg)
-            .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
+            .then(if (selected) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.card)) else Modifier)
             .clickable(onClick = onClick)
             .padding(vertical = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
-            fontSize = 17.sp,
+            fontSize = YantraType.sheetTitle,
             fontWeight = if (selected) FontWeight.W800 else FontWeight.W700,
             color = if (selected) y.accentText else y.textSecondary,
         )
@@ -316,7 +313,7 @@ private fun TimerSetup(
         Row(
             modifier = Modifier
                 .padding(top = 6.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(YantraRadius.card))
                 .clickable(onClick = onOpenTask)
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -324,7 +321,7 @@ private fun TimerSetup(
             Text(
                 Links.plain(node.title.orEmpty()).ifBlank { "Untitled task" },
                 fontFamily = YantraDisplay,
-                fontSize = 32.sp,
+                fontSize = YantraType.hero,
                 lineHeight = 39.sp,
                 fontWeight = FontWeight.W700,
                 letterSpacing = (-0.4).sp,
@@ -334,8 +331,7 @@ private fun TimerSetup(
                 // Hugs its text, so the chevron follows the title rather than the screen edge.
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            YantraIcon(YantraMark.Forward,
                 contentDescription = "Open as page",
                 tint = y.textMuted,
                 // Scaled to the headline it sits beside, not to the 18dp the body rows use.
@@ -421,7 +417,7 @@ private fun TimerSetup(
             Text(
                 "Anything up to a few hours. 90 for a long stretch, 5 for a nudge.",
                 color = y.textDim,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -445,7 +441,7 @@ private fun TimerSetup(
             "A set length is a promise to yourself; the clock just records what you gave. Both go " +
                 "into the same history.",
             color = y.textDim,
-            fontSize = 11.5.sp,
+            fontSize = YantraType.caption,
         )
     }
 }
@@ -477,7 +473,7 @@ private fun ActiveTimer(
         Row(
             modifier = Modifier
                 .padding(start = 24.dp, end = 24.dp, top = 8.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(YantraRadius.panel))
                 .clickable(onClick = onOpenTask)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -485,7 +481,7 @@ private fun ActiveTimer(
         ) {
             Text(
                 state.nodeTitle.ifBlank { "Untitled task" },
-                fontSize = 16.sp,
+                fontSize = YantraType.card,
                 fontWeight = FontWeight.W700,
                 color = y.textPrimary,
                 textAlign = TextAlign.Center,
@@ -495,8 +491,7 @@ private fun ActiveTimer(
                 // stranded at the screen edge, and a long one still ellipsises before reaching it.
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            YantraIcon(YantraMark.Forward,
                 contentDescription = "Open as page",
                 tint = y.textMuted,
                 modifier = Modifier.padding(start = 2.dp).size(18.dp),
@@ -552,7 +547,7 @@ private fun ActiveTimer(
                 }
             },
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             letterSpacing = 1.sp,
             color = y.textDim,
             modifier = Modifier.padding(top = 6.dp),
@@ -567,8 +562,7 @@ private fun ActiveTimer(
                 .clickable { if (state.isRunning) onPause() else onResume() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (state.isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+            YantraIcon(if (state.isRunning) YantraMark.Pause else YantraMark.Play,
                 contentDescription = if (state.isRunning) "Pause" else "Resume",
                 tint = y.accent,
                 modifier = Modifier.size(30.dp),
@@ -586,7 +580,7 @@ private fun ActiveTimer(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            YantraButton("Finish", stopping(onComplete), tone = ButtonTone.Soft, icon = Icons.Default.Timer)
+            YantraButton("Finish", stopping(onComplete), tone = ButtonTone.Soft, mark = YantraMark.Focus)
             YantraButton("Drop", stopping(onAbandon), tone = ButtonTone.Quiet)
         }
 
@@ -636,13 +630,13 @@ private fun DoneContent(
                     .background(y.accent, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = y.onAccent, modifier = Modifier.size(26.dp))
+                YantraIcon(YantraMark.Check, tint = y.onAccent, contentDescription = null)
             }
         }
         Text(
             "Session complete",
             fontFamily = YantraDisplay,
-            fontSize = 24.sp,
+            fontSize = YantraType.screen,
             fontWeight = FontWeight.W700,
             letterSpacing = (-0.4).sp,
             color = y.textPrimary,
@@ -654,7 +648,7 @@ private fun DoneContent(
                 if (state.isOpen) append("${(state.actualOrElapsed()) / 60} min on $task")
                 else append("${state.plannedSecs / 60} min on $task")
             },
-            fontSize = 13.5.sp,
+            fontSize = YantraType.label,
             color = y.textMuted,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 6.dp),
@@ -664,11 +658,11 @@ private fun DoneContent(
             Box(
                 Modifier
                     .weight(1f)
-                    .background(y.secondaryButton, RoundedCornerShape(12.dp))
+                    .background(y.secondaryButton, RoundedCornerShape(YantraRadius.panel))
                     .clickable(onClick = onStartAnother)
                     .padding(vertical = 13.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text("Start another", fontSize = 14.sp, fontWeight = FontWeight.W600, color = y.textSecondary) }
+            ) { Text("Start another", fontSize = YantraType.body, fontWeight = FontWeight.W600, color = y.textSecondary) }
             YantraButton(
                 label = "Done",
                 modifier = Modifier.weight(1f),
@@ -693,9 +687,9 @@ private fun SessionRow(s: FocusSessionEntity) {
     ) {
         // A filled mark for a promise kept; an open one for time given without one. Both are time.
         if (ie.shoonya.yantra.data.db.FocusOutcome.keptItsPromise(s.outcome, s.plannedSecs)) {
-            Icon(Icons.Default.Timer, contentDescription = "Ran its course", tint = y.accent, modifier = Modifier.size(16.dp))
+            YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Ran its course")
         } else {
-            Text("◌", fontSize = 16.sp, color = y.textDim)
+            Text("◌", fontSize = YantraType.card, color = y.textDim)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -722,6 +716,6 @@ private fun SessionRow(s: FocusSessionEntity) {
                 color = y.textMuted,
             )
         }
-        Text("${s.plannedSecs / 60}m planned", fontSize = 11.sp, fontWeight = FontWeight.W600, color = y.textDim)
+        Text("${s.plannedSecs / 60}m planned", fontSize = YantraType.caption, fontWeight = FontWeight.W600, color = y.textDim)
     }
 }

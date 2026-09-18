@@ -155,7 +155,7 @@ class NodePageViewModel(
     val workspaceName: StateFlow<String> =
         node.map { current ->
             val id = current?.workspaceId ?: return@map "Workspace"
-            container.registry.entries().firstOrNull { it.id == id }?.name ?: "Workspace"
+            container.openWorkspaces().firstOrNull { it.id == id }?.name ?: "Workspace"
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Workspace")
 
     /** Titles of this page's ancestors, root → parent, for the header breadcrumb. */
@@ -638,5 +638,13 @@ class NodePageViewModel(
     /** Recolour a label wherever it appears. Null clears it back to the neutral chip. */
     fun setLabelColor(labelId: String, color: Long?) {
         viewModelScope.launch { labels.setColor(labelId, color) }
+    }
+
+    /** How many tasks carry a label, asked before offering to delete it. */
+    suspend fun labelUsage(labelId: String): Int = labels.usageCount(labelId)
+
+    /** Deletes a label from the workspace and takes its tag off every task that had it. */
+    fun deleteLabel(labelId: String) {
+        viewModelScope.launch { labels.deleteLabel(labelId) }
     }
 }

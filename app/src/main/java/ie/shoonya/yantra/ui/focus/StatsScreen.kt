@@ -24,11 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -89,6 +84,10 @@ import java.time.ZoneId
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 data class DayStat(val date: LocalDate, val completed: Int, val totalSecs: Int)
 
@@ -281,10 +280,11 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
                 .lastOrNull { it.type == NodeType.LIST }
                 ?.let { it.id to Links.plain(it.title.orEmpty()).ifBlank { "Untitled list" } }
         }
-        // Names live in the registry rather than on the store, and Personal is in there too — it is
-        // the entry with the empty id, which is also what a session written before workspaces
-        // existed carries.
-        val wsNames = container.registry.entries().associate { it.id to it.name }
+        // Personal is **not** in the registry — the comment here used to say it was, which is the
+        // belief this whole class of bug is made of. The registry lists linked repositories; the
+        // container is what knows the local workspace exists. The empty id is Personal's, and is
+        // also what a session written before workspaces existed carries.
+        val wsNames = container.openWorkspaces().associate { it.id to it.name }
 
         fun cuts(rows: List<FocusSessionEntity>) = Breakdown(
             tasks = rollup(rows, stateOf) { taskOf[it.nodeId] },
@@ -414,7 +414,7 @@ fun StatsScreen(nav: NavHostController) {
                             fontWeight = if (span == option) FontWeight.W700 else FontWeight.W500,
                             color = if (span == option) y.accentText else y.textMuted,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(YantraRadius.block))
                                 .clickable { span = option }
                                 .padding(horizontal = 4.dp, vertical = 3.dp),
                         )
@@ -449,20 +449,15 @@ fun StatsScreen(nav: NavHostController) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(YantraRadius.control))
                             .clickable { openedKey = null; openedTitle = null }
                             .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = "Back to all ${cut.label.lowercase()}",
-                            tint = y.accent,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        YantraIcon(YantraMark.Back, tint = y.accent, contentDescription = "Back to all ${cut.label.lowercase()}")
                         Text(
                             openedTitle.orEmpty(),
-                            fontSize = 13.sp,
+                            fontSize = YantraType.meta,
                             fontWeight = FontWeight.W700,
                             color = y.accentText,
                             maxLines = 1,
@@ -575,7 +570,7 @@ private fun WeekReviewPanel(
             Text(
                 "%d:%02d".format(live.elapsedSecs / 60, live.elapsedSecs % 60),
                 fontFamily = YantraMono,
-                fontSize = 15.sp,
+                fontSize = YantraType.row,
                 fontWeight = FontWeight.W700,
                 letterSpacing = 1.sp,
                 color = y.accentText,
@@ -651,7 +646,7 @@ private fun StatCell(
         Text(
             value,
             fontFamily = YantraDisplay,
-            fontSize = 25.sp,
+            fontSize = YantraType.screen,
             fontWeight = FontWeight.W700,
             letterSpacing = (-0.5).sp,
             color = if (accent) y.accentText else y.textPrimary,
@@ -660,7 +655,7 @@ private fun StatCell(
         )
         Text(
             sub,
-            fontSize = 10.5.sp,
+            fontSize = YantraType.dense,
             color = y.textDim,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -689,7 +684,7 @@ private fun BreakdownRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(YantraRadius.panel))
             .then(if (onOpen == null) Modifier else Modifier.clickable(onClick = onOpen))
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -714,7 +709,7 @@ private fun BreakdownRow(
         Column(Modifier.weight(1f).padding(start = if (isTask) 12.dp else 2.dp)) {
             Text(
                 row.title,
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 fontWeight = FontWeight.W600,
                 color = y.textPrimary,
                 maxLines = 1,
@@ -722,7 +717,7 @@ private fun BreakdownRow(
             )
             Text(
                 "${durationLabel(row.totalSecs)} · ${row.sessions} session${if (row.sessions == 1) "" else "s"}",
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
                 color = y.textDim,
                 maxLines = 1,
             )
@@ -738,8 +733,7 @@ private fun BreakdownRow(
                     .clickable(onClick = onPlay),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                YantraIcon(if (running) YantraMark.Stop else YantraMark.Play,
                     contentDescription = if (running) "Stop the clock on ${row.title}" else "Start the clock on ${row.title}",
                     tint = if (running) y.accent else y.textMuted,
                     modifier = Modifier.size(19.dp),

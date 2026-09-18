@@ -48,6 +48,15 @@ class RunningTask(
      * fact, and the fact is written when you press play.
      */
     sittings: Flow<List<SittingSpan>> = flowOf(emptyList()),
+    /**
+     * Task id to the list it lives on — its name and its colour, for the bar's eyebrow.
+     *
+     * Defaulted empty so every test of the ordering, which is what this class is really about,
+     * carries nothing about colour.
+     */
+    lists: Flow<Map<String, Pair<String?, String?>>> = flowOf(emptyMap()),
+    /** Task id to its workspace's colour — what the spine carries. */
+    workspaceColours: Flow<Map<String, String?>> = flowOf(emptyMap()),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     /**
@@ -64,6 +73,28 @@ class RunningTask(
         val elapsedSecs: Int?,
         /** Its sitting is happening right now. Ready, whether or not anybody has picked it up. */
         val scheduled: Boolean = false,
+        /**
+         * The list this task lives on — its name and its colour.
+         *
+         * **A word, not a spine.** The bar shows a title, and a title alone does not say whether
+         * "Draft the deck" is work or the side project. The answer is to print the list's name in
+         * the list's colour: the colour is a glance, the word is the fact, and neither has to carry
+         * the other. Five swatches across many lists would be unreadable on their own; with the
+         * name beside it a repeated hue is a coincidence rather than an ambiguity.
+         */
+        val listName: String? = null,
+        val listColour: String? = null,
+        /**
+         * The workspace this task lives in, as a palette name.
+         *
+         * **What the spine carries, here and everywhere.** One meaning for one device: a workspace
+         * is the only fact with too little room for its word on a widget row, and there are two or
+         * three of them against five swatches, so it is the one thing this palette is abundant for.
+         *
+         * Null while only one workspace is open, by the rule the app has stated twice: a colour
+         * that always means the same thing means nothing.
+         */
+        val workspaceColour: String? = null,
     ) {
         val hasSession: Boolean get() = elapsedSecs != null
     }
@@ -76,12 +107,24 @@ class RunningTask(
      * the point of showing it at all. The rest keep the newest-first order the query gave them.
      */
     val now: StateFlow<List<Now>> =
-        combine(nodes.inProgress(), timer.state, sittings, minutes()) { started, session, spans, at ->
+        combine(
+            combine(nodes.inProgress(), timer.state, sittings, minutes()) { a, b, c, d -> listOf(a, b, c, d) },
+            lists,
+            workspaceColours,
+        ) { core, listsNow, wsNow ->
+            @Suppress("UNCHECKED_CAST")
+            val started = core[0] as List<ie.shoonya.yantra.data.db.NodeEntity>
+            val session = core[1] as ie.shoonya.yantra.domain.FocusTimer.State?
+            @Suppress("UNCHECKED_CAST")
+            val spans = core[2] as List<SittingSpan>
+            val at = core[3] as Long
             stack(
                 started = started.map { it.id to Links.plain(it.title.orEmpty()) },
                 timing = session?.takeIf { !it.isFinished }?.let { it.nodeId to it.elapsedSecs },
                 sittings = spans,
                 at = at,
+                lists = listsNow,
+                workspaces = wsNow,
             )
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
@@ -119,6 +162,10 @@ class RunningTask(
             timing: Pair<String, Int>?,
             sittings: List<SittingSpan>,
             at: Long,
+            /** Task id to the list it lives on: its name and colour. */
+            lists: Map<String, Pair<String?, String?>> = emptyMap(),
+            /** Task id to the palette name of its workspace. Absent means one workspace is open. */
+            workspaces: Map<String, String?> = emptyMap(),
         ): List<Now> {
             val nowOn = sittings.filter { it.covers(at) }
             val scheduledIds = nowOn.mapTo(HashSet()) { it.taskId }
@@ -129,12 +176,23 @@ class RunningTask(
                     title = title,
                     elapsedSecs = timing?.takeIf { it.first == id }?.second,
                     scheduled = id in scheduledIds,
+                    listName = lists[id]?.first,
+                    listColour = lists[id]?.second,
+                    workspaceColour = workspaces[id],
                 )
             } + nowOn
                 // Two sittings for the same task in one hour is one card, not two.
                 .distinctBy { it.taskId }
                 .filter { it.taskId !in startedIds }
-                .map { Now(it.taskId, Links.plain(it.title.orEmpty()), elapsedSecs = null, scheduled = true) }
+                .map {
+                    Now(
+                        it.taskId, Links.plain(it.title.orEmpty()),
+                        elapsedSecs = null, scheduled = true,
+                        listName = lists[it.taskId]?.first,
+                        listColour = lists[it.taskId]?.second,
+                        workspaceColour = workspaces[it.taskId],
+                    )
+                }
             // Stable, so within each rank the order the sources gave is kept.
             return cards.sortedWith(
                 compareByDescending<Now> { it.hasSession }.thenByDescending { it.scheduled }

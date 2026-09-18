@@ -502,6 +502,19 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
  * nothing is a real risk taken for tidiness, and anything already written through the old shape
  * still reads.
  */
+/**
+ * A list can wear a colour of its own.
+ *
+ * A name rather than a value, like every other colour this app stores — see [NodeEntity.color] and
+ * the same argument on `EventRef.color`. A hex would be a value chosen against one theme, and the
+ * light and dark twins of a swatch are not the same number.
+ */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `color` TEXT")
+    }
+}
+
 val MIGRATION_16_17 = object : Migration(16, 17) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `node` ADD COLUMN `ext_uid` TEXT")

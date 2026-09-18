@@ -21,11 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -56,6 +51,11 @@ import ie.shoonya.yantra.ui.theme.SuperTasksTheme
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.loadThemeController
 import kotlinx.coroutines.launch
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Instant capture from the quick-add widget: translucent dialog-style activity, keyboard up
@@ -154,8 +154,8 @@ class QuickAddActivity : ComponentActivity() {
                         Modifier
                             .fillMaxWidth()
                             .padding(20.dp)
-                            .background(y.cardBg, RoundedCornerShape(22.dp))
-                            .border(1.dp, y.tileBorder, RoundedCornerShape(22.dp))
+                            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+                            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
@@ -165,7 +165,7 @@ class QuickAddActivity : ComponentActivity() {
                             singleLine = true,
                             textStyle = MaterialTheme.typography.titleMedium.copy(
                                 color = y.textPrimary,
-                                fontSize = 16.5.sp,
+                                fontSize = YantraType.card,
                                 fontWeight = FontWeight.W500,
                             ),
                             cursorBrush = SolidColor(y.accent),
@@ -177,7 +177,7 @@ class QuickAddActivity : ComponentActivity() {
                                     if (text.isEmpty()) {
                                         Text(
                                             "What needs doing?",
-                                            fontSize = 16.5.sp,
+                                            fontSize = YantraType.card,
                                             fontWeight = FontWeight.W500,
                                             color = y.textMuted,
                                         )
@@ -192,14 +192,14 @@ class QuickAddActivity : ComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             CaptureChip(
-                                icon = Icons.Default.DateRange,
+                                mark = YantraMark.Calendar,
                                 label = "Today",
                                 on = dueToday,
                                 onClick = { dueToday = !dueToday },
                             )
                             if (priorityOptions.isNotEmpty()) {
                                 CaptureChip(
-                                    icon = Icons.Default.Flag,
+                                    mark = YantraMark.Priority,
                                     label = priority ?: "Priority",
                                     on = priority != null,
                                     onColor = pickedColor,
@@ -215,7 +215,7 @@ class QuickAddActivity : ComponentActivity() {
                             // widget you tapped already chose the list — so it is styled as
                             // information, not as a control that happens to be disabled.
                             CaptureChip(
-                                icon = Icons.Default.Inbox,
+                                mark = YantraMark.List,
                                 label = destination,
                                 on = false,
                                 readOnly = true,
@@ -226,13 +226,13 @@ class QuickAddActivity : ComponentActivity() {
                                     .size(38.dp)
                                     .background(
                                         if (text.isBlank()) y.neutralChipBg else y.accentFill,
-                                        RoundedCornerShape(12.dp),
+                                        RoundedCornerShape(YantraRadius.panel),
                                     )
                                     .clickable(onClick = send),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Send,
+                                YantraIcon(
+                                    YantraMark.Send,
                                     contentDescription = "Add task",
                                     tint = if (text.isBlank()) y.textDim else y.accent,
                                     modifier = Modifier.size(17.dp),
@@ -249,7 +249,7 @@ class QuickAddActivity : ComponentActivity() {
 /** Capture-sheet chip. Reuses the in-app pill language so the widget doesn't look like an app of its own. */
 @Composable
 private fun CaptureChip(
-    icon: ImageVector,
+    mark: YantraMark,
     label: String,
     on: Boolean,
     onClick: (() -> Unit)? = null,
@@ -265,19 +265,18 @@ private fun CaptureChip(
         Modifier
             .background(
                 if (on) (onColor ?: y.accent).copy(alpha = 0.14f) else y.neutralChipBg,
-                RoundedCornerShape(99.dp),
+                RoundedCornerShape(YantraRadius.pill),
             )
             .let { if (onClick != null && !readOnly) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 11.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
+        YantraIcon(
+            mark,
+            size = YantraIcons.Small,
             tint = if (readOnly) y.textDim else tint,
-            modifier = Modifier.size(13.dp),
         )
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.W600, color = tint)
+        Text(label, fontSize = YantraType.section, fontWeight = FontWeight.W600, color = tint)
     }
 }

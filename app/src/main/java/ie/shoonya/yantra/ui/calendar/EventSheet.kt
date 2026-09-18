@@ -55,6 +55,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneOffset
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** Durations offered by name, because "an hour" is what people mean rather than 60. */
 private val LENGTHS = listOf(
@@ -176,7 +178,7 @@ fun EventSheet(
                     Text(
                         "TIME FOR",
                         fontFamily = YantraMono,
-                        fontSize = 8.5.sp,
+                        fontSize = YantraType.section,
                         fontWeight = FontWeight.W700,
                         letterSpacing = 1.2.sp,
                         color = y.textMuted,
@@ -184,14 +186,14 @@ fun EventSheet(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         forTitle?.ifBlank { null } ?: title.ifBlank { "a task" },
-                        fontSize = 19.sp,
+                        fontSize = YantraType.sheetTitle,
                         fontWeight = FontWeight.W700,
                         color = y.textPrimary,
                     )
                 }
                 if (onOpenTask != null) {
                     SheetRow("Open the task", onClick = { onOpenTask(); onDismiss() }) {
-                        Text("\u203a", fontSize = 16.sp, color = y.accent)
+                        Text("\u203a", fontSize = YantraType.card, color = y.accent)
                     }
                 }
             } else {
@@ -199,13 +201,13 @@ fun EventSheet(
                     value = title,
                     onValueChange = { title = it },
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
+                    textStyle = TextStyle(fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textPrimary),
                     cursorBrush = SolidColor(y.accent),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     decorationBox = { inner ->
                         Box {
                             if (title.isEmpty()) {
-                                Text("New event", fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.textMuted)
+                                Text("New event", fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textMuted)
                             }
                             inner()
                         }
@@ -217,7 +219,7 @@ fun EventSheet(
             // task's own, because a due date carries a duration.
             if (!sitting && onTurnIntoTask != null) {
                 SheetRow("Turn into a task", onClick = { onTurnIntoTask(); onDismiss() }) {
-                    Text("\u203a", fontSize = 16.sp, color = y.accent)
+                    Text("\u203a", fontSize = YantraType.card, color = y.accent)
                 }
             }
             // An all-day sitting is a claim to the whole day rather than time set aside in it, and
@@ -226,15 +228,15 @@ fun EventSheet(
                 Switch(checked = allDay, onCheckedChange = { allDay = it })
             }
             SheetRow("Date", onClick = { showDate = true }) {
-                Text(date.toString(), fontFamily = YantraMono, fontSize = 13.sp, color = y.textMuted)
+                Text(date.toString(), fontFamily = YantraMono, fontSize = YantraType.meta, color = y.textMuted)
             }
             if (!allDay) {
                 SheetRow("Starts", onClick = { showTime = true }) {
-                    Text(time.toString(), fontFamily = YantraMono, fontSize = 13.sp, color = y.textMuted)
+                    Text(time.toString(), fontFamily = YantraMono, fontSize = YantraType.meta, color = y.textMuted)
                 }
                 Box {
                     SheetRow("Length", onClick = { lengthMenu = true }) {
-                        Text(lengthLabel(length), fontSize = 13.sp, color = y.textMuted)
+                        Text(lengthLabel(length), fontSize = YantraType.meta, color = y.textMuted)
                     }
                     DropdownMenu(expanded = lengthMenu, onDismissRequest = { lengthMenu = false }) {
                         LENGTHS.forEach { (label, d) ->
@@ -247,7 +249,7 @@ fun EventSheet(
                 SheetRow("Reminder", onClick = { reminderMenu = true }) {
                     Text(
                         REMINDERS.firstOrNull { it.second == reminder }?.first ?: "None",
-                        fontSize = 13.sp,
+                        fontSize = YantraType.meta,
                         color = y.textMuted,
                     )
                 }
@@ -285,11 +287,11 @@ fun EventSheet(
                     value = location,
                     onValueChange = { location = it },
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 13.sp, color = y.textPrimary),
+                    textStyle = TextStyle(fontSize = YantraType.meta, color = y.textPrimary),
                     cursorBrush = SolidColor(y.accent),
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.CenterEnd) {
-                            if (location.isEmpty()) Text("None", fontSize = 13.sp, color = y.textMuted)
+                            if (location.isEmpty()) Text("None", fontSize = YantraType.meta, color = y.textMuted)
                             inner()
                         }
                     },
@@ -372,7 +374,7 @@ private fun PickerDialog(
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(YantraRadius.sheet))
                 .background(y.cardBg)
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -425,7 +427,7 @@ private fun SheetRow(label: String, onClick: (() -> Unit)? = null, value: @Compo
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 14.sp, color = y.textPrimary, modifier = Modifier.weight(1f))
+        Text(label, fontSize = YantraType.body, color = y.textPrimary, modifier = Modifier.weight(1f))
         value()
     }
 }

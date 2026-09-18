@@ -37,6 +37,8 @@ import ie.shoonya.yantra.data.device.CalendarChoice
 import ie.shoonya.yantra.data.device.DeviceCalendar
 import ie.shoonya.yantra.data.device.DeviceCalendarSource
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Whether to draw the phone's own calendars behind yours, and which of them — CALENDAR_PLAN.md §5.
@@ -80,21 +82,21 @@ fun DeviceCalendarSetting() {
         SettingCard {
             Text(
                 "Show your phone's calendars",
-                color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600,
+                color = y.textPrimary, fontSize = YantraType.body, fontWeight = FontWeight.W600,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "Your meetings drawn behind your own day, so a plan is made against what is " +
                     "already there. Read only — YANTRA never changes them, and cannot: it does " +
                     "not ask for permission to write.",
-                color = y.textMuted, fontSize = 11.5.sp, lineHeight = 16.sp,
+                color = y.textMuted, fontSize = YantraType.caption, lineHeight = 16.sp,
             )
             Spacer(Modifier.height(10.dp))
             Text(
                 "Allow reading",
-                color = y.accent, fontSize = 13.sp, fontWeight = FontWeight.W700,
+                color = y.accent, fontSize = YantraType.meta, fontWeight = FontWeight.W700,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .clickable { ask.launch(Manifest.permission.READ_CALENDAR) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
@@ -107,19 +109,19 @@ fun DeviceCalendarSetting() {
     // here is where the permission itself lives if you want that gone too.
     if (disconnected) {
         SettingCard {
-            Text("Calendars disconnected", color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+            Text("Calendars disconnected", color = y.textPrimary, fontSize = YantraType.body, fontWeight = FontWeight.W600)
             Spacer(Modifier.height(4.dp))
             Text(
                 "Nothing from the phone's calendars is being read or drawn. Your own events, and " +
                     "any notes you took on a meeting, are untouched.",
-                color = y.textMuted, fontSize = 11.5.sp, lineHeight = 16.sp,
+                color = y.textMuted, fontSize = YantraType.caption, lineHeight = 16.sp,
             )
             Spacer(Modifier.height(10.dp))
             Text(
                 "Connect again",
-                color = y.accent, fontSize = 13.sp, fontWeight = FontWeight.W700,
+                color = y.accent, fontSize = YantraType.meta, fontWeight = FontWeight.W700,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .clickable {
                         // Back to the owning app's own visibility rather than to whatever was
                         // ticked before: reconnecting should mean "my calendar", freshly asked.
@@ -131,9 +133,9 @@ fun DeviceCalendarSetting() {
             Spacer(Modifier.height(2.dp))
             Text(
                 "Take back the permission in Android settings  \u203a",
-                color = y.textDim, fontSize = 11.sp,
+                color = y.textDim, fontSize = YantraType.caption,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .clickable { openAppSettings(context) }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
@@ -143,22 +145,22 @@ fun DeviceCalendarSetting() {
 
     if (calendars.isEmpty()) {
         SettingCard {
-            Text("No calendars on this device", color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+            Text("No calendars on this device", color = y.textPrimary, fontSize = YantraType.body, fontWeight = FontWeight.W600)
             Spacer(Modifier.height(4.dp))
             Text(
                 "Nothing to draw. Add an account in the phone's calendar app and it will appear here.",
-                color = y.textMuted, fontSize = 11.5.sp,
+                color = y.textMuted, fontSize = YantraType.caption,
             )
         }
         return
     }
 
     SettingCard {
-        Text("Draw behind your day", color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+        Text("Draw behind your day", color = y.textPrimary, fontSize = YantraType.body, fontWeight = FontWeight.W600)
         Spacer(Modifier.height(2.dp))
         Text(
             "Untick one and it stops being drawn. Nothing here changes the calendar itself.",
-            color = y.textMuted, fontSize = 11.5.sp,
+            color = y.textMuted, fontSize = YantraType.caption,
         )
         Spacer(Modifier.height(10.dp))
         calendars.forEach { cal ->
@@ -166,7 +168,7 @@ fun DeviceCalendarSetting() {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .clickable {
                         chosen = if (on) chosen - cal.id else chosen + cal.id
                         choice.set(chosen)
@@ -187,14 +189,14 @@ fun DeviceCalendarSetting() {
                     Text(
                         cal.name,
                         color = if (on) y.textPrimary else y.textMuted,
-                        fontSize = 13.sp,
+                        fontSize = YantraType.meta,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (cal.account.isNotBlank() && cal.account != cal.name) {
                         Text(
                             cal.account,
-                            color = y.textDim, fontSize = 10.sp,
+                            color = y.textDim, fontSize = YantraType.dense,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -207,7 +209,7 @@ fun DeviceCalendarSetting() {
                         .background(if (on) y.accent else Color.Transparent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (on) Text("✓", color = y.onAccent, fontSize = 11.sp, fontWeight = FontWeight.W700)
+                    if (on) Text("✓", color = y.onAccent, fontSize = YantraType.caption, fontWeight = FontWeight.W700)
                     else Box(Modifier.size(16.dp).clip(CircleShape).background(y.tileBorder))
                 }
             }
@@ -216,9 +218,9 @@ fun DeviceCalendarSetting() {
         Spacer(Modifier.height(6.dp))
         Text(
             "Disconnect calendars",
-            color = y.warning, fontSize = 12.5.sp, fontWeight = FontWeight.W600,
+            color = y.warning, fontSize = YantraType.meta, fontWeight = FontWeight.W600,
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable {
                     // An explicit empty choice, which is why `set` and not `clear`: clear means
                     // "ask the owning app again", and would switch the overlay straight back on.
@@ -249,7 +251,7 @@ private fun SettingCard(content: @Composable androidx.compose.foundation.layout.
     Column(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.Top,
         content = content,

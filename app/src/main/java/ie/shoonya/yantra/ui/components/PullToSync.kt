@@ -34,6 +34,8 @@ import ie.shoonya.yantra.ui.appContainer
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Pull down to sync.
@@ -126,13 +128,13 @@ fun PullToSync(
             Text(
                 said.orEmpty(),
                 color = y.textSecondary,
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W600,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .padding(horizontal = 24.dp, vertical = 10.dp)
-                    .background(y.band, RoundedCornerShape(24.dp))
-                    .border(1.dp, y.tileBorder, RoundedCornerShape(24.dp))
+                    .background(y.band, RoundedCornerShape(YantraRadius.hero))
+                    .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.hero))
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }

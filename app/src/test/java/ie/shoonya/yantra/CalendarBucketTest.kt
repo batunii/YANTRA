@@ -198,8 +198,12 @@ class CalendarBucketTest {
 
     // ---- colour ----
 
+    // The workspace is the spine and the block's own colour is the fill — two facts, two places,
+    // never one rule doing both. These four say exactly that, because "the workspace is the
+    // fallback" is the thing that was true here until it was not.
+
     @Test
-    fun `a block with no colour of its own wears its workspace's`() {
+    fun `the workspace goes to the spine and leaves the block uncoloured`() {
         val item = CalendarBucketer.bucket(
             events = listOf(indexed(event("e1", "2026-09-11T14:00", "2026-09-11T15:00").copy(workspaceId = "w1"), "Design review")),
             tasks = emptyList(),
@@ -209,11 +213,12 @@ class CalendarBucketTest {
             toExclusive = LocalDate.parse("2026-10-01"),
             zone = dublin,
         ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
-        assertEquals(999L, item.tint)
+        assertEquals(999L, item.workspaceTint)
+        assertNull(item.tint)
     }
 
     @Test
-    fun `a block's own colour beats the workspace's`() {
+    fun `a block's own colour is its own, and says nothing about the repository`() {
         val teal = ie.shoonya.yantra.data.label.LabelPalette.swatches.first { it.name == "Teal" }.light
         val item = CalendarBucketer.bucket(
             events = listOf(
@@ -227,13 +232,39 @@ class CalendarBucketTest {
             zone = dublin,
         ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
         assertEquals(teal, item.tint)
+        assertEquals(999L, item.workspaceTint)
     }
 
     @Test
-    fun `a block with nothing anywhere has no tint, and paints in the accent`() {
-        val item = bucket(listOf(event("e1", "2026-09-11T14:00", "2026-09-11T15:00")))
-            .getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+    fun `an uncoloured sitting wears the colour of its task's list`() {
+        val sitting = event("s1", "2026-09-11T14:00", "2026-09-11T16:00").copy(forNodeId = "t1")
+        val item = CalendarBucketer.bucket(
+            events = listOf(indexed(sitting, "Write the deck")),
+            tasks = emptyList(),
+            titles = mapOf("s1" to "Write the deck"),
+            sittingOf = mapOf("s1" to "t1"),
+            listTints = mapOf("t1" to 777L),
+            from = LocalDate.parse("2026-09-01"),
+            toExclusive = LocalDate.parse("2026-10-01"),
+            zone = dublin,
+        ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
+        assertEquals(777L, item.tint)
+    }
+
+    @Test
+    fun `an appointment has no list to borrow from and stays in the accent`() {
+        val item = CalendarBucketer.bucket(
+            events = listOf(indexed(event("e1", "2026-09-11T14:00", "2026-09-11T15:00"), "Design review")),
+            tasks = emptyList(),
+            titles = mapOf("e1" to "Design review"),
+            // A list colour is on the table; nothing on screen is a sitting, so nothing takes it.
+            listTints = mapOf("t1" to 777L),
+            from = LocalDate.parse("2026-09-01"),
+            toExclusive = LocalDate.parse("2026-10-01"),
+            zone = dublin,
+        ).getValue(LocalDate.parse("2026-09-11")).single() as DayItem.Event
         assertNull(item.tint)
+        assertNull(item.workspaceTint)
     }
 
     @Test

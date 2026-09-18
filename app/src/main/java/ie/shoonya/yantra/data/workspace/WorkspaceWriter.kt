@@ -544,6 +544,48 @@ class WorkspaceWriter(
         onChange(Change.EDIT)
     }
 
+    /**
+     * Removes a label from the workspace, and the tag from every line carrying it.
+     *
+     * **Both halves, or it comes back.** A label has two homes: `meta/labels.json`, which is where
+     * one created from the picker is written, and the `#tag` on each line that uses it, from which
+     * the reconciler derives any label the registry does not already know. Forgetting the registry
+     * leaves a label nothing uses; forgetting the lines leaves a label that is re-derived on the
+     * very next reindex and appears to have survived being deleted.
+     *
+     * Returns how many lines were changed, so the caller can say what it did rather than guess.
+     *
+     * Structural: a chip vanishing from tasks on screen is exactly the kind of change a deferred
+     * reindex would leave half-applied and looking broken.
+     */
+    suspend fun deleteLabel(name: String): Int = mutex.withLock {
+        val matches = { it: String -> it.equals(name, ignoreCase = true) }
+        store.writeLabels(store.readLabels().filterNot { matches(it.name) })
+
+        var stripped = 0
+        store.readPages().forEach { page ->
+            var touched = false
+            val blocks = page.blocks.map { block ->
+                if (block !is TaskRef || block.labels.none(matches)) block
+                else {
+                    touched = true
+                    stripped++
+                    // `raw = null` so the line is written from the block rather than from the bytes
+                    // it was read as — those bytes still hold the tag being removed.
+                    block.copy(labels = block.labels.filterNot(matches), raw = null)
+                }
+            }
+            if (touched) {
+                store.writePage(
+                    page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device)
+                )
+            }
+        }
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+        stripped
+    }
+
     /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
     suspend fun upsertLabel(label: LabelDef) = mutex.withLock {
         val kept = store.readLabels().filterNot { it.id == label.id }

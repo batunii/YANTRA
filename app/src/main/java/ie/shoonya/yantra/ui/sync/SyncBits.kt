@@ -13,6 +13,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** What a setup screen says back, and whether it should be read as a refusal. */
 internal data class Said(val ok: Boolean, val message: String)
@@ -30,7 +32,7 @@ internal fun Note(text: String, bad: Boolean = false, good: Boolean = false) {
     Text(
         text,
         color = if (bad) y.overdue else y.textSecondary,
-        fontSize = 12.5.sp,
+        fontSize = YantraType.meta,
         modifier = Modifier
             .fillMaxWidth()
             .background(
@@ -39,7 +41,7 @@ internal fun Note(text: String, bad: Boolean = false, good: Boolean = false) {
                     good -> y.successChipBg
                     else -> y.neutralChipBg
                 },
-                RoundedCornerShape(10.dp),
+                RoundedCornerShape(YantraRadius.control),
             )
             .padding(horizontal = 12.dp, vertical = 10.dp),
     )
@@ -52,7 +54,7 @@ internal fun Link(label: String, onClick: () -> Unit) {
     Text(
         label,
         color = y.accentText,
-        fontSize = 13.sp,
+        fontSize = YantraType.meta,
         fontWeight = FontWeight.W600,
         textDecoration = TextDecoration.Underline,
         modifier = Modifier.clickable(onClick = onClick).padding(vertical = 4.dp),

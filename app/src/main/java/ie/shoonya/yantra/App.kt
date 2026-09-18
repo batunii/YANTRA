@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import ie.shoonya.yantra.data.label.LabelPalette
 
 class App : Application() {
     lateinit var container: AppContainer
@@ -191,6 +192,61 @@ class AppContainer(val app: Application) {
     val registry = WorkspaceRegistry(File(app.filesDir, "workspaces"))
 
     /**
+     * Every open workspace's colour, by id — the one resolver, so no surface derives its own.
+     *
+     * Stored if it has one, seeded from the name if not, and **absent entirely while only one
+     * workspace is open**, which is the rule the app already applied to the hue it used to
+     * recompute: a colour that always means the same thing means nothing. The local workspace is
+     * not in the registry and is named here so it is not the one repo without a colour.
+     *
+     * This is what the spine carries, everywhere. It is deliberately not a Flow: workspaces do not
+     * open and close while a screen is up, and every caller already recomposes when they do.
+     */
+    fun workspaceColours(): Map<String, String> =
+        distinguishable().associate { it.id to (it.color ?: LabelPalette.defaultNameFor(it.name)) }
+
+    /**
+     * Every open workspace's *name*, by id, under the same gate as [workspaceColours].
+     *
+     * The two go together by design: the law this colour system rests on is that **a colour is
+     * never more than a glance from its name**, so any surface with room for the word shows the
+     * word and lets the hue be the glance. A surface with no room — a widget row, a block on a day
+     * — shows only the spine, and the word it stands for is one screen away.
+     */
+    fun workspaceNames(): Map<String, String> = distinguishable().associate { it.id to it.name }
+
+    /**
+     * Every workspace this device has open, **including the local one**.
+     *
+     * The registry holds linked repositories and says so at the top of its own file: the local
+     * workspace is not in there. So anything reaching for `registry.entries()` is quietly asking
+     * "which repositories have I linked", and gets an answer missing the workspace most people keep
+     * most of their work in.
+     *
+     * That is not hypothetical. It is why a new list defaulted to the first *linked* repo despite a
+     * default that says it should go to the local one, why the workspace picker never appeared for
+     * someone with exactly one repo linked — one entry is not "more than one" — and why the colour
+     * chosen for Personal in Settings had nowhere to be written. One resolver, so the next thing
+     * that needs the list of workspaces cannot get a different answer.
+     */
+    fun openWorkspaces(): List<WorkspaceEntry> {
+        val listed = registry.entries()
+        // **Deduplicated by id, and the local one is not assumed absent.** The registry is supposed
+        // to hold linked repositories only, but some builds have written an entry for the local
+        // workspace too — App.kt has to filter `id.isNotEmpty()` before linking for exactly that
+        // reason. Prepending a second Personal put it in the picker twice; Home hid it only because
+        // it keys by id and a map collapses the pair.
+        val local = listed.firstOrNull { it.id.isEmpty() } ?: WorkspaceEntry(id = "", name = "Personal")
+        return (listOf(local.copy(color = registry.colorOf(""))) + listed)
+            .distinctBy { it.id }
+            .filter { workspaces.isOpen(it.id) }
+    }
+
+    /** The open workspaces, or none at all when there is only one of them to tell apart. */
+    private fun distinguishable(): List<WorkspaceEntry> =
+        openWorkspaces().takeIf { it.size >= 2 }.orEmpty()
+
+    /**
      * One indexer for the whole app, deliberately.
      *
      * It remembers what each workspace's tables already hold so a rebuild can skip the ones that did
@@ -259,7 +315,29 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
-    val running = RunningTask(timer, nodes, appScope, db.eventDao().openSittings())
+    val running = RunningTask(
+        timer, nodes, appScope, db.eventDao().openSittings(),
+        // Where each task lives: the list gives the bar its word and its hue, the workspace gives
+        // the spine its colour. Two facts because they are drawn two ways — a word you can read and
+        // a rule you cannot, which is what keeps five swatches from having to mean two things.
+        lists = db.nodeDao().taskOrigins()
+            // "Untitled" rather than nothing, the way Home and the widget already name a list
+            // nobody got round to naming. A blank title used to fall through every
+            // `takeIf { isNotBlank() }` downstream and leave the player's eyebrow saying ON THE GO
+            // — which reads as "this task is in no list" when it is in one, and the spine beside it
+            // is already saying which repository that list is in.
+            .map { rows ->
+                rows.associate { row ->
+                    val name = row.listName?.ifBlank { null } ?: "Untitled"
+                    row.id to (name to row.listColor)
+                }
+            },
+        workspaceColours = db.nodeDao().taskOrigins()
+            .map { rows ->
+                val hues = workspaceColours()
+                rows.associate { it.id to hues[it.workspaceId] }
+            },
+    )
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 

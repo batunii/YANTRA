@@ -39,6 +39,8 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
@@ -93,7 +95,7 @@ internal fun MeetingHeader(
         Modifier
             .fillMaxWidth()
             .padding(top = 10.dp)
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -108,7 +110,7 @@ internal fun MeetingHeader(
                     "EVENT"
                 },
                 fontFamily = YantraMono,
-                fontSize = 8.5.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W700,
                 letterSpacing = 1.2.sp,
                 color = y.textMuted,
@@ -119,7 +121,7 @@ internal fun MeetingHeader(
         // The when, given the room it deserves: it is the one fact an event has that a note has not.
         Text(
             start?.format(DAY) ?: "Sometime",
-            fontSize = 13.sp,
+            fontSize = YantraType.meta,
             fontWeight = FontWeight.W600,
             color = y.textSecondary,
         )
@@ -133,7 +135,7 @@ internal fun MeetingHeader(
                     else -> "${start.format(CLOCK)}–${end.format(CLOCK)}"
                 },
                 fontFamily = YantraMono,
-                fontSize = 21.sp,
+                fontSize = YantraType.title,
                 fontWeight = FontWeight.W700,
                 color = y.textPrimary,
             )
@@ -141,7 +143,7 @@ internal fun MeetingHeader(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     lengthWords(Duration.between(start, end)),
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                     color = y.textDim,
                     modifier = Modifier.padding(bottom = 3.dp),
                 )
@@ -157,7 +159,7 @@ internal fun MeetingHeader(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(YantraRadius.control))
                     .background(y.accentFill)
                     .clickable { open(context, call.url) }
                     .padding(horizontal = 12.dp, vertical = 11.dp),
@@ -165,12 +167,12 @@ internal fun MeetingHeader(
             ) {
                 Text(
                     "Join ${call.name}",
-                    fontSize = 13.5.sp,
+                    fontSize = YantraType.label,
                     fontWeight = FontWeight.W700,
                     color = y.accentText,
                     modifier = Modifier.weight(1f),
                 )
-                Text("\u203a", fontSize = 16.sp, color = y.accentText)
+                Text("\u203a", fontSize = YantraType.card, color = y.accentText)
             }
         }
 
@@ -203,7 +205,7 @@ internal fun MeetingHeader(
             Spacer(Modifier.height(12.dp))
             Text(
                 description,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
                 lineHeight = 18.sp,
                 color = y.textSecondary,
             )
@@ -216,12 +218,12 @@ internal fun MeetingHeader(
                 others.take(4).forEach { url ->
                     Text(
                         shortUrl(url),
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                         color = y.accent,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable { open(context, url) }
                             .padding(vertical = 3.dp),
                     )
@@ -240,11 +242,11 @@ internal fun MeetingHeader(
                 if (more) {
                     Text(
                         if (expanded) "Less  ‹" else "More details  ›",
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                         fontWeight = FontWeight.W700,
                         color = y.accent,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable { expanded = !expanded }
                             .padding(vertical = 4.dp, horizontal = 2.dp),
                     )
@@ -253,11 +255,11 @@ internal fun MeetingHeader(
                     if (more) Spacer(Modifier.width(14.dp))
                     Text(
                         "Edit",
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                         fontWeight = FontWeight.W700,
                         color = y.accent,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable(onClick = edit)
                             .padding(vertical = 4.dp, horizontal = 2.dp),
                     )
@@ -271,11 +273,11 @@ internal fun MeetingHeader(
             // opening it. A tap on a meeting should not be able to throw you into another app.
             Text(
                 "Open in the calendar app  ›",
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W700,
                 color = y.accent,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .clickable {
                         runCatching {
                             context.startActivity(
@@ -321,14 +323,14 @@ internal fun MeetingStrip(row: EventWithTitle, details: DeviceEventDetails?) {
                 else -> "${start.format(CLOCK)}–${end.format(CLOCK)}"
             },
             fontFamily = YantraMono,
-            fontSize = 12.5.sp,
+            fontSize = YantraType.meta,
             fontWeight = FontWeight.W700,
             color = y.textSecondary,
         )
         Spacer(Modifier.width(10.dp))
         Text(
             start?.format(DAY) ?: "",
-            fontSize = 11.5.sp,
+            fontSize = YantraType.caption,
             color = y.textDim,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -338,11 +340,11 @@ internal fun MeetingStrip(row: EventWithTitle, details: DeviceEventDetails?) {
             Spacer(Modifier.width(8.dp))
             Text(
                 "Join \u203a",
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
                 fontWeight = FontWeight.W700,
                 color = y.accentText,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .background(y.accentFill)
                     .clickable { open(context, call.url) }
                     .padding(horizontal = 9.dp, vertical = 5.dp),
@@ -361,12 +363,12 @@ private fun Field(label: String, value: String) {
         Text(
             label.uppercase(),
             fontFamily = YantraMono,
-            fontSize = 9.sp,
+            fontSize = YantraType.dense,
             letterSpacing = 0.8.sp,
             color = y.textDim,
             modifier = Modifier.width(74.dp).padding(top = 2.dp),
         )
-        Text(value, fontSize = 12.5.sp, lineHeight = 17.sp, color = y.textPrimary, modifier = Modifier.weight(1f))
+        Text(value, fontSize = YantraType.meta, lineHeight = 17.sp, color = y.textPrimary, modifier = Modifier.weight(1f))
     }
 }
 

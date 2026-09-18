@@ -38,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ie.shoonya.yantra.ui.appContainer
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.delay
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * A quiet line saying the app is talking to GitHub — and nothing at all when it is not.
@@ -93,7 +95,7 @@ fun NetworkPulse(modifier: Modifier = Modifier) {
         )
         Row(
             Modifier
-                .clip(RoundedCornerShape(9.dp))
+                .clip(RoundedCornerShape(YantraRadius.block))
                 .background(y.neutralChipBg)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -103,7 +105,7 @@ fun NetworkPulse(modifier: Modifier = Modifier) {
             Text(
                 shown.orEmpty(),
                 color = y.textMuted,
-                fontSize = 10.5.sp,
+                fontSize = YantraType.dense,
                 fontWeight = FontWeight.W600,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

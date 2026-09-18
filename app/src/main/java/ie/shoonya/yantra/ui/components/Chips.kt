@@ -1,13 +1,5 @@
 package ie.shoonya.yantra.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Label
-import androidx.compose.material.icons.filled.Adjust
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.ui.graphics.Color
 import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.LabelEntity
@@ -18,6 +10,7 @@ import ie.shoonya.yantra.data.db.PropertyValueEntity
 import ie.shoonya.yantra.data.filter.FilterJson
 import ie.shoonya.yantra.data.time.localDateOf
 import ie.shoonya.yantra.data.repo.SelectConfig
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /**
  * Turns raw typed values into displayable chips, grouped by node id.
@@ -79,7 +72,7 @@ fun chipFor(
                 def.id,
                 if (unreachable) "@$login · no access" else "@$login",
                 null,
-                if (unreachable) Icons.Default.PersonOff else Icons.Default.Person,
+                if (unreachable) YantraMark.PersonOff else YantraMark.Person,
                 if (unreachable) ChipStatus.Warn else ChipStatus.None,
             )
         }
@@ -91,7 +84,7 @@ private fun chipForKind(def: PropertyDefEntity, v: PropertyValueEntity): ChipDat
         val isPriority = def.name == PRIORITY_NAME
         ChipData(
             def.id, name, option?.color?.let { Color(it) },
-            if (isPriority) Icons.Default.Flag else null,
+            if (isPriority) YantraMark.Priority else null,
             isPriority = isPriority,
         )
     }
@@ -105,10 +98,10 @@ private fun chipForKind(def: PropertyDefEntity, v: PropertyValueEntity): ChipDat
                 val base = if (v.vBool == true) dateTimeLabel(millis) else dateLabel(millis)
                 when {
                     day.isBefore(today) ->
-                        ChipData(def.id, "$base · overdue", null, Icons.Default.DateRange, ChipStatus.Overdue)
+                        ChipData(def.id, "$base · overdue", null, YantraMark.Calendar, ChipStatus.Overdue)
                     else -> ChipData(
                         def.id, base, null,
-                        if (v.vNumber != null) Icons.Default.Alarm else Icons.Default.DateRange,
+                        if (v.vNumber != null) YantraMark.Alarm else YantraMark.Calendar,
                         if (day == today) ChipStatus.Due else ChipStatus.None,
                     )
                 }
@@ -119,7 +112,7 @@ private fun chipForKind(def: PropertyDefEntity, v: PropertyValueEntity): ChipDat
                 val day = localDateOf(millis)
                 val today = java.time.LocalDate.now()
                 ChipData(
-                    def.id, deadlineLabel(millis), null, Icons.Default.Adjust,
+                    def.id, deadlineLabel(millis), null, YantraMark.Clock,
                     when {
                         day.isBefore(today) -> ChipStatus.Overdue
                         day == today -> ChipStatus.Warn
@@ -141,7 +134,7 @@ private fun chipForKind(def: PropertyDefEntity, v: PropertyValueEntity): ChipDat
 fun labelChipFor(label: LabelEntity): ChipData =
     ChipData(
         label.id, label.name, label.color?.let { Color(it) },
-        Icons.AutoMirrored.Filled.Label, isLabel = true,
+        YantraMark.Label, isLabel = true,
     )
 
 fun selectConfig(def: PropertyDefEntity): SelectConfig =

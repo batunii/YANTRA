@@ -15,12 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +37,11 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.ink.StrokeCodec
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The three pens the kit holds.
@@ -179,8 +178,8 @@ private fun KitColumn(
     Column(
         Modifier
             .alpha(if (dimmed) 0.55f else 1f)
-            .background(y.cardBg, RoundedCornerShape(26.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(26.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.hero))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.hero))
             .padding(horizontal = 9.dp, vertical = 11.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(9.dp),
@@ -194,12 +193,11 @@ private fun KitColumn(
         Box(
             Modifier
                 .size(width = 56.dp, height = 26.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable(onClick = onFold),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (folded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            YantraIcon(if (folded) YantraMark.Up else YantraMark.Down,
                 contentDescription = if (folded) "Show the whole kit" else "Fold the kit",
                 tint = y.textDim,
                 modifier = Modifier.size(20.dp),
@@ -215,10 +213,10 @@ private fun KitColumn(
             Column(
                 Modifier
                     .size(56.dp)
-                    .clip(RoundedCornerShape(15.dp))
+                    .clip(RoundedCornerShape(YantraRadius.card))
                     .background(if (on) y.accentFill else Color.Transparent)
                     .then(
-                        if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(15.dp))
+                        if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.card))
                         else Modifier
                     )
                     .combinedClickable(
@@ -240,7 +238,7 @@ private fun KitColumn(
                 Text(
                     slot.label,
                     fontFamily = YantraMono,
-                    fontSize = 8.sp,
+                    fontSize = YantraType.dense,
                     letterSpacing = 0.8.sp,
                     fontWeight = FontWeight.W700,
                     color = if (on) y.accentText else y.textMuted,
@@ -253,7 +251,7 @@ private fun KitColumn(
         Box(Modifier.width(34.dp).height(1.dp).background(y.hairline))
 
         KitTool(
-            glyph = { tint -> LassoGlyph(tint) },
+            mark = YantraMark.Lasso,
             label = "Lasso",
             on = mode == InkMode.LASSO,
             // The lasso has nothing to set: it is a gesture, and what it catches is the setting.
@@ -263,7 +261,7 @@ private fun KitColumn(
             },
         )
         KitTool(
-            icon = Icons.Default.Category,
+            mark = YantraMark.Shapes,
             label = when {
                 mode == InkMode.SHAPE -> "Drawing shapes"
                 snap -> "Shape snapping on"
@@ -288,7 +286,7 @@ private fun KitColumn(
         // no pen anywhere near them — removing it would take erasing away from most of the people
         // who have it now.
         KitTool(
-            glyph = { tint -> EraserGlyph(tint) },
+            mark = YantraMark.Eraser,
             label = "Eraser",
             on = mode == InkMode.ERASE,
             onClick = {
@@ -300,71 +298,7 @@ private fun KitColumn(
     }
 }
 
-/** A loop with a tail — what the gesture looks like, which is what the tool is. */
-@Composable
-private fun LassoGlyph(tint: Color, modifier: Modifier = Modifier.size(21.dp)) {
-    Canvas(modifier) {
-        val w = size.width
-        val stroke = Stroke(
-            width = w * 0.085f,
-            cap = StrokeCap.Round,
-            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
-                floatArrayOf(w * 0.13f, w * 0.10f),
-            ),
-        )
-        drawOval(
-            color = tint,
-            topLeft = Offset(w * 0.10f, w * 0.10f),
-            size = androidx.compose.ui.geometry.Size(w * 0.80f, w * 0.62f),
-            style = stroke,
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.50f, w * 0.72f),
-            end = Offset(w * 0.62f, w * 0.92f),
-            strokeWidth = w * 0.085f,
-            cap = StrokeCap.Round,
-        )
-    }
-}
 
-/**
- * An eraser, drawn.
- *
- * It was a backspace key borrowed from the icon set, which is a key that deletes the character
- * behind a caret — nothing on this screen has a caret, and the one person who asked what it was
- * guessed it was a fold control. The app draws its own marks everywhere else it needs one that
- * means something specific; this is one of those.
- *
- * A tilted block with a band across it: the rubber and the sleeve, which is what an eraser looks
- * like to anyone who has held one.
- */
-@Composable
-private fun EraserGlyph(tint: Color, modifier: Modifier = Modifier.size(21.dp)) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        rotate(-32f) {
-            val body = androidx.compose.ui.geometry.Rect(
-                left = w * 0.20f, top = h * 0.30f, right = w * 0.80f, bottom = h * 0.78f,
-            )
-            drawRoundRect(
-                color = tint,
-                topLeft = androidx.compose.ui.geometry.Offset(body.left, body.top),
-                size = androidx.compose.ui.geometry.Size(body.width, body.height),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.10f),
-                style = Stroke(width = w * 0.085f),
-            )
-            // The sleeve: the line that makes it an eraser rather than a rounded rectangle.
-            drawLine(
-                color = tint,
-                start = androidx.compose.ui.geometry.Offset(body.left, body.top + body.height * 0.55f),
-                end = androidx.compose.ui.geometry.Offset(body.right, body.top + body.height * 0.55f),
-                strokeWidth = w * 0.085f,
-            )
-        }
-    }
-}
 
 /** A slot drawn as the stroke it makes — the label is a name, the drawing is the answer. */
 @Composable
@@ -396,16 +330,16 @@ private fun KitTool(
     label: String,
     on: Boolean,
     onClick: () -> Unit,
-    icon: ImageVector? = null,
+    mark: YantraMark? = null,
     glyph: (@Composable (Color) -> Unit)? = null,
 ) {
     val y = Yantra.colors
     Box(
         Modifier
             .size(48.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(YantraRadius.card))
             .background(if (on) y.accentFill else Color.Transparent)
-            .then(if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(14.dp)) else Modifier)
+            .then(if (on) Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.card)) else Modifier)
             .clickable(onClick = onClick)
             // A drawn glyph carries no description of its own, unlike an Icon — so the key says
             // what it is here, once, however it happens to be painted. Without this the two tools
@@ -415,7 +349,7 @@ private fun KitTool(
     ) {
         val tint = if (on) y.accent else y.textMuted
         if (glyph != null) glyph(tint)
-        else Icon(icon!!, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+        else YantraIcon(mark!!, size = YantraIcons.Large, tint = tint)
     }
 }
 
@@ -437,25 +371,25 @@ fun UndoPair(
 ) {
     val y = Yantra.colors
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        UndoKey(Icons.AutoMirrored.Filled.Undo, "Undo", canUndo, onUndo)
-        UndoKey(Icons.AutoMirrored.Filled.Redo, "Redo", canRedo, onRedo)
+        UndoKey(YantraMark.Undo, "Undo", canUndo, onUndo)
+        UndoKey(YantraMark.Redo, "Redo", canRedo, onRedo)
     }
 }
 
 @Composable
-private fun UndoKey(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun UndoKey(mark: YantraMark, label: String, enabled: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
     Box(
         Modifier
             .size(52.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(YantraRadius.sheet))
             .background(y.cardBg)
-            .border(1.dp, y.tileBorder, RoundedCornerShape(18.dp))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon,
+        YantraIcon(
+            mark,
             contentDescription = label,
             tint = if (enabled) y.textSecondary else y.textDim.copy(alpha = 0.4f),
             modifier = Modifier.size(22.dp),

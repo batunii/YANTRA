@@ -23,10 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -65,6 +61,8 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /** Reminder offsets in minutes before the due instant (see BuiltIns docs). */
 private const val REMIND_ON_TIME = 0
@@ -160,7 +158,7 @@ fun DueSheet(
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Schedule, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(20.dp))
+                YantraIcon(YantraMark.Clock, tint = y.textSecondary, contentDescription = null)
                 Spacer(Modifier.width(12.dp))
                 Text("Time", color = y.textPrimary, modifier = Modifier.weight(1f))
                 Text(time?.format(timeFmt) ?: "None", color = y.textMuted)
@@ -170,7 +168,7 @@ fun DueSheet(
                         // A timed offset makes no sense on an all-day task; back to None.
                         if (reminder != null && reminder != REMIND_ON_THE_DAY) reminder = null
                     }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear time", tint = y.textMuted, modifier = Modifier.size(18.dp))
+                        YantraIcon(YantraMark.Close, tint = y.textMuted, contentDescription = "Clear time")
                     }
                 }
             }
@@ -184,7 +182,7 @@ fun DueSheet(
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Alarm, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(20.dp))
+                    YantraIcon(YantraMark.Alarm, tint = y.textSecondary, contentDescription = null)
                     Spacer(Modifier.width(12.dp))
                     Text("Reminder", color = y.textPrimary, modifier = Modifier.weight(1f))
                     Text(reminderLabel(reminder, timed = time != null), color = y.textMuted)

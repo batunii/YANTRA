@@ -21,6 +21,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_13_14
 import ie.shoonya.yantra.data.db.MIGRATION_14_15
 import ie.shoonya.yantra.data.db.MIGRATION_15_16
 import ie.shoonya.yantra.data.db.MIGRATION_16_17
+import ie.shoonya.yantra.data.db.MIGRATION_17_18
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -49,7 +50,7 @@ class MigrationTest {
     private val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
         MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
-        MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
+        MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18,
     )
 
     @get:Rule
@@ -121,6 +122,37 @@ class MigrationTest {
      * On `event` it forced a task about a meeting to be two rows; on the node it is a fact about a
      * line of any kind, and a task is the only node there is.
      */
+    /**
+     * A list can wear a colour of its own — the colour law, as remade.
+     *
+     * The accent means your own effort and nothing else, so a list cannot borrow it; it carries a
+     * colour you chose instead. A **name**, not a value, which is the part worth guarding: a hex is
+     * picked against one theme and the light and dark twins of a swatch are different numbers, so a
+     * column holding `4294945637` would be a colour that is right in one theme and wrong in the
+     * other, for ever.
+     */
+    @Test
+    fun migration17to18_letsAListWearAColour() {
+        helper.createDatabase(DB, 17).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, workspace_id, parent_id, type, title, rank, done, " +
+                    "in_progress, collapsed, indent, created_at, updated_at) " +
+                    "VALUES ('l1', '', NULL, 'list', 'Shopping', 'i', 0, 0, 0, 0, 1, 1)"
+            )
+        }
+        helper.runMigrationsAndValidate(DB, 18, true, *ALL).use { db ->
+            assertEquals(
+                "a list that existed wears nothing",
+                1, db.count("SELECT COUNT(*) FROM node WHERE id = 'l1' AND color IS NULL"),
+            )
+            db.execSQL("UPDATE node SET color = 'teal' WHERE id = 'l1'")
+            assertEquals(
+                "and holds a palette name rather than a number",
+                1, db.count("SELECT COUNT(*) FROM node WHERE color = 'teal'"),
+            )
+        }
+    }
+
     @Test
     fun migration16to17_letsAnyLineBeAboutSomebodyElsesMeeting() {
         helper.createDatabase(DB, 16).use { db ->

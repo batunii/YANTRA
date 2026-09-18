@@ -12,8 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Stable
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.animation.core.spring
@@ -51,6 +49,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.AppMark
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The app's one nav/action button: a small translucent circle. Round rather than a rounded
@@ -59,12 +61,17 @@ import ie.shoonya.yantra.ui.theme.Yantra
  */
 @Composable
 fun NavCircle(
-    icon: ImageVector,
     contentDescription: String?,
     onClick: (() -> Unit)? = null,
     accent: Boolean = false,
     size: Dp = 38.dp,
     iconSize: Dp = 19.dp,
+    /**
+     * The mark, where one exists for it — ICONS.md §1.
+     *
+     * Last, because `NavCircle` is called positionally with the icon first all over the app.
+     */
+    mark: YantraMark? = null,
     modifier: Modifier = Modifier,
 ) {
     val y = Yantra.colors
@@ -78,12 +85,10 @@ fun NavCircle(
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = if (accent) y.accentGlow else y.textSecondary,
-            modifier = Modifier.size(iconSize),
-        )
+        val ink = if (accent) y.accentGlow else y.textSecondary
+        // A circle is a row-scale target, so its mark is §2's Medium. `iconSize` stays for the
+        // Material path, which still has callers passing 19dp and 22dp.
+        if (mark != null) YantraIcon(mark, size = YantraIcons.Medium, tint = ink, contentDescription = contentDescription)
     }
 }
 
@@ -147,21 +152,21 @@ fun ComposedEmpty(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        YantraMark(
+        AppMark(
             Modifier.size(34.dp),
             tint = y.checkOutline.copy(alpha = 0.55f),
             checkTint = y.accent.copy(alpha = 0.45f),
         )
-        Text(line, fontSize = 13.sp, fontWeight = FontWeight.W500, color = y.textMuted)
+        Text(line, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted)
         if (action != null && onAction != null) {
             Row(
                 Modifier
-                    .background(y.accentFill, RoundedCornerShape(99.dp))
+                    .background(y.accentFill, RoundedCornerShape(YantraRadius.pill))
                     .clickable(onClick = onAction)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(action, fontSize = 12.sp, fontWeight = FontWeight.W700, color = y.accent)
+                Text(action, fontSize = YantraType.section, fontWeight = FontWeight.W700, color = y.accent)
             }
         }
     }
@@ -243,7 +248,7 @@ fun PageHeader(
         ) {
             if (onBack != null) {
                 NavCircle(
-                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    mark = YantraMark.Back,
                     contentDescription = "Back",
                     onClick = onBack,
                     iconSize = 22.dp,
@@ -260,7 +265,7 @@ fun PageHeader(
                 Text(
                     title,
                     fontFamily = YantraDisplay,
-                    fontSize = 17.sp,
+                    fontSize = YantraType.sheetTitle,
                     fontWeight = FontWeight.W700,
                     letterSpacing = (-0.3).sp,
                     color = y.textPrimary,
@@ -284,7 +289,7 @@ fun PageHeader(
             Text(
                 title,
                 fontFamily = YantraDisplay,
-                fontSize = 32.sp,
+                fontSize = YantraType.hero,
                 lineHeight = 38.sp,
                 fontWeight = FontWeight.W700,
                 letterSpacing = (-0.6).sp,

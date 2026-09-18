@@ -21,11 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +73,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** Where the sign-in has got to. */
 /**
@@ -466,7 +465,7 @@ fun SignInScreen(nav: NavHostController) {
             Text(
                 "Sync your tasks across devices, and share a list with people who can add to it.",
                 color = y.textSecondary,
-                fontSize = 13.5.sp,
+                fontSize = YantraType.label,
             )
 
             if (GitHubAuth.configured) {
@@ -528,7 +527,7 @@ fun SignInScreen(nav: NavHostController) {
                                 + "lists there, and nothing that can delete a repository or change "
                                 + "who can see it. You approve it on GitHub.",
                             color = y.textDim,
-                            fontSize = 11.5.sp,
+                            fontSize = YantraType.caption,
                         )
                         (s as? Stage.Failed)?.let {
                             Spacer(Modifier.height(12.dp))
@@ -555,7 +554,7 @@ fun SignInScreen(nav: NavHostController) {
                     "A fine-grained token with Contents: read and write. More work than signing in, "
                         + "and it can be limited to a single repository.",
                     color = y.textMuted,
-                    fontSize = 12.5.sp,
+                    fontSize = YantraType.meta,
                 )
                 Spacer(Modifier.height(12.dp))
                 YantraField(token, { token = it }, "github_pat_…", secret = true)
@@ -627,18 +626,18 @@ internal fun SignedIn(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 16.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Check, null, tint = y.accent, modifier = Modifier.size(18.dp))
+        YantraIcon(YantraMark.Check, tint = y.accent)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(account, color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W700, fontSize = 15.sp)
+            Text(account, color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W700, fontSize = YantraType.row)
             Text(
                 "The name on your commits, and who a task is assigned to",
                 color = y.textMuted,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
             )
         }
     }
@@ -655,20 +654,20 @@ internal fun SignedIn(
                     + "All repositories so that a repo you make later is included without coming "
                     + "back here.",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             YantraButton(
                 "Grant access on GitHub",
                 modifier = Modifier.fillMaxWidth(),
-                icon = Icons.AutoMirrored.Filled.OpenInNew,
+                mark = YantraMark.OpenOut,
                 onClick = onInstall,
             )
             Spacer(Modifier.height(10.dp))
             Text(
                 "This screen notices when you come back.",
                 color = y.textDim,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
             )
         }
 
@@ -695,7 +694,7 @@ internal fun SignedIn(
                     ?: "Your tasks are only on this phone. A private repository gives them somewhere "
                     + "to live and a second device to appear on.",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             if (localSlug == null) {
                 Spacer(Modifier.height(12.dp))
@@ -704,7 +703,7 @@ internal fun SignedIn(
                 YantraButton(
                     label = "Create a private repository",
                     modifier = Modifier.fillMaxWidth(),
-                    icon = Icons.AutoMirrored.Filled.OpenInNew,
+                    mark = YantraMark.OpenOut,
                     busy = awaiting != null,
                     enabled = repoName.isNotBlank(),
                     onClick = onCreate,
@@ -735,7 +734,7 @@ internal fun SignedIn(
                             + "Yantra cannot create repositories itself, and asking for permission "
                             + "broad enough to do it would mean access to far more than task files.",
                     color = y.textDim,
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                 )
             }
             note?.let {
@@ -753,7 +752,7 @@ internal fun SignedIn(
     Text(
         "Your workspaces keep syncing. Remove Yantra's access on GitHub to stop them.",
         color = y.textDim,
-        fontSize = 11.5.sp,
+        fontSize = YantraType.caption,
     )
 }
 
@@ -772,8 +771,8 @@ private fun DeviceCodePanel(
     Box(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
             .clickable(onClick = onCopy)
             .padding(vertical = 20.dp),
         contentAlignment = Alignment.Center,
@@ -784,7 +783,7 @@ private fun DeviceCodePanel(
                 color = y.textPrimary,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.W700,
-                fontSize = 30.sp,
+                fontSize = YantraType.hero,
                 letterSpacing = 4.sp,
             )
             Spacer(Modifier.height(8.dp))
@@ -792,8 +791,8 @@ private fun DeviceCodePanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Icon(Icons.Default.ContentCopy, null, tint = y.textDim, modifier = Modifier.size(12.dp))
-                Text(if (copied) "Copied" else "Tap to copy", color = y.textDim, fontSize = 11.5.sp)
+                YantraIcon(YantraMark.Copy, tint = y.textDim)
+                Text(if (copied) "Copied" else "Tap to copy", color = y.textDim, fontSize = YantraType.caption)
             }
         }
     }
@@ -801,7 +800,7 @@ private fun DeviceCodePanel(
     YantraButton(
         label = "Copy and open GitHub",
         modifier = Modifier.fillMaxWidth(),
-        icon = Icons.AutoMirrored.Filled.OpenInNew,
+        mark = YantraMark.OpenOut,
         onClick = onOpen,
     )
     Spacer(Modifier.height(8.dp))
@@ -809,7 +808,7 @@ private fun DeviceCodePanel(
         "The code is copied when you open GitHub, so it is there to paste. GitHub asks for it "
             + "once and then remembers this phone.",
         color = y.textDim,
-        fontSize = 11.5.sp,
+        fontSize = YantraType.caption,
     )
     Spacer(Modifier.height(12.dp))
     Text(
@@ -817,7 +816,7 @@ private fun DeviceCodePanel(
             "up as soon as you do."
         else "Having trouble reaching GitHub — still trying. Your code is still good.",
         color = if (struggling == null) y.textMuted else y.warning,
-        fontSize = 12.5.sp,
+        fontSize = YantraType.meta,
     )
 }
 
@@ -922,7 +921,7 @@ private fun RepoHasTasksDialog(
                 Text(
                     "USE THE REPOSITORY",
                     fontFamily = YantraMono,
-                    fontSize = 12.sp,
+                    fontSize = YantraType.section,
                     fontWeight = FontWeight.W700,
                     letterSpacing = 1.4.sp,
                     color = y.accent,

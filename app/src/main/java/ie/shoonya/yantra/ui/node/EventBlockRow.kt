@@ -30,6 +30,10 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.components.spine
+import ie.shoonya.yantra.ui.components.SPINE_WIDTH
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
@@ -55,30 +59,29 @@ internal fun EventBlockRow(
     val sitting = e.forNodeId != null
     val start = runCatching { LocalDateTime.parse(e.startLocal) }.getOrNull()
     val end = runCatching { LocalDateTime.parse(e.endLocal) }.getOrNull()
-    val tint = e.color
-        ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) }?.light }
-        ?.let { Color(LabelPalette.display(it, y.isDark)) }
-        ?: y.accent
+    // The same two colours a block on the day wears, and for the same reasons — the fill is what
+    // this thing is, the spine is whose repository it is in. A line on a page and a block on a day
+    // are one object seen from two sides; they had better not disagree about colour.
+    val tint = LabelPalette.byName(e.color)
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+    val workspaceInk = LabelPalette.byName(ie.shoonya.yantra.ui.appContainer().workspaceColours()[e.workspaceId])
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
 
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(y.cardBg)
+            .clip(RoundedCornerShape(YantraRadius.control))
+            .background(tint?.copy(alpha = 0.16f) ?: y.cardBg)
             .clickable(onClick = onOpen)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The same spine the calendar draws, so a line on a page and a block on a day read as the
-        // same object seen from two sides.
-        Box(
-            Modifier
-                .width(3.dp)
-                .height(30.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(tint),
-        )
+        // The same spine the calendar draws and the player draws — see Modifier.spine. On a page
+        // every row is from one repository, so this is usually one colour down the whole document:
+        // that is the point. It is the same mark meaning the same thing, and the day this page is
+        // read beside a list from another repo it is already saying which.
+        Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(workspaceInk ?: tint ?: y.accent))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -86,7 +89,7 @@ internal fun EventBlockRow(
                 // that, it is still a piece of time and says so rather than saying nothing.
                 row.displayTitle?.takeIf { it.isNotBlank() }
                     ?: if (sitting) "Time set aside" else "Event",
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 fontWeight = FontWeight.W600,
                 color = y.textPrimary,
                 maxLines = 1,
@@ -96,7 +99,7 @@ internal fun EventBlockRow(
             Text(
                 whenWords(start, end, e.allDay, sitting),
                 fontFamily = YantraMono,
-                fontSize = 10.5.sp,
+                fontSize = YantraType.dense,
                 color = y.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -107,7 +110,7 @@ internal fun EventBlockRow(
             Modifier.size(22.dp).clip(CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text("›", fontSize = 15.sp, color = y.textDim)
+            Text("›", fontSize = YantraType.row, color = y.textDim)
         }
     }
 }
@@ -147,7 +150,7 @@ internal fun EventWhenChip(row: EventWithTitle) {
     Row(
         Modifier
             .padding(top = 6.dp)
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(y.accentFill)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -155,7 +158,7 @@ internal fun EventWhenChip(row: EventWithTitle) {
         Text(
             whenWords(start, end, e.allDay, e.forNodeId != null),
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = y.accentText,
         )

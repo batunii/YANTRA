@@ -56,6 +56,24 @@ object LabelPalette {
         if (dark) darkOf[stored] ?: stored else lightOf[stored] ?: stored
 
     /**
+     * The same seed as [defaultFor], given as a palette **name**.
+     *
+     * For the things that store a colour rather than recompute it — a workspace, a list — so that
+     * the seed and the stored value are the same kind of thing and a hand-edited file can hold
+     * either. Seeding and storing is what makes a colour correctable; see [WorkspaceEntry.color].
+     */
+    fun defaultNameFor(name: String): String {
+        val key = name.trim().lowercase()
+        var h = 0
+        for (ch in key) h = h * 31 + ch.code
+        return swatches[((h % swatches.size) + swatches.size) % swatches.size].name
+    }
+
+    /** A palette name to its light value, or null if nothing is called that. */
+    fun byName(name: String?): Swatch? =
+        name?.let { n -> swatches.firstOrNull { it.name.equals(n.trim(), ignoreCase = true) } }
+
+    /**
      * The colour a label gets when nobody picks one.
      *
      * Derived from the name rather than assigned in order, so the same tag is the same colour on

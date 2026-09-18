@@ -16,15 +16,17 @@ import ie.shoonya.yantra.data.label.LabelPalette
  * with its own colours would be a second set to learn and a second chance to collide with the
  * accent.
  *
- * **Inheritance.** No colour on the line means the workspace's, which the app already derives from
- * the repository's name — the same hue the smart lists and the widget use to say which repo a task
- * came from. Following that rather than inventing a second rule is what keeps one workspace one
- * colour everywhere you meet it. And, exactly as those do, the workspace hue only applies when more
- * than one repository is open: with a single one it distinguishes nothing, and tinting every block
- * in the app a colour nobody chose would be noise.
+ * **No inheritance.** The workspace used to be the fallback for a block with no colour of its own,
+ * and that was one rule doing two jobs: the same 3dp of green then meant "this repository" on a
+ * widget row and "this block, specifically" here, and with five swatches there is no telling those
+ * apart. So the two facts were given two places on the block — the **spine** is the repository and
+ * the **fill** is the block — and a colour is never read out of a hue alone, because the name is
+ * always within a glance of it.
  *
- * Nothing at either level leaves the block in the accent, which is what a calendar with no opinions
- * about colour looked like before any of this.
+ * What a block's fill can still borrow is the thing it *is*: a sitting is a task seen as an hour,
+ * so an uncoloured sitting wears the colour of the list its task lives on. An uncoloured
+ * appointment has nothing to borrow and stays in the accent, which is what a calendar with no
+ * opinions about colour looked like before any of this.
  */
 object EventTint {
 
@@ -43,7 +45,4 @@ object EventTint {
     /** The name for a stored value, so a sheet can show what is already chosen. */
     fun nameOf(stored: Long?): String? =
         LabelPalette.swatches.firstOrNull { it.light == stored }?.name
-
-    /** What a block ends up wearing: its own colour, else its workspace's, else nothing. */
-    fun resolve(own: String?, workspace: Long?): Long? = storedOf(own) ?: workspace
 }

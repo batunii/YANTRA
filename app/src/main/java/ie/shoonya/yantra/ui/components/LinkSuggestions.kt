@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -15,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * What a half-typed `[[` could mean, offered while there is still time to pick one.
@@ -56,7 +56,7 @@ fun LinkSuggestions(
                 if (draft.isBlank()) "Type to find a task or list to link"
                 else "Nothing called “$draft” to link to",
                 color = y.textDim,
-                fontSize = 11.5.sp,
+                fontSize = YantraType.caption,
                 modifier = Modifier.padding(vertical = 6.dp),
             )
         } else {
@@ -65,7 +65,7 @@ fun LinkSuggestions(
                     label = node.title?.takeIf { it.isNotBlank() } ?: "Untitled",
                     selected = false,
                     size = ChipSize.Small,
-                    icon = Icons.Default.CheckCircleOutline,
+                    mark = YantraMark.Task,
                     onClick = { onPick(node) },
                 )
             }

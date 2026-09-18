@@ -67,23 +67,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragIndicator
-import androidx.compose.material.icons.filled.Draw
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
-import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.OpenInFull
-import androidx.compose.material.icons.filled.CloseFullscreen
-import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -140,6 +123,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import ie.shoonya.yantra.data.db.LabelEntity
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.ui.Routes
@@ -174,8 +158,6 @@ import ie.shoonya.yantra.ui.components.BottomBar
 import ie.shoonya.yantra.ui.components.SwitchHereDialog
 import ie.shoonya.yantra.ui.components.horizontalFadingEdge
 import ie.shoonya.yantra.ui.components.NeutralChip
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.CheckCircleOutline
 import ie.shoonya.yantra.ui.components.ChipSize
 import ie.shoonya.yantra.ui.components.SelectChip
 import ie.shoonya.yantra.ui.components.FocusCount
@@ -202,6 +184,10 @@ import androidx.compose.runtime.Stable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -246,6 +232,14 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
     var propertySheetFor by remember { mutableStateOf<String?>(null) }
     var deletingPage by remember { mutableStateOf(false) }
+    // Screen level, not inside the property row — see the note on PropertyRow.onRequest. The row is
+    // in the band, the band folds when the keyboard comes up, and an editor you have to type into
+    // cannot live somewhere that disappears the moment you type.
+    var pillRequest by remember { mutableStateOf<PillRequest?>(null) }
+    // The label a delete is being confirmed for, with the number of tasks that carry it. Held as a
+    // pair because the count is read once, when the cross is pressed — asking "this is on 7 tasks"
+    // is a question somebody can answer, where "that was on 7 tasks" is not.
+    var deletingLabel by remember { mutableStateOf<Pair<LabelEntity, Int>?>(null) }
     val scope = rememberCoroutineScope()
     // The lists this page could be filed onto — CALENDAR_PLAN.md §28. Null while the picker is shut;
     // read when it opens rather than watched, because it is a one-shot choice and a list appearing
@@ -536,13 +530,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         allLabels = allLabels,
                         attachedLabels = ownLabels,
                         onSet = { def, t, n, d, b -> vm.setProperty(nodeId, def, t, n, d, b) },
-                        onSetDue = { d, hasTime, remMin -> vm.setDue(nodeId, d, hasTime, remMin) },
-                        onSetDeadline = { d -> vm.setDeadline(nodeId, d) },
                         onClear = { defId -> vm.clearProperty(nodeId, defId) },
-                        onAttachLabel = { label -> vm.attachLabel(nodeId, label.id) },
                         onDetachLabel = { label -> vm.detachLabel(nodeId, label.id) },
-                        onCreateAndAttachLabel = { name, colour -> vm.createAndAttachLabel(nodeId, name, colour) },
-                        onRecolourLabel = { label, colour -> vm.setLabelColor(label.id, colour) },
+                        onRequest = { pillRequest = it },
                         modifier = Modifier.padding(top = 16.dp),
                     )
                     LinkedRow(
@@ -757,9 +747,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         .then(
                             if (lifted) {
                                 Modifier
-                                    .shadow(12.dp, RoundedCornerShape(14.dp))
-                                    .background(y.tileWarm, RoundedCornerShape(14.dp))
-                                    .border(1.dp, y.tileBorder, RoundedCornerShape(14.dp))
+                                    .shadow(12.dp, RoundedCornerShape(YantraRadius.card))
+                                    .background(y.tileWarm, RoundedCornerShape(YantraRadius.card))
+                                    .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
                             } else Modifier
                         )
                         // Long-press anywhere in the block's own space to pick it up. It cannot
@@ -813,8 +803,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     label = "gripAlpha",
                 )
                 if (gripAlpha > 0.01f) {
-                    Icon(
-                        Icons.Default.DragIndicator,
+                    YantraIcon(YantraMark.Drag,
                         contentDescription = "Drag to move",
                         tint = if (lifted) y.accent else y.textDim,
                         modifier = Modifier
@@ -1141,6 +1130,39 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         )
     }
 
+    // Every editor the property row offers, drawn out here where the band cannot fold it away.
+    PillDialogHost(
+        request = pillRequest,
+        allLabels = allLabels,
+        attachedLabels = ownLabels,
+        onSet = { def, t, n, d, b -> vm.setProperty(nodeId, def, t, n, d, b) },
+        onSetDue = { d, hasTime, remMin -> vm.setDue(nodeId, d, hasTime, remMin) },
+        onSetDeadline = { d -> vm.setDeadline(nodeId, d) },
+        onClear = { defId -> vm.clearProperty(nodeId, defId) },
+        onAttachLabel = { label -> vm.attachLabel(nodeId, label.id) },
+        onCreateAndAttachLabel = { name, colour -> vm.createAndAttachLabel(nodeId, name, colour) },
+        onRecolourLabel = { label, colour -> vm.setLabelColor(label.id, colour) },
+        // Counted before it is offered, so the question names a number you can weigh.
+        onDeleteLabel = { label -> scope.launch { deletingLabel = label to vm.labelUsage(label.id) } },
+        onDismiss = { pillRequest = null },
+    )
+
+    deletingLabel?.let { (label, uses) ->
+        ConfirmDialog(
+            title = "Delete \"${label.name}\"?",
+            body = when (uses) {
+                0 -> "Nothing is using it, so nothing else changes."
+                1 -> "It will be taken off 1 task. The task itself is not deleted."
+                else -> "It will be taken off $uses tasks. The tasks themselves are not deleted."
+            },
+            onDismiss = { deletingLabel = null },
+            onConfirm = {
+                vm.deleteLabel(label.id)
+                deletingLabel = null
+            },
+        )
+    }
+
     movePicker?.let { lists ->
         MoveToListDialog(
             lists = lists,
@@ -1267,7 +1289,7 @@ private fun PageBand(
         // top row: back · (breadcrumb / collapsed title) · actions
         Row(verticalAlignment = Alignment.CenterVertically) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = onBack,
                 iconSize = 20.dp,
@@ -1281,7 +1303,7 @@ private fun PageBand(
                     // link in its name showed its id the moment you typed on its page.
                     inlinePlain(title, bandResolve).ifBlank { "Untitled" },
                     fontFamily = YantraDisplay,
-                    fontSize = 16.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.2).sp,
+                    fontSize = YantraType.card, fontWeight = FontWeight.W700, letterSpacing = (-0.2).sp,
                     color = y.textPrimary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
@@ -1312,7 +1334,7 @@ private fun PageBand(
                 Text(
                     trail,
                     fontFamily = YantraText,
-                    fontSize = 12.sp,
+                    fontSize = YantraType.section,
                     fontWeight = FontWeight.W500,
                     color = y.textMuted,
                     textAlign = TextAlign.Center,
@@ -1323,7 +1345,7 @@ private fun PageBand(
             }
             if (onSolo != null) {
                 NavCircle(
-                    if (soloed) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
+                    mark = if (soloed) YantraMark.Collapse else YantraMark.Expand,
                     contentDescription = if (soloed) "Show the list beside this page" else "Just this page",
                     onClick = onSolo,
                     iconSize = 17.dp,
@@ -1342,23 +1364,18 @@ private fun PageBand(
                     val shown = if (live.isOpen) live.elapsedSecs else live.remainingSecs
                     Row(
                         Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(YantraRadius.card))
                             .background(y.accentFill)
-                            .border(1.dp, y.accentBorder, RoundedCornerShape(14.dp))
+                            .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card))
                             .clickable(onClick = onFocus)
                             .padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            Icons.Default.Timer,
-                            contentDescription = "Open the running session",
-                            tint = y.accent,
-                            modifier = Modifier.size(14.dp),
-                        )
+                        YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Open the running session")
                         Text(
                             "%d:%02d".format(shown / 60, shown % 60),
                             fontFamily = YantraMono,
-                            fontSize = 12.sp,
+                            fontSize = YantraType.section,
                             fontWeight = FontWeight.W700,
                             letterSpacing = 0.5.sp,
                             color = y.accentText,
@@ -1367,7 +1384,7 @@ private fun PageBand(
                     }
                 } else {
                     NavCircle(
-                        Icons.Default.Timer,
+                        mark = YantraMark.Focus,
                         contentDescription = "Focus on this task",
                         onClick = onFocus,
                         accent = true,
@@ -1378,7 +1395,7 @@ private fun PageBand(
             }
             Box {
                 NavCircle(
-                    Icons.Default.MoreVert,
+                    mark = YantraMark.More,
                     contentDescription = "Page options",
                     onClick = { menu = true },
                     iconSize = 18.dp,
@@ -1675,7 +1692,7 @@ private fun Wrapper(
                 .padding(start = inset)
                 // After the inset, so the wash lines up with the block and not with the gutter.
                 .then(
-                    if (started) Modifier.background(y.startedWash, RoundedCornerShape(10.dp))
+                    if (started) Modifier.background(y.startedWash, RoundedCornerShape(YantraRadius.control))
                     else Modifier
                 )
         ) { content() }
@@ -1839,7 +1856,7 @@ private class BlockEditing(
 private fun Modifier.activeBlock(active: Boolean): Modifier {
     val y = Yantra.colors
     return if (active) {
-        this.background(y.accent.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+        this.background(y.accent.copy(alpha = 0.05f), RoundedCornerShape(YantraRadius.control))
     } else this
 }
 
@@ -2059,7 +2076,7 @@ internal fun TextualBlockRow(
     // coral, seeded by the task id so a given task's strike is always the same wobble. The font's
     // ruler-straight line said "field disabled"; the strike says someone crossed it off.
     val style: TextStyle = when {
-        isHeading -> TextStyle(fontSize = 16.sp, fontWeight = FontWeight.W800, letterSpacing = (-0.2).sp, color = y.textPrimary)
+        isHeading -> TextStyle(fontSize = YantraType.card, fontWeight = FontWeight.W800, letterSpacing = (-0.2).sp, color = y.textPrimary)
         isTask -> MaterialTheme.typography.bodyLarge.copy(color = titleColor)
         // Primary, not secondary. Prose on a task's page IS the page — it is the thing you came
         // here to read — and it was being drawn in the colour reserved for supporting text, thin
@@ -2341,7 +2358,7 @@ internal fun TextualBlockRow(
                     Text(
                         if (late) due.label.removeSuffix(" · overdue") else due.label,
                         fontFamily = YantraMono,
-                        fontSize = 11.sp,
+                        fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
                         // The chip's own voice: crimson past, accent today, neutral further out.
                         // Read through chipStyleFor so this slot cannot drift from the chip the
@@ -2363,14 +2380,9 @@ internal fun TextualBlockRow(
                         .clickable(onClick = onOpen),
                 ) {
                     if (childCount > 0) {
-                        Text("$childCount", fontSize = 12.sp, fontWeight = FontWeight.W600, color = y.textMuted)
+                        Text("$childCount", fontSize = YantraType.section, fontWeight = FontWeight.W600, color = y.textMuted)
                     }
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Open as page",
-                        tint = if (childCount > 0) y.textMuted else y.textDim,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    YantraIcon(YantraMark.Forward, tint = if (childCount > 0) y.textMuted else y.textDim, contentDescription = "Open as page")
                 }
             }
         }
@@ -2409,10 +2421,9 @@ internal fun TextualBlockRow(
                 // workspace, the assignee and a session count.
                 origin?.list?.let { list ->
                     sep()
-                    // Tinted by the repository it belongs to, when there is more than one. One
-                    // piece of text saying both which list and which workspace, at the width of the
-                    // list name alone.
-                    val ink = origin.workspaceHue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
+                    // The list's own colour — the same one its mark wears on Home. The repository is
+                    // the spine at the row's leading edge, not a second meaning for this word.
+                    val ink = origin.listHue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
                     withStyle(SpanStyle(color = ink ?: y.textDim)) { append(list) }
                 }
             }
@@ -2421,7 +2432,7 @@ internal fun TextualBlockRow(
                 // a busy one without the box being nailed shut.
                 if (meta.isEmpty()) AnnotatedString("\u2009") else meta,
                 fontFamily = YantraMono,
-                fontSize = 10.5.sp,
+                fontSize = YantraType.dense,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // A line height, not a box height. Clamping the box to 15dp cropped every
@@ -2457,7 +2468,7 @@ private fun InkBlockRow(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(vertical = 10.dp),
                 ) {
-                    Icon(Icons.Default.Draw, contentDescription = null, tint = y.textMuted.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                    YantraIcon(YantraMark.Ink, tint = y.textMuted.copy(alpha = 0.6f), contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Tap to sketch", color = y.textMuted.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium)
                 }
@@ -2527,7 +2538,7 @@ private fun ImageBlockRow(
             modifier = Modifier
                 .weight(1f)
                 .clickable(onClick = { onActivate() }),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(YantraRadius.card),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             AsyncImage(
@@ -2583,18 +2594,18 @@ private fun BlockTypeBar(
         if (showTypes) {
             SelectChip("Task", selected = currentType == NodeType.TASK, onClick = onTask)
             SelectChip("Note", selected = currentType == NodeType.PARAGRAPH, onClick = onText)
-            SelectChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, icon = Icons.Default.Title)
+            SelectChip("Heading", selected = currentType == NodeType.HEADING, onClick = onHeading, mark = YantraMark.Heading)
             SelectChip(
                 "Bullet",
                 selected = currentType == NodeType.BULLET,
                 onClick = onBullet,
-                icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+                mark = YantraMark.List,
             )
             SelectChip(
                 "Numbered",
                 selected = currentType == NodeType.NUMBERED,
                 onClick = onNumbered,
-                icon = Icons.Default.FormatListNumbered,
+                mark = YantraMark.Numbered,
             )
             Box(
                 Modifier
@@ -2603,8 +2614,8 @@ private fun BlockTypeBar(
                     .width(1.dp)
                     .background(y.hairline),
             )
-            NeutralChip("Ink", onInk, icon = Icons.Default.Draw, modifier = noFocus)
-            NeutralChip("Image", onImage, icon = Icons.Default.Image, modifier = noFocus)
+            NeutralChip("Ink", onInk, mark = YantraMark.Ink, modifier = noFocus)
+            NeutralChip("Image", onImage, mark = YantraMark.Image, modifier = noFocus)
         }
         // What the ⋮ used to hide. Out here they are simply visible, and they only appear once a
         // block is actually selected, so the bar is never showing an action with no subject.
@@ -2619,16 +2630,16 @@ private fun BlockTypeBar(
                     .background(y.hairline),
             )
             if (onOutdent != null) {
-                NeutralChip("Outdent", onOutdent, icon = Icons.AutoMirrored.Filled.FormatIndentDecrease, modifier = noFocus)
+                NeutralChip("Outdent", onOutdent, mark = YantraMark.IndentOut, modifier = noFocus)
             }
             if (onIndent != null) {
-                NeutralChip("Indent", onIndent, icon = Icons.AutoMirrored.Filled.FormatIndentIncrease, modifier = noFocus)
+                NeutralChip("Indent", onIndent, mark = YantraMark.IndentIn, modifier = noFocus)
             }
             if (actOnTask && onProperties != null) {
-                NeutralChip("Props", onProperties, icon = Icons.Default.Flag, modifier = noFocus)
+                NeutralChip("Props", onProperties, mark = YantraMark.Properties, modifier = noFocus)
             }
             if (onFocusTask != null) {
-                NeutralChip("Focus", onFocusTask, icon = Icons.Default.Timer, modifier = noFocus)
+                NeutralChip("Focus", onFocusTask, mark = YantraMark.Focus, modifier = noFocus)
             }
             DangerChip("Delete", onDelete, modifier = noFocus)
         }
@@ -2639,7 +2650,7 @@ private fun BlockTypeBar(
 @Composable
 private fun DangerChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(YantraRadius.control)
     Row(
         modifier
             .background(y.overdueChipBg, shape)
@@ -2648,9 +2659,9 @@ private fun DangerChip(text: String, onClick: () -> Unit, modifier: Modifier = M
             .padding(horizontal = 15.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Delete, contentDescription = null, tint = y.overdue, modifier = Modifier.size(15.dp))
+        YantraIcon(YantraMark.Delete, tint = y.overdue, contentDescription = null)
         Spacer(Modifier.width(6.dp))
-        Text(text, color = y.overdue, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
+        Text(text, color = y.overdue, fontSize = YantraType.label, fontWeight = FontWeight.W600)
     }
 }
 
@@ -2721,7 +2732,7 @@ private fun LinkedRow(
         Text(
             "LINKS TO",
             fontFamily = YantraText,
-            fontSize = 9.5.sp,
+            fontSize = YantraType.dense,
             fontWeight = FontWeight.W600,
             letterSpacing = 1.2.sp,
             color = y.textDim,
@@ -2731,8 +2742,8 @@ private fun LinkedRow(
                 label = target.title?.takeIf { it.isNotBlank() } ?: "Untitled",
                 selected = false,
                 size = ChipSize.Small,
-                icon = if (target.type == NodeType.TASK) Icons.Default.CheckCircleOutline
-                else Icons.AutoMirrored.Filled.List,
+                mark = if (target.type == NodeType.TASK) YantraMark.Task
+                else YantraMark.List,
                 onClick = { onOpen(target.id) },
             )
         }
@@ -2774,7 +2785,7 @@ private fun TaskRail(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 2.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(YantraRadius.panel))
                         // The page you are on is marked, not selected: it is where you are, and a
                         // selection would imply it could be deselected.
                         .background(if (here) y.startedWash else Color.Transparent)
@@ -2796,7 +2807,7 @@ private fun TaskRail(
                     )
                     Text(
                         inlinePlain(task.title.orEmpty(), resolve).ifBlank { "Untitled" },
-                        fontSize = 14.5.sp,
+                        fontSize = YantraType.body,
                         fontWeight = if (here) FontWeight.W700 else FontWeight.W500,
                         color = if (task.done) y.textDim else y.textPrimary,
                         maxLines = 2,

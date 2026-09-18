@@ -62,6 +62,10 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.components.spine
+import ie.shoonya.yantra.ui.components.SPINE_WIDTH
 
 /** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
@@ -395,7 +399,7 @@ fun WeekTimeline(
                 Column(
                     Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(YantraRadius.block))
                         .then(if (isSel) Modifier.background(y.accentFill) else Modifier)
                         .clickable { onSelectDay(d) }
                         .padding(vertical = 4.dp),
@@ -403,12 +407,12 @@ fun WeekTimeline(
                 ) {
                     Text(
                         d.dayOfWeek.getDisplayName(java.time.format.TextStyle.NARROW, locale),
-                        fontSize = 9.sp, color = y.textDim,
+                        fontSize = YantraType.dense, color = y.textDim,
                     )
                     Text(
                         d.dayOfMonth.toString(),
                         fontFamily = YantraMono,
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                         fontWeight = if (d == LocalDate.now()) FontWeight.W700 else FontWeight.W500,
                         color = if (d == LocalDate.now()) y.accent else y.textPrimary,
                     )
@@ -473,7 +477,7 @@ private fun HourRuler() {
                     Text(
                         // No leading zero. "9" is a time; "09" is a field in a form.
                         "$hour",
-                        fontSize = 10.sp,
+                        fontSize = YantraType.dense,
                         color = y.textDim,
                         textAlign = TextAlign.End,
                         // Lifted half a line so the number straddles its own hour rule rather than
@@ -604,18 +608,30 @@ private fun BlockChip(
     // writes is offered on one**, and that is enforced here rather than trusted to the handlers:
     // there is no node behind it, so there is nothing a drag could edit even if it wanted to.
     val theirs = item as? DayItem.Device
-    // The block's own colour, its workspace's, or the accent — resolved in [CalendarBucketer], so
-    // by the time it arrives here it is one word or none. A coloured block replaces the *spine*
-    // and tints the wash rather than flooding the fill: a day of solid colour blocks is a chart,
-    // and the words on them stop being the thing you read.
+    // The block's own colour — its `col:`, or for a sitting the colour of its task's list, both
+    // resolved in [CalendarBucketer]. It tints the **wash** rather than flooding the fill: a day of
+    // solid colour blocks is a chart, and the words on them stop being the thing you read.
     val tint = (item as? DayItem.Event)?.tint?.let {
         androidx.compose.ui.graphics.Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
     // A device event wears the colour its own calendar gives it, unmapped. That colour is the
     // other app's identity and the whole point of drawing it is that you recognise it.
     } ?: theirs?.color?.let { androidx.compose.ui.graphics.Color(it) }
+    // The spine is the repository, here as on the player and on a widget row — one idiom, one
+    // meaning, on every surface that has one.
+    //
+    // It used to carry whatever the block itself was wearing, which made it a second, louder copy
+    // of the wash and left the repository with nowhere to be said. Splitting them is what lets a
+    // block answer two questions at once: the edge says whose day this is in, the fill says what
+    // kind of thing it is. Null — a single open workspace — falls back to what the spine said
+    // before: the accent for something happening, frame ink for a deadline landing.
+    val workspaceInk = (item as? DayItem.Event)?.workspaceTint?.let {
+        androidx.compose.ui.graphics.Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark))
+    }
     val spine = when {
+        // Somebody else's keeps its own calendar's colour on the edge: it is not in a repository of
+        // yours, so there is nothing of ours for the edge to say about it.
         theirs != null -> (tint ?: y.textDim).copy(alpha = 0.75f)
-        tint != null -> tint
+        workspaceInk != null -> workspaceInk
         isEvent || sitting -> y.accent
         else -> y.textDim.copy(alpha = 0.5f)
     }
@@ -660,7 +676,7 @@ private fun BlockChip(
             // UI test can address one block — these gestures cannot be driven from `adb input`.
             .testTag("block:${block.item.nodeId}")
             .padding(end = 4.dp, bottom = 2.dp)
-            .clip(RoundedCornerShape(7.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(
                 when {
                     // Fainter for somebody else's: it is a backdrop your own day is drawn against,
@@ -675,7 +691,7 @@ private fun BlockChip(
             // Picked out, so the two handles on its edges read as belonging to *this* block.
             .then(
                 if (!selected) Modifier
-                else Modifier.border(1.5.dp, y.accent, RoundedCornerShape(7.dp))
+                else Modifier.border(1.5.dp, y.accent, RoundedCornerShape(YantraRadius.block))
             )
             .then(
                 if (!writable) Modifier else Modifier.pointerInput(
@@ -757,12 +773,8 @@ private fun BlockChip(
             .pointerInput(block.item.nodeId) { detectTapGestures { onClick() } },
     ) {
         Row(Modifier.fillMaxSize()) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(spine),
-            )
+            // See Modifier.spine — the same rule the page row and the now player draw.
+            Box(Modifier.width(SPINE_WIDTH).fillMaxHeight().spine(spine))
             Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
                 Text(
                     item.title,
@@ -790,7 +802,7 @@ private fun BlockChip(
                         theirs?.taskTitle?.takeIf { live == null }
                             ?: ("%d:%02d".format(startMin / 60, startMin % 60) +
                                 if (live != null) "–%d:%02d".format(endMin / 60 % 24, endMin % 60) else ""),
-                        fontSize = 10.sp,
+                        fontSize = YantraType.dense,
                         fontWeight = if (live != null) FontWeight.W700 else FontWeight.W400,
                         color = if (isEvent && !sitting && tint == null) y.accentText.copy(alpha = 0.85f) else y.textMuted,
                     )
@@ -920,7 +932,7 @@ private fun BoxScope.Handle(where: Alignment, tint: Color, lit: Boolean) {
             .padding(vertical = 2.dp)
             .width(if (lit) 34.dp else 26.dp)
             .height(3.dp)
-            .clip(RoundedCornerShape(2.dp))
+            .clip(RoundedCornerShape(YantraRadius.tiny))
             // The block's own colour, not the accent: a coloured block with accent handles reads
             // as two things stuck together rather than one thing with edges.
             .background(tint.copy(alpha = if (lit) 1f else 0.5f)),
@@ -979,7 +991,7 @@ private fun AllDayChip(item: DayItem, compact: Boolean = false, onClick: () -> U
     Box(
         Modifier
             .padding(vertical = 1.dp)
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(YantraRadius.tiny))
             .background(if (isEvent) y.accentFill else y.cardBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 5.dp, vertical = 2.dp),
@@ -1068,16 +1080,16 @@ private fun DraftBlock(range: IntRange) {
             .fillMaxWidth()
             .height(hourHeight * ((range.last - range.first) / 60f))
             .padding(end = 4.dp)
-            .clip(RoundedCornerShape(7.dp))
+            .clip(RoundedCornerShape(YantraRadius.block))
             .background(y.accentFill.copy(alpha = 0.6f))
-            .border(1.dp, y.accent, RoundedCornerShape(7.dp)),
+            .border(1.dp, y.accent, RoundedCornerShape(YantraRadius.block)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             "%d:%02d–%d:%02d".format(
                 range.first / 60, range.first % 60, range.last / 60 % 24, range.last % 60,
             ),
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = y.accentText,
         )

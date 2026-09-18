@@ -173,6 +173,52 @@ A label with no chosen colour gets one **derived from its name**, not assigned i
 tag is the same colour on every device and after a reinstall, and a handful of new labels come out
 different colours instead of all landing on the first swatch.
 
+### 4.7 Three things wear a colour, and each has one place to wear it
+
+> `LabelPalette.kt` seeds all three · `AppContainer.workspaceColours()` is the only resolver for a
+> workspace · `Modifier.spine` is the mark
+
+Labels, lists and workspaces all draw from the five swatches above, and all three seed from the same
+hash of their own name. That is not a redundancy to remove — it is one palette doing one job three
+times — but it does mean **five swatches have to answer three questions**, and a hue alone cannot.
+Teal is a label, a list and a repository all at once.
+
+So the questions were separated by **place**, never by hue, and one law holds the whole thing up:
+
+> **A colour is never more than a glance from its name.**
+
+| surface | spine (the edge) | fill / mark | word |
+|---|---|---|---|
+| Home row | — | the **list**, on its mark | the **workspace**, under the title |
+| Player | the **workspace** | — | the **list**, in the eyebrow |
+| Widget row | the **workspace** | — | the **list**, on the meta line |
+| Calendar block | the **workspace** | its own `col:`, or a sitting's task's **list** | — |
+| Event line on a page | the **workspace** | its own `col:`, as a wash | — |
+| Label | — | — | always `#name`, in its hue |
+
+Read it as one sentence: **the edge is the repository, the fill is the thing, the word is the fact.**
+A label never needs a place in that table because a label is *always* written out — `#urgent` is its
+own name — which is why labels were never the crowded part of this.
+
+Every workspace hue is gated on **more than one workspace being open**. With one there is nothing to
+tell apart, and a stripe that always means the same thing is decoration; the spine falls back to
+frame ink, or to the accent where it is saying "this is live".
+
+Two designs were considered and rejected by name:
+
+- **Drop list colours.** It would leave one colour system and no ambiguity. Rejected because the
+  list mark on Home is the only colour on that screen that comes from the user's own data, and the
+  screen went grey without it — and because the player then had no way to answer "which list is
+  this?" at a glance.
+- **Let lists inherit their workspace's hue.** Rejected on a fact rather than a principle: a list
+  always has a colour of its own, seeded from its name, so the inherited case never arises. An
+  inheritance rule that never fires is a rule to remember for nothing.
+
+The workspace won the spine over the list on two counts: there are two or three repositories and
+dozens of lists, so the spine is a coarse mark asked a coarse question; and the workspace is the one
+fact with **nowhere else to go** — a widget row is two lines of text with no spare word, and an hour
+on a day has less. A list has a word on every surface it appears on.
+
 ---
 
 ## 5. Type — three voices

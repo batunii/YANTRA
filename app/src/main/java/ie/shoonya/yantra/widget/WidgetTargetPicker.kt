@@ -18,6 +18,7 @@ import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.components.YantraField
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Choosing what a widget shows, in one place.
@@ -87,7 +88,7 @@ fun LazyListScope.widgetTargetItems(
             item(key = "no-results") {
                 Text(
                     "Nothing by that name",
-                    fontSize = 13.sp,
+                    fontSize = YantraType.meta,
                     color = Yantra.colors.textMuted,
                     modifier = Modifier.padding(top = 16.dp, start = 4.dp),
                 )

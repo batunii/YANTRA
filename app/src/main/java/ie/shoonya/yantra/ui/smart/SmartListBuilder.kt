@@ -18,12 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +66,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.TextButton
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private enum class ShowMode(val label: String) {
     OPEN("Open"),
@@ -209,7 +207,7 @@ fun SmartListBuilderSheet(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = y.accent, modifier = Modifier.size(22.dp))
+                YantraIcon(YantraMark.SmartList, tint = y.accent, contentDescription = null)
                 Spacer(Modifier.width(10.dp))
                 Text(
                     if (editing != null) "Edit smart list" else "New smart list",
@@ -330,12 +328,12 @@ fun SmartListBuilderSheet(
                     Text(
                         "This view also uses a rule that can't be edited here — it is kept as it " +
                             "is. Choosing a starting point above replaces it.",
-                        fontSize = 12.sp, color = y.textDim,
+                        fontSize = YantraType.section, color = y.textDim,
                     )
                 } else if (conds.isEmpty()) {
                     Text(
                         "No conditions — this list will show every ${if (show == ShowMode.DONE) "completed" else "open"} task.",
-                        fontSize = 12.sp, color = y.textDim,
+                        fontSize = YantraType.section, color = y.textDim,
                     )
                 }
             }
@@ -357,7 +355,7 @@ fun SmartListBuilderSheet(
                             }
                         }
                     }
-                    Text("Quick-add here auto-tags new tasks to match this view.", fontSize = 11.sp, color = y.textDim)
+                    Text("Quick-add here auto-tags new tasks to match this view.", fontSize = YantraType.caption, color = y.textDim)
                 }
             }
 
@@ -366,8 +364,8 @@ fun SmartListBuilderSheet(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(14.dp))
-                    .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(14.dp)) else Modifier)
+                    .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(YantraRadius.card))
+                    .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card)) else Modifier)
                     .clickable(enabled = valid) {
                         onCreate(name.trim(), buildFilter(show, conds, extras, reach), buildSort(conds), homeId)
                     }
@@ -377,7 +375,7 @@ fun SmartListBuilderSheet(
                 Text(
                     if (editing != null) "Save changes" else "Create smart list",
                     fontWeight = FontWeight.W800,
-                    fontSize = 15.sp,
+                    fontSize = YantraType.row,
                     color = if (valid) y.accentText else y.textDim,
                 )
             }
@@ -515,12 +513,12 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.tileWarm2, RoundedCornerShape(14.dp))
+            .background(y.tileWarm2, RoundedCornerShape(YantraRadius.card))
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(def.name, fontWeight = FontWeight.W700, fontSize = 14.sp, color = y.textPrimary)
+            Text(def.name, fontWeight = FontWeight.W700, fontSize = YantraType.body, color = y.textPrimary)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // operator
                 var opMenu by remember { mutableStateOf(false) }
@@ -571,7 +569,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
             }
         }
         Box(Modifier.size(28.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Close, "Remove condition", tint = y.textDim, modifier = Modifier.size(16.dp))
+            YantraIcon(YantraMark.Close, tint = y.textDim, contentDescription = "Remove condition")
         }
     }
 }
@@ -593,14 +591,14 @@ private fun LabelConditionCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.tileWarm2, RoundedCornerShape(14.dp))
+            .background(y.tileWarm2, RoundedCornerShape(YantraRadius.card))
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f).clickable(onClick = onEdit), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Labels", fontWeight = FontWeight.W700, fontSize = 14.sp, color = y.textPrimary)
+            Text("Labels", fontWeight = FontWeight.W700, fontSize = YantraType.body, color = y.textPrimary)
             if (labelNames.isEmpty()) {
-                Text("Tap to choose labels…", fontSize = 12.sp, color = y.textDim)
+                Text("Tap to choose labels…", fontSize = YantraType.section, color = y.textDim)
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (labelNames.size > 1) {
@@ -612,7 +610,7 @@ private fun LabelConditionCard(
             }
         }
         Box(Modifier.size(28.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Close, "Remove condition", tint = y.textDim, modifier = Modifier.size(16.dp))
+            YantraIcon(YantraMark.Close, tint = y.textDim, contentDescription = "Remove condition")
         }
     }
 }
@@ -622,9 +620,9 @@ private fun LabelConditionCard(
 private fun LabelNameChip(name: String) {
     val y = Yantra.colors
     Box(
-        Modifier.background(y.cardBg, RoundedCornerShape(7.dp)).padding(horizontal = 9.dp, vertical = 5.dp),
+        Modifier.background(y.cardBg, RoundedCornerShape(YantraRadius.block)).padding(horizontal = 9.dp, vertical = 5.dp),
     ) {
-        Text(name, fontSize = 12.sp, fontWeight = FontWeight.W600, color = y.textSecondary)
+        Text(name, fontSize = YantraType.section, fontWeight = FontWeight.W600, color = y.textSecondary)
     }
 }
 
@@ -708,7 +706,7 @@ private fun LabelChecklistDialog(
 
 @Composable
 private fun MaterialThemeTitle() = TextStyle(
-    fontFamily = YantraDisplay, fontWeight = FontWeight.W700, fontSize = 22.sp, letterSpacing = (-0.3).sp,
+    fontFamily = YantraDisplay, fontWeight = FontWeight.W700, fontSize = YantraType.title, letterSpacing = (-0.3).sp,
 )
 
 @Composable
@@ -720,14 +718,14 @@ private fun DropChip(label: String, onClick: () -> Unit) {
     val y = Yantra.colors
     Row(
         Modifier
-            .background(y.cardBg, RoundedCornerShape(9.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(9.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.block))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.block))
             .clickable(onClick = onClick)
             .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.W600, color = y.textSecondary)
-        Icon(Icons.Default.ExpandMore, null, tint = y.textDim, modifier = Modifier.size(16.dp).padding(start = 2.dp))
+        Text(label, fontSize = YantraType.meta, fontWeight = FontWeight.W600, color = y.textSecondary)
+        YantraIcon(YantraMark.Down, modifier = Modifier.size(16.dp).padding(start = 2.dp), tint = y.textDim)
     }
 }
 
@@ -749,22 +747,22 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) =
         onClick = onClick,
         // The tick is what makes "selected" legible on a chip you tapped a moment ago and
         // then edited underneath; the shared chip's coral alone reads as decoration here.
-        icon = if (selected) Icons.Default.Check else null,
+        mark = if (selected) YantraMark.Check else null,
     )
 
 @Composable
 private fun GhostButton(label: String, onClick: () -> Unit) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(YantraRadius.control)
     Row(
         Modifier
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(16.dp))
+        YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
         Spacer(Modifier.width(6.dp))
-        Text(label.removePrefix("+ "), fontSize = 13.5.sp, fontWeight = FontWeight.W700, color = y.accentText)
+        Text(label.removePrefix("+ "), fontSize = YantraType.label, fontWeight = FontWeight.W700, color = y.accentText)
     }
 }
 
@@ -773,8 +771,8 @@ private fun Field(value: String, onValue: (String) -> Unit, placeholder: String,
     Box(
         Modifier
             .fillMaxWidth()
-            .background(y.tileWarm2, RoundedCornerShape(12.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(12.dp))
+            .background(y.tileWarm2, RoundedCornerShape(YantraRadius.panel))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .padding(horizontal = 14.dp, vertical = 13.dp),
     ) {
         BasicTextField(
@@ -782,12 +780,12 @@ private fun Field(value: String, onValue: (String) -> Unit, placeholder: String,
             // Sized to the text without this, so an empty field is a few pixels wide and only a tap
             // at the very left edge reaches it.
             modifier = Modifier.fillMaxWidth(),
-            textStyle = TextStyle(fontSize = 15.sp, color = y.textPrimary),
+            textStyle = TextStyle(fontSize = YantraType.row, color = y.textPrimary),
             cursorBrush = SolidColor(y.accent),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                    if (value.isEmpty()) Text(placeholder, fontSize = 15.sp, color = y.textDim)
+                    if (value.isEmpty()) Text(placeholder, fontSize = YantraType.row, color = y.textDim)
                     inner()
                 }
             },
@@ -800,19 +798,19 @@ private fun ValueField(value: String, numeric: Boolean, y: YantraColors, onValue
     Box(
         Modifier
             .width(if (numeric) 84.dp else 150.dp)
-            .background(y.cardBg, RoundedCornerShape(9.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(9.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.block))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.block))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         BasicTextField(
             value = value, onValueChange = onValue, singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = TextStyle(fontSize = 13.sp, color = y.textPrimary),
+            textStyle = TextStyle(fontSize = YantraType.meta, color = y.textPrimary),
             cursorBrush = SolidColor(y.accent),
             keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text, imeAction = ImeAction.Done),
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                    if (value.isEmpty()) Text(if (numeric) "0" else "value", fontSize = 13.sp, color = y.textDim)
+                    if (value.isEmpty()) Text(if (numeric) "0" else "value", fontSize = YantraType.meta, color = y.textDim)
                     inner()
                 }
             },

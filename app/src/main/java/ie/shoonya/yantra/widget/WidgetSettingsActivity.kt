@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -57,6 +55,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * Settings for one placed widget, opened from the widget's own overflow button.
@@ -223,7 +224,7 @@ private fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Close",
                 onClick = onClose,
                 iconSize = 20.dp,
@@ -243,7 +244,7 @@ private fun SettingsScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(y.cardBg, RoundedCornerShape(18.dp))
+                        .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -258,14 +259,14 @@ private fun SettingsScreen(
                             // against a rising percentage.
                             Text(
                                 "Higher covers more of the wallpaper",
-                                fontSize = 12.sp,
+                                fontSize = YantraType.section,
                                 color = y.textMuted,
                                 modifier = Modifier.padding(top = 2.dp),
                             )
                         }
                         Text(
                             "${opacity.toInt()}%",
-                            fontSize = 13.sp,
+                            fontSize = YantraType.meta,
                             fontWeight = FontWeight.W700,
                             color = y.accent,
                         )
@@ -338,7 +339,7 @@ private fun ToggleCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(18.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
             .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -346,7 +347,7 @@ private fun ToggleCard(
             Text(title, style = MaterialTheme.typography.titleMedium, color = y.textPrimary)
             Text(
                 subtitle,
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 color = y.textMuted,
                 modifier = Modifier.padding(top = 2.dp),
             )

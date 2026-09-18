@@ -23,10 +23,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,6 +60,15 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.positionChange
 
 /**
  * Short, and one line.
@@ -161,6 +166,17 @@ fun CalendarScreen(nav: NavHostController) {
         onPauseOrDispose { }
     }
 
+    // Whether today is already on screen, which is the only thing that makes a Today key worth
+    // drawing — CALENDAR_UI.md §1.
+    val showsToday = remember(mode, month, selected, daysAcross) {
+        val today = LocalDate.now()
+        when (mode) {
+            CalendarMode.MONTH -> YearMonth.from(today) == month
+            CalendarMode.DAY -> today == selected
+            CalendarMode.WEEK -> TimelineLayout.span(selected, daysAcross).contains(today)
+        }
+    }
+
     androidx.compose.runtime.CompositionLocalProvider(LocalHourHeight provides hourHeight) {
     Column(
         Modifier
@@ -169,29 +185,18 @@ fun CalendarScreen(nav: NavHostController) {
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        // The header is chrome and spans the screen; everything below it is content and is capped.
-        // The switcher lives in the header's actions, not in the row below it. Down there it left
-        // the heading about forty pixels and "Thu 10 Sep" came out as "T…"; up here it sits in
-        // space the title bar already had spare.
-        PageHeader("Calendar", onBack = { nav.popBackStack() }) {
-            ModeSwitch(mode = mode, days = daysAcross, onMode = vm::setMode)
-            Spacer(Modifier.width(6.dp))
-            // Making something is the one thing a calendar is *for* that looking at it does not
-            // cover, and it used to live under the month grid — which meant it did not exist in the
-            // two views you actually plan in. Here it is on every mode, in the bar the eye already
-            // goes to, and it opens on the day you are looking at.
-            Box(
-                Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(y.accentFill)
-                    .clickable { sheet = EventSheetTarget(null, null) }
-                    .testTag("newEvent"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("+", fontSize = 19.sp, fontWeight = FontWeight.W700, color = y.accent)
-            }
-        }
+        // The screen was named twice — CALENDAR_UI.md §1.
+        //
+        // PageHeader carried "Calendar", the mode switch and the `+`; MonthBar underneath carried
+        // the month, a Tasks toggle, a Today key and two chevrons. That is the screen named twice
+        // and five controls in a band DESIGN.md §6 reserves for things you only read.
+        //
+        // The `+` was the worst of them. Its own comment justified it as sitting "in space the
+        // title bar already had spare", which is exactly the reasoning §6 forbids — the primary
+        // action of the screen parked in the one corner a thumb cannot reach, at a 34dp target
+        // under the 48dp minimum. It is a proper key in the bottom bar now, the same object as
+        // Home's.
+        PageHeader("Calendar", onBack = { nav.popBackStack() })
 
         Column(
             Modifier
@@ -201,19 +206,48 @@ fun CalendarScreen(nav: NavHostController) {
                 // of playing cards. A timeline is not: an hour with three things in it wants every
                 // pixel there is, and the rail beside it wants a quarter of a real width rather
                 // than a quarter of 460dp.
-                .widthIn(max = if (mode == CalendarMode.MONTH) CONTENT_MAX_WIDTH else Dp.Unspecified),
+                .widthIn(max = if (mode == CalendarMode.MONTH) CONTENT_MAX_WIDTH else Dp.Unspecified)
+                // Weighted, so the bar below it gets a height at all. Without this the content
+                // takes every remaining pixel — the timeline inside asks for weight(1f) and there
+                // was nothing above it competing — and the bar is laid out past the bottom edge,
+                // which looks exactly like a bar that was never added.
+                .weight(1f),
         ) {
-        MonthBar(
-            month = month,
-            selected = selected,
-            mode = mode,
-            days = daysAcross,
-            railOpen = railOpen,
-            onRail = { railOpen = !railOpen },
-            onPrev = { vm.step(-1) },
-            onNext = { vm.step(1) },
-            onToday = { vm.today() },
-        )
+        MonthBar(month = month, selected = selected, mode = mode, days = daysAcross)
+
+        // Swipe to page — CALENDAR_UI.md §1.
+        //
+        // This is what replaced the two chevrons, and it has to exist before they can go: a band
+        // with no way forward is not a simplification. It steps by whatever the view is a view
+        // *of*, which is the rule `step` already keeps — a month in Month, a screenful in Week, a
+        // day in Day.
+        //
+        // `awaitEachGesture` with a threshold rather than `detectHorizontalDragGestures`, because
+        // the timeline underneath owns vertical drags for blocks and pinch for the hour height.
+        // Claiming the gesture only once it is clearly sideways leaves those alone.
+        val pageGestures = Modifier.pointerInput(mode, daysAcross) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                var travel = 0f
+                var claimed = false
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull() ?: break
+                    if (!change.pressed) break
+                    // One finger only: two is a pinch, and the timeline is listening for it.
+                    if (event.changes.size > 1) break
+                    val d = change.positionChange()
+                    travel += d.x
+                    if (!claimed && kotlin.math.abs(travel) > PAGE_SWIPE.toPx() &&
+                        kotlin.math.abs(travel) > kotlin.math.abs(d.y) * 2
+                    ) {
+                        claimed = true
+                        vm.step(if (travel < 0) 1 else -1)
+                    }
+                    if (claimed) change.consume()
+                }
+            }
+        }
 
         when (mode) {
             CalendarMode.MONTH -> MonthGrid(
@@ -221,7 +255,7 @@ fun CalendarScreen(nav: NavHostController) {
                 selected = selected,
                 days = days,
                 onSelect = vm::select,
-                modifier = Modifier.padding(horizontal = PAGE_MARGIN),
+                modifier = Modifier.padding(horizontal = PAGE_MARGIN).then(pageGestures),
             )
             // One planner, two spans. The multi-day view used to be a picture — nothing on it
             // could be dragged, stretched, tapped out or filled from the rail, which meant that to
@@ -246,7 +280,7 @@ fun CalendarScreen(nav: NavHostController) {
                 onSpan = vm::spanTo,
                 onSelectDay = vm::select,
                 onHourHeight = { hourHeight = it; saveHourHeight(context, it) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).then(pageGestures),
             )
         }
 
@@ -258,7 +292,7 @@ fun CalendarScreen(nav: NavHostController) {
         ) {
             Text(
                 selected.format(DAY_LABEL),
-                fontSize = 12.sp,
+                fontSize = YantraType.section,
                 fontWeight = FontWeight.W700,
                 color = y.textDim,
                 modifier = Modifier.weight(1f),
@@ -268,7 +302,7 @@ fun CalendarScreen(nav: NavHostController) {
         if (items.isEmpty()) {
             Text(
                 "Nothing on this day.",
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 color = y.textMuted,
                 modifier = Modifier.padding(horizontal = PAGE_MARGIN, vertical = 12.dp),
             )
@@ -285,6 +319,35 @@ fun CalendarScreen(nav: NavHostController) {
         }
         }
         }
+
+        // Today, only when it is not a no-op — CALENDAR_UI.md §1.
+        //
+        // A button for where you already are can only ever do nothing, which is the same reasoning
+        // that removed the home mark from Home's own bar. It sits above the bar rather than in it
+        // so the bar's three positions never move.
+        if (!showsToday) {
+            Text(
+                "Today",
+                fontSize = YantraType.section,
+                fontWeight = FontWeight.W700,
+                color = y.accent,
+                modifier = Modifier
+                    .padding(start = PAGE_MARGIN, bottom = 2.dp)
+                    .clip(RoundedCornerShape(YantraRadius.panel))
+                    .clickable { vm.today() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
+
+        CalendarBar(
+            mode = mode,
+            days = daysAcross,
+            onMode = vm::setMode,
+            railOpen = railOpen,
+            showRail = mode != CalendarMode.MONTH,
+            onRail = { railOpen = !railOpen },
+            onCreate = { sheet = EventSheetTarget(null, null) },
+        )
     }
 
     }
@@ -357,20 +420,20 @@ private fun PickForRange(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = PAGE_MARGIN)
                 .navigationBarsPadding(),
         ) {
             Text(
                 "${from.format(MARKED_RANGE)}–${to.format(MARKED_RANGE)}",
                 fontFamily = YantraMono,
-                fontSize = 11.sp,
+                fontSize = YantraType.caption,
                 fontWeight = FontWeight.W700,
                 letterSpacing = 1.sp,
                 color = y.accent,
             )
             Text(
                 "What is this time for?",
-                fontSize = 19.sp,
+                fontSize = YantraType.sheetTitle,
                 fontWeight = FontWeight.W700,
                 color = y.textPrimary,
                 modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
@@ -390,7 +453,7 @@ private fun PickForRange(
             RailDividerHorizontal()
             Text(
                 "Something else — make an event",
-                fontSize = 13.sp,
+                fontSize = YantraType.meta,
                 fontWeight = FontWeight.W600,
                 color = y.accent,
                 modifier = Modifier
@@ -467,56 +530,25 @@ private fun MonthBar(
     selected: LocalDate,
     mode: CalendarMode,
     days: Int,
-    railOpen: Boolean,
-    onRail: () -> Unit,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-    onToday: () -> Unit,
 ) {
     val y = Yantra.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The band says where you are and nothing else — DESIGN.md §6. The Tasks toggle, the Today
+        // key and the two chevrons have all left it: two of them are keys in the bottom bar, Today
+        // appears above that bar only when it is not a no-op, and paging replaced the chevrons
+        // because swiping is what people try first on a calendar.
         Text(
             heading(mode, month, selected, days),
-            fontSize = 16.sp,
+            fontSize = YantraType.card,
             fontWeight = FontWeight.W700,
             color = y.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        // On both timelines, because both of them are places you plan. Shown as a state rather
-        // than an icon: "Tasks" lit means they are beside you, unlit means the days have the screen.
-        if (mode != CalendarMode.MONTH) {
-            Text(
-                "Tasks",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.W700,
-                color = if (railOpen) y.accentText else y.textMuted,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .then(if (railOpen) Modifier.background(y.accentFill) else Modifier)
-                    .clickable(onClick = onRail)
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                    .testTag("railToggle"),
-            )
-            Spacer(Modifier.width(4.dp))
-        }
-        Text(
-            "Today",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.W700,
-            color = y.accent,
-            modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onToday)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        )
-        NavCircle(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", onPrev, iconSize = 18.dp)
-        Spacer(Modifier.width(6.dp))
-        NavCircle(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month", onNext, iconSize = 18.dp)
     }
 }
 
@@ -547,7 +579,7 @@ private fun MonthGrid(
             grid.take(7).forEach { d ->
                 Text(
                     d.dayOfWeek.getDisplayName(TextStyle.NARROW, locale),
-                    fontSize = 10.sp,
+                    fontSize = YantraType.dense,
                     fontWeight = FontWeight.W700,
                     color = y.textDim,
                     modifier = Modifier.weight(1f),
@@ -574,6 +606,10 @@ private fun MonthGrid(
     }
 }
 
+/** A day mark: the width and weight of one rule under a date — CALENDAR_UI.md §2. */
+private val MARK_WIDTH = 9.dp
+private val MARK_THICKNESS = 1.5.dp
+
 @Composable
 private fun DayCell(
     day: LocalDate,
@@ -591,9 +627,23 @@ private fun DayCell(
             // tying height to it made the cells grow without limit on a wide screen.
             .height(CELL_HEIGHT)
             .padding(2.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .then(if (isSelected) Modifier.background(y.accentFill) else Modifier)
-            .then(if (isToday && !isSelected) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(10.dp)) else Modifier)
+            .clip(RoundedCornerShape(YantraRadius.control))
+            // Two marks, two facts — CALENDAR_UI.md §2, as amended.
+            //
+            //  - **the fill is today.** A permanent fact about the world, and the mark that is
+            //    always somewhere on the grid, so it takes the solid one.
+            //  - **the hollow box is what you selected.** Transient — it moves every time you tap
+            //    — so it takes the lighter mark, and reads as pointing rather than colouring.
+            //
+            // Both were on one cell before: today was an outline and selected a fill of the *same*
+            // 10dp shape, which is one gesture at two strengths and read as the two competing. The
+            // fix is not to drop one of them but to stop them saying the same thing. They now stack
+            // on the day that is both, where the pair reads as "today, and you are on it".
+            .then(if (isToday) Modifier.background(y.accentFill) else Modifier)
+            .then(
+                if (!isSelected) Modifier
+                else Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.control))
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -601,30 +651,45 @@ private fun DayCell(
             Text(
                 day.dayOfMonth.toString(),
                 fontFamily = YantraMono,
-                fontSize = 13.sp,
+                fontSize = YantraType.meta,
                 fontWeight = if (isToday || isSelected) FontWeight.W700 else FontWeight.W500,
                 // Days from the neighbouring months are shown rather than blanked, so the grid keeps
                 // its shape, but dimmed so the month you are looking at is the one that reads.
+                // Ink follows the fill, not the selection: a selected day is marked by the box
+                // around it, and colouring the numeral as well would be the third way of saying
+                // one thing. Only today is coloured, and it is coloured because it is filled.
                 color = when {
-                    isSelected -> y.accentText
+                    isToday -> y.accentText
                     !inMonth -> y.textDim.copy(alpha = 0.45f)
-                    isToday -> y.accent
                     else -> y.textPrimary
                 },
             )
-            Spacer(Modifier.height(2.dp))
-            // A dot means "something here", and up to three mean "more than one thing" without
-            // asking anyone to read a number off a 40dp square.
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Spacer(Modifier.height(6.dp))
+            // Short rules, not dots — CALENDAR_UI.md §2.
+            //
+            // Up to three of them mean "more than one thing here" without asking anyone to read a
+            // number off a 40dp square. They were filled dots, which is the one shape this app
+            // cannot spare: **a filled dot is the done state** — the bindu at the centre of the task
+            // glyph — so three of them under a date read as three things finished. A rule says
+            // "a line of something" and is the same mark the List glyph is drawn from.
+            //
+            // Muted everywhere but today, where they take the accent because everything sitting on
+            // that wash does. They are a count, not a claim: a selected day leaves them alone,
+            // since the box around the cell has already said which day you are on.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                // Fixed, so a day with nothing on it sits at the same height as a day with three.
+                modifier = Modifier.height(MARK_THICKNESS),
+            ) {
                 repeat(minOf(count, 3)) {
                     Box(
                         Modifier
-                            .size(4.dp)
-                            .clip(CircleShape)
-                            .background(if (isSelected) y.accentText else y.accent),
+                            .size(width = MARK_WIDTH, height = MARK_THICKNESS)
+                            // Rounded ends, matching the round caps every drawn mark uses.
+                            .clip(RoundedCornerShape(YantraRadius.tiny))
+                            .background(if (isToday) y.accentText else y.textMuted),
                     )
                 }
-                if (count == 0) Spacer(Modifier.size(4.dp))
             }
         }
     }
@@ -636,9 +701,9 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(YantraRadius.panel))
             .background(y.cardBg)
-            .border(1.dp, y.tileBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .clickable(onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -650,7 +715,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
                 is DayItem.Task -> if (item.hasTime) item.at.format(TIME) else "due"
             },
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = if (item is DayItem.Event) y.accent else y.textDim,
             modifier = Modifier.width(52.dp),
@@ -658,7 +723,7 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(
                 item.title,
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 color = y.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -678,23 +743,89 @@ private fun DayRow(item: DayItem, onOpen: () -> Unit) {
                 is DayItem.Task -> ""
             }
             if (sub.isNotEmpty()) {
-                Text(sub, fontSize = 11.sp, color = y.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, fontSize = YantraType.caption, color = y.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         // Marked because only the first occurrence is drawn until expansion lands, so a repeat that
         // showed once would otherwise look like a one-off somebody mistyped.
         if (item is DayItem.Event && item.repeating) {
-            Icon(
-                Icons.Default.Repeat,
-                contentDescription = "Repeats",
-                tint = y.textDim,
-                modifier = Modifier.size(14.dp),
-            )
+            YantraIcon(YantraMark.Repeat, tint = y.textDim, contentDescription = "Repeats")
         }
     }
 }
 
 /** Month, week or day — one pill with three segments, in the header's actions. */
+/**
+ * The calendar's own bar — CALENDAR_UI.md §1.
+ *
+ * Three positions, and the make-something key is the same object as Home's: 56dp at
+ * [YantraRadius.sheet], in the same corner, so it is one thing on both board screens rather than
+ * two things that happen to do the same job.
+ *
+ * **Edge-aligned, not centred**, and that is a measurement rather than a taste. The mode pill is
+ * about 184dp; a centred 56dp key needs its left edge at about 167dp, so the two collide on a
+ * 390dp phone. The honest resolutions were edge alignment or a cycling mode key, and a key that
+ * hides two of three modes behind a tap is not what a tool does.
+ */
+/** How far sideways before a drag is a page turn rather than a wobble on the way to something else. */
+private val PAGE_SWIPE = 56.dp
+
+@Composable
+private fun CalendarBar(
+    mode: CalendarMode,
+    days: Int,
+    onMode: (CalendarMode) -> Unit,
+    railOpen: Boolean,
+    showRail: Boolean,
+    onRail: () -> Unit,
+    onCreate: () -> Unit,
+) {
+    val y = Yantra.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(y.page)
+            .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 8.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ModeSwitch(mode = mode, days = days, onMode = onMode)
+        Spacer(Modifier.weight(1f))
+        // The rail, as a key rather than the word "Tasks". Accent-filled while open, which is the
+        // state it was already reporting in colour — now it reports it as a control that looks
+        // pressed.
+        if (showRail) {
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(YantraRadius.control))
+                    .then(if (railOpen) Modifier.background(y.accentFill) else Modifier)
+                    .clickable(onClick = onRail)
+                    .testTag("railToggle"),
+                contentAlignment = Alignment.Center,
+            ) {
+                YantraIcon(
+                    YantraMark.List,
+                    size = YantraIcons.Medium,
+                    tint = if (railOpen) y.accentText else y.textSecondary,
+                    contentDescription = if (railOpen) "Hide tasks" else "Show tasks",
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+        }
+        Box(
+            Modifier
+                .size(56.dp)
+                .background(y.accentFill, RoundedCornerShape(YantraRadius.sheet))
+                .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.sheet))
+                .clickable(onClick = onCreate)
+                .testTag("newEvent"),
+            contentAlignment = Alignment.Center,
+        ) {
+            YantraIcon(YantraMark.Add, size = YantraIcons.Large, tint = y.accent, contentDescription = "New event")
+        }
+    }
+}
+
 @Composable
 private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> Unit) {
     val y = Yantra.colors
@@ -704,7 +835,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
     // other, so a miss landed on the neighbour rather than on nothing.
     Row(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(YantraRadius.control))
             .background(y.cardBg)
             .padding(2.dp),
     ) {
@@ -713,7 +844,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
             Box(
                 Modifier
                     .height(30.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(YantraRadius.block))
                     .then(if (on) Modifier.background(y.accentFill) else Modifier)
                     .clickable { onMode(m) },
                 contentAlignment = Alignment.Center,
@@ -724,7 +855,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
                     // The segment says what it will actually show. "Week" on a phone that gives you
                     // three days is a label that lies about the button underneath it.
                     if (m == CalendarMode.WEEK && days < 7) "$days days" else m.label,
-                    fontSize = 11.sp,
+                    fontSize = YantraType.caption,
                     fontWeight = if (on) FontWeight.W700 else FontWeight.W500,
                     color = if (on) y.accentText else y.textMuted,
                     maxLines = 1,

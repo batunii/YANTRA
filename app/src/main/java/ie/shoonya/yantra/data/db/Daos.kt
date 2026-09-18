@@ -264,6 +264,34 @@ interface NodeDao {
     )
     fun inProgress(): Flow<List<NodeEntity>>
 
+    /**
+     * Each task with the list it belongs to and the repository it is in.
+     *
+     * **Walks to the owning list, not one level up.** A task's `parent_id` is the page it is written
+     * on, and a task that holds anything *is* a page — so a subtask's parent is another task, and a
+     * single join returned nothing for it. The bar then showed no colour for exactly the tasks that
+     * are nested, which is most of the ones anybody is actually working on.
+     *
+     * Depth is capped at twelve. A malformed workspace can name a cycle, and a recursive query that
+     * meets one does not return.
+     */
+    @Query(
+        """
+        WITH RECURSIVE chain(task, node, depth) AS (
+            SELECT id, parent_id, 0 FROM node WHERE deleted_at IS NULL AND type = 'task'
+            UNION ALL
+            SELECT c.task, p.parent_id, c.depth + 1
+              FROM chain c JOIN node p ON p.id = c.node
+             WHERE p.type <> 'list' AND c.depth < 12
+        )
+        SELECT c.task AS id, l.title AS listName, l.color AS listColor, l.workspace_id AS workspaceId
+          FROM chain c
+          JOIN node l ON l.id = c.node
+         WHERE l.type = 'list' AND l.deleted_at IS NULL
+        """
+    )
+    fun taskOrigins(): Flow<List<TaskOrigin>>
+
     @Query("UPDATE node SET collapsed = :collapsed, updated_at = :now WHERE id = :id")
     suspend fun setCollapsed(id: String, collapsed: Boolean, now: Long)
 
@@ -708,6 +736,15 @@ interface LabelDao {
     @Query("SELECT * FROM node_label")
     fun allNodeLabels(): Flow<List<NodeLabelEntity>>
 
+    /**
+     * The same, asked once.
+     *
+     * Deleting a label needs to say how many tasks it is about to take the tag off, which is a
+     * question with an answer rather than something to subscribe to.
+     */
+    @Query("SELECT COUNT(*) FROM node_label WHERE label_id = :labelId")
+    suspend fun countUsage(labelId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun attach(nodeLabel: NodeLabelEntity)
 
@@ -951,3 +988,11 @@ interface InkDao {
     @Query("UPDATE ink_stroke SET deleted_at = :now, updated_at = :now WHERE id = :id")
     suspend fun softDeleteById(id: String, now: Long)
 }
+
+/** A task, the list it belongs to, and the repository that list is in. */
+data class TaskOrigin(
+    val id: String,
+    val listName: String?,
+    val listColor: String?,
+    val workspaceId: String,
+)

@@ -229,6 +229,18 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * is picking: a list picker shows every list the app has, and which repo each one lives in is
      * not something a person is thinking about when they file something.
      */
+    /**
+     * The colour a list wears, or null to take it off.
+     *
+     * [Change.STRUCTURAL] because every row drawing this list is drawn from the index, and a colour
+     * that arrived a beat after the tap would read as the tap having missed.
+     */
+    suspend fun setListColor(listId: String, color: String?) {
+        ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            it.copy(color = color)
+        }
+    }
+
     suspend fun moveToList(taskId: String, listId: String) {
         ws.moveAcross(taskId, listId)
     }
@@ -602,6 +614,27 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun detach(nodeId: String, labelId: String) {
         val name = dao.allOnce().firstOrNull { it.id == labelId }?.name ?: return
         ws.writerFor(nodeId).editTask(nodeId) { it.copy(labels = it.labels - name) }
+    }
+
+    /**
+     * How many tasks carry a label, so a delete can say what it is about to take.
+     *
+     * Asked before the deletion rather than reported after it: "this is on 7 tasks" is a question
+     * somebody can answer, and "that was on 7 tasks" is not.
+     */
+    suspend fun usageCount(labelId: String): Int =
+        dao.countUsage(labelId)
+
+    /**
+     * Deletes a label everywhere — the registry, and the tag on every task.
+     *
+     * Every workspace, not only the one that owns the registry entry: the same tag can have been
+     * typed on a line in any repo the device has open, and a delete that left those behind would
+     * see the label reappear the moment that repo was reindexed.
+     */
+    suspend fun deleteLabel(labelId: String): Int {
+        val name = dao.allOnce().firstOrNull { it.id == labelId }?.name ?: return 0
+        return ws.all.sumOf { store -> ws.writer(store.id)?.deleteLabel(name) ?: 0 }
     }
 
     /** Recolour a label. Null clears it back to the neutral chip. */

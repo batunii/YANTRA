@@ -50,11 +50,16 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     /**
      * The workspaces the builder may offer as a rule's reach.
      *
-     * Registry order, filtered to what is actually open — a repo listed but not opened cannot be
-     * searched, and offering it would let someone write a rule that silently matches nothing.
+     * Registry order with the local workspace at the front, filtered to what is actually open — a
+     * repo listed but not opened cannot be searched, and offering it would let someone write a rule
+     * that silently matches nothing.
+     *
+     * It asked the registry directly before, which does not list the local workspace: the picker
+     * never offered Personal, never appeared at all for anyone with exactly one repo linked, and
+     * [defaultWorkspaceId] fell through its own first branch to the first *linked* repo. A group
+     * made on Home landed in a repository nobody had chosen. See [AppContainer.openWorkspaces].
      */
-    val workspaces: List<WorkspaceEntry> =
-        container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+    val workspaces: List<WorkspaceEntry> = container.openWorkspaces()
 
     val topLevel: StateFlow<List<NodeEntity>> =
         nodes.topLevel().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -97,6 +102,55 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     val timerState: StateFlow<FocusTimer.State?> = container.timer.state
+
+    /**
+     * Today's events, for the byline and for NEXT — HOME_UI.md §5, §6.
+     *
+     * A day at a time, recomputed at midnight by the range moving rather than by a timer: the flow
+     * is keyed on the window, so a device left open overnight simply asks for a different day.
+     */
+    private val todayEvents: StateFlow<List<ie.shoonya.yantra.data.db.EventWithTitle>> =
+        container.db.eventDao()
+            .inRange(startOfToday(), startOfToday() + DAY_MS)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * How much of today is already spoken for, in minutes.
+     *
+     * **All-day events are excluded.** A passport renewal marked all day is not twenty-four hours
+     * of capacity, and counting it as such would make the one number Home reports useless on
+     * exactly the days it matters.
+     *
+     * Clipped to today at both ends, so a meeting running past midnight contributes the part of it
+     * that is actually today.
+     */
+    val bookedMinutes: StateFlow<Int> = todayEvents
+        .map { events ->
+            val from = startOfToday()
+            val to = from + DAY_MS
+            events.filterNot { it.event.allDay }.sumOf { e ->
+                val start = e.event.startUtc.coerceAtLeast(from)
+                val end = e.event.endUtc.coerceAtMost(to)
+                ((end - start).coerceAtLeast(0L) / 60_000L).toInt()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /**
+     * The next event today that has not yet ended — HOME_UI.md §6.
+     *
+     * Not *started*: one already running is still the thing you are next expected at, and dropping
+     * it the moment it begins would take the row away at the point it is most use. Null when there
+     * is nothing left today, so evenings are quiet rather than showing tomorrow morning.
+     */
+    val nextToday: StateFlow<ie.shoonya.yantra.data.db.EventWithTitle?> = todayEvents
+        .map { events ->
+            val now = System.currentTimeMillis()
+            events.filterNot { it.event.allDay }
+                .filter { it.event.endUtc > now }
+                .minByOrNull { it.event.startUtc }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Built-in property definitions (Priority, Due), for the smart-list filter builder. */
     val defs: StateFlow<List<PropertyDefEntity>> =
@@ -158,8 +212,21 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     val defaultWorkspaceId: String
         get() = workspaces.firstOrNull { it.id.isEmpty() }?.id ?: workspaces.firstOrNull()?.id ?: ""
 
+    /** The colour a list wears, or null to take it off — the colour law, as remade. */
+    fun setListColor(listId: String, color: String?) {
+        viewModelScope.launch { container.nodes.setListColor(listId, color) }
+    }
+
     fun moveToGroup(id: String, groupId: String?) {
         viewModelScope.launch { nodes.moveToGroup(id, groupId) }
+    }
+
+    /**
+     * Fold a group on Home. Device-local by design — see [NodeRepository.setCollapsed]: whether a
+     * section is folded is about this screen, not about the work, so it never reaches the file.
+     */
+    fun setCollapsed(id: String, collapsed: Boolean) {
+        viewModelScope.launch { nodes.setCollapsed(id, collapsed) }
     }
 
     fun deleteGroup(id: String) {
@@ -182,4 +249,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     fun delete(id: String) {
         viewModelScope.launch { nodes.delete(id) }
     }
+
+    private fun startOfToday(): Long =
+        java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant().toEpochMilli()
 }
+
+private const val DAY_MS = 24L * 60 * 60 * 1000

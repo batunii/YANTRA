@@ -32,6 +32,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import ie.shoonya.yantra.R
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /** One accent pill that opens straight into capture ([QuickAddActivity]). Static content. */
 class QuickAddWidget : GlanceAppWidget() {
@@ -80,7 +81,7 @@ private fun QuickAddContent() {
                     "New task",
                     style = TextStyle(
                         color = GlanceTheme.colors.onPrimary,
-                        fontSize = 15.sp,
+                        fontSize = YantraType.row,
                         fontWeight = FontWeight.Bold,
                     ),
                     maxLines = 1,
