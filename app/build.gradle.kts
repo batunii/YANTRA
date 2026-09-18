@@ -34,7 +34,7 @@ android {
         // four API levels nobody was served on and buys a build that means something.
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
+        versionCode = 8
         versionName = "0.4.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
