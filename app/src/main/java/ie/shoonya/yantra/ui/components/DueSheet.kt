@@ -21,8 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -123,10 +121,20 @@ fun DueSheet(
         // calendar gets the full width of the sheet and scales down as one piece if even that is
         // not enough; everything else is inset the normal amount.
         val pad = Modifier.padding(horizontal = 20.dp)
+        // **Not scrollable, and that is the fix rather than an omission.**
+        //
+        // This column had `verticalScroll` around it with M3's DatePicker inside. A vertical
+        // scrollable nested in a vertical scroll is measured with unbounded height, so the picker
+        // laid itself out at its full intrinsic size and the column became far taller than the
+        // sheet — which gave the outer scroll a range of hundreds of points where the content
+        // overflows by almost none. Dragging up then slid the whole sheet, drag handle and title
+        // included, off the top of the screen and left it there: the "gets stuck" in the recording.
+        //
+        // The calendar already manages its own height and [FitsWidth] already scales it down when
+        // the screen is narrow, so the sheet has nothing left to scroll.
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

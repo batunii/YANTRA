@@ -61,7 +61,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        openTarget = targetFrom(intent)
+        // **Only on a first creation.** A rotation destroys and rebuilds the activity with the same
+        // Intent still attached, so reading it here again replayed whatever launched the app — a
+        // widget tap, a notification — and threw you onto that task from whatever screen you were
+        // actually on. Every rotation, for the rest of the process's life.
+        //
+        // `savedInstanceState` is the one honest test for "this is a rebuild, not a launch". The
+        // extras are cleared as they are read as well, so the same thing cannot happen by another
+        // route: `onNewIntent` replaces the Intent, and a rebuild after that would otherwise read
+        // the replacement a second time.
+        openTarget = if (savedInstanceState == null) targetFrom(intent) else null
         val theme = loadThemeController(this)
         // Pre-first-frame window background in the stored mode's page color — the XML theme only
         // knows the system night mode, which can disagree with the stored mode (launch flash).
@@ -156,6 +165,11 @@ class MainActivity : ComponentActivity() {
             return OpenTarget(nodeId = null, isSmart = false, focus = true)
         }
         val nodeId = intent?.getStringExtra(WidgetIntents.EXTRA_OPEN_NODE) ?: return null
-        return OpenTarget(nodeId, intent.getBooleanExtra(WidgetIntents.EXTRA_OPEN_SMART, false))
+        val smart = intent.getBooleanExtra(WidgetIntents.EXTRA_OPEN_SMART, false)
+        // Consumed, not just read. An Intent outlives the activity that received it, so leaving the
+        // extras on it is leaving a loaded instruction for the next rebuild to fire.
+        intent.removeExtra(WidgetIntents.EXTRA_OPEN_NODE)
+        intent.removeExtra(WidgetIntents.EXTRA_OPEN_SMART)
+        return OpenTarget(nodeId, smart)
     }
 }

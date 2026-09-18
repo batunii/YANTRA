@@ -761,11 +761,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                             if (!draggable) Modifier else Modifier.pointerInput(child.id) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { local ->
-                                        // Long-press selects as well as lifts, so releasing without
-                                        // moving leaves the block selected — which is how ink and
-                                        // image reach the Delete chip now that the long-press belongs
-                                        // to the drag instead of to them.
-                                        activeBlockId = child.id
+                                        // Long-press selects as well as lifts **only for the two
+                                        // blocks that cannot take a caret**.
+                                        //
+                                        // Selection exists so ink and an image can reach the Delete
+                                        // chip, which they otherwise cannot: everything else is
+                                        // selected by putting the caret in it. Claiming it for every
+                                        // block meant a long-press that never moved — the gesture
+                                        // ends in onDragCancel, which puts the drag back but not
+                                        // this — left a task sitting under a 5% accent wash with
+                                        // nothing on screen to clear it.
+                                        if (child.type == NodeType.INK || child.type == NodeType.IMAGE) {
+                                            activeBlockId = child.id
+                                        }
                                         val top = listState.layoutInfo.visibleItemsInfo
                                             .firstOrNull { it.key == child.id }?.offset ?: 0
                                         dragOrder = liveBlocks
