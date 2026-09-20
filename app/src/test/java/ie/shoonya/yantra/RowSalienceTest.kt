@@ -52,6 +52,18 @@ class RowSalienceTest {
         )
     )
 
+    /**
+     * Today as this device actually seeds it: one `due ≤ today`, not an OR of two dates.
+     *
+     * It matters because it ranks the **deadline** into the title slot — the deadline is Free and
+     * the due date is only Bounded — which is the case that lost a row its deadline.
+     */
+    private val dueOnOrBeforeToday = grammarFor(
+        Filter.All(
+            listOf(Filter.Prop(BuiltIns.DUE_DEF_ID, Op.LTE, dateRel = DateRel.TODAY_END))
+        )
+    )
+
     private fun assignee(login: String, status: ChipStatus = ChipStatus.None) = ChipData(
         defId = BuiltIns.ASSIGNEE_DEF_ID,
         label = if (status == ChipStatus.Warn) "@$login · no access" else "@$login",
@@ -191,6 +203,28 @@ class RowSalienceTest {
         assertTrue(Field.Prop(BuiltIns.DUE_DEF_ID) in strict.pinned)
         val late = date(BuiltIns.DUE_DEF_ID, "18 Sep · overdue", ChipStatus.Overdue)
         assertEquals("the world is asking, whatever the rule said", late, plan(strict, listOf(late)).slot)
+    }
+
+    /**
+     * An override displaces a date; it does not delete it.
+     *
+     * Caught on a phone, not here: in Today an overdue task put its due date in the slot and its
+     * **deadline vanished from the row** — consumed by a slot it never reached. The same task on
+     * its own list page showed both, which is what made the difference visible.
+     */
+    @Test
+    fun `a date an override displaced still has a line to go to`() {
+        val late = date(BuiltIns.DUE_DEF_ID, "Yesterday · overdue", ChipStatus.Overdue)
+        val deadline = date(BuiltIns.DEADLINE_DEF_ID, "9d left")
+
+        // Both shapes of Today, because they rank the two dates differently and only one of them
+        // puts the deadline in the slot the override then takes.
+        for (grammar in listOf(today, dueOnOrBeforeToday)) {
+            val p = plan(grammar, listOf(late, deadline))
+            assertEquals(late, p.slot)
+            assertTrue("the deadline is still news", deadline in p.props)
+            assertTrue("and the date in the slot is not said twice", late !in p.props)
+        }
     }
 
     @Test

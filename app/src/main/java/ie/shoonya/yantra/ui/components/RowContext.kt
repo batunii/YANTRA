@@ -139,8 +139,19 @@ fun planRow(
     val chosen = candidates.firstNotNullOfOrNull { resolve(it, chips, origin) }
     val slot = alert ?: chosen?.takeUnless { expectedDate(grammar, it) }
 
-    // Consumed whether or not it was drawn: the date the slot silenced must not reappear below.
-    val consumed = setOfNotNull(alert, chosen)
+    // What the slot actually took, and only that.
+    //
+    // Two different reasons a date leaves the sub-line, and they are not the same reason:
+    //
+    //  - the slot **drew** it, or **silenced** it because the view had already said it. Either
+    //    way it is spoken for, and printing it below would be printing it twice.
+    //  - an **override** displaced it. Then it was never drawn and never silenced, and it belongs
+    //    on the line below like any other field.
+    //
+    // Consuming both cost a real row its deadline: in Today an overdue task took the slot with its
+    // due date, and the deadline the slot would otherwise have carried disappeared from the row
+    // entirely. The same task on its own list page showed both, which is what made it visible.
+    val consumed = if (alert != null) setOf(alert) else setOfNotNull(chosen)
 
     // Tags lead the line, and the matched one leads the tags — by position only. No ink change, no
     // weight, no marker glyph: a task must not change *shape* between two screens, only content.
@@ -148,8 +159,13 @@ fun planRow(
         .filter { it.isLabel && Field.Label(it.defId) !in grammar.pinned }
         .sortedByDescending { Field.Label(it.defId) in grammar.branched }
 
-    val props = grammar.subLine
+    // The slot's own field is a candidate down here too. It is not usually one — the slot took it
+    // — but an override can displace it, and then it has to land somewhere. Without this a real
+    // row lost its deadline: the rule ranked the deadline into the slot, the overdue due date
+    // displaced it, and `subLine` had never heard of it.
+    val props = (listOfNotNull(grammar.titleSlot) + grammar.subLine)
         .filterIsInstance<Field.Prop>()
+        .distinct()
         .mapNotNull { resolve(it, chips, origin) }
         .filterNot { it in consumed || silenced(it, workspaceId, expected, done) }
 
