@@ -164,6 +164,10 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(WidgetIntents.EXTRA_OPEN_FOCUS, false) == true) {
             return OpenTarget(nodeId = null, isSmart = false, focus = true)
         }
+        intent?.getStringExtra(WidgetIntents.EXTRA_OPEN_CALENDAR)?.let { date ->
+            intent.removeExtra(WidgetIntents.EXTRA_OPEN_CALENDAR)
+            return OpenTarget(nodeId = null, isSmart = false, calendarDate = date)
+        }
         val nodeId = intent?.getStringExtra(WidgetIntents.EXTRA_OPEN_NODE) ?: return null
         val smart = intent.getBooleanExtra(WidgetIntents.EXTRA_OPEN_SMART, false)
         // Consumed, not just read. An Intent outlives the activity that received it, so leaving the

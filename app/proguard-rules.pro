@@ -45,3 +45,21 @@
 -keep class * extends org.eclipse.jgit.transport.TransportProtocol { *; }
 -keep class org.eclipse.jgit.util.SystemReader { *; }
 -keep class * extends org.eclipse.jgit.util.SystemReader { *; }
+
+# Glance remembers a placed widget by the **canonical name of its GlanceAppWidget class**.
+#
+# `GlanceAppWidgetManager` keeps a DataStore mapping receiver → widget-class name, and
+# `updateAll()` resolves the other way: it asks that map which receivers a class belongs to. The
+# map is written to disk and survives an app update; R8 renames these classes and is under no
+# obligation to choose the same names twice.
+#
+# So adding one widget was enough to break two. After the update `FocusWidget` had been given the
+# short name the calendar widget held before it, the stale entry still pointed at
+# CalendarWidgetReceiver, and the launcher drew the focus timer — "Start 25m" — inside a widget
+# that was, and still is, bound to the calendar. Nothing about it looked like an obfuscation
+# problem from the outside; it looked like the calendar widget was simply wrong.
+#
+# -keepnames rather than -keep: the classes are reachable from their receivers, so they are never
+# shrunk away, and all that is wanted here is that the name they are stored under is the name they
+# are asked for. See CalendarWidget.kt and GlanceWidgetNamesTest.
+-keepnames class * extends androidx.glance.appwidget.GlanceAppWidget

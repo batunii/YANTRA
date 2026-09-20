@@ -231,6 +231,23 @@
         </receiver>
 
         <!--
+            The calendar, in whichever of its three shapes the home screen has room for. Labelled,
+            unlike the older receivers, because the widget picker names every one of them after the
+            app otherwise — and "Yantra" six times is a list you cannot choose from.
+        -->
+        <receiver
+            android:name=".widget.CalendarWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_calendar_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/calendar_widget_info" />
+        </receiver>
+
+        <!--
             The mark, unframed: a widget that is the bhupura rather than a card containing one.
             A new provider rather than a change to the focus widget, because a panel and a mark
             want opposite things — see BhupuraWidget.
