@@ -175,12 +175,22 @@ fun AssigneeSheet(
                 }
                 if (matches.isEmpty() && !novel) {
                     Text(
-                        if (rosterKnown) {
-                            "Nobody who can push to this repo matches \u201C$query\u201D. " +
-                                "Add them on GitHub first, then press Collaborators."
-                        } else {
-                            "Nobody has been loaded for this repository yet — " +
-                                "press Collaborators, or type a login above."
+                        // Never name a control that is not on screen. `onRefresh` is null when
+                        // GitHub cannot be asked here at all — and it was also null, for a while,
+                        // when this sheet was composed outside the provider that supplies it, so
+                        // the one message a reader saw was the one telling them to press a button
+                        // the same composition had decided not to draw.
+                        when {
+                            rosterKnown && onRefresh != null ->
+                                "Nobody who can push to this repo matches \u201C$query\u201D. " +
+                                    "Add them on GitHub first, then press Collaborators."
+                            rosterKnown ->
+                                "Nobody who can push to this repo matches \u201C$query\u201D."
+                            onRefresh != null ->
+                                "Nobody has been loaded for this repository yet — " +
+                                    "press Collaborators, or type a login above."
+                            else ->
+                                "No roster for this repository — type a login above."
                         },
                         fontSize = YantraType.meta,
                         color = y.textMuted,

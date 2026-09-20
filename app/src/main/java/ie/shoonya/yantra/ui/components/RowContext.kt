@@ -167,7 +167,15 @@ fun planRow(
         .filterIsInstance<Field.Prop>()
         .distinct()
         .mapNotNull { resolve(it, chips, origin) }
-        .filterNot { it in consumed || silenced(it, workspaceId, expected, done) }
+        // `expectedDate` applies here and not only to the slot. It used to guard the slot alone,
+        // and a date the view had already said simply fell through to the line below instead: on a
+        // view ruled `due ≤ today`, a task due today printed "Today" under its own title, inside a
+        // list called Today. Where a field is drawn has no bearing on whether it is news.
+        .filterNot {
+            it in consumed ||
+                silenced(it, workspaceId, expected, done) ||
+                expectedDate(grammar, it)
+        }
 
     // The absence, drawn almost nowhere: only where the view's question *is* who has this. On
     // every other screen an unclaimed task says nothing at all, and reserves no room for saying it.

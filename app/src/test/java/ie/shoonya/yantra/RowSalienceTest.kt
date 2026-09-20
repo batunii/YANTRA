@@ -188,6 +188,23 @@ class RowSalienceTest {
         assertTrue(deadline in p.props)
     }
 
+    /**
+     * A date the view has already said is silent **wherever it would have been drawn**.
+     *
+     * The guard used to sit on the title slot alone, so a date that fell through to the line below
+     * escaped it: on this device Today is ruled `due ≤ today`, which puts the *deadline* in the
+     * slot — and a task due today then printed "Today" under its own title, inside a list called
+     * Today. Where a field lands has no bearing on whether it is news.
+     */
+    @Test
+    fun `a date the view already said is silent on the sub-line too`() {
+        val due = date(BuiltIns.DUE_DEF_ID, "Today", ChipStatus.Due)
+        val deadline = date(BuiltIns.DEADLINE_DEF_ID, "9d left")
+        val p = plan(dueOnOrBeforeToday, listOf(due, deadline))
+        assertEquals("the deadline is the news here", deadline, p.slot)
+        assertTrue("and the due date is not", due !in p.props)
+    }
+
     @Test
     fun `on a list page no date is ever silenced`() {
         val due = date(BuiltIns.DUE_DEF_ID, "Today", ChipStatus.Due)

@@ -436,13 +436,20 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // mentioned without anything having gone and rewritten another file.
     val resolveLink: (String) -> String? = remember(linkTitles) { { id -> linkTitles[id] } }
 
+    // Hoisted, because **two** subtrees need it and only one of them is inside the provider below.
+    // The assignee sheet lives in PillDialogHost, which was moved out to screen level so the page
+    // band could not fold it away mid-keystroke — and out there it was reading the *default*
+    // PeopleSource: no roster, and no Collaborators button, on a repository that had both. The
+    // sheet then told you to press a control it was not drawing.
+    val peopleSource = PeopleSource(
+        people = people,
+        refreshing = peopleState.first,
+        note = peopleState.second,
+        onRefresh = if (canRefreshPeople) vm::refreshPeople else null,
+    )
+
     CompositionLocalProvider(
-        LocalPeople provides PeopleSource(
-            people = people,
-            refreshing = peopleState.first,
-            note = peopleState.second,
-            onRefresh = if (canRefreshPeople) vm::refreshPeople else null,
-        ),
+        LocalPeople provides peopleSource,
         LocalLinkResolver provides resolveLink,
         LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
         // What a row here may say. A page has no rule, so this never changes under it.
@@ -1140,7 +1147,10 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         )
     }
 
-    // Every editor the property row offers, drawn out here where the band cannot fold it away.
+    // Every editor the property row offers, drawn out here where the band cannot fold it away —
+    // and given the page's own people, because out here it is outside the provider that supplies
+    // them.
+    CompositionLocalProvider(LocalPeople provides peopleSource) {
     PillDialogHost(
         request = pillRequest,
         allLabels = allLabels,
@@ -1156,6 +1166,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         onDeleteLabel = { label -> scope.launch { deletingLabel = label to vm.labelUsage(label.id) } },
         onDismiss = { pillRequest = null },
     )
+    }
 
     deletingLabel?.let { (label, uses) ->
         ConfirmDialog(
