@@ -128,7 +128,10 @@ fun planRow(
     done: Boolean,
     timing: Boolean,
 ): MetaPlan {
-    // A struck row carrying a crimson date is the world asking about something already answered.
+    // No override on a finished row. Not because the date is uninteresting — it is the record —
+    // but because an override exists to *promote* something past a rule that would have hidden it,
+    // and nothing needs promoting on a task nobody has to act on. The date still reaches the slot
+    // by the ordinary path; it simply arrives in the ordinary voice.
     val alert = if (done) null else chips.firstOrNull { alertDate(it) }
 
     // The grammar names a field; a task carries a value. On Today the grammar names `due`, and a
@@ -191,18 +194,18 @@ fun planRow(
         ?.let { PlaceRun(it, origin.listHue) }
 
     return MetaPlan(
-        // Two rows draw no slot at all, and the date is *consumed* either way so it cannot fall
-        // through to the line below:
+        // A **timed** row draws no slot: its trailing slot is already a clock, and two answers to
+        // "when" is one too many. The date is still consumed, so it cannot fall through below.
         //
-        //  - a **timed** row, whose trailing slot is already a clock — two answers to "when" is
-        //    one too many;
-        //  - a **finished** row, which has no date to meet. Dropping only the override would have
-        //    left the ordinary path printing the same crimson `18 Sep` through a strikethrough,
-        //    which is the world asking about something already answered.
-        slot = if (timing || done) null else slot,
+        // A **finished** row keeps everything, quietly. It briefly kept nothing, and that was the
+        // wrong fix for a real problem: a completed task was painting a crimson overdue alarm, and
+        // the fault there is the alarm, not the date. A Done section is a record — when a thing
+        // was due, and who did it, are the facts a record is *for* — so the information stays and
+        // only the voice changes. See [quiet].
+        slot = (if (timing) null else slot)?.quiet(done),
         consumed = consumed,
         tags = tags,
-        props = props,
+        props = props.map { it.quiet(done) },
         unassigned = unassigned,
         place = place,
     )
@@ -236,6 +239,19 @@ private fun expectedDate(grammar: RowGrammar, chip: ChipData): Boolean {
     }
 }
 
+/**
+ * A finished row's metadata, in the ordinary voice.
+ *
+ * The status inks — crimson, amber, the accent — are the world asking something of you. Nothing is
+ * being asked of a completed task, so a date on one is a fact rather than a demand and is drawn as
+ * one. The strikethrough already says it is done; a second, louder signal saying the opposite is
+ * what made this look wrong in the first place.
+ *
+ * Labels are untouched: a tag's hue is its identity, not its urgency, and identity does not lapse.
+ */
+private fun ChipData.quiet(done: Boolean): ChipData =
+    if (!done || isLabel || status == ChipStatus.None) this else copy(status = ChipStatus.None)
+
 /** My own name on my own task is the reader's name, and the reader knows it. */
 private fun silenced(
     chip: ChipData,
@@ -244,7 +260,8 @@ private fun silenced(
     done: Boolean,
 ): Boolean {
     if (chip.defId != BuiltIns.ASSIGNEE_DEF_ID) return false
-    if (done) return true
+    // Who did it is part of the record, and a finished task is a record. Only *my own* name goes,
+    // and it goes for the same reason it goes on an unfinished one: I am the reader.
     val me = expected.me(workspaceId) ?: return false
     return chip.raw?.equals(me, ignoreCase = true) == true
 }

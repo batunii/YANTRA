@@ -130,11 +130,21 @@ class RowSalienceTest {
         assertEquals("@saieeshward · no access", p.props.single().label)
     }
 
+    /**
+     * A Done section is a record, and who did a thing is part of one.
+     *
+     * This briefly dropped the assignee on a finished row, which was the wrong lesson drawn from a
+     * real problem: the fault was a completed task painting a crimson alarm, not a completed task
+     * carrying facts.
+     */
     @Test
-    fun `a finished task has no one to chase`() {
+    fun `a finished task still says who did it`() {
         val mine = Expected(mapOf(WS to "batunii"))
         val p = plan(listPage, listOf(assignee("saieeshward")), expected = mine, done = true)
-        assertTrue(p.props.isEmpty())
+        assertEquals(listOf("@saieeshward"), p.props.map { it.label })
+
+        // My own name goes for the same reason it goes anywhere: I am the reader.
+        assertTrue(plan(listPage, listOf(assignee("batunii")), expected = mine, done = true).props.isEmpty())
     }
 
     // ---- the absence ----
@@ -244,10 +254,30 @@ class RowSalienceTest {
         }
     }
 
+    /**
+     * A finished row keeps its date and loses its alarm.
+     *
+     * The status inks are the world asking something of you, and nothing is being asked of a
+     * completed task — so the date is drawn as a fact rather than a demand. The strikethrough
+     * already says it is done; crimson saying the opposite is what made this look wrong.
+     */
     @Test
-    fun `a struck row is not chased`() {
+    fun `a struck row keeps its date and drops its alarm`() {
         val late = date(BuiltIns.DUE_DEF_ID, "18 Sep · overdue", ChipStatus.Overdue)
-        assertNull(plan(listPage, listOf(late), done = true).slot)
+        val open = plan(listPage, listOf(late))
+        assertEquals(ChipStatus.Overdue, open.slot?.status)
+
+        val finished = plan(listPage, listOf(late), done = true)
+        assertEquals("the date is still the record", "18 Sep · overdue", finished.slot?.label)
+        assertEquals("but it is not still an alarm", ChipStatus.None, finished.slot?.status)
+    }
+
+    @Test
+    fun `a finished row keeps its tags in their own colours`() {
+        // A tag's hue is its identity, not its urgency, and identity does not lapse.
+        val p = plan(listPage, listOf(tag("infra")), done = true)
+        assertEquals(listOf("infra"), p.tags.map { it.label })
+        assertTrue(p.tags.single().isLabel)
     }
 
     @Test
