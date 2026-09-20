@@ -445,6 +445,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         ),
         LocalLinkResolver provides resolveLink,
         LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
+        // What a row here may say. A page has no rule, so this never changes under it.
+        ie.shoonya.yantra.ui.components.LocalRowContext provides vm.rowContext,
     ) {
     Row(Modifier.fillMaxSize().background(y.page)) {
     // Two panes only where two panes fit. The rail keeps the list you came from beside the page,
@@ -2069,9 +2071,44 @@ internal fun TextualBlockRow(
      * schedule chip, so the chip stays.
      */
     val timing = isTask && child.id == timingTaskId()
-    // While the clock runs the trailing slot belongs to it, and the schedule steps aside rather than
-    // sharing the space — effort outranks schedule for exactly as long as effort is being spent.
-    val shownChips = if (timing) chips.filterNot { it.defId == BuiltIns.DUE_DEF_ID } else chips
+    // What this row is allowed to say, given the view it is being read in — ROW_SALIENCE.md.
+    //
+    // The recipe this replaced was written for Today and pinned due to the title slot, the
+    // deadline and the tags to the sub-line, and the assignee nowhere at all. That was right on
+    // one screen and wrong on every other: on a list page a task assigned to somebody else said
+    // nothing whatsoever. Which field earns its place is a property of the *view*, and the view is
+    // a Filter, so the decision is made by `planRow` and arrives here already made.
+    val rowContext = ie.shoonya.yantra.ui.components.LocalRowContext.current
+    val plan = remember(rowContext, chips, origin, child.workspaceId, child.done, timing) {
+        ie.shoonya.yantra.ui.components.planRow(
+            grammar = rowContext.grammar,
+            expected = rowContext.expected,
+            chips = chips,
+            origin = origin,
+            workspaceId = child.workspaceId,
+            done = child.done,
+            timing = timing,
+        )
+    }
+    // While the clock runs the trailing slot belongs to it, and the schedule steps aside rather
+    // than sharing the space — effort outranks schedule for exactly as long as effort is being
+    // spent. Whatever the slot took is gone from the whole row, so a date can never print twice.
+    val shownChips = chips - plan.consumed
+    /**
+     * Whether the grammar has left this row's second line with nothing on it.
+     *
+     * The engine's whole job is subtraction, and on a quiet view it subtracts everything: the row
+     * was drawing a hair space to hold a line open under a title it had truncated to fit a slot.
+     * So the line goes to the title instead — it is the most important thing on the row and the
+     * only one that was paying.
+     *
+     * The **date does not move**. It is always at the end of the title line, which is the one
+     * fixed place an eye learns scanning a list; dropping it to the sub-line on quiet rows would
+     * put the same fact top-right on one row and bottom-left on the next, diagonally across a
+     * column — the ragged pile DESIGN.md §6 already fixed once, in a different axis.
+     */
+    val quietMeta = isTask && !editable &&
+        plan.tags.isEmpty() && plan.props.isEmpty() && !plan.unassigned && plan.place == null
     // A row on a list is two lines, always — the grammar both handoffs specify. It used to be
     // whatever its contents made it: one chip rode up onto the title line, two or three sat in a
     // wrapping cloud beneath it, and a long title took a second line of its own. Five tasks in a
@@ -2256,10 +2293,16 @@ internal fun TextualBlockRow(
                             onOpen = onOpenLink,
                         ),
                         style = style,
-                        // One line on a list, where every row must be the same height and the meta
-                        // line below carries the rest. A document still gets two: there the block
-                        // *is* the content, and truncating what someone wrote would hide it.
-                        maxLines = if (isTask && !editable) 1 else 2,
+                        // One line on a list, where every row must be the same height and the
+                        // meta line below carries the rest — unless the meta line has nothing to
+                        // carry, in which case the title takes it. A document always gets two:
+                        // there the block *is* the content, and truncating it would hide it.
+                        //
+                        // `minLines` as well as `maxLines`, and that is the whole trick: `maxLines`
+                        // only *permits* a second line, so a short title on a quiet row would
+                        // collapse the row to one line and break the guarantee this is protecting.
+                        minLines = if (quietMeta) 2 else 1,
+                        maxLines = if (isTask && !editable && !quietMeta) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                         onTextLayout = { titleLayout = it },
                         modifier = textMod,
@@ -2357,14 +2400,17 @@ internal fun TextualBlockRow(
                     shownChips.firstOrNull()?.let { PropertyChip(it) } ?: FocusCount(pomoCount)
                 }
             }
-            // Due, at the end of the line the eye is already on. It is the one thing a day list is
-            // scanned for, so it gets the slot the design gives it rather than a place in the queue
-            // of meta below — and it is crimson when it is late, which is the whole message.
+            // The date, at the end of the line the eye is already on: the one thing a day list is
+            // scanned for, so it gets a slot of its own rather than a place in the queue of meta
+            // below — and it is crimson when it is late, which is the whole message.
+            //
+            // *Which* date, and whether there is one at all, is the grammar's call. On Today an
+            // on-time task leaves this empty, because "due today" on a row in Today is a sentence
+            // that ends where it began.
             if (isTask && !editable) {
-                shownChips.firstOrNull { it.defId == BuiltIns.DUE_DEF_ID }?.let { due ->
-                    val late = due.status == ChipStatus.Overdue
+                plan.slot?.let { due ->
                     Text(
-                        if (late) due.label.removeSuffix(" · overdue") else due.label,
+                        ie.shoonya.yantra.ui.components.slotText(due),
                         fontFamily = YantraMono,
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
@@ -2399,46 +2445,48 @@ internal fun TextualBlockRow(
             // the instrument voice, then the things that are *about* this task, each in the colour
             // that already means what it is. Character comes from the colour, not from a box drawn
             // round every value — a row of five chips reads as five buttons.
-            val labels = shownChips.filter { it.isLabel }
-            // What is left after the things a *row* has no room to be useful about.
-            //
-            // The research on this is consistent and it is not "compress harder": a row should
-            // carry what the next decision needs — what the task is, and when it is due — and let
-            // everything else live one tap away on the task itself. Assignee and session count are
-            // real facts and neither of them changes what you do next in a day list, so they go,
-            // and what they were crowding out was the tags.
-            val rest = shownChips.filter { it.defId == BuiltIns.DEADLINE_DEF_ID }
             // Resolved outside the builder: chipStyleFor is composable, and a label's ink depends
             // on the theme it is being read on.
-            val labelInks = labels.associate { it.defId to chipStyleFor(it).text }
-            val restInks = rest.associate { it.defId to chipStyleFor(it).text }
+            val tagInks = plan.tags.associateWith { chipStyleFor(it).text }
+            val propInks = plan.props.associateWith { chipStyleFor(it).text }
             val meta = buildAnnotatedString {
                 fun sep() { if (length > 0) withStyle(SpanStyle(color = y.textDim)) { append("  ") } }
-                labels.forEach { chip ->
+                // Tags lead, and on an OR of tags the matched one leads them — by position alone.
+                // No ink change, no weight, no marker: a task must not change *shape* between two
+                // screens, only what it says.
+                plan.tags.forEach { chip ->
                     sep()
-                    withStyle(SpanStyle(color = labelInks[chip.defId] ?: y.textMuted)) {
+                    withStyle(SpanStyle(color = tagInks[chip] ?: y.textMuted)) {
                         append("#" + chip.label)
                     }
                 }
-                rest.forEach { chip ->
+                // Drawn on exactly one kind of view: the one whose question *is* who has this.
+                // Everywhere else an unclaimed task says nothing and reserves no room to say it.
+                if (plan.unassigned) {
                     sep()
-                    withStyle(SpanStyle(color = restInks[chip.defId] ?: y.textMuted)) { append(chip.label) }
+                    withStyle(SpanStyle(color = y.textDim)) {
+                        append(ie.shoonya.yantra.ui.components.UNASSIGNED)
+                    }
                 }
-                // The list last, because it is the least urgent of what is left — but it is on the
-                // line rather than behind an ellipsis now that the row is not also carrying the
-                // workspace, the assignee and a session count.
-                origin?.list?.let { list ->
+                plan.props.forEach { chip ->
                     sep()
-                    // The list's own colour — the same one its mark wears on Home. The repository is
-                    // the spine at the row's leading edge, not a second meaning for this word.
-                    val ink = origin.listHue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
-                    withStyle(SpanStyle(color = ink ?: y.textDim)) { append(list) }
+                    withStyle(SpanStyle(color = propInks[chip] ?: y.textMuted)) { append(chip.label) }
+                }
+                // The list last, because it is the least urgent of what is left — and so the first
+                // thing that should pay when the line runs out of room.
+                plan.place?.let { place ->
+                    sep()
+                    // The list's own colour — the same one its mark wears on Home. The repository
+                    // is the spine at the row's leading edge, not a second meaning for this word.
+                    val ink = place.hue?.let { Color(LabelPalette.display(it, y.isDark).toInt()) }
+                    withStyle(SpanStyle(color = ink ?: y.textDim)) { append(place.text) }
                 }
             }
-            Text(
-                // A hair space when there is nothing to say, so a bare task is the same height as
-                // a busy one without the box being nailed shut.
-                if (meta.isEmpty()) AnnotatedString("\u2009") else meta,
+            // Drawn only when it has something to say. A row with nothing left to add gave its
+            // second line to the title above (see `quietMeta`), and drawing a hair space here as
+            // well would make that row three lines tall.
+            if (!quietMeta) Text(
+                meta,
                 fontFamily = YantraMono,
                 fontSize = YantraType.dense,
                 maxLines = 1,

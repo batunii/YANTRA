@@ -81,6 +81,40 @@ class SmartListViewModel(
         smartLists.observeDef(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /**
+     * The view's own rule, decoded once.
+     *
+     * It was read only inside `describe()` before; the row grammar needs the same thing, and two
+     * decodes of one string is two chances to disagree about what this list is.
+     */
+    val filter: StateFlow<Filter?> =
+        def.map { d ->
+            d?.let {
+                runCatching { FilterJson.decodeFromString(Filter.serializer(), it.filterJson) }.getOrNull()
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * What a row in this view may say — see [ie.shoonya.yantra.ui.components.LocalRowContext].
+     *
+     * `hereList` has no counterpart here on purpose: a smart list is not a list, and its rows come
+     * from many of them, so where a row lives is news rather than the page it is on.
+     */
+    val rowContext: StateFlow<ie.shoonya.yantra.ui.components.RowContext> =
+        filter.map { f -> rowContextFor(f) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), rowContextFor(null))
+
+    private fun rowContextFor(f: Filter?) = ie.shoonya.yantra.ui.components.RowContext(
+        grammar = ie.shoonya.yantra.data.filter.Salience.grammar(
+            ie.shoonya.yantra.data.filter.ViewContext(f, singleWorkspace = workspaces.size <= 1)
+        ),
+        expected = ie.shoonya.yantra.ui.components.Expected(
+            logins = workspaces.associate { it.id to container.credentials.login(it.id) } +
+                (ie.shoonya.yantra.data.sync.Credentials.ACCOUNT to
+                    container.credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)),
+        ),
+    )
+
+    /**
      * Workspaces this view asks about that are not on this device, by name.
      *
      * Shown rather than swallowed. A rule spanning repos can only answer for the ones present, and

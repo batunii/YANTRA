@@ -78,6 +78,14 @@ data class ChipData(
     val isPriority: Boolean = false,
     /** Set on a label so a row can give it the `#name` form the design uses. */
     val isLabel: Boolean = false,
+    /**
+     * The stored value, undecorated — set on the assignee, null everywhere else.
+     *
+     * A row has to ask "is this me?", and [label] is not the place to ask it: it is already
+     * `@login`, and `@login · no access` when the roster says so. Comparing by stripping a sigil
+     * and an optional suffix is a comparison that drifts the first time either is reworded.
+     */
+    val raw: String? = null,
 )
 
 /** The packed-ARGB Long a label stores, opaque — the form [LabelPalette] speaks in. */

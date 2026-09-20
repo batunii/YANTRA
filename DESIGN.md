@@ -273,10 +273,22 @@ already is.
 the list it came from. It ellipsises from the right, so the list goes first — it is the least urgent
 thing on the line and one tap away on the task itself.
 
-**What a row does not carry.** Assignee, session count and the workspace are all real facts, and
-none of them changes what you do next in a day list. They were crowding out the tags, which do. The
-rule is the one every list app converges on: a row carries what the next decision needs — what the
-task is, and when it is due — and the rest lives one tap away.
+**What a row does not carry, and what changed.** Session count and the workspace stay off the row:
+the first changes nothing you do next, and the second is a hue at the edge with nowhere else to go.
+**The assignee came back, conditionally.** The sentence this replaces was written for Today, where
+every task is yours and the name would be the same word on every row — and it was wrong on a list
+page in a shared repository, where a task assigned to somebody else showed nothing whatsoever.
+
+So a row now asks the view. A field earns its place only when the view has not already implied it,
+and the view is a `Filter`, so the ranking is a walk of that rule rather than a recipe
+(`data/filter/Salience.kt`, `ui/components/RowContext.kt`). Your own name stays silent; somebody
+else's does not. A tag the rule pins stops printing on every row; a tag the rule branched on leads
+the line, by position alone. On Today a task that is due today leaves its date slot empty, because
+"due today" on a row in Today is a sentence that ends where it began.
+
+Three things the engine may never do, and cannot: print the workspace as a word (it resolves to
+nothing, structurally); print the word *unassigned* (`@?`, and only where the view's question **is**
+who has this); or reserve room for a value that is absent.
 
 **The workspace is a hue, not a word.** Written on every row it is the same word five times, taking
 the space the tags needed. Grouping by it is the textbook fix and it costs too much here: a view like

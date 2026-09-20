@@ -74,6 +74,7 @@ fun chipFor(
                 null,
                 if (unreachable) YantraMark.PersonOff else YantraMark.Person,
                 if (unreachable) ChipStatus.Warn else ChipStatus.None,
+                raw = login,
             )
         }
     } else chipForKind(def, v)
