@@ -50,9 +50,7 @@ class TokenRenewal(
                 )
                 // Down to every workspace that was linked from this account. Their copies carry no
                 // refresh token of their own — deliberately, so only one of them can spend it.
-                credentials.storedIds()
-                    .filter { it != Credentials.ACCOUNT && credentials.login(it) == login }
-                    .forEach { credentials.store(it, result.token, login, viaApp = true) }
+                credentials.spreadToWorkspaces(result.token, login)
                 Log.i(TAG, "renewed the GitHub sign-in")
                 Outcome.Renewed
             }

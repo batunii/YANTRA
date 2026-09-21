@@ -267,6 +267,10 @@ fun SignInScreen(nav: NavHostController) {
                             // the login does not. Free here — we already have the answer in hand.
                             accountId = who.id,
                         )
+                        // Down to the workspaces, or the new token reaches nothing that syncs.
+                        // Their copies are snapshots, and a sign-in that leaves them behind fixes
+                        // this screen and nothing else — see Credentials.spreadToWorkspaces.
+                        container.credentials.spreadToWorkspaces(poll.token, login)
                         account = login
                         viaApp = true
                         // Freshly minted seconds ago by GitHub itself, so there is nothing to ask.

@@ -203,6 +203,31 @@ class Credentials(context: Context) {
     fun storedIds(): List<String> =
         prefs.all.keys.filter { it.startsWith("token:") }.map { it.removePrefix("token:") }
 
+    /**
+     * Hands a freshly signed-in account token down to every workspace that came from that account.
+     *
+     * **A workspace's token is a copy, not a reference.** It is snapshotted when the workspace is
+     * linked, because a workspace has to keep syncing after the account is signed out — which is
+     * what the sign-out screen promises. The cost is that a new account token reaches nothing on its
+     * own, and signing in again fixes the one screen that reads `@account` while every workspace
+     * goes on presenting a token from before.
+     *
+     * That was survivable while a re-sign-in returned a token from the same app: the old copies were
+     * still valid, so nobody noticed. It stopped being survivable the moment the client id changed,
+     * because the copies then belonged to an app that no longer exists as far as GitHub is
+     * concerned. Sync failed with "not authorized" while the GitHub screen said, correctly, that the
+     * account was signed in.
+     *
+     * Only workspaces that took their token from an account are touched. One linked with a pasted
+     * fine-grained token is deliberately left alone — that token was chosen for that repository, and
+     * replacing it with a broader one nobody asked for would be a quiet escalation.
+     */
+    fun spreadToWorkspaces(token: String, login: String) {
+        storedIds()
+            .filter { it != ACCOUNT && viaApp(it) && login(it) == login }
+            .forEach { store(it, token, login, viaApp = true) }
+    }
+
     /** Forgets a workspace's credentials. The remote is untouched; revoking is done on GitHub. */
     fun clear(workspaceId: String) {
         prefs.edit()
@@ -225,8 +250,33 @@ class Credentials(context: Context) {
      * the secret there.
      */
     fun providerFor(workspaceId: String): org.eclipse.jgit.transport.CredentialsProvider? {
-        val token = token(workspaceId) ?: return null
-        val login = login(workspaceId) ?: "x-access-token"
-        return org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(login, token)
+        val who = login(workspaceId)
+
+        // The account's live token first, when this workspace is the account's own.
+        //
+        // The stored copy is a snapshot, and a snapshot goes stale in ways nothing on screen can
+        // show: sign in again and the GitHub screen reads "signed in" while every workspace pushes
+        // with the token it was linked with. Reaching for the account first means a fresh sign-in
+        // repairs sync without the user being told to do anything, which matters most in the case
+        // where the copy cannot be repaired at all — a token from a client id this build no longer
+        // uses.
+        //
+        // Falling back to the copy is what keeps the sign-out screen's promise that workspaces go on
+        // syncing: once the account is cleared there is nothing to prefer, and the snapshot is the
+        // whole point. And it is only preferred for a workspace that took its token *from* the
+        // account, belonging to the same login — a pasted fine-grained token stays the one that was
+        // chosen for that repository.
+        val fromAccount = workspaceId != ACCOUNT &&
+            viaApp(workspaceId) &&
+            who != null &&
+            who == login(ACCOUNT)
+
+        val token = (if (fromAccount) token(ACCOUNT) else null)
+            ?: token(workspaceId)
+            ?: return null
+        return org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(
+            who ?: "x-access-token",
+            token,
+        )
     }
 }
