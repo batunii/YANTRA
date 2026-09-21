@@ -804,8 +804,16 @@ interface LabelDao {
  */
 data class EventWithTitle(
     @Embedded val event: EventEntity,
-    /** The event's own title. Empty for a sitting, which has none by design. */
-    val title: String?,
+    /**
+     * The event's own title. Empty for a sitting, which has none by design.
+     *
+     * **Almost never the one to draw** — that is [displayTitle]. Named `title` until it was the
+     * cause of a bug: Home's next-up row read it, a sitting has no words of its own, and the row
+     * said "Untitled" for a task that was perfectly well named. Three other surfaces had the rule
+     * right, which is what made the fourth easy to miss. A name that reads as the obvious choice,
+     * on a field that is usually the wrong one, is a trap; this one now has to be asked for.
+     */
+    val ownTitle: String?,
     /** The title of the task a sitting is for, joined through `for_node_id`. Null for an event. */
     val forTitle: String? = null,
     /** Whether that task is finished — a sitting for something already done draws as spent. */
@@ -829,7 +837,20 @@ data class EventWithTitle(
      * for an event's *own* node gives a sitting nothing.
      */
     val displayTitle: String?
-        get() = if (event.forNodeId != null) forTitle ?: title else title
+        get() = if (event.forNodeId != null) forTitle ?: ownTitle else ownTitle
+
+    /**
+     * The node a tap on this should open.
+     *
+     * A sitting has no page worth opening — it is an hour on Thursday, and there is nothing to
+     * write about that; its notes are the task's. Beside [displayTitle] because it is the same
+     * fact: a sitting borrows both its words and its destination from the task it is for.
+     *
+     * Here rather than resolved at each call site, which is how Home came to open a page titled
+     * "Untitled" from a row that had just been fixed to *say* the task's name. The two halves of
+     * "draw it as its task" were one line apart in the same row and only one of them was done.
+     */
+    val displayTarget: String get() = event.forNodeId ?: event.nodeId
 }
 
 @Dao
@@ -853,7 +874,7 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+        SELECT e.*, n.title AS ownTitle, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
                n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
@@ -900,7 +921,7 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+        SELECT e.*, n.title AS ownTitle, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
                n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
@@ -913,7 +934,7 @@ interface EventDao {
     /** One event, watched — for its own page to say when it is. */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+        SELECT e.*, n.title AS ownTitle, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
                n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
