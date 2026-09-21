@@ -509,6 +509,19 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
  * the same argument on `EventRef.color`. A hex would be a value chosen against one theme, and the
  * light and dark twins of a swatch are not the same number.
  */
+/**
+ * `node.icon` — the emoji a list wears instead of its drawn mark.
+ *
+ * A column rather than a lookup, for the reason `color` is one: every row on Home is drawn from the
+ * index, and a glyph that arrived a beat after the row would read as the list changing under you.
+ * Null is the ordinary case and means the mark, which is why nothing is backfilled.
+ */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `icon` TEXT")
+    }
+}
+
 val MIGRATION_17_18 = object : Migration(17, 18) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `node` ADD COLUMN `color` TEXT")

@@ -452,4 +452,68 @@ class PageCodecTest {
         assertEquals("Ping [[ask @bob|^x]]", t.title)
         assertNull(t.assignee)
     }
+
+    // ---- a list's appearance ----
+
+    /**
+     * The icon and the colour survive a round trip, and survive each other.
+     *
+     * Both are choices somebody made, so they live in the file rather than only in the index — a
+     * list given an emoji on the phone has it on the laptop, and dropping the database costs
+     * nothing. Which makes the codec the place they can be silently lost: a key left out of the
+     * emitter writes a page that reads back plain, and nothing above here would notice, because a
+     * list with no icon is a perfectly ordinary list.
+     */
+    @Test
+    fun `a list keeps its icon and its colour`() {
+        val original = PageDoc(
+            id = "L1", type = "list", parent = null, title = "Shopping",
+            modifiedAt = Instant.EPOCH, device = null, blocks = emptyList(),
+            icon = "🛒", color = "Teal",
+        )
+
+        val text = PageCodec.encode(original)
+        assertTrue("the icon is not in the file: $text", text.contains("icon: 🛒"))
+        assertTrue("the colour is not in the file: $text", text.contains("color: Teal"))
+
+        val back = PageCodec.decode(text)
+        assertEquals("🛒", back.icon)
+        assertEquals("Teal", back.color)
+    }
+
+    /** Independent: an emoji brings its own colours, so either may be set without the other. */
+    @Test
+    fun `an icon without a colour and a colour without an icon both round trip`() {
+        val iconOnly = PageDoc(
+            id = "L1", type = "list", parent = null, title = null,
+            modifiedAt = Instant.EPOCH, device = null, blocks = emptyList(), icon = "🎯",
+        )
+        PageCodec.decode(PageCodec.encode(iconOnly)).let {
+            assertEquals("🎯", it.icon)
+            assertNull(it.color)
+        }
+
+        val colourOnly = iconOnly.copy(icon = null, color = "Plum")
+        PageCodec.decode(PageCodec.encode(colourOnly)).let {
+            assertNull(it.icon)
+            assertEquals("Plum", it.color)
+        }
+    }
+
+    /**
+     * `icon` is a key this version understands, so it must not also be carried as an unknown one.
+     *
+     * Adding a key means adding it in two places — the parser and the `known` set — and forgetting
+     * the second writes it out twice: once from the field and once from `unknownKeys`, which is a
+     * file that no longer parses the way it was written.
+     */
+    @Test
+    fun `icon is not mistaken for a key this version does not understand`() {
+        val text = "---\nid: L1\ntype: list\nicon: 📚\nmodified_at: 2026-01-01T00:00:00Z\n---\n"
+        val page = PageCodec.decode(text)
+
+        assertEquals("📚", page.icon)
+        assertTrue("icon leaked into unknownKeys: ${page.unknownKeys}", "icon" !in page.unknownKeys)
+        assertEquals(1, PageCodec.encode(page).lines().count { it.startsWith("icon: ") })
+    }
 }
