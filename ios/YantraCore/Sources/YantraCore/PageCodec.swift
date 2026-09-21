@@ -102,15 +102,33 @@ public enum DueValue: Equatable, Sendable {
 
 public struct DueSpec: Equatable, Sendable {
     public var value: DueValue
-    /// Minutes *before* the due moment; negative means after. nil is no reminder.
-    public var reminderMin: Int?
+    /// Minutes *before* the due moment, one per reminder. Negative means after; empty means none.
+    ///
+    /// A list rather than a single offset, because one warning is not always the right number of
+    /// warnings: half an hour before is useful for getting to a thing, and a day before is what
+    /// stops you from having nothing ready when you get there. They answer different questions and
+    /// neither replaces the other.
+    ///
+    /// **Kept sorted, largest first, and distinct.** The order is the order they fire in, so it is
+    /// the order a person reads them in — and two devices holding the same task have to produce the
+    /// same bytes or every sync is a diff about nothing. `DueSpec.reminders(_:)` is the only way one
+    /// should be built.
+    public var reminders: [Int]
     /// How long it is expected to take — what makes a task drawable on a timeline beside an event.
     ///
     /// Null for an all-day task and for one that is merely *at* a time, because a moment and a span
     /// are different claims and only one of them can be drawn to scale.
     public var duration: ISODuration?
-    public init(_ value: DueValue, reminderMin: Int? = nil, duration: ISODuration? = nil) {
-        self.value = value; self.reminderMin = reminderMin; self.duration = duration
+    public init(_ value: DueValue, reminders: [Int] = [], duration: ISODuration? = nil) {
+        self.value = value; self.reminders = DueSpec.reminders(reminders); self.duration = duration
+    }
+
+    /// The first reminder that will fire, for the places that only need to know there is one.
+    public var firstReminder: Int? { reminders.first }
+
+    /// Canonical order and no repeats — the two things that make the bytes stable.
+    public static func reminders<S: Sequence>(_ offsets: S) -> [Int] where S.Element == Int {
+        Array(Set(offsets)).sorted(by: >)
     }
 }
 
@@ -301,20 +319,28 @@ public struct PageDoc: Equatable, Sendable {
     public var blocks: [Block]
     /// Frontmatter keys this version does not understand, in file order.
     public var unknownKeys: [(String, String)]
+    /// The emoji this list wears instead of its drawn mark, or nil to keep the mark.
+    ///
+    /// In the file for the same reason as `color`: it is a choice somebody made, and choices live
+    /// where the tasks do. Kept apart from `color` rather than folded into one "appearance" field,
+    /// because they are genuinely independent — an emoji carries its own colours, so a list can
+    /// have a mark and a colour, an emoji and a colour, or neither.
+    public var icon: String?
     /// The colour this list wears, as a palette **name** — in the file, because it is a choice
     /// somebody made and the file is where choices live.
     public var color: String?
 
     public init(id: String, type: String, parent: String?, title: String?, systemKey: String? = nil, modifiedAt: Date,
-                device: String?, blocks: [Block], unknownKeys: [(String, String)] = [], color: String? = nil) {
+                device: String?, blocks: [Block], unknownKeys: [(String, String)] = [],
+                icon: String? = nil, color: String? = nil) {
         self.id = id; self.type = type; self.parent = parent; self.title = title; self.systemKey = systemKey
         self.modifiedAt = modifiedAt; self.device = device; self.blocks = blocks; self.unknownKeys = unknownKeys
-        self.color = color
+        self.icon = icon; self.color = color
     }
 
     public static func == (l: PageDoc, r: PageDoc) -> Bool {
         l.id == r.id && l.type == r.type && l.parent == r.parent && l.title == r.title && l.systemKey == r.systemKey
-            && l.modifiedAt == r.modifiedAt && l.device == r.device && l.blocks == r.blocks && l.color == r.color
+            && l.modifiedAt == r.modifiedAt && l.device == r.device && l.blocks == r.blocks && l.icon == r.icon && l.color == r.color
             && l.unknownKeys.count == r.unknownKeys.count && zip(l.unknownKeys, r.unknownKeys).allSatisfy { $0 == $1 }
     }
 }
@@ -327,7 +353,7 @@ public enum PageCodec {
     /// One level of visual indent — a guillemet, which means nothing to markdown.
     public static let indentMarker = "\u{00BB}"
     static let fence = "---"
-    static let known: Set<String> = ["id", "type", "parent", "title", "system_key", "color", "modified_at", "device"]
+    static let known: Set<String> = ["id", "type", "parent", "title", "system_key", "icon", "color", "modified_at", "device"]
 
     public static func decode(_ text: String) -> PageDoc {
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
@@ -360,7 +386,7 @@ public enum PageCodec {
             modifiedAt: f("modified_at").flatMap(InstantText.parse) ?? Date(timeIntervalSince1970: 0),
             device: nonBlank(f("device")), blocks: blocks,
             unknownKeys: front.filter { !known.contains($0.0) },
-            color: nonBlank(f("color")))
+            icon: nonBlank(f("icon")), color: nonBlank(f("color")))
     }
 
     static func splitIndent(_ line: String) -> (Int, String) {
@@ -437,11 +463,20 @@ public enum PageCodec {
     /// A length on an all-day task is refused rather than kept: "all of Tuesday, for one hour" does
     /// not mean anything, and storing it would leave the timeline to decide what it meant.
     static func parseDue(_ token: String) -> DueSpec? {
-        var head = token, reminder: Int? = nil
+        var head = token, reminders: [Int] = []
         if let at = token.range(of: "+r") {
             head = String(token[..<at.lowerBound])
-            guard let r = Int(token[at.upperBound...]) else { return nil }
-            reminder = r
+            // `+r30` and `+r30,15` are the same syntax with one and two reminders in it. The older
+            // spelling is the new one with a single element, so every file written before this
+            // parses unchanged and nothing needs converting.
+            //
+            // All or nothing: a tail that is partly unreadable — `+r30,x` — is refused rather than
+            // quietly kept as `+r30`, because a task that silently loses one of its two reminders
+            // is the failure this whole feature exists to avoid.
+            let parts = token[at.upperBound...].split(separator: ",", omittingEmptySubsequences: false)
+                .map { Int($0.trimmingCharacters(in: .whitespaces)) }
+            if parts.isEmpty || parts.contains(where: { $0 == nil }) { return nil }
+            reminders = DueSpec.reminders(parts.compactMap { $0 })
         }
         var body = head, duration: ISODuration? = nil
         if let slash = head.firstIndex(of: "/") {
@@ -451,11 +486,11 @@ public enum PageCodec {
         }
         if body.contains("T") {
             guard let d = InstantText.parse(body) else { return nil }
-            return DueSpec(.at(d), reminderMin: reminder, duration: duration)
+            return DueSpec(.at(d), reminders: reminders, duration: duration)
         }
         guard let d = LocalDate(body) else { return nil }
         if duration != nil { return nil }
-        return DueSpec(.allDay(d), reminderMin: reminder)
+        return DueSpec(.allDay(d), reminders: reminders)
     }
 
     // MARK: the event line
@@ -612,6 +647,7 @@ public enum PageCodec {
         if let p = page.parent { s += "parent: \(p)\n" }
         if let t = page.title { s += "title: \(t)\n" }
         if let k = page.systemKey { s += "system_key: \(k)\n" }
+        if let i = page.icon { s += "icon: \(i)\n" }
         if let c = page.color { s += "color: \(c)\n" }
         s += "modified_at: \(InstantText.format(page.modifiedAt))\n"
         if let d = page.device { s += "device: \(d)\n" }
@@ -736,7 +772,10 @@ public enum PageCodec {
         // Length before reminder, always: the reminder's `+r` is a suffix on the whole thing, and
         // two devices holding the same task must produce the same bytes or every sync is a diff.
         let withLength = d.duration.map { "\(body)/\($0)" } ?? body
-        return d.reminderMin.map { "\(withLength)+r\($0)" } ?? withLength
+        // One reminder writes exactly what it always wrote, so adding the feature did not rewrite
+        // every task file on the first sync after updating.
+        if d.reminders.isEmpty { return withLength }
+        return withLength + "+r" + d.reminders.map(String.init).joined(separator: ",")
     }
 }
 

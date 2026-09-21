@@ -3,6 +3,7 @@ id: p1
 type: list
 title: Sample
 system_key: inbox
+icon: 📥
 color: teal
 modified_at: 2026-09-11T14:22:31.402Z
 device: android-a

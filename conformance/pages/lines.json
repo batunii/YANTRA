@@ -70,6 +70,21 @@
         "rendered": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15"
     },
     {
+        "source": "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30"
+    },
+    {
+        "source": "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r30,1440,30",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r1440,30"
+    },
+    {
+        "source": "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15"
+    },
+    {
         "source": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20",
         "kind": "TaskRef",
         "rendered": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20"

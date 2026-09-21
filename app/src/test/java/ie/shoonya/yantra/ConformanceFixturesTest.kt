@@ -135,12 +135,16 @@ class ConformanceFixturesTest {
     @Serializable data class CaptureCase(val input: String, val lists: List<String> = emptyList(), val people: List<String> = emptyList(),
         val title: String, val date: String?, val time: String?, val labels: List<String>, val priority: String?, val assignee: String?,
         val list: String?, val listIsNew: Boolean, val spans: List<String>)
-    @Serializable data class CaptureFixture(val today: String, val cases: List<CaptureCase>)
+    @Serializable data class CaptureFixture(val today: String, val now: String, val cases: List<CaptureCase>)
 
     @Test
     fun capture() {
         // A fixed Wednesday, so weekday arithmetic is the same on every machine that runs this.
         val today = java.time.LocalDate.of(2026, 9, 9)
+        // Pinned, because a bare time is read against the clock: "dinner 6pm" is this evening
+        // before six and tomorrow evening after it, so a fixture generated from the real clock
+        // said something different depending on when it was regenerated.
+        val now = java.time.LocalTime.of(12, 0)
         val inputs: List<Triple<String, List<String>, List<String>>> = listOf(
             Triple("buy milk today", emptyList(), emptyList()),
             Triple("call the vet tomorrow", emptyList(), emptyList()),
@@ -177,8 +181,8 @@ class ConformanceFixturesTest {
             Triple("~5 mins of stretching", emptyList(), emptyList()),
         )
         golden("capture/cases.json") {
-            CaptureFixture(today.toString(), inputs.map { (input, lists, people) ->
-                val c = ie.shoonya.yantra.data.capture.CaptureParse.parse(input, today, lists, people)
+            CaptureFixture(today.toString(), now.toString(), inputs.map { (input, lists, people) ->
+                val c = ie.shoonya.yantra.data.capture.CaptureParse.parse(input, today, lists, people, now = now)
                 CaptureCase(input, lists, people, c.title, c.date?.toString(), c.time?.toString(), c.labels, c.priority, c.assignee,
                     c.list, c.listIsNew, c.spans.map { "${it.kind.name.lowercase()}:${it.range.first}-${it.range.last + 1}" })
             })
@@ -254,6 +258,9 @@ class ConformanceFixturesTest {
             "- [ ] Buy #2 pencils",
             "- [ ] Buy milk #groceries #urgent !High @sam",
             "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15",
+            "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30",
+            "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r30,1440,30",
+            "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15",
             "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20",
             "- [ ] About a meeting ^t5 ext:abc123@google.com",
             "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00",
@@ -297,6 +304,7 @@ class ConformanceFixturesTest {
             systemKey = ie.shoonya.yantra.data.db.SystemKey.INBOX,
             modifiedAt = java.time.Instant.parse("2026-09-11T14:22:31.402Z"),
             device = "android-a",
+            icon = "\uD83D\uDCE5",
             blocks = listOf(
                 ie.shoonya.yantra.data.format.Heading("Welcome"),
                 ie.shoonya.yantra.data.format.Prose("A list holds tasks."),
@@ -351,6 +359,39 @@ class ConformanceFixturesTest {
                     SeedCase(it, ie.shoonya.yantra.data.label.LabelPalette.defaultNameFor(it),
                              hex(ie.shoonya.yantra.data.label.LabelPalette.defaultFor(it)))
                 },
+            )
+        }
+    }
+
+    // ---- list icons ----
+
+    /**
+     * What the icon field keeps out of whatever was typed into it.
+     *
+     * A contract because the two platforms find the grapheme boundary by different means — Kotlin
+     * through `BreakIterator`, Swift through `Character` — and a list wearing 👩‍💻 on one device
+     * must not wear 👩 on the other.
+     */
+    @Serializable data class IconCase(val input: String, val cleaned: String?)
+    @Serializable data class IconFixture(val suggested: List<String>, val cases: List<IconCase>)
+
+    @Test
+    fun listIcon() {
+        val inputs = listOf(
+            "", "   ", "a", "ab", "1",
+            "📥",                                   // inbox tray
+            "📥📦",                       // two emoji, first wins
+            "👩‍💻",                 // woman technologist: ZWJ sequence
+            "👍🏽",                       // thumbs up + skin tone modifier
+            "🇮🇪",                       // flag: two regional indicators
+            "❤️",                                   // heart + variation selector
+            " 🎯 trailing words",                   // padded, then a word
+            "hello world",
+        )
+        golden("labels/list-icon.json") {
+            IconFixture(
+                suggested = ie.shoonya.yantra.data.format.ListIcon.suggested,
+                cases = inputs.map { IconCase(it, ie.shoonya.yantra.data.format.ListIcon.clean(it)) },
             )
         }
     }

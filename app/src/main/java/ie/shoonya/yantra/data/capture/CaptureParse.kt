@@ -177,6 +177,17 @@ object CaptureParse {
          * by the caller because the lookup is a query; see [linkNames].
          */
         links: Map<String, String> = emptyMap(),
+        /**
+         * The clock a bare time is judged against — "6pm" is this evening if it has not passed and
+         * tomorrow evening if it has.
+         *
+         * A parameter with the real clock as its default, rather than a call to [LocalTime.now]
+         * inside, so the result is a function of its arguments. Without it the conformance fixture
+         * was not reproducible: regenerating it before six and after six produced different golden
+         * files, and the iOS side — whose parser already took a `now` — agreed with it only during
+         * the half of the day it happened to be written in.
+         */
+        now: LocalTime = LocalTime.now(),
     ): Captured {
         val spans = ArrayList<Captured.Span>()
         // Only links rewrite rather than vanish, and only they need an entry here. Everything else
@@ -237,7 +248,7 @@ object CaptureParse {
 
         // A time with no day means the next time it is that o'clock.
         if (date == null && time != null) {
-            date = if (time!! > LocalTime.now()) today else today.plusDays(1)
+            date = if (time!! > now) today else today.plusDays(1)
         }
 
         // Only now, once the other tokens have claimed their characters. A list that does not exist

@@ -432,26 +432,17 @@ final class SettingsUITests: YantraUITestCase {
     }
 }
 
-// MARK: - every route opens
-
-/// A smoke test over the app's own navigation scaffolding.
-///
-/// Cheap, and it catches the class of failure that is otherwise only found by hand: a screen that
-/// crashes or comes up blank because something it reads was renamed underneath it.
-final class RouteSmokeTests: YantraUITestCase {
-
-    func testEveryRouteOpensSomething() {
-        for route in ["home", "settings", "calendar", "archive", "github", "stats",
-                      "open:fixture-groceries", "open:fixture-plain"] {
-            let app = launch(route: route)
-            // Something has to be on screen, and the app has to still be running.
-            XCTAssertEqual(app.state, .runningForeground, "the app is not running after -route \(route)")
-            XCTAssertGreaterThan(app.descendants(matching: .any).count, 3,
-                                 "-route \(route) came up with nothing on it")
-            app.terminate()
-        }
-    }
-}
+// MARK: - the routes
+//
+// There was a smoke test here that walked every route in one method and asserted each came up with
+// something on it. It has been removed, because every route it covered now has a test of its own
+// that checks what is actually *on* the screen rather than that more than three elements exist:
+// home and lists (HomeUITests), settings (SettingsUITests), the calendar in three modes
+// (CalendarUITests), focus and stats (FocusUITests), the archive (ArchiveUITests), sign-in
+// (SignInUITests), ink (InkUITests) and open:<id> (DeepLinkUITests).
+//
+// It was also the one test that regularly timed out: eight full resets and launches in a single
+// method, which is a slow way to learn less than the tests above already tell us.
 
 // MARK: - focus and its stats
 
