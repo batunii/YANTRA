@@ -285,6 +285,26 @@ public struct Node: Identifiable, Equatable, Sendable {
     public var lineIndex: Int?
     /// The ink block id or image payload, for those block kinds.
     public var payload: String?
+    /// The meeting in somebody else's calendar this line is about, when it is about one.
+    public var external: ExternalRef?
+    /// The whole event line, for an event node.
+    ///
+    /// Kept intact rather than spread across the fields above: an event's span, zone, rule and
+    /// colour are not a due date with extras, and flattening them here would mean rebuilding an
+    /// EventRef — badly — everywhere one is written back.
+    public var event: EventRef?
+
+    public init(id: String, workspaceId: String, parentId: String?, type: String, title: String?, rank: String,
+                done: Bool, inProgress: Bool, indent: Int, systemKey: String?, createdAt: Int64,
+                due: DueSpec? = nil, deadline: LocalDate? = nil, priority: String? = nil, labels: [String] = [],
+                assignee: String? = nil, doneAt: LocalDate? = nil, homePageId: String? = nil, lineIndex: Int? = nil,
+                payload: String? = nil, external: ExternalRef? = nil, event: EventRef? = nil) {
+        self.id = id; self.workspaceId = workspaceId; self.parentId = parentId; self.type = type; self.title = title
+        self.rank = rank; self.done = done; self.inProgress = inProgress; self.indent = indent; self.systemKey = systemKey
+        self.createdAt = createdAt; self.due = due; self.deadline = deadline; self.priority = priority; self.labels = labels
+        self.assignee = assignee; self.doneAt = doneAt; self.homePageId = homePageId; self.lineIndex = lineIndex
+        self.payload = payload; self.external = external; self.event = event
+    }
 
     /// Due as an instant for filtering and sorting: all-day is local midnight.
     public var dueDate: Date? {
@@ -325,6 +345,14 @@ public struct WorkspaceIndex: Sendable {
                     n.id = t.id.isEmpty ? blockId(pageId: p.id, index: i) : t.id
                     n.done = t.status == .done; n.inProgress = t.status == .inProgress
                     n.due = t.due; n.deadline = t.deadline; n.priority = t.priority; n.labels = t.labels; n.assignee = t.assignee; n.doneAt = t.doneAt
+                    n.external = t.external
+                case let .event(e):
+                    // Positional only when the line carries no id, exactly as a task line is: an
+                    // event written by hand has no `^id` until something edits it.
+                    n.id = e.id.isEmpty ? blockId(pageId: p.id, index: i) : e.id
+                    n.event = e
+                    n.priority = e.priority
+                    n.labels = e.labels
                 case let .ink(id, _, _): n.id = id; n.payload = id
                 case let .image(uri, _, _): n.id = blockId(pageId: p.id, index: i); n.payload = uri
                 default: n.id = blockId(pageId: p.id, index: i)

@@ -82,6 +82,118 @@ public final class WorkspaceWriter {
         return id
     }
 
+    // MARK: events
+
+    /// Adds an event line to a page. Mints an id, the way a task line gets one.
+    @discardableResult
+    public func addEvent(to pageId: String, title: String, time: EventTime, afterIndex: Int? = nil, indent: Int = 0,
+                         forTaskId: String? = nil, location: String? = nil, color: String? = nil,
+                         external: ExternalRef? = nil, reminderMin: Int? = nil, rrule: String? = nil,
+                         labels: [String] = [], attendees: [String] = [], priority: String? = nil) throws -> String {
+        try guardWritable()
+        let id = newId()
+        let block = Block.event(EventRef(id: id, title: title, time: time, rrule: rrule, forTaskId: forTaskId,
+                                         external: external, color: color, location: location,
+                                         reminderMin: reminderMin, labels: labels, attendees: attendees,
+                                         priority: priority, indent: indent))
+        if store.readPage(pageId) == nil {
+            guard let (home, _) = locate(taskId: pageId) else { throw ReadOnly(formatVersion: -2) }
+            ensurePage(pageId, parent: home)
+        }
+        try editPage(pageId, change: .structural) { page in
+            var p = page
+            p.blocks.insert(block, at: afterIndex.map { min($0 + 1, p.blocks.count) } ?? p.blocks.count)
+            return p
+        }
+        return id
+    }
+
+    /// Which page holds an event's line, and the line's index.
+    public func locate(eventId: String) -> (String, Int)? {
+        for p in store.readPages() {
+            if let i = p.blocks.firstIndex(where: { if case let .event(e) = $0 { return e.id == eventId }; return false }) { return (p.id, i) }
+        }
+        return nil
+    }
+
+    public func editEvent(_ eventId: String, _ transform: (EventRef) -> EventRef) throws {
+        guard let (home, _) = locate(eventId: eventId) else { return }
+        try editPage(home) { page in
+            var p = page
+            p.blocks = p.blocks.map { b in
+                if case let .event(e) = b, e.id == eventId { return .event(transform(e)) }
+                return b
+            }
+            return p
+        }
+    }
+
+    public func setEventTime(_ eventId: String, _ time: EventTime) throws {
+        try editEvent(eventId) { var x = $0; x.time = time; return x }
+    }
+
+    public func setEventTitle(_ eventId: String, _ title: String) throws {
+        try editEvent(eventId) { var x = $0; x.title = title; return x }
+    }
+
+    /// Removes an event line. A sitting is only ever time set aside, so deleting it leaves the task
+    /// it was for exactly where it was — there is no page of its own to take with it.
+    public func deleteEvent(_ eventId: String) throws {
+        guard let (home, i) = locate(eventId: eventId) else { return }
+        try editPage(home, change: .structural) { page in
+            var p = page
+            guard i < p.blocks.count else { return p }
+            p.blocks.remove(at: i)
+            return p
+        }
+    }
+
+    /// Cancels one occurrence of a repeat by writing the tombstone line the series reads, rather
+    /// than rewriting the series line itself — which is what two devices cancelling two different
+    /// days would otherwise collide on.
+    @discardableResult
+    public func cancelOccurrence(of seriesEventId: String, at start: LocalDateTime) throws -> String? {
+        guard let (home, _) = locate(eventId: seriesEventId),
+              let page = store.readPage(home),
+              case let .event(series)? = page.blocks.first(where: { if case let .event(e) = $0 { return e.id == seriesEventId }; return false })
+        else { return nil }
+        let span = ISODuration(seconds: series.time.start.seconds(until: series.time.end))
+        let time = EventTime(start: start, end: start.adding(seconds: span.seconds), zone: series.time.zone, allDay: series.time.allDay)
+        try guardWritable()
+        let id = newId()
+        try editPage(home, change: .structural) { p in
+            var page = p
+            page.blocks.append(.event(EventRef(id: id, title: series.title, time: time,
+                                               series: SeriesRef(series.id, originalStart: start), cancelled: true)))
+            return page
+        }
+        return id
+    }
+
+    // MARK: other line fields
+
+    public func setDeadline(_ taskId: String, _ deadline: LocalDate?) throws {
+        try editTask(taskId) { var x = $0; x.deadline = deadline; return x }
+    }
+
+    public func setAssignee(_ taskId: String, _ assignee: String?) throws {
+        try editTask(taskId) { var x = $0; x.assignee = assignee; return x }
+    }
+
+    public func setLabels(_ taskId: String, _ labels: [String]) throws {
+        try editTask(taskId) { var x = $0; x.labels = labels; return x }
+    }
+
+    /// Links a task to a meeting in somebody else's calendar, or unlinks it.
+    public func setExternal(_ taskId: String, _ external: ExternalRef?) throws {
+        try editTask(taskId) { var x = $0; x.external = external; return x }
+    }
+
+    /// The colour a list wears, by palette name. On the page, because it is a choice somebody made.
+    public func setPageColor(_ pageId: String, _ color: String?) throws {
+        try editPage(pageId) { var p = $0; p.color = color; return p }
+    }
+
     /// Which page holds a task's line, and the line's index.
     public func locate(taskId: String) -> (String, Int)? {
         for p in store.readPages() {
@@ -139,6 +251,7 @@ public final class WorkspaceWriter {
             case let .bullet(_, i, _): p.blocks[index] = .bullet(text, indent: i)
             case let .numbered(_, i, _): p.blocks[index] = .numbered(text, indent: i)
             case .task(var t): t.title = text; p.blocks[index] = .task(t)
+            case .event(var e): e.title = text; p.blocks[index] = .event(e)
             default: break
             }
             return p
