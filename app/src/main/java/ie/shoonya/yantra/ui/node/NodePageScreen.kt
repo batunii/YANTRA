@@ -2375,23 +2375,38 @@ internal fun TextualBlockRow(
                     }
                 },
             )
-            // Struck across the first line's actual glyph run. A wrapped title gets its first line
-            // marked, which is what you see anyway at maxLines = 2.
+            // Struck across **every** line's actual glyph run, each measured on its own.
+            //
+            // This used to mark the first line only, on the stated grounds that a task title was
+            // never more than one — and the moment a quiet row started giving its second line to
+            // the title, a finished two-word task read as half crossed out and half not.
+            //
+            // The pen travels: line *i* owns the slice of `strike` from `i/n` to `(i+1)/n`, so the
+            // stroke runs down the title the way a hand would, rather than all lines filling in at
+            // once. Each line seeds its own squiggle from the task id, so two struck lines are not
+            // the same wobble printed twice.
             val layout = titleLayout
             if (isTask && strike > 0f && layout != null && layout.lineCount > 0) {
                 val density = LocalDensity.current
-                val runWidth = layout.getLineRight(0).coerceAtMost(layout.size.width.toFloat())
-                val lineTop = layout.getLineTop(0)
-                val lineHeight = layout.getLineBottom(0) - lineTop
-                InkStrike(
-                    taskId = child.id,
-                    progress = strike,
-                    darkTheme = y.isDark,
-                    modifier = Modifier
-                        .offset { IntOffset(0, lineTop.roundToInt()) }
-                        .width(with(density) { runWidth.toDp() })
-                        .height(with(density) { lineHeight.toDp() }),
-                )
+                val lines = layout.lineCount
+                repeat(lines) { i ->
+                    val local = ((strike - i.toFloat() / lines) * lines).coerceIn(0f, 1f)
+                    if (local > 0f) {
+                        val left = layout.getLineLeft(i)
+                        val right = layout.getLineRight(i).coerceAtMost(layout.size.width.toFloat())
+                        val lineTop = layout.getLineTop(i)
+                        val lineHeight = layout.getLineBottom(i) - lineTop
+                        InkStrike(
+                            taskId = if (i == 0) child.id else "${child.id}#$i",
+                            progress = local,
+                            darkTheme = y.isDark,
+                            modifier = Modifier
+                                .offset { IntOffset(left.roundToInt(), lineTop.roundToInt()) }
+                                .width(with(density) { (right - left).coerceAtLeast(0f).toDp() })
+                                .height(with(density) { lineHeight.toDp() }),
+                        )
+                    }
+                }
             }
             }
             // One chip rides on the title row instead of opening a second line under it.
