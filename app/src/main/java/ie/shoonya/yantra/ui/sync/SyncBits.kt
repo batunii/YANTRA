@@ -17,7 +17,7 @@ import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /** What a setup screen says back, and whether it should be read as a refusal. */
-internal data class Said(val ok: Boolean, val message: String)
+internal data class Said(val ok: Boolean, val message: String, val slug: String? = null)
 
 /**
  * The two small things every setup screen needs: a sentence said back, and a way out to the web.

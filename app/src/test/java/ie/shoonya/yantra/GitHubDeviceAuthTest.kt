@@ -2,6 +2,7 @@ package ie.shoonya.yantra
 
 import ie.shoonya.yantra.data.sync.DeviceStart
 import ie.shoonya.yantra.data.sync.DevicePoll
+import ie.shoonya.yantra.data.sync.GitHubAuth
 import ie.shoonya.yantra.data.sync.GitHubDeviceAuth
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -24,7 +25,7 @@ class GitHubDeviceAuthTest {
     """.trimIndent()
 
     private fun auth(server: FakeGitHub, clientId: String = "Iv1.testclient") =
-        GitHubDeviceAuth(clientId = clientId, base = server.base)
+        GitHubDeviceAuth(base = server.base) { clientId }
 
     /** The code, for the tests whose subject is the poll rather than the start. */
     private fun GitHubDeviceAuth.started(): ie.shoonya.yantra.data.sync.DeviceCode =
@@ -44,10 +45,12 @@ class GitHubDeviceAuthTest {
             val sent = server.seen.single()
             assertEquals("POST", sent.method)
             assertTrue(sent.body.contains("client_id=Iv1.testclient"))
-            // No scope, deliberately. A GitHub App's user token does not use scopes at all — its
-            // reach is the App's configured permissions intersected with the user's own access — so
-            // sending one would be describing the wrong permission model on the consent screen.
-            assertTrue("a scope was sent: ${sent.body}", !sent.body.contains("scope"))
+            // The scope goes out with the *code* request, not the token exchange: GitHub builds
+            // the consent screen from it, so asking later would be asking after the user had already
+            // agreed to something narrower. Sent with no scope at all, the device flow yields a token
+            // that can read public data and nothing else — which authenticates perfectly and then
+            // fails at the first private repository.
+            assertTrue("no scope was sent: ${sent.body}", sent.body.contains("scope=repo"))
         }
     }
 
@@ -157,7 +160,7 @@ class GitHubDeviceAuthTest {
     fun `an unreachable server is offline, which is not the same as refused`() {
         // Port 1 is nothing. Polling has to survive a dropped connection: it happens on every
         // sign-in that starts on wifi and finishes in a lift.
-        val a = GitHubDeviceAuth(clientId = "x", base = "http://127.0.0.1:1")
+        val a = GitHubDeviceAuth(base = "http://127.0.0.1:1") { "x" }
         val code = ie.shoonya.yantra.data.sync.DeviceCode("d", "U-1", "https://x", 5, 900)
 
         // Offline, specifically — the caller keeps polling. Reading a dropped request as a refusal
@@ -167,5 +170,62 @@ class GitHubDeviceAuthTest {
 
         // Starting is different: there is no code to keep waiting on, so there is nothing to retry.
         assertTrue(a.start() is DeviceStart.Failed)
+    }
+
+    /**
+     * The restricted method sends no scope at all, and that is not a detail.
+     *
+     * A GitHub App's permissions are fixed at registration and chosen again at each installation, so
+     * there is nothing to ask for — and `scope=` sent empty is a different request from one that
+     * omits the key. It is also the test that would have caught the two halves being wired to one
+     * another's client id, which polls back `incorrect_client_credentials` and reads like a
+     * misconfigured build.
+     */
+    @Test
+    fun `the restricted method asks for no scope`() {
+        FakeGitHub().use { server ->
+            server.on("/login/device/code", 200, codeJson)
+            val auth = GitHubDeviceAuth(base = server.base) { it.clientId }
+
+            val code = (auth.start(GitHubAuth.Method.Restricted) as DeviceStart.Ok).code
+            val sent = server.seen.single()
+
+            assertTrue("a scope was sent: ${sent.body}", !sent.body.contains("scope"))
+            assertTrue(sent.body.contains("client_id=${GitHubAuth.Method.Restricted.clientId}"))
+            // Carried on the code, so the poll cannot reach for the other registration's id.
+            assertEquals(GitHubAuth.Method.Restricted, code.method)
+        }
+    }
+
+    @Test
+    fun `polling uses the id the code was started with`() {
+        FakeGitHub().use { server ->
+            server.on("/login/device/code", 200, codeJson)
+            server.on("/login/oauth/access_token", 200, """{"error":"authorization_pending"}""")
+            val auth = GitHubDeviceAuth(base = server.base) { it.clientId }
+
+            val code = (auth.start(GitHubAuth.Method.Restricted) as DeviceStart.Ok).code
+            auth.poll(code)
+
+            val polled = server.seen.last()
+            assertTrue(
+                "polled with the wrong registration: ${polled.body}",
+                polled.body.contains("client_id=${GitHubAuth.Method.Restricted.clientId}"),
+            )
+        }
+    }
+
+    @Test
+    fun `a refresh goes back to the registration that issued it`() {
+        FakeGitHub().use { server ->
+            server.on("/login/oauth/access_token", 200, """{"access_token":"gho_new"}""")
+            val auth = GitHubDeviceAuth(base = server.base) { it.clientId }
+
+            auth.refresh("r1", GitHubAuth.Method.Restricted)
+
+            val sent = server.seen.single()
+            assertTrue(sent.body.contains("client_id=${GitHubAuth.Method.Restricted.clientId}"))
+            assertTrue(sent.body.contains("grant_type=refresh_token"))
+        }
     }
 }

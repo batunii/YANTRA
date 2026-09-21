@@ -171,7 +171,7 @@ class People(
      * successful ones say it too.
      */
     suspend fun refresh(workspaceId: String): String? = withContext(Dispatchers.IO) {
-        val token = credentials.token(workspaceId)
+        val token = credentials.tokenFor(workspaceId)
             ?: credentials.token(Credentials.ACCOUNT)
             ?: return@withContext "Not signed in to GitHub."
         val slug = registry.entries().firstOrNull { it.id == workspaceId }?.slug

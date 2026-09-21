@@ -1,8 +1,10 @@
 package ie.shoonya.yantra
 
 import ie.shoonya.yantra.data.sync.GitHubApi
-import ie.shoonya.yantra.data.sync.RepoCheck
 import ie.shoonya.yantra.data.sync.InstallState
+import ie.shoonya.yantra.data.sync.RepoCheck
+import ie.shoonya.yantra.data.sync.RepoCreate
+import ie.shoonya.yantra.data.sync.SignInState
 import ie.shoonya.yantra.data.sync.RepoRef
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -87,64 +89,158 @@ class GitHubApiTest {
     }
 
     @Test
-    fun `an installed app is found by its slug`() {
+    fun `a live token reads as signed in`() {
         FakeGitHub().use { server ->
-            server.on(
-                "/user/installations", 200,
-                """{"total_count":2,"installations":[
-                     {"id":1,"app_slug":"some-other-app"},
-                     {"id":2,"app_slug":"yantra"}]}""",
-            )
-            assertEquals(InstallState.Installed, api(server).installState("t", "yantra"))
+            server.on("/user", 200, """{"login":"batunii","id":7}""")
+            assertEquals(SignInState.Ok, api(server).signInState("t"))
         }
     }
 
     @Test
-    fun `someone else's apps do not count as ours`() {
-        FakeGitHub().use { server ->
-            // Matching on the count rather than the slug would read any installed app as ours, and
-            // then every repository request would come back empty for no stated reason.
-            server.on(
-                "/user/installations", 200,
-                """{"total_count":1,"installations":[{"id":1,"app_slug":"dependabot"}]}""",
-            )
-            assertEquals(InstallState.Absent, api(server).installState("t", "yantra"))
-        }
-    }
-
-    @Test
-    fun `no installation at all is absent rather than an error`() {
-        FakeGitHub().use { server ->
-            // This is the trap the whole check exists for: the token is perfectly valid and can see
-            // nothing, so it must read as "one more step" and never as "something went wrong".
-            server.on("/user/installations", 200, """{"total_count":0,"installations":[]}""")
-            assertEquals(InstallState.Absent, api(server).installState("t", "yantra"))
-        }
-    }
-
-    @Test
-    fun `a dead token is told apart from a missing installation`() {
-        // These need opposite things said — one is a browser trip, the other is signing in again —
-        // so collapsing them into one "not installed" would send people to fix the wrong thing.
+    fun `a revoked sign-in is told apart from a dead network`() {
+        // These need opposite things said — one is signing in again, the other is waiting — so
+        // collapsing them would have people re-authorising to fix a tunnel.
         listOf(401, 403).forEach { code ->
             FakeGitHub().use { server ->
-                server.on("/user/installations", code, """{"message":"Bad credentials"}""")
-                assertEquals(InstallState.Unauthorized, api(server).installState("t", "yantra"))
+                server.on("/user", code, """{"message":"Bad credentials"}""")
+                assertEquals(SignInState.Unauthorized, api(server).signInState("t"))
+            }
+        }
+        assertTrue(GitHubApi(base = "http://127.0.0.1:1").signInState("t") is SignInState.Failed)
+    }
+
+    @Test
+    fun `rate limiting is not mistaken for a revoked sign-in`() {
+        // The two need opposite things done: one is waiting, the other is signing in again — and
+        // signing in again mints a token, of which GitHub keeps only ten before revoking the oldest.
+        // Telling someone to spend one to fix a rate limit is how a working device stops working.
+        FakeGitHub().use { server ->
+            server.on("/user") { _ ->
+                403 to """{"message":"You have exceeded a secondary rate limit"}"""
+            }
+            server.header("x-ratelimit-remaining", "0")
+            assertTrue(api(server).signInState("t") is SignInState.Failed)
+        }
+    }
+
+    @Test
+    fun `a genuinely revoked token still reads as revoked`() {
+        FakeGitHub().use { server ->
+            // The same status, without the header that says why. This is the real thing.
+            server.on("/user", 403, """{"message":"Bad credentials"}""")
+            assertEquals(SignInState.Unauthorized, api(server).signInState("t"))
+        }
+    }
+
+    @Test
+    fun `a new repository is asked for private, by name`() {
+        FakeGitHub().use { server ->
+            server.on("/user/repos", 201, """{"full_name":"batunii/team-tasks","default_branch":"main"}""")
+            val made = api(server).createRepo("team-tasks", "t")
+
+            assertEquals(RepoCreate.Ok(RepoRef("batunii", "team-tasks"), "main"), made)
+            val sent = server.seen.single { it.path == "/user/repos" }
+            assertEquals("POST", sent.method)
+            // Private is not a preference here. A task list made public by default cannot be made
+            // private again by anyone who is not an admin of it.
+            assertTrue(sent.body.contains(""""private":true"""))
+            assertTrue(sent.body.contains(""""name":"team-tasks""""))
+        }
+    }
+
+    @Test
+    fun `where it landed is read from the answer, not from what we asked for`() {
+        FakeGitHub().use { server ->
+            // GitHub normalises names it does not like. Assembling the ref from the typed name would
+            // point the workspace at a repository that does not exist, and only fail at the push.
+            server.on("/user/repos", 201, """{"full_name":"batunii/my-tasks","default_branch":"main"}""")
+            val made = api(server).createRepo("my tasks", "t")
+            assertEquals(RepoCreate.Ok(RepoRef("batunii", "my-tasks"), "main"), made)
+        }
+    }
+
+    @Test
+    fun `a name already taken is its own answer`() {
+        FakeGitHub().use { server ->
+            // The likeliest failure by far, and the only one the user can fix without leaving the
+            // screen — so it must not arrive dressed as "GitHub returned 422".
+            server.on(
+                "/user/repos", 422,
+                """{"message":"Repository creation failed.","errors":[
+                     {"message":"name already exists on this account"}]}""",
+            )
+            assertEquals(RepoCreate.Exists, api(server).createRepo("team-tasks", "t"))
+        }
+    }
+
+    @Test
+    fun `other refusals are not mistaken for a name clash`() {
+        FakeGitHub().use { server ->
+            server.on("/user/repos", 422, """{"message":"name is too long"}""")
+            assertTrue(api(server).createRepo("x".repeat(200), "t") is RepoCreate.Failed)
+        }
+    }
+
+    @Test
+    fun `a sign-in that cannot create says so rather than failing vaguely`() {
+        // What a token issued without the repo scope looks like: it authenticates, and this one
+        // endpoint refuses it.
+        listOf(401, 403).forEach { code ->
+            FakeGitHub().use { server ->
+                server.on("/user/repos", code, """{"message":"Requires authentication"}""")
+                assertEquals(RepoCreate.Unauthorized, api(server).createRepo("team-tasks", "t"))
             }
         }
     }
 
     @Test
-    fun `an unreachable github is neither absent nor unauthorized`() {
-        val offline = GitHubApi(base = "http://127.0.0.1:1")
-        assertTrue(offline.installState("t", "yantra") is InstallState.Failed)
+    fun `a 201 github will not explain is a failure, not a half-made workspace`() {
+        FakeGitHub().use { server ->
+            server.on("/user/repos", 201, """{"default_branch":"main"}""")
+            assertTrue(api(server).createRepo("team-tasks", "t") is RepoCreate.Failed)
+        }
+    }
+
+    /**
+     * The state that looks exactly like success and is not.
+     *
+     * A GitHub App user token with no installation answers `/user` perfectly and can see no
+     * repository at all, because its reach is the App's permissions intersected with the user's own
+     * and an App installed nowhere contributes nothing to that intersection. Matched by slug rather
+     * than by count, because someone may have other GitHub Apps installed and any of them would
+     * otherwise read as ours.
+     */
+    @Test
+    fun `an app installed nowhere is told apart from one installed`() {
+        FakeGitHub().use { server ->
+            server.on("/user/installations", 200, """{"installations":[]}""")
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra-tasks"))
+        }
+        FakeGitHub().use { server ->
+            server.on(
+                "/user/installations", 200,
+                """{"installations":[{"id":1,"app_slug":"some-other-app"}]}""",
+            )
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra-tasks"))
+        }
+        FakeGitHub().use { server ->
+            server.on(
+                "/user/installations", 200,
+                """{"installations":[{"id":1,"app_slug":"yantra-tasks"}]}""",
+            )
+            assertEquals(InstallState.Installed, api(server).installState("t", "yantra-tasks"))
+        }
     }
 
     @Test
-    fun `a malformed installation list is absent rather than a crash`() {
+    fun `a dead network is not an absent installation`() {
         FakeGitHub().use { server ->
-            server.on("/user/installations", 200, "not json at all")
-            assertEquals(InstallState.Absent, api(server).installState("t", "yantra"))
+            server.on("/user/installations", 401, "{}")
+            assertEquals(InstallState.Unauthorized, api(server).installState("t", "yantra-tasks"))
         }
+        // Nothing listening. "Not installed" would send the user round a browser trip they have
+        // already made; "could not reach GitHub" is the truth and costs them nothing.
+        val offline = GitHubApi(base = "http://127.0.0.1:1")
+        assertTrue(offline.installState("t", "yantra-tasks") is InstallState.Failed)
     }
 }
