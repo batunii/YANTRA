@@ -11,11 +11,12 @@ import android.util.Log
  * authorized", and the only remedy was to sign in again. Then again the next day. Nothing said why,
  * because the fetch failure was the first symptom and it named none of this.
  *
- * **The account is the identity; a workspace's token is a copy of it.** Linking a workspace snapshots
- * whatever the account held at the time, which means a refresh has to be done in one place and then
- * pushed down — refreshing per workspace would be worse than not refreshing at all, because GitHub
- * rotates the refresh token on every use and the second workspace would present one that had already
- * been spent.
+ * **The account is the identity, and now it is also the only copy.** A workspace that syncs through
+ * the account stores a marker rather than a token, so a refresh has one string to replace and
+ * nothing to push down. That used to be the hard part of this file: the new token had to be spread
+ * to every workspace, and a workspace missed by that spreading went on presenting a token that had
+ * already been rotated away. Refreshing per workspace was never an option either — GitHub rotates
+ * the refresh token on every use, so the second workspace would spend one that was already gone.
  *
  * Doing nothing is the common case and the correct one: a pasted personal token and a non-expiring
  * App token both store no refresh token, and this returns immediately without a request.
@@ -41,16 +42,17 @@ class TokenRenewal(
         if (expiresAt != null && now < expiresAt - MARGIN_MS) return Outcome.StillGood
 
         val login = credentials.login(Credentials.ACCOUNT) ?: return Outcome.NothingToDo
-        return when (val result = auth.refresh(refresh)) {
+        // Refreshed against the registration that issued it. The two registrations are different
+        // OAuth clients as far as GitHub is concerned, and a refresh token presented to the wrong
+        // one is refused in a way that reads exactly like an expired sign-in.
+        val method = credentials.method() ?: return Outcome.NothingToDo
+        return when (val result = auth.refresh(refresh, method)) {
             is DevicePoll.Token -> {
-                credentials.store(
-                    Credentials.ACCOUNT, result.token, login, viaApp = true,
+                credentials.signIn(
+                    result.token, login, method,
                     refreshToken = result.refreshToken,
                     expiresAt = result.expiresInSecs?.let { now + it * 1000L },
                 )
-                // Down to every workspace that was linked from this account. Their copies carry no
-                // refresh token of their own — deliberately, so only one of them can spend it.
-                credentials.spreadToWorkspaces(result.token, login)
                 Log.i(TAG, "renewed the GitHub sign-in")
                 Outcome.Renewed
             }

@@ -480,14 +480,17 @@ class AppContainer(val app: Application) {
                     AddResult.Refused("${result.ref.slug} could not be joined")
                 }
                 is LinkResult.Ok -> {
-                    credentials.store(
-                        id, token, result.login,
-                        // Whether this workspace's token is the account's own, which decides
-                        // whether a later sign-in may replace it. Compared rather than passed down
-                        // from the screen: the screen knows whether a token was pasted, but this is
-                        // the only place that knows which token was actually used, and the two drift.
-                        viaApp = token == credentials.token(Credentials.ACCOUNT),
-                    )
+                    // A reference to the account, or a token of this workspace's own — and the
+                    // difference is decided by the token that was *actually used*, not by what the
+                    // screen believed it passed down. The screen knows whether somebody typed
+                    // something; only here is it known which string reached the network, and the two
+                    // used to drift. Storing a reference is what stops the account's token being
+                    // copied anywhere it can go stale.
+                    if (token == credentials.token(Credentials.ACCOUNT)) {
+                        credentials.useAccount(id, result.login)
+                    } else {
+                        credentials.paste(id, token, result.login)
+                    }
                     // A workspace we joined already has a name, chosen by whoever started it. Taking
                     // ours over theirs would rename the same shared project on every device.
                     val store = WorkspaceStore(dir, id)
@@ -543,10 +546,12 @@ class AppContainer(val app: Application) {
                 is LinkResult.HasTasks ->
                     AddResult.HasTasks(result.ref.slug, db.nodeDao().countNodes(workspaceId))
                 is LinkResult.Ok -> {
-                    credentials.store(
-                        workspaceId, token, result.login,
-                        viaApp = token == credentials.token(Credentials.ACCOUNT),
-                    )
+                    // Same rule as addWorkspace: the account's token is referenced, never copied.
+                    if (token == credentials.token(Credentials.ACCOUNT)) {
+                        credentials.useAccount(workspaceId, result.login)
+                    } else {
+                        credentials.paste(workspaceId, token, result.login)
+                    }
                     // Adopting replaced every file under this workspace, so the index is describing
                     // a tree that is gone. Rebuilt before anything reads a name off it.
                     if (result.adopted) workspaces.reindexAll()

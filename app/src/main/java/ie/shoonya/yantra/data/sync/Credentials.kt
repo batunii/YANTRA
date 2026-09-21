@@ -11,6 +11,59 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
+ * Where a stored credential came from, which is the same question as who owns it.
+ *
+ * This replaced a boolean called `viaApp`, and the boolean is worth a sentence because its failure
+ * was expensive. It meant "signed in rather than pasted", it was written from the screen that knew
+ * whether a token had been typed, and it was left at its default by the one path that mattered — so
+ * the workspaces that took their token from the account were marked as though the user had chosen
+ * it themselves. Everything that filtered on it repaired the wrong set.
+ */
+enum class Source {
+    /** Signed in through [GitHubAuth.Method.Full]. Only ever on [Credentials.ACCOUNT]. */
+    Full,
+
+    /** Signed in through [GitHubAuth.Method.Restricted]. Only ever on [Credentials.ACCOUNT]. */
+    Restricted,
+
+    /**
+     * This workspace syncs with the account's token, and stores none of its own.
+     *
+     * **The whole point of this value is the token that is not there.** A workspace used to keep a
+     * copy, snapshotted when it was linked, and a copy is a thing that can go stale while nothing on
+     * screen can tell. Signing in again rewrote the account and left every copy behind: the GitHub
+     * screen read "signed in", every push failed with "not authorized", and the only remedy anyone
+     * could think to offer — sign in again — was the very thing that did not work.
+     */
+    Account,
+
+    /**
+     * A token the user pasted for this one workspace.
+     *
+     * Never replaced by anything. It was chosen for that repository, usually because it is narrower
+     * than the account's, and handing it a broader token nobody asked for would undo a deliberate
+     * decision invisibly.
+     */
+    Pasted,
+    ;
+
+    /** Which registration minted this, when it was minted by one at all. */
+    val method: GitHubAuth.Method?
+        get() = when (this) {
+            Full -> GitHubAuth.Method.Full
+            Restricted -> GitHubAuth.Method.Restricted
+            Account, Pasted -> null
+        }
+
+    companion object {
+        fun of(method: GitHubAuth.Method): Source = when (method) {
+            GitHubAuth.Method.Full -> Full
+            GitHubAuth.Method.Restricted -> Restricted
+        }
+    }
+}
+
+/**
  * Where a workspace's access token lives.
  *
  * A token that can push to someone's repository is the most dangerous thing this app will ever
@@ -21,16 +74,26 @@ import javax.crypto.spec.GCMParameterSpec
  * The login is stored plainly beside it, deliberately. It is not a secret, it is needed for the
  * conflict tiebreak and for `@assignee`, and encrypting it would mean a Keystore round-trip on
  * every arbitration.
+ *
+ * **There is one token per sign-in, not one per workspace.** That is the rule this file exists to
+ * enforce, and it was learned the hard way — see [Source.Account]. A workspace that syncs with the
+ * account's sign-in stores a marker and no token at all, so there is exactly one string on disk to
+ * go stale, and replacing it repairs everything at once. A workspace with a pasted token of its own
+ * keeps it, because it is not a copy of anything.
  */
 class Credentials(context: Context) {
 
     private val prefs = context.getSharedPreferences("yantra_credentials", Context.MODE_PRIVATE)
 
+    init {
+        adoptOldCopies()
+    }
+
     companion object {
         /**
          * The signed-in GitHub account, kept under a reserved workspace id.
          *
-         * A workspace's token is scoped to that workspace, but signing in happens *before* any
+         * A workspace's access is scoped to that workspace, but signing in happens *before* any
          * workspace exists — the token is what creates the repository the workspace will point at.
          * Reserving an id rather than adding a second store means one Keystore key, one encryption
          * path, and one place to look when asking whether anyone is signed in. The `@` cannot collide
@@ -42,31 +105,51 @@ class Credentials(context: Context) {
         private const val KEY_ALIAS = "yantra.credentials"
         private const val GCM_TAG_BITS = 128
 
+        /** Bumped when the shape on disk changes, so [adoptOldCopies] runs once and then never. */
+        private const val SCHEMA_KEY = "schema"
+        private const val SCHEMA_NOW = 2
+
         private fun tokenKey(ws: String) = "token:$ws"
         private fun ivKey(ws: String) = "iv:$ws"
         private fun loginKey(ws: String) = "login:$ws"
+        private fun sourceKey(ws: String) = "src:$ws"
 
         /** GitHub's numeric id for the account. Public information, and stored as such. */
         private fun accountIdKey(ws: String) = "ghid:$ws"
+
+        /** The boolean [Source] replaced. Read only by the migration, never written again. */
         private fun viaAppKey(ws: String) = "viaapp:$ws"
 
         /**
          * A refresh token, and when the access token beside it stops working.
          *
-         * Both are absent for a pasted personal token and for a GitHub App registered with user-token
-         * expiry switched off — in either case the access token simply does not lapse, and there is
-         * nothing here to read.
+         * Both are absent for a pasted personal token and for a registration with user-token expiry
+         * switched off — in either case the access token simply does not lapse, and there is nothing
+         * here to read.
          */
         private fun refreshKey(ws: String) = "refresh:$ws"
         private fun refreshIvKey(ws: String) = "refreshiv:$ws"
         private fun expiryKey(ws: String) = "expires:$ws"
+
+        /**
+         * The prefixes GitHub puts on a token it minted for an app, as opposed to one a person made.
+         *
+         * `gho_` is an OAuth app's user token and `ghu_` a GitHub App's. Neither can arrive here by
+         * any route except this app's own device flow — a person pastes `github_pat_` or `ghp_`,
+         * which is what they can copy out of GitHub's settings. So a token with one of these
+         * prefixes sitting under a workspace id is, without ambiguity, a copy of an account token,
+         * whatever any flag beside it claims.
+         */
+        private val MINTED = listOf("gho_", "ghu_")
+
+        private fun isMinted(token: String) = MINTED.any { token.startsWith(it) }
     }
 
     /**
      * The Keystore-held AES key, created on first use.
      *
      * Deliberately *not* requiring user authentication. A sync that fires from WorkManager while the
-     * phone is in a pocket has nobody to authenticate, and a token that can only be used while the
+     * phone is in a pocket has nobody to authenticate, and a token that could only be used while the
      * screen is unlocked would mean sync only ever happening when you are already looking at it.
      */
     private fun key(): SecretKey {
@@ -87,25 +170,25 @@ class Credentials(context: Context) {
     }
 
     /**
-     * [viaApp] records that this came from signing in rather than from a pasted token.
+     * Records a fresh sign-in, and takes every stale copy of the old one out of existence.
      *
-     * The two behave differently in one place that matters: a signed-in account needs the GitHub App
-     * installed before it can see any repository, and a pasted token does not. Without knowing which
-     * is which, the app would tell someone who pasted a fine-grained token to go and install an App
-     * they have no use for.
+     * The adoption is the half that matters and it is deliberately *local*: a workspace still
+     * holding a token this app minted is a copy by definition ([MINTED]), so it can be turned into a
+     * reference without asking GitHub anything. An earlier version of this asked — one request per
+     * workspace, at sign-in — which worked and was the wrong shape: it repaired the copies it could
+     * reach at the moment it ran, and left the mechanism that creates them in place.
      */
-    fun store(
-        workspaceId: String,
+    fun signIn(
         token: String,
         login: String,
-        viaApp: Boolean = false,
+        method: GitHubAuth.Method,
         /**
          * GitHub's refresh token, when it issued one.
          *
          * Null *clears* any stored one, rather than leaving it. Keeping it would be the more
          * cautious-looking choice and is the wrong one: a sign-in that returns no refresh token is
          * GitHub saying this token does not lapse, and a leftover refresh token from an earlier
-         * sign-in is one that has already been spent. TokenRenewal would find it, see no expiry
+         * sign-in is one that has already been spent. [TokenRenewal] would find it, see no expiry
          * beside it, refresh on that basis and be refused — reporting "sign in again" for a token
          * that was working perfectly.
          */
@@ -115,13 +198,52 @@ class Credentials(context: Context) {
         /** GitHub's numeric id for [login]. Null leaves any stored one alone. */
         accountId: Long? = null,
     ) {
+        write(ACCOUNT, token, login, Source.of(method), refreshToken, expiresAt, accountId)
+        adoptCopies(login)
+    }
+
+    /** Records a token the user pasted, for the account or for one workspace. */
+    fun paste(workspaceId: String, token: String, login: String) {
+        write(workspaceId, token, login, Source.Pasted)
+    }
+
+    /**
+     * Points a workspace at the account's sign-in, storing no token of its own.
+     *
+     * [login] is kept even though the account has it, because it is read on every conflict
+     * arbitration and going through the account for it would mean the tiebreak changing under a
+     * workspace when somebody signs out.
+     */
+    fun useAccount(workspaceId: String, login: String) {
+        prefs.edit()
+            .remove(tokenKey(workspaceId))
+            .remove(ivKey(workspaceId))
+            .remove(refreshKey(workspaceId))
+            .remove(refreshIvKey(workspaceId))
+            .remove(expiryKey(workspaceId))
+            .remove(viaAppKey(workspaceId))
+            .putString(loginKey(workspaceId), login)
+            .putString(sourceKey(workspaceId), Source.Account.name)
+            .commit()
+    }
+
+    private fun write(
+        workspaceId: String,
+        token: String,
+        login: String,
+        source: Source,
+        refreshToken: String? = null,
+        expiresAt: Long? = null,
+        accountId: Long? = null,
+    ) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val sealed = cipher.doFinal(token.toByteArray())
         prefs.edit()
             .putString(tokenKey(workspaceId), Base64.encodeToString(sealed, Base64.NO_WRAP))
             .putString(ivKey(workspaceId), Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putString(loginKey(workspaceId), login)
-            .putBoolean(viaAppKey(workspaceId), viaApp)
+            .putString(sourceKey(workspaceId), source.name)
+            .remove(viaAppKey(workspaceId))
             .apply {
                 if (refreshToken != null) {
                     val rc = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
@@ -141,7 +263,78 @@ class Credentials(context: Context) {
     }
 
     /**
-     * The token, or null if there is none — or if it can no longer be decrypted.
+     * Turns every copy of an account token into a reference to it.
+     *
+     * Runs on every sign-in, so a copy cannot outlive the token it was taken from by more than the
+     * moment between them. Only workspaces belonging to [login] and only [MINTED] tokens: a pasted
+     * one is left exactly where it is.
+     */
+    private fun adoptCopies(login: String) {
+        storedIds()
+            .filter { it != ACCOUNT && login(it) == login && source(it) != Source.Account }
+            .filter { token(it)?.let(::isMinted) == true }
+            .forEach { useAccount(it, login) }
+    }
+
+    /**
+     * The one-time repair of an install made before there was a [Source].
+     *
+     * Runs in the constructor, guarded by a schema number, so nothing downstream has to wonder
+     * whether it has happened. What it is undoing is a disk full of copies: every workspace linked
+     * from an account holds that account's token, and on this device at this moment some of those
+     * strings are two sign-ins out of date.
+     *
+     * The test is the token's own prefix rather than the `viaapp` flag beside it, because the flag
+     * is exactly what could not be trusted — it was never written by the path that linked most
+     * workspaces. A token that GitHub minted for an app cannot have been pasted by a person, so its
+     * prefix settles the question the flag only guessed at.
+     *
+     * An undecryptable token is left alone rather than adopted. It is unrecoverable either way, but
+     * classifying it would mean deciding, with no evidence, whether the workspace had a token of its
+     * own — and guessing "no" would quietly hand it the account's broader one later.
+     */
+    private fun adoptOldCopies() {
+        if (prefs.getInt(SCHEMA_KEY, 0) >= SCHEMA_NOW) return
+
+        val accountLogin = prefs.getString(loginKey(ACCOUNT), null)
+        val accountToken = token(ACCOUNT)
+
+        prefs.all.keys
+            .filter { it.startsWith("token:") }
+            .map { it.removePrefix("token:") }
+            .filter { it != ACCOUNT && !prefs.contains(sourceKey(it)) }
+            .forEach { id ->
+                val held = token(id) ?: return@forEach
+                val mine = accountLogin != null && prefs.getString(loginKey(id), null) == accountLogin
+                if (mine && (isMinted(held) || held == accountToken)) useAccount(id, accountLogin!!)
+                else prefs.edit().putString(sourceKey(id), Source.Pasted.name).commit()
+            }
+
+        // The account's own row. An old install recorded only *that* it was signed in, never
+        // through which registration — and getting that wrong is not cosmetic: a refresh token
+        // presented to the other client id is refused in a way that reads exactly like an expired
+        // sign-in, so the user would be told to sign in again by a bug rather than by GitHub.
+        //
+        // The token's own prefix answers it exactly, where the old flag could only say "not
+        // pasted": `ghu_` is a GitHub App's user token and `gho_` an OAuth app's. Undecryptable is
+        // left unclassified rather than guessed, for the same reason as the workspaces above.
+        if (!prefs.contains(sourceKey(ACCOUNT))) {
+            when {
+                token(ACCOUNT)?.startsWith("ghu_") == true -> Source.Restricted
+                token(ACCOUNT)?.startsWith("gho_") == true -> Source.Full
+                token(ACCOUNT) != null -> Source.Pasted
+                else -> null
+            }?.let { prefs.edit().putString(sourceKey(ACCOUNT), it.name).commit() }
+        }
+
+        prefs.edit().putInt(SCHEMA_KEY, SCHEMA_NOW).commit()
+    }
+
+    /**
+     * The token stored *here*, or null if there is none — or if it can no longer be decrypted.
+     *
+     * Not the token a workspace syncs with; that is [tokenFor]. A workspace pointed at the account
+     * stores nothing, so this answers null for it, which is the honest answer to the question asked.
      *
      * The Keystore key can genuinely disappear: a device restore, or the user adding a lock screen
      * where there was none, can invalidate it. That is a re-authentication prompt, not a crash, so
@@ -149,6 +342,27 @@ class Credentials(context: Context) {
      */
     fun token(workspaceId: String): String? =
         unseal(prefs.getString(tokenKey(workspaceId), null), prefs.getString(ivKey(workspaceId), null))
+
+    /**
+     * The token this workspace actually authenticates with.
+     *
+     * One indirection, and it is the fix: a workspace whose [Source] is [Source.Account] reads the
+     * account's token *now* rather than whatever it was handed when it was linked. There is nothing
+     * to keep in step, because there is only ever one string.
+     */
+    fun tokenFor(workspaceId: String): String? {
+        if (source(workspaceId) != Source.Account) return token(workspaceId)
+        // Only while it is still the same person's account.
+        //
+        // Signing out and signing in as somebody else leaves these markers pointing at a sign-in
+        // that is not theirs. Following it would push to somebody's repository under the wrong
+        // identity — which is not an authentication failure but a correctness one: the login is the
+        // conflict tiebreak and the value behind `@assignee`, so the commits would arbitrate as the
+        // wrong person. Nothing is the right answer, and it surfaces as "sign in again".
+        val who = login(workspaceId)
+        if (who != null && who != login(ACCOUNT)) return null
+        return token(ACCOUNT)
+    }
 
     private fun unseal(sealed: String?, iv: String?): String? {
         if (sealed == null || iv == null) return null
@@ -165,6 +379,14 @@ class Credentials(context: Context) {
     }
 
     fun login(workspaceId: String): String? = prefs.getString(loginKey(workspaceId), null)
+
+    /** Where this credential came from, or null when there is nothing stored under that id. */
+    fun source(workspaceId: String): Source? =
+        prefs.getString(sourceKey(workspaceId), null)
+            ?.let { name -> Source.entries.firstOrNull { it.name == name } }
+
+    /** Which registration the current sign-in went through, for the screens and for refreshing. */
+    fun method(workspaceId: String = ACCOUNT): GitHubAuth.Method? = source(workspaceId)?.method
 
     /** GitHub's numeric id for the stored account, when it is known. */
     fun accountId(workspaceId: String): Long? =
@@ -188,55 +410,28 @@ class Credentials(context: Context) {
      */
     fun expiresAt(workspaceId: String): Long? = prefs.getLong(expiryKey(workspaceId), 0L).takeIf { it > 0L }
 
-    /** True when this account was signed in through the GitHub App rather than pasted as a token. */
-    fun viaApp(workspaceId: String): Boolean = prefs.getBoolean(viaAppKey(workspaceId), false)
-
-    fun has(workspaceId: String): Boolean = token(workspaceId) != null
+    /** Whether this workspace can authenticate at all — through the account or on its own. */
+    fun has(workspaceId: String): Boolean = tokenFor(workspaceId) != null
 
     /**
-     * Every id that has a token stored, [ACCOUNT] included.
+     * Every id with something stored under it, [ACCOUNT] included.
      *
-     * Needed because a workspace's token is a *copy* of the account's, taken when the workspace was
-     * linked. Refreshing the account therefore has to push the new value down to the copies, or the
-     * account would work and every workspace would go on failing with the token it snapshotted.
+     * Keyed on the login rather than on the token, because a workspace that syncs through the
+     * account has no token of its own and would otherwise be invisible to every caller that asks
+     * what exists.
      */
     fun storedIds(): List<String> =
-        prefs.all.keys.filter { it.startsWith("token:") }.map { it.removePrefix("token:") }
+        prefs.all.keys.filter { it.startsWith("login:") }.map { it.removePrefix("login:") }
 
     /**
-     * Hands a freshly signed-in account token down to every workspace that came from that account.
+     * The workspaces that would stop syncing if the account signed out.
      *
-     * **A workspace's token is a copy, not a reference.** It is snapshotted when the workspace is
-     * linked, because a workspace has to keep syncing after the account is signed out — which is
-     * what the sign-out screen promises. The cost is that a new account token reaches nothing on its
-     * own, and signing in again fixes the one screen that reads `@account` while every workspace
-     * goes on presenting a token from before.
-     *
-     * That was survivable while a re-sign-in returned a token from the same app: the old copies were
-     * still valid, so nobody noticed. It stopped being survivable the moment the client id changed,
-     * because the copies then belonged to an app that no longer exists as far as GitHub is
-     * concerned. Sync failed with "not authorized" while the GitHub screen said, correctly, that the
-     * account was signed in.
-     *
-     * Only workspaces that took their token from an account are touched. One linked with a pasted
-     * fine-grained token is deliberately left alone — that token was chosen for that repository, and
-     * replacing it with a broader one nobody asked for would be a quiet escalation.
+     * Said on the sign-out button rather than discovered afterwards. The screen used to promise the
+     * opposite — "your workspaces keep syncing" — which was true of the copies and is deliberately
+     * no longer true of anything: a credential that outlives the sign-in it came from is exactly the
+     * stale token this file was rewritten to make impossible.
      */
-    fun spreadToWorkspaces(token: String, login: String, replacing: String? = null) {
-        storedIds()
-            .filter { it != ACCOUNT && login(it) == login }
-            // Either flagged as the account's, or *demonstrably* the account's: holding the exact
-            // token the account held a moment ago.
-            //
-            // The second test exists because the flag was not always recorded. A workspace added
-            // through Add a workspace stored `viaApp` at its default of false even when the token it
-            // used was the account's, so on an install that predates this fix the flag says nothing
-            // and filtering on it alone repairs nothing. Comparing against the outgoing token needs
-            // no flag and cannot be wrong: a pasted fine-grained token is a different string, so it
-            // is left exactly where it is.
-            .filter { viaApp(it) || (replacing != null && token(it) == replacing) }
-            .forEach { store(it, token, login, viaApp = true) }
-    }
+    fun dependents(): List<String> = storedIds().filter { source(it) == Source.Account }
 
     /** Forgets a workspace's credentials. The remote is untouched; revoking is done on GitHub. */
     fun clear(workspaceId: String) {
@@ -244,6 +439,7 @@ class Credentials(context: Context) {
             .remove(tokenKey(workspaceId))
             .remove(ivKey(workspaceId))
             .remove(loginKey(workspaceId))
+            .remove(sourceKey(workspaceId))
             .remove(viaAppKey(workspaceId))
             .remove(refreshKey(workspaceId))
             .remove(refreshIvKey(workspaceId))
@@ -260,32 +456,9 @@ class Credentials(context: Context) {
      * the secret there.
      */
     fun providerFor(workspaceId: String): org.eclipse.jgit.transport.CredentialsProvider? {
-        val who = login(workspaceId)
-
-        // The account's live token first, when this workspace is the account's own.
-        //
-        // The stored copy is a snapshot, and a snapshot goes stale in ways nothing on screen can
-        // show: sign in again and the GitHub screen reads "signed in" while every workspace pushes
-        // with the token it was linked with. Reaching for the account first means a fresh sign-in
-        // repairs sync without the user being told to do anything, which matters most in the case
-        // where the copy cannot be repaired at all — a token from a client id this build no longer
-        // uses.
-        //
-        // Falling back to the copy is what keeps the sign-out screen's promise that workspaces go on
-        // syncing: once the account is cleared there is nothing to prefer, and the snapshot is the
-        // whole point. And it is only preferred for a workspace that took its token *from* the
-        // account, belonging to the same login — a pasted fine-grained token stays the one that was
-        // chosen for that repository.
-        val fromAccount = workspaceId != ACCOUNT &&
-            viaApp(workspaceId) &&
-            who != null &&
-            who == login(ACCOUNT)
-
-        val token = (if (fromAccount) token(ACCOUNT) else null)
-            ?: token(workspaceId)
-            ?: return null
+        val token = tokenFor(workspaceId) ?: return null
         return org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(
-            who ?: "x-access-token",
+            login(workspaceId) ?: "x-access-token",
             token,
         )
     }

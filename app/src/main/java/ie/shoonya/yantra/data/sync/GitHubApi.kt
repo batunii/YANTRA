@@ -86,16 +86,34 @@ sealed interface RepoCheck {
 /**
  * Whether the stored sign-in still works.
  *
- * What is left of the old install check, and worth keeping for the half that was never about
- * installing. An OAuth app has no installation to be missing, so the "you are signed in and can see
- * nothing" state is gone with it — but a token that has been revoked, or one whose Keystore key did
- * not survive a device restore, still needs saying out loud rather than surfacing later as a failed
- * push. [Failed] is kept apart because a dead network is not a dead sign-in.
+ * The half of the old install check that was never about installing, and applies to both methods.
+ * A token that has been revoked, or one whose Keystore key did not survive a device restore, needs
+ * saying out loud rather than surfacing later as a failed push. [Failed] is kept apart because a
+ * dead network is not a dead sign-in.
+ *
+ * [InstallState] is the other half, and is asked only under [GitHubAuth.Method.Restricted].
  */
 sealed interface SignInState {
     data object Ok : SignInState
     data object Unauthorized : SignInState
     data class Failed(val message: String) : SignInState
+}
+
+/**
+ * Whether this build's GitHub App is installed for the signed-in user.
+ *
+ * Only ever asked under [GitHubAuth.Method.Restricted] — an OAuth app has no installation to be
+ * missing. Worth a type of its own rather than a boolean, because the three ways of not being
+ * installed need three different things said. [Absent] is a browser trip. [Unauthorized] is a
+ * sign-in. [Failed] is a network that will probably work in a minute and should not be dressed up
+ * as either.
+ */
+sealed interface InstallState {
+    data object Installed : InstallState
+    data object Absent : InstallState
+    /** The token no longer works: revoked, uninstalled, or undecryptable on this device. */
+    data object Unauthorized : InstallState
+    data class Failed(val message: String) : InstallState
 }
 
 /** What GitHub did when asked to make a repository. */
@@ -110,7 +128,14 @@ sealed interface RepoCreate {
      * repository the obvious thing, and then do it again on a second device.
      */
     data object Exists : RepoCreate
-    /** The token no longer works, or was issued without the scope that can create a repository. */
+    /**
+     * The token cannot make one.
+     *
+     * Two different reasons wearing the same status code: a sign-in that has been revoked, and a
+     * sign-in through [GitHubAuth.Method.Restricted], which can never create a repository in a
+     * personal account however healthy it is. The screens know which method they are on, so they
+     * say the right one — this only reports that GitHub said no.
+     */
     data object Unauthorized : RepoCreate
     data class Failed(val message: String) : RepoCreate
 }
@@ -161,6 +186,12 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
         @SerialName("full_name") val fullName: String = "",
         @SerialName("default_branch") val defaultBranch: String = "main",
     )
+
+    @Serializable
+    private data class Installations(val installations: List<Installation> = emptyList())
+
+    @Serializable
+    private data class Installation(val id: Long, @SerialName("app_slug") val appSlug: String = "")
 
     @Serializable
     private data class Permissions(val push: Boolean = false, val admin: Boolean = false)
@@ -244,6 +275,43 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
             }
         } catch (e: IOException) {
             SignInState.Failed(e.message ?: "could not reach GitHub")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * Whether this build's App is installed for whoever owns [token].
+     *
+     * A user token with no installation is the trap this exists to catch: it authenticates
+     * perfectly, `/user` answers, and every repository request comes back empty or 404 — because a
+     * user token's reach is the App's permissions *intersected* with the user's own, and an App
+     * installed nowhere contributes nothing to that intersection. Without this check the app looks
+     * signed in and cannot explain why nothing works.
+     *
+     * It came back with [GitHubAuth.Method.Restricted]. It was deleted when the app moved to an
+     * OAuth app, on the reasoning that there was no installation any more — true of that method and
+     * of nothing else, which is what made deleting it a decision rather than a cleanup.
+     */
+    open fun installState(token: String, appSlug: String): InstallState {
+        val conn = open("$base/user/installations", token)
+        return try {
+            when (conn.responseCode) {
+                200 -> {
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val found = runCatching {
+                        json.decodeFromString(Installations.serializer(), body).installations
+                    }.getOrDefault(emptyList())
+                    // Matched by slug, not by count: someone may have other GitHub Apps installed,
+                    // and any of them would otherwise read as ours.
+                    if (found.any { it.appSlug == appSlug }) InstallState.Installed
+                    else InstallState.Absent
+                }
+                401, 403 -> InstallState.Unauthorized
+                else -> InstallState.Failed("GitHub returned ${conn.responseCode}")
+            }
+        } catch (e: IOException) {
+            InstallState.Failed(e.message ?: "could not reach GitHub")
         } finally {
             conn.disconnect()
         }

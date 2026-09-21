@@ -1,6 +1,7 @@
 package ie.shoonya.yantra
 
 import ie.shoonya.yantra.data.sync.GitHubApi
+import ie.shoonya.yantra.data.sync.InstallState
 import ie.shoonya.yantra.data.sync.RepoCheck
 import ie.shoonya.yantra.data.sync.RepoCreate
 import ie.shoonya.yantra.data.sync.SignInState
@@ -198,5 +199,48 @@ class GitHubApiTest {
             server.on("/user/repos", 201, """{"default_branch":"main"}""")
             assertTrue(api(server).createRepo("team-tasks", "t") is RepoCreate.Failed)
         }
+    }
+
+    /**
+     * The state that looks exactly like success and is not.
+     *
+     * A GitHub App user token with no installation answers `/user` perfectly and can see no
+     * repository at all, because its reach is the App's permissions intersected with the user's own
+     * and an App installed nowhere contributes nothing to that intersection. Matched by slug rather
+     * than by count, because someone may have other GitHub Apps installed and any of them would
+     * otherwise read as ours.
+     */
+    @Test
+    fun `an app installed nowhere is told apart from one installed`() {
+        FakeGitHub().use { server ->
+            server.on("/user/installations", 200, """{"installations":[]}""")
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra-tasks"))
+        }
+        FakeGitHub().use { server ->
+            server.on(
+                "/user/installations", 200,
+                """{"installations":[{"id":1,"app_slug":"some-other-app"}]}""",
+            )
+            assertEquals(InstallState.Absent, api(server).installState("t", "yantra-tasks"))
+        }
+        FakeGitHub().use { server ->
+            server.on(
+                "/user/installations", 200,
+                """{"installations":[{"id":1,"app_slug":"yantra-tasks"}]}""",
+            )
+            assertEquals(InstallState.Installed, api(server).installState("t", "yantra-tasks"))
+        }
+    }
+
+    @Test
+    fun `a dead network is not an absent installation`() {
+        FakeGitHub().use { server ->
+            server.on("/user/installations", 401, "{}")
+            assertEquals(InstallState.Unauthorized, api(server).installState("t", "yantra-tasks"))
+        }
+        // Nothing listening. "Not installed" would send the user round a browser trip they have
+        // already made; "could not reach GitHub" is the truth and costs them nothing.
+        val offline = GitHubApi(base = "http://127.0.0.1:1")
+        assertTrue(offline.installState("t", "yantra-tasks") is InstallState.Failed)
     }
 }

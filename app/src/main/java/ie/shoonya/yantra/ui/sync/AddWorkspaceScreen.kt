@@ -43,6 +43,7 @@ import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.components.SelectChip
 import ie.shoonya.yantra.ui.components.ButtonTone
 import ie.shoonya.yantra.ui.components.YantraButton
+import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraField
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.Dispatchers
@@ -59,11 +60,15 @@ import ie.shoonya.yantra.ui.theme.YantraType
  * the common case — someone sent you a link, or it is your own project — and creating one is how a
  * shared list starts.
  *
- * Creating happens here, in the app. It used to go out to the browser because a GitHub App cannot
- * make a repository in a personal account at all, so the best available was GitHub's own form with
- * the fields filled in — a trip out, a button pressed there, a trip back, and a wait while this
- * screen watched for the repository to appear. An OAuth app's `repo` scope makes it one tap. Inviting
- * people still goes to GitHub, because it needs Administration rights this app has no reason to hold.
+ * Creating happens here when the sign-in can do it, and on GitHub when it cannot. There is no
+ * GitHub App permission for making a repository in a personal account — no fine-grained equivalent
+ * of `repo` exists — so a sign-in through [GitHubAuth.Method.Restricted] gets GitHub's own form with
+ * the fields filled in, and comes back to the Existing repo tab. An OAuth app's `repo` scope makes
+ * it one tap. Which of the two is on offer is decided by the sign-in, not by this screen, and the
+ * button says which it is rather than opening a browser under a label that promised otherwise.
+ *
+ * Inviting people still goes to GitHub whichever method is in use, because it needs Administration
+ * rights this app has no reason to hold.
  *
  * What makes this safe to point at a working codebase is the branch. Tasks are committed to
  * `yantra-tasks`, which shares no history with anything else in the repository: the code is never
@@ -77,6 +82,17 @@ fun AddWorkspaceScreen(nav: NavHostController) {
     val y = Yantra.colors
 
     val account = remember { container.credentials.login(Credentials.ACCOUNT) }
+    /**
+     * Whether a repository can be made from here at all.
+     *
+     * A pasted token is given the benefit of the doubt: a classic token with `repo`, or a
+     * fine-grained one with Administration on the account, can create one, and this screen cannot
+     * tell which was pasted without trying. GitHub's refusal is a clear sentence, and guessing "no"
+     * would hide a button that would have worked. A sign-in is not a guess — the method says.
+     */
+    val accountMakesRepos = remember {
+        container.credentials.method(Credentials.ACCOUNT)?.makesRepos ?: true
+    }
     var existing by remember { mutableStateOf(true) }
     var url by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -88,6 +104,8 @@ fun AddWorkspaceScreen(nav: NavHostController) {
     var added by remember { mutableStateOf<String?>(null) }
 
     val effectiveToken = if (ownToken) token.trim() else ""
+    /** A pasted token is tried; only the account's own method can rule creation out in advance. */
+    val makesRepos = ownToken || accountMakesRepos
     val ready = when {
         busy -> false
         ownToken && effectiveToken.isBlank() -> false
@@ -159,8 +177,15 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                 YantraField(name, { name = it; note = null }, "team-tasks", mono = true)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    if (busy) "Making it, and setting the workspace up."
-                    else "Made private, here. Invite people to it once it exists.",
+                    when {
+                        busy -> "Making it, and setting the workspace up."
+                        !makesRepos ->
+                            "Your sign-in can only see the repositories you gave it, which does " +
+                                "not include one that does not exist yet. GitHub's form opens " +
+                                "filled in — make it, install Yantra on it, then add it as an " +
+                                "existing repo."
+                        else -> "Made private, here. Invite people to it once it exists."
+                    },
                     color = y.textDim,
                     fontSize = YantraType.caption,
                 )
@@ -189,11 +214,22 @@ fun AddWorkspaceScreen(nav: NavHostController) {
 
             Spacer(Modifier.height(24.dp))
             YantraButton(
-                label = if (existing) "Add workspace" else "Create the repository",
+                label = when {
+                    existing -> "Add workspace"
+                    !makesRepos -> "Make it on GitHub"
+                    else -> "Create the repository"
+                },
+                mark = if (!existing && !makesRepos) YantraMark.OpenOut else null,
                 modifier = Modifier.fillMaxWidth(),
                 busy = busy,
                 enabled = ready,
                 onClick = {
+                    if (!existing && !makesRepos) {
+                        // Nothing is attempted and nothing is claimed. The repository appears on
+                        // GitHub, and it is added here afterwards like any other existing one.
+                        uri.openUri(GitHubAuth.newRepoUrl(name.trim()))
+                        return@YantraButton
+                    }
                     note = null
                     failed = false
                     busy = true
@@ -266,8 +302,11 @@ private suspend fun create(container: AppContainer, name: String, ownToken: Stri
             }
             RepoCreate.Exists ->
                 Said(false, "You already have a $name — add it as an existing repo instead")
+            // Said without naming a sign-in, because the token may not have come from one. A
+            // pasted token narrow enough to sync and too narrow to create a repository is a
+            // perfectly ordinary thing to hold, and "sign in again" is no use to whoever holds it.
             RepoCreate.Unauthorized ->
-                Said(false, "This sign-in cannot make repositories. Sign in again.")
+                Said(false, "That access cannot create repositories — make it on GitHub instead")
             is RepoCreate.Failed -> Said(false, made.message)
         }
     }

@@ -12,6 +12,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import ie.shoonya.yantra.data.sync.GitHubAuth
+import ie.shoonya.yantra.data.sync.InstallState
 import ie.shoonya.yantra.data.sync.SignInState
 import ie.shoonya.yantra.ui.sync.SignedIn
 import ie.shoonya.yantra.ui.theme.SuperTasksTheme
@@ -45,6 +47,9 @@ class SignInStatesTest {
         note: String? = null,
         onCreate: () -> Unit = {},
         onSignOut: () -> Unit = {},
+        method: GitHubAuth.Method? = GitHubAuth.Method.Full,
+        install: InstallState? = null,
+        dependents: Int = 0,
     ) {
         compose.setContent {
             SuperTasksTheme {
@@ -63,6 +68,9 @@ class SignInStatesTest {
                         onCreate = onCreate,
                         onUseExisting = {},
                         onSignOut = onSignOut,
+                        method = method,
+                        install = install,
+                        dependents = dependents,
                     )
                 }
             }
@@ -181,11 +189,70 @@ class SignInStatesTest {
         }
     }
 
+    /**
+     * Signing out says what it costs, in workspaces.
+     *
+     * This line used to promise the opposite — that workspaces keep syncing — which was true because
+     * each one held a copy of the account's token. The copies are gone on purpose, since a copy is
+     * exactly the credential that can outlive the sign-in it came from and fail in the dark. What
+     * replaces the promise is a number, because "some things will stop" is not something anyone can
+     * weigh.
+     */
     @Test
-    fun signingOutSaysWhatItDoesNotDo() {
-        show(SignInState.Ok)
-        // Workspaces keep their own copy of the token, so signing out does not stop them syncing.
-        // Someone signing out to revoke access needs to know that is not what happened.
-        words("keep syncing").performScrollTo().assertIsDisplayed()
+    fun signingOutSaysHowMuchStops() {
+        show(SignInState.Ok, dependents = 2)
+        words("2 workspaces sync through this sign-in").performScrollTo().assertIsDisplayed()
+        words("will stop").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun signingOutWithNothingDependingOnItSaysSo() {
+        show(SignInState.Ok, dependents = 0)
+        words("Nothing on this device is syncing through this sign-in")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * Signed in, and able to see nothing: the state the restricted method can be in and the other
+     * cannot.
+     *
+     * It is the most confusing state this app produces — `/user` answers, the account is named, and
+     * every repository request comes back empty — so the screen says the one thing that fixes it and
+     * does not offer a repository that would be made into a void.
+     */
+    @Test
+    fun anAppInstalledNowhereAsksForRepositoriesRatherThanOfferingOne() {
+        show(SignInState.Ok, method = GitHubAuth.Method.Restricted, install = InstallState.Absent)
+        words("One more step").performScrollTo().assertIsDisplayed()
+        words("Choose repositories on GitHub").performScrollTo().assertIsDisplayed()
+        words("Create a private repository").assertDoesNotExist()
+    }
+
+    /**
+     * The restricted method cannot create a repository at all, and says so on the button.
+     *
+     * There is no GitHub App permission for making one in a personal account. A button labelled
+     * "Create a private repository" that opened a browser would be the app describing a trip out as
+     * though it were one tap — which is the kind of small lie that makes everything else on the
+     * screen less believable.
+     */
+    @Test
+    fun theRestrictedMethodOffersGithubsFormRatherThanAButtonThatCannotWork() {
+        show(
+            SignInState.Ok,
+            method = GitHubAuth.Method.Restricted,
+            install = InstallState.Installed,
+        )
+        words("Make it on GitHub").performScrollTo().assertIsDisplayed()
+        words("Create a private repository").assertDoesNotExist()
+        // The second half of making one under this method, and the reason it is worth a sentence.
+        words("Use a repository I already have").performScrollTo().assertIsDisplayed()
+    }
+
+    /** Which bargain is in force, said where the account is named. */
+    @Test
+    fun theKindOfAccessIsNamedBesideTheAccount() {
+        show(SignInState.Ok, method = GitHubAuth.Method.Restricted, install = InstallState.Installed)
+        words("Only the ones I pick").performScrollTo().assertIsDisplayed()
     }
 }
