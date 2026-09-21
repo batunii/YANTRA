@@ -203,7 +203,7 @@ class PageCodecTest {
         // -540 is 09:00 on the day of an all-day task, which the DB encoding also allows.
         val due = one("- [ ] x ^i due:2026-08-26+r-540").due
         assertEquals(DueValue.AllDay(LocalDate.of(2026, 8, 26)), due?.value)
-        assertEquals(-540, due?.reminderMin)
+        assertEquals(listOf(-540), due?.reminders)
         assertTrue(render(TaskRef("i", "x", due = due!!)).endsWith("due:2026-08-26+r-540"))
     }
 
@@ -515,5 +515,61 @@ class PageCodecTest {
         assertEquals("📚", page.icon)
         assertTrue("icon leaked into unknownKeys: ${page.unknownKeys}", "icon" !in page.unknownKeys)
         assertEquals(1, PageCodec.encode(page).lines().count { it.startsWith("icon: ") })
+    }
+
+    // ---- several reminders on one task ----
+
+    /**
+     * `+r30,15` is two reminders, and `+r30` is still one.
+     *
+     * The older spelling had to keep parsing unchanged and keep *rendering* unchanged, or the first
+     * sync after updating would rewrite every task that has a reminder — a diff of hundreds of
+     * lines saying nothing, and a merge conflict on every device that had not updated yet.
+     */
+    @Test
+    fun `a task can carry several reminders`() {
+        val due = one("- [ ] x ^i due:2026-08-26T09:00:00Z+r1440,30").due
+        assertEquals(listOf(1440, 30), due?.reminders)
+        assertTrue(render(TaskRef("i", "x", due = due!!)).endsWith("+r1440,30"))
+    }
+
+    @Test
+    fun `one reminder is written exactly as it always was`() {
+        val due = one("- [ ] x ^i due:2026-08-26T09:00:00Z+r30").due
+        assertEquals(listOf(30), due?.reminders)
+        assertTrue(render(TaskRef("i", "x", due = due!!)).endsWith("+r30"))
+    }
+
+    /**
+     * Largest first, whatever order they were written in, and no repeats.
+     *
+     * Two devices holding the same task have to produce the same bytes or every sync is a diff
+     * about nothing — and the order is also the order they fire in, which is the order somebody
+     * reads them back in.
+     */
+    @Test
+    fun `reminders come back in a canonical order`() {
+        val due = one("- [ ] x ^i due:2026-08-26T09:00:00Z+r30,1440,30").due
+        assertEquals(listOf(1440, 30), due?.reminders)
+    }
+
+    /**
+     * A tail that is partly unreadable is refused, not half-kept.
+     *
+     * Keeping `+r30` out of `+r30,x` would silently drop a reminder somebody set, which is the
+     * exact failure this feature exists to avoid. Refusing the token leaves the line as prose,
+     * where it is visible rather than quietly wrong.
+     */
+    @Test
+    fun `a broken reminder tail does not half-parse`() {
+        val task = one("- [ ] x ^i due:2026-08-26T09:00:00Z+r30,x")
+        assertNull(task.due)
+    }
+
+    @Test
+    fun `no reminder writes no tail`() {
+        val due = one("- [ ] x ^i due:2026-08-26T09:00:00Z").due
+        assertTrue(due!!.reminders.isEmpty())
+        assertTrue(!render(TaskRef("i", "x", due = due)).contains("+r"))
     }
 }

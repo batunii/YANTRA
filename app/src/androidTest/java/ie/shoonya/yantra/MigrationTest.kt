@@ -23,6 +23,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_15_16
 import ie.shoonya.yantra.data.db.MIGRATION_16_17
 import ie.shoonya.yantra.data.db.MIGRATION_17_18
 import ie.shoonya.yantra.data.db.MIGRATION_18_19
+import ie.shoonya.yantra.data.db.MIGRATION_19_20
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -634,6 +635,50 @@ class MigrationTest {
             // Null, not empty: a list that has never been given an emoji wears its drawn mark, and
             // the two are different states everywhere above here.
             assertNull(db.scalar("SELECT icon FROM node WHERE id = 'L1'"))
+        }
+    }
+
+    /**
+     * v20 gives a due date room for more than one reminder, and brings the existing one across.
+     *
+     * The backfill is the part worth testing. Until now the single offset lived in `v_number`, and
+     * an upgrade that only added the column would leave every existing reminder invisible to the
+     * scheduler — the new query reads `v_reminders` — so every task that had a reminder would
+     * quietly stop having one until its file happened to be reindexed.
+     *
+     * The Due definition is found by name because its id is a per-install UUID, which is exactly
+     * the sort of thing a migration written against one developer's database gets wrong.
+     */
+    @Test
+    fun v20CarriesTheExistingReminderIntoTheNewColumn() {
+        helper.createDatabase(DB, 19).use { db ->
+            db.execSQL(
+                "INSERT INTO property_def (id, name, kind, is_built_in, created_at, updated_at) " +
+                    "VALUES ('def-due','Due','date',1,1,1)"
+            )
+            db.execSQL("INSERT INTO node (id, type, rank, done, in_progress, indent, collapsed, created_at, updated_at, workspace_id) VALUES ('t1','task','a',0,0,0,0,1,1,'')")
+            // A task with a reminder half an hour before, and one with a due date and none.
+            db.execSQL(
+                "INSERT INTO property_value (node_id, def_id, workspace_id, v_date, v_number, updated_at) " +
+                    "VALUES ('t1','def-due','',1787000000000,30.0,1)"
+            )
+            db.execSQL("INSERT INTO node (id, type, rank, done, in_progress, indent, collapsed, created_at, updated_at, workspace_id) VALUES ('t2','task','b',0,0,0,0,1,1,'')")
+            db.execSQL(
+                "INSERT INTO property_value (node_id, def_id, workspace_id, v_date, updated_at) " +
+                    "VALUES ('t2','def-due','',1787000000000,1)"
+            )
+        }
+
+        helper.runMigrationsAndValidate(DB, 20, true, MIGRATION_19_20).use { db ->
+            assertEquals("30", db.scalar("SELECT v_reminders FROM property_value WHERE node_id = 't1'"))
+            // Still the earliest reminder, because a widget and a chip ask "is there one" on every
+            // draw and should not pay for a string split to find out.
+            assertEquals(
+                "30",
+                db.scalar("SELECT CAST(v_number AS INTEGER) FROM property_value WHERE node_id = 't1'"),
+            )
+            // A due date with no reminder does not acquire one.
+            assertNull(db.scalar("SELECT v_reminders FROM property_value WHERE node_id = 't2'"))
         }
     }
 }

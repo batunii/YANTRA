@@ -2,6 +2,7 @@ package ie.shoonya.yantra.reminders
 
 import ie.shoonya.yantra.data.db.AppDatabase
 import ie.shoonya.yantra.data.db.BuiltIns
+import ie.shoonya.yantra.data.db.DueReminderRow
 import ie.shoonya.yantra.data.db.ReminderRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
@@ -23,7 +24,7 @@ class ReminderManager(
     private val scheduler: ReminderScheduler,
     scope: CoroutineScope,
 ) {
-    private var scheduled = mapOf<String, Long>()   // nodeId -> armed instant
+    private var scheduled = mapOf<String, ReminderRow>()   // ReminderRow.key -> what is armed
 
     init {
         scope.launch {
@@ -39,7 +40,7 @@ class ReminderManager(
             combine(
                 db.propertyDao().observeActiveReminders(defId),
                 db.eventDao().observeEventReminders(),
-            ) { tasks, events -> tasks + events }
+            ) { tasks, events -> expand(tasks) + events }
                 .distinctUntilChanged()
                 .collect { sync(it) }
         }
@@ -70,10 +71,24 @@ class ReminderManager(
     }
 
     private fun apply(plan: Plan) {
-        plan.cancel.forEach(scheduler::cancel)
-        plan.arm.forEach { (id, at) -> scheduler.schedule(id, at) }
+        plan.cancel.forEach { scheduler.cancel(it.nodeId, it.offsetMin) }
+        plan.arm.forEach { scheduler.schedule(it.nodeId, it.offsetMin, it.atMillis) }
         scheduled = plan.armed
     }
+
+    /**
+     * A due row's comma-separated offsets, as one alarm each.
+     *
+     * In Kotlin because the offsets are one column and SQLite has no readable way to turn a string
+     * into rows. A row whose offsets do not parse yields nothing rather than an alarm at the due
+     * instant itself, which would be a reminder nobody asked for at a moment they did not choose.
+     */
+    private fun expand(rows: List<DueReminderRow>): List<ReminderRow> =
+        rows.flatMap { row ->
+            ie.shoonya.yantra.data.format.Reminders.parse(row.reminders).map { offset ->
+                ReminderRow(row.nodeId, offset, row.dueMillis - offset.toLong() * 60_000L)
+            }
+        }
 
     /**
      * One-shot for [BootReceiver] — after a reboot, an update, a clock change, or exact-alarm
@@ -85,7 +100,7 @@ class ReminderManager(
         // Events do not depend on the property registry having been seeded, so they are rearmed even
         // when the Due def is somehow missing — a boot that lost the registry should not also lose
         // every meeting alarm.
-        rearm(tasks + db.eventDao().eventRemindersOnce())
+        rearm(expand(tasks) + db.eventDao().eventRemindersOnce())
     }
 
     /**
@@ -96,23 +111,28 @@ class ReminderManager(
      * had ever been tested at all.
      */
     internal data class Plan(
-        val cancel: List<String>,
-        val arm: Map<String, Long>,
+        val cancel: List<ReminderRow>,
+        val arm: List<ReminderRow>,
         /** What is armed once this plan is applied — the caller's new memory. */
-        val armed: Map<String, Long>,
+        val armed: Map<String, ReminderRow>,
     ) {
         companion object {
-            fun from(scheduled: Map<String, Long>, rows: List<ReminderRow>, now: Long): Plan {
-                val current = rows.associate { it.nodeId to it.atMillis }
+            fun from(scheduled: Map<String, ReminderRow>, rows: List<ReminderRow>, now: Long): Plan {
+                // Keyed by node *and* offset: two reminders on one task are two alarms, and the
+                // node alone stopped being enough to name one the moment a task could carry more
+                // than a single reminder.
+                val current = rows.associateBy { it.key }
                 return Plan(
                     // Cancel only what left the row set (cleared/done/deleted). A row whose instant
                     // merely became "past" keeps its armed alarm — Doze and setWindow can deliver
                     // after the nominal time, and cancelling here would silently eat a reminder
                     // mid-flight. It is safe to leave armed because the receiver validates against
                     // the database before it shows anything.
-                    cancel = (scheduled.keys - current.keys).toList(),
+                    cancel = (scheduled.keys - current.keys).mapNotNull { scheduled[it] },
                     // Only the future, and only where the instant is not the one already armed.
-                    arm = current.filter { (id, at) -> at > now && scheduled[id] != at },
+                    arm = current.values.filter {
+                        it.atMillis > now && scheduled[it.key]?.atMillis != it.atMillis
+                    },
                     armed = current,
                 )
             }

@@ -301,7 +301,7 @@ class SmartListViewModel(
                 id,
                 at.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
                 hasTime = parsed.time != null,
-                reminderOffsetMin = null,
+                reminderOffsets = emptyList(),
             )
         }
         parsed.priority?.let {

@@ -78,7 +78,7 @@ sealed interface DueValue {
 /**
  * When a task is for, how long it is expected to take, and whether to say anything beforehand.
  *
- * [reminderMin] is minutes *before* the due moment; negative means after. Null is no reminder.
+ * [reminders] is how long before the due moment to say something, in minutes, one per reminder.
  *
  * [duration] is what makes a task drawable on a timeline beside an event — the "time blocking" every
  * calendar app means by the phrase: a task from 14:00 to 15:00 is a block an hour tall, not a dot.
@@ -88,9 +88,29 @@ sealed interface DueValue {
  */
 data class DueSpec(
     val value: DueValue,
-    val reminderMin: Int? = null,
+    /**
+     * Minutes *before* the due moment, one per reminder. Negative means after; empty means none.
+     *
+     * A list rather than a single offset, because one warning is not always the right number of
+     * warnings: half an hour before is useful for getting to a thing, and a day before is what
+     * stops you from having nothing ready when you get there. They answer different questions and
+     * neither replaces the other.
+     *
+     * **Kept sorted, largest first, and distinct.** The order is the order they fire in, so it is
+     * the order a person reads them in — and two devices holding the same task have to produce the
+     * same bytes or every sync is a diff about nothing. [of] is the only way one should be built.
+     */
+    val reminders: List<Int> = emptyList(),
     val duration: java.time.Duration? = null,
-)
+) {
+    /** The first reminder that will fire, for the places that only need to know there is one. */
+    val firstReminder: Int? get() = reminders.firstOrNull()
+
+    companion object {
+        /** Canonical order and no repeats — the two things that make the bytes stable. */
+        fun reminders(offsets: Iterable<Int>): List<Int> = offsets.distinct().sortedDescending()
+    }
+}
 
 /**
  * One line of a page.

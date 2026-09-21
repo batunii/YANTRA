@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.height
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import ie.shoonya.yantra.data.format.DueSpec
 import ie.shoonya.yantra.reminders.ReminderReach
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.Yantra
@@ -65,6 +66,20 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.YantraMark
+
+/**
+ * What a whole set of reminders is called, on the row that opens the picker.
+ *
+ * Two are spelled out, because two is the case this exists for — half an hour before to get there,
+ * a day before to have something ready — and reading them back is how you check you set the ones
+ * you meant. Beyond that it is a count: three offsets do not fit on a row beside their own label,
+ * and the menu below is one tap away and shows every one of them ticked.
+ */
+private fun remindersLabel(offsets: List<Int>, timed: Boolean): String = when {
+    offsets.isEmpty() -> "None"
+    offsets.size <= 2 -> offsets.joinToString(", ") { reminderLabel(it, timed) }
+    else -> "${offsets.size} reminders"
+}
 
 /** Reminder offsets in minutes before the due instant (see BuiltIns docs). */
 private const val REMIND_ON_TIME = 0
@@ -90,9 +105,9 @@ private fun reminderLabel(min: Int?, timed: Boolean): String = when (min) {
 fun DueSheet(
     initialDateMillis: Long?,
     initialHasTime: Boolean,
-    initialReminderMin: Int?,
+    initialReminders: List<Int>,
     onDismiss: () -> Unit,
-    onSet: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSet: (dateMillis: Long, hasTime: Boolean, reminders: List<Int>) -> Unit,
     onClear: (() -> Unit)? = null,
 ) {
     val y = Yantra.colors
@@ -103,7 +118,7 @@ fun DueSheet(
             .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     )
     var time by remember { mutableStateOf(if (initialHasTime) initialZoned?.toLocalTime() else null) }
-    var reminder by remember { mutableStateOf(initialReminderMin) }
+    var reminders by remember { mutableStateOf(DueSpec.reminders(initialReminders)) }
     var showTimePicker by remember { mutableStateOf(false) }
     var reminderMenu by remember { mutableStateOf(false) }
     val requestPermissions = rememberReminderPermissionRequest()
@@ -187,7 +202,9 @@ fun DueSheet(
                     IconButton(onClick = {
                         time = null
                         // A timed offset makes no sense on an all-day task; back to None.
-                        if (reminder != null && reminder != REMIND_ON_THE_DAY) reminder = null
+                        // An offset measured from a time cannot survive the time being taken
+                        // away; "on the day" is the only one that means anything without it.
+                        reminders = reminders.filter { it == REMIND_ON_THE_DAY }
                     }) {
                         YantraIcon(YantraMark.Close, tint = y.textMuted, contentDescription = "Clear time")
                     }
@@ -206,18 +223,38 @@ fun DueSheet(
                     YantraIcon(YantraMark.Alarm, tint = y.textSecondary, contentDescription = null)
                     Spacer(Modifier.width(12.dp))
                     Text("Reminder", color = y.textPrimary, modifier = Modifier.weight(1f))
-                    Text(reminderLabel(reminder, timed = time != null), color = y.textMuted)
+                    Text(remindersLabel(reminders, timed = time != null), color = y.textMuted)
                 }
                 DropdownMenu(expanded = reminderMenu, onDismissRequest = { reminderMenu = false }) {
-                    val options: List<Int?> =
-                        if (time != null) listOf(null, REMIND_ON_TIME, 30, 60, 1440)
-                        else listOf(null, REMIND_ON_THE_DAY)
+                    // Each offset is a toggle and the menu stays open, because picking two is the
+                    // whole point: a menu that closed on the first tap would make the second
+                    // reminder cost another trip through the row to get back here, and nothing on
+                    // screen would have said that a second one was allowed.
+                    val options: List<Int> =
+                        if (time != null) listOf(REMIND_ON_TIME, 30, 60, 1440)
+                        else listOf(REMIND_ON_THE_DAY)
                     options.forEach { option ->
+                        val on = option in reminders
                         DropdownMenuItem(
                             text = { Text(reminderLabel(option, timed = time != null)) },
-                            onClick = { reminder = option; reminderMenu = false },
+                            trailingIcon = {
+                                // Only the chosen ones carry a mark. An empty slot beside every
+                                // other line is what says these are not one-of-five.
+                                if (on) YantraIcon(YantraMark.Check, tint = y.accent, contentDescription = null)
+                            },
+                            onClick = {
+                                reminders =
+                                    if (on) reminders - option
+                                    else DueSpec.reminders(reminders + option)
+                            },
                         )
                     }
+                    // Clearing is a different kind of act from unticking four things, and it is the
+                    // one that closes the menu: there is nothing left to look at.
+                    DropdownMenuItem(
+                        text = { Text("None") },
+                        onClick = { reminders = emptyList(); reminderMenu = false },
+                    )
                 }
             }
 
@@ -231,7 +268,7 @@ fun DueSheet(
             //
             // Only when a reminder is actually chosen. Nobody setting a plain due date needs to be
             // told about notifications they are not asking for.
-            if (reminder != null && !reach.willArrive) {
+            if (reminders.isNotEmpty() && !reach.willArrive) {
                 Box(pad) {
                     // The whole thing is one tappable line, and it has to be: see the note on
                     // ReminderReach.message for what a second line costs in a sheet that cannot
@@ -270,8 +307,8 @@ fun DueSheet(
                         // resolve to the shifted valid instant (documented behavior).
                         val instant = (time?.let { localDate.atTime(it) } ?: localDate.atStartOfDay())
                             .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                        onSet(instant, time != null, reminder)
-                        if (reminder != null) requestPermissions()
+                        onSet(instant, time != null, reminders)
+                        if (reminders.isNotEmpty()) requestPermissions()
                         onDismiss()
                     },
                 ) { Text("Set") }
@@ -291,8 +328,10 @@ fun DueSheet(
             confirmButton = {
                 TextButton(onClick = {
                     time = LocalTime.of(timeState.hour, timeState.minute)
-                    // Fresh time defaults the reminder to "On time" unless one is chosen.
-                    if (reminder == null || reminder == REMIND_ON_THE_DAY) reminder = REMIND_ON_TIME
+                    // Fresh time defaults to "On time" unless something is already chosen. The
+                    // all-day offset goes with the all-day-ness it belonged to.
+                    val kept = reminders - REMIND_ON_THE_DAY
+                    reminders = if (kept.isEmpty()) listOf(REMIND_ON_TIME) else kept
                     showTimePicker = false
                 }) { Text("OK") }
             },

@@ -1156,7 +1156,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         allLabels = allLabels,
         attachedLabels = ownLabels,
         onSet = { def, t, n, d, b -> vm.setProperty(nodeId, def, t, n, d, b) },
-        onSetDue = { d, hasTime, remMin -> vm.setDue(nodeId, d, hasTime, remMin) },
+        onSetDue = { d, hasTime, rem -> vm.setDue(nodeId, d, hasTime, rem) },
         onSetDeadline = { d -> vm.setDeadline(nodeId, d) },
         onClear = { defId -> vm.clearProperty(nodeId, defId) },
         onAttachLabel = { label -> vm.attachLabel(nodeId, label.id) },

@@ -217,7 +217,10 @@ object PageMapper {
                     is DueValue.At -> v.instant.toEpochMilli()
                 },
                 vBool = !allDay,
-                vNumber = due.reminderMin?.toDouble(),
+                // The first reminder and all of them, written together from the one tail in the
+                // file — see PropertyValueEntity.vReminders for why both.
+                vNumber = due.firstReminder?.toDouble(),
+                vReminders = due.reminders.takeIf { it.isNotEmpty() }?.joinToString(","),
                 vDurationMin = due.duration?.toMinutes()?.toInt(),
                 updatedAt = ts,
             )
@@ -308,6 +311,6 @@ object PageMapper {
         val value =
             if (v.vBool == true) DueValue.At(Instant.ofEpochMilli(date))
             else DueValue.AllDay(localDateOf(date, zone))
-        return DueSpec(value, v.vNumber?.toInt())
+        return DueSpec(value, ie.shoonya.yantra.data.format.Reminders.parse(v.vReminders))
     }
 }

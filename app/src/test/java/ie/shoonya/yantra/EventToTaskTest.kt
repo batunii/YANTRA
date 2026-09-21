@@ -36,7 +36,7 @@ class EventToTaskTest {
             due = DueSpec(
                 value = if (e.time.allDay) DueValue.AllDay(e.time.start.toLocalDate())
                 else DueValue.At(e.time.start.atZone(dublin).toInstant()),
-                reminderMin = e.reminderMin,
+                reminders = listOfNotNull(e.reminderMin),
                 duration = if (e.time.allDay) null else e.time.duration.takeIf { !it.isZero },
             ),
             labels = e.labels,
@@ -75,7 +75,7 @@ class EventToTaskTest {
 
     @Test
     fun `a reminder comes along`() {
-        assertEquals(15, convert("@ 2026-09-16T14:00/PT1H Design review ^e1 remind:15").due!!.reminderMin)
+        assertEquals(listOf(15), convert("@ 2026-09-16T14:00/PT1H Design review ^e1 remind:15").due!!.reminders)
     }
 
     @Test
