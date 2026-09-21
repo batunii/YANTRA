@@ -34,6 +34,8 @@ targets:
       - path: Yantra/Assets.xcassets
       - path: Yantra/Fonts
         buildPhase: resources
+      - path: Yantra/PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: ../conformance
         type: folder
         buildPhase: resources
@@ -52,6 +54,9 @@ targets:
       properties:
         CFBundleDisplayName: Yantra
         UIAppFonts: [bricolage_grotesque.ttf, space_grotesk.ttf, space_mono_regular.ttf, space_mono_bold.ttf]
+        # The only encryption here is HTTPS to GitHub, which is exempt. Left unset, every upload
+        # stalls in "Missing Compliance" and never reaches review.
+        ITSAppUsesNonExemptEncryption: false
         UIUserInterfaceStyle: Dark
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -78,6 +83,8 @@ targets:
       - path: Widgets
       - path: Shared
       - path: Yantra/Fonts
+        buildPhase: resources
+      - path: Widgets/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
       - package: YantraCore
@@ -106,6 +113,8 @@ targets:
       - path: Share
       - path: Shared
       - path: Yantra/Fonts
+        buildPhase: resources
+      - path: Share/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
       - package: YantraCore

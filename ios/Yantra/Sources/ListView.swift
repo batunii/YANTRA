@@ -70,12 +70,12 @@ struct ListView: View {
                     NavCircle(icon: "timer", accent: true) { path.append(Route.focus(n.id)) }
                 } else if isSmart {
                     Menu { Button("Edit rules") { editingRules = true } } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
+                        Image(systemName: "ellipsis").icon(17, .semibold).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
                     }
                 }
             }
             if isSmart {
-                HStack(spacing: 6) { Image(systemName: "sparkles").font(.system(size: 12, weight: .semibold)); Text("SMART VIEW").font(Face.text(11, .semibold)).kerning(1.5) }.foregroundStyle(y.accent).padding(.top, 8)
+                HStack(spacing: 6) { Image(systemName: "sparkles").icon(12, .semibold); Text("SMART VIEW").font(Face.text(11, .semibold)).kerning(1.5) }.foregroundStyle(y.accent).padding(.top, 8)
             }
             Text(inlinePlain(node?.title ?? "").isEmpty ? "Untitled" : inlinePlain(node?.title ?? "")).font(Face.display(isSmart ? 22 : 32)).tracking(-0.6).foregroundStyle(y.ink).lineLimit(3)
             if isSmart, let def = model.index.smartLists[nodeId] {
@@ -139,7 +139,7 @@ struct TaskRow: View {
                         }
                         let kids = model.index.openChildCount(node.id)
                         if kids > 0 { Text("\(kids)").font(Face.mono(11)).foregroundStyle(y.dim) }
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(y.dim)
+                        Image(systemName: "chevron.right").icon(13, .semibold).foregroundStyle(y.dim)
                     }
                     meta
                 }
@@ -188,7 +188,7 @@ struct QuickAddBar: View {
             TextField(placeholder, text: $text).font(Face.text(15.5, .medium)).foregroundStyle(y.ink).submitLabel(.done).onSubmit(submit)
                 .autocorrectionDisabled()
             Button(action: submit) {
-                Image(systemName: "paperplane.fill").font(.system(size: 16, weight: .semibold))
+                Image(systemName: "paperplane.fill").icon(16, .semibold)
                     .foregroundStyle(text.isEmpty ? y.dim : y.accent).frame(width: 40, height: 40)
                     .background(RoundedRectangle(cornerRadius: 12).fill(text.isEmpty ? y.surfaceHigh : y.accentFill))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(text.isEmpty ? y.tileBorder : y.accentBorder, lineWidth: 1))

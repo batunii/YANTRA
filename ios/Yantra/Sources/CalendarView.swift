@@ -184,7 +184,7 @@ struct CalendarView: View {
     private var header: some View {
         HStack {
             Button { path.removeLast() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold)).foregroundStyle(y.secondary)
+                Image(systemName: "chevron.left").icon(17, .semibold).foregroundStyle(y.secondary)
                     .frame(width: 38, height: 38)
             }.buttonStyle(.plain)
             Text("Calendar").font(Face.display(22)).tracking(-0.3).foregroundStyle(y.ink)
@@ -439,10 +439,10 @@ struct DayItemRow: View {
                     HStack(spacing: 6) {
                         Text(title).font(Face.text(14, .medium)).foregroundStyle(titleColor).lineLimit(1)
                         if case let .device(d) = item, d.repeating {
-                            Image(systemName: "repeat").font(.system(size: 9)).foregroundStyle(y.dim)
+                            Image(systemName: "repeat").icon(9).foregroundStyle(y.dim)
                         }
                         if case let .event(e) = item, e.repeating {
-                            Image(systemName: "repeat").font(.system(size: 9)).foregroundStyle(y.dim)
+                            Image(systemName: "repeat").icon(9).foregroundStyle(y.dim)
                         }
                     }
                     if let sub { Text(sub).font(Face.text(11.5)).foregroundStyle(y.dim).lineLimit(1) }
@@ -499,7 +499,7 @@ struct CalendarBar: View {
             if cal.mode != .month {
                 Button { withAnimation(.snappy) { railOpen.toggle() } } label: {
                     HStack(spacing: 7) {
-                        Image(systemName: "tray.full").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "tray.full").icon(13, .semibold)
                         Text("Tasks").font(Face.text(13, .bold))
                     }
                     .foregroundStyle(railOpen ? y.accentText : y.secondary)
@@ -509,7 +509,7 @@ struct CalendarBar: View {
             }
             Spacer()
             Button(action: onAdd) {
-                Image(systemName: "plus").font(.system(size: 19, weight: .semibold))
+                Image(systemName: "plus").icon(19, .semibold)
                     .foregroundStyle(y.onAccent)
                     .frame(width: 52, height: 52)
                     .background(Circle().fill(y.accent))

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Yantra collects nothing.
+
+      A workspace is plain files in a directory, and sync pushes those files to a repository the
+      person owns with a token they granted. Nothing is sent to us, because there is no us to send
+      it to: the app has no server, no analytics and no third-party SDKs. That is why both
+      NSPrivacyCollectedDataTypes and NSPrivacyTrackingDomains are empty rather than absent —
+      an empty list is a statement, a missing key is an oversight.
+    -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <!--
+              UserDefaults, in the app group shared by the app, the widgets and the share sheet.
+              CA92.1 is the app-group reason and is the accurate one: the theme, the calendar
+              choice and the live session are read by extensions of this same app, and by nothing
+              else.
+            -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

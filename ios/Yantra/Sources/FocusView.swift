@@ -54,7 +54,7 @@ struct FocusView: View {
             ZStack {
                 Circle().fill(y.accent.opacity(0.16)).frame(width: 74, height: 74)
                 Circle().fill(y.accent).frame(width: 46, height: 46)
-                Image(systemName: "checkmark").font(.system(size: 22, weight: .bold)).foregroundStyle(y.onAccent)
+                Image(systemName: "checkmark").icon(22, .bold).foregroundStyle(y.onAccent)
             }
             Text("Session complete").font(Face.display(24)).tracking(-0.4).foregroundStyle(y.ink)
             Text("\((s.isOpen ? s.elapsedSecs : s.plannedSecs) / 60) min on \(s.nodeTitle.isEmpty ? "your task" : s.nodeTitle)").font(Face.text(13.5)).foregroundStyle(y.muted).multilineTextAlignment(.center)
@@ -74,7 +74,7 @@ struct FocusView: View {
             Button { path.append(Route.node(s.nodeId)) } label: {
                 HStack(spacing: 6) {
                     Text(s.nodeTitle.isEmpty ? "Untitled task" : s.nodeTitle).font(Face.text(16, .bold)).foregroundStyle(y.ink).lineLimit(2).multilineTextAlignment(.center)
-                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(y.dim)
+                    Image(systemName: "chevron.right").icon(14, .semibold).foregroundStyle(y.dim)
                 }
             }.buttonStyle(.plain).padding(.top, 6).padding(.horizontal, 30)
             FocusGlyph(dayCounts: dayCounts(history), progress: s.progress).frame(width: 272, height: 272).padding(.top, 18)
@@ -84,7 +84,7 @@ struct FocusView: View {
                 .font(Face.mono(11)).kerning(1).foregroundStyle(y.dim).padding(.top, 6)
             Spacer()
             Button { s.isRunning ? model.timer.pause() : model.timer.resume() } label: {
-                Image(systemName: s.isRunning ? "pause.fill" : "play.fill").font(.system(size: 28)).foregroundStyle(y.accent)
+                Image(systemName: s.isRunning ? "pause.fill" : "play.fill").icon(28).foregroundStyle(y.accent)
                     .frame(width: 76, height: 76).background(Circle().fill(y.accentFill)).overlay(Circle().stroke(y.accentBorder, lineWidth: 1))
             }.buttonStyle(.plain)
             HStack(spacing: 10) {
@@ -107,7 +107,7 @@ struct FocusView: View {
                 HStack(alignment: .top) {
                     Text(inlinePlain(n.title ?? "").isEmpty ? "Untitled task" : inlinePlain(n.title ?? "")).font(Face.display(32)).tracking(-0.4).foregroundStyle(y.ink).lineLimit(3).multilineTextAlignment(.leading)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 20, weight: .semibold)).foregroundStyle(y.dim).padding(.top, 10)
+                    Image(systemName: "chevron.right").icon(20, .semibold).foregroundStyle(y.dim).padding(.top, 10)
                 }
             }.buttonStyle(.plain).padding(.top, 6)
             if !history.isEmpty {
@@ -165,7 +165,7 @@ struct SessionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if FocusOutcome.keptItsPromise(session.outcome, planned: session.plannedSecs) {
-                Image(systemName: "timer").font(.system(size: 14)).foregroundStyle(y.accent).frame(width: 16)
+                Image(systemName: "timer").icon(14).foregroundStyle(y.accent).frame(width: 16)
             } else { Text("◌").font(Face.text(16)).foregroundStyle(y.dim).frame(width: 16) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(Date(timeIntervalSince1970: TimeInterval(session.startedAt) / 1000), format: .dateTime.month(.abbreviated).day().hour().minute()).font(Face.text(13.5, .medium)).foregroundStyle(y.ink)

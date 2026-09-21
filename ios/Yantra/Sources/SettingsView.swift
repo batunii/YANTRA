@@ -54,6 +54,16 @@ struct SettingsView: View {
 
                 CalendarSetting()
 
+                SectionLabel(text: "Privacy").padding(.top, 28)
+                Text("Yantra collects nothing. There is no server, no analytics and no account with us — your files are yours, and sync pushes them to a repository you own.")
+                    .font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
+                // Reachable from inside the app, not only from the store listing: 5.1.1 asks for
+                // both, and the listing is the one place somebody who already installed it will
+                // never look.
+                Link(destination: URL(string: AppLinks.privacyPolicy)!) {
+                    row(title: "Privacy policy", subtitle: "What is stored, and where it goes", chevron: true)
+                }.buttonStyle(.plain)
+
                 SectionLabel(text: "Accent").padding(.top, 28)
                 Text("The ink that means your effort").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 12)
                 HStack(spacing: 14) {
@@ -99,7 +109,7 @@ struct SettingsView: View {
                 Text(subtitle).font(Face.text(12.5)).foregroundStyle(y.muted)
             }
             Spacer()
-            if chevron { Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(y.dim) }
+            if chevron { Image(systemName: "chevron.right").icon(14, .semibold).foregroundStyle(y.dim) }
         }
         .padding(16).background(RoundedRectangle(cornerRadius: Layout.cardRadius).fill(y.cardBg)).padding(.bottom, 8)
     }
@@ -164,7 +174,7 @@ struct StatsView: View {
                                 Text("\(durationLabel(row.secs)) · \(row.n) session\(row.n == 1 ? "" : "s")").font(Face.text(11.5)).foregroundStyle(y.dim)
                             }
                             Spacer()
-                            Image(systemName: "play.fill").font(.system(size: 15)).foregroundStyle(y.accent).frame(width: 40, height: 40)
+                            Image(systemName: "play.fill").icon(15).foregroundStyle(y.accent).frame(width: 40, height: 40)
                         }.padding(.vertical, 6)
                     }.buttonStyle(.plain)
                 }
@@ -245,7 +255,7 @@ struct CalendarSetting: View {
                             }
                             Spacer()
                             Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 17)).foregroundStyle(picked ? y.accent : y.dim)
+                                .icon(17).foregroundStyle(picked ? y.accent : y.dim)
                         }
                         .padding(.vertical, 9)
                     }.buttonStyle(.plain)
@@ -260,4 +270,11 @@ struct CalendarSetting: View {
             if CalendarChoice.enabled, !calendars.authorized { on = false; CalendarChoice.enabled = false }
         }
     }
+}
+
+/// The addresses the app points at. One place, so the store listing and the app cannot drift.
+enum AppLinks {
+    /// Must stay reachable: App Store Connect requires the same URL, and a policy that 404s is a
+    /// rejection under 5.1.1 whatever the app does.
+    static let privacyPolicy = "https://github.com/batunii/YANTRA/blob/main/docs/PRIVACY.md"
 }

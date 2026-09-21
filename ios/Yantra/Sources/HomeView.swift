@@ -149,16 +149,16 @@ struct HomeTabBar: View {
     @Environment(\.y) private var y
     var body: some View {
         HStack {
-            Button(action: onHome) { Image(systemName: "house").font(.system(size: 22)).foregroundStyle(y.ink).frame(width: 44, height: 44) }
+            Button(action: onHome) { Image(systemName: "house").icon(22).foregroundStyle(y.ink).frame(width: 44, height: 44) }
             Spacer()
             Button(action: onCreate) {
-                Image(systemName: "gearshape.fill").font(.system(size: 26)).foregroundStyle(y.accent)
+                Image(systemName: "gearshape.fill").icon(26).foregroundStyle(y.accent)
                     .frame(width: 54, height: 54)
                     .background(RoundedRectangle(cornerRadius: 17).fill(y.accentFill))
                     .overlay(RoundedRectangle(cornerRadius: 17).stroke(y.accentBorder, lineWidth: 1))
             }
             Spacer()
-            Button(action: onStats) { Image(systemName: "chart.bar.fill").font(.system(size: 20)).foregroundStyle(y.accent).frame(width: 44, height: 44) }
+            Button(action: onStats) { Image(systemName: "chart.bar.fill").icon(20).foregroundStyle(y.accent).frame(width: 44, height: 44) }
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 40).padding(.top, 10).padding(.bottom, 6)

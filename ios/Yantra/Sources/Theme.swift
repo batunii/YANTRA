@@ -98,18 +98,39 @@ extension EnvironmentValues { var y: YantraColors { get { self[YantraColorsKey.s
 enum Face {
     // The subset TTFs from app/src/main/res/font, by their PostScript names. The Space Grotesk file is
     // a variable font with named instances; Bricolage ships one instance. Missing → system fallback.
+    //
+    // **Every face scales with Dynamic Type.** `Font.custom(_:size:)` alone is a fixed point size
+    // that ignores the reader's text-size setting entirely, which on a custom-font app means the
+    // whole interface ignores it. The `relativeTo:` form keeps these exact sizes as the metric at
+    // the default setting and scales from there, so the type stays Yantra's and the size stays the
+    // reader's. It is also the accessibility obligation the European Accessibility Act now carries.
+    //
+    // The text style each face is measured against is chosen by role, not by size: a display title
+    // scales like a title, body text like body, and the instrument like a caption — so a large
+    // setting grows the words you read faster than the numerals beside them, which is the ratio
+    // that keeps a screen legible rather than merely bigger.
+
     /// Display — Bricolage Grotesque, every big title.
-    static func display(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font { .custom("BricolageGrotesque-96ptExtraBold", size: size) }
+    static func display(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font {
+        .custom("BricolageGrotesque-96ptExtraBold", size: size, relativeTo: .title)
+    }
+
     /// Text — Space Grotesk, the UI body.
     static func text(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        // Below the body metric the smaller sizes are labels and captions, and scaling them as body
+        // makes a caption outgrow the line it annotates.
+        let style: Font.TextStyle = size >= 20 ? .title3 : size >= 15 ? .body : size >= 12.5 ? .subheadline : .caption
         switch weight {
-        case .bold, .heavy, .black, .semibold: return .custom("SpaceGroteskLight-Bold", size: size)
-        case .medium: return .custom("SpaceGroteskLight-Medium", size: size)
-        default: return .custom("SpaceGroteskLight-Regular", size: size)
+        case .bold, .heavy, .black, .semibold: return .custom("SpaceGroteskLight-Bold", size: size, relativeTo: style)
+        case .medium: return .custom("SpaceGroteskLight-Medium", size: size, relativeTo: style)
+        default: return .custom("SpaceGroteskLight-Regular", size: size, relativeTo: style)
         }
     }
+
     /// Instrument — Space Mono, the focus countdown and eyebrows, nothing else.
-    static func mono(_ size: CGFloat, bold: Bool = false) -> Font { .custom(bold ? "SpaceMono-Bold" : "SpaceMono-Regular", size: size) }
+    static func mono(_ size: CGFloat, bold: Bool = false) -> Font {
+        .custom(bold ? "SpaceMono-Bold" : "SpaceMono-Regular", size: size, relativeTo: size >= 20 ? .title2 : .caption)
+    }
 }
 
 /// The palette as colours.
@@ -128,6 +149,31 @@ extension LabelPalette {
     static func swatchColor(_ name: String?, dark: Bool) -> Color? {
         guard let s = byName(name) else { return nil }
         return Color(argb: UInt32(truncatingIfNeeded: dark ? s.dark : s.light))
+    }
+}
+
+/// An SF Symbol that grows with the reader's text size.
+///
+/// `Font.system(size:)` is a fixed point size, so an icon set that way stays exactly as small as it
+/// started while every word beside it grows — which is the accessibility failure that reads as the
+/// app half-ignoring the setting. There is no `relativeTo:` for the system font, so the scaling is
+/// done with `@ScaledMetric`, which is the same metric `relativeTo:` uses.
+///
+/// Widgets deliberately do not use this: WidgetKit gives a widget a fixed box, and type that grows
+/// inside one truncates rather than helps.
+private struct ScaledIcon: ViewModifier {
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+    let size: CGFloat
+    let weight: Font.Weight
+    func body(content: Content) -> some View {
+        content.font(.system(size: size * scale, weight: weight))
+    }
+}
+
+extension View {
+    /// The icon metric, scaled. `size` is what it measures at the default text size.
+    func icon(_ size: CGFloat, _ weight: Font.Weight = .regular) -> some View {
+        modifier(ScaledIcon(size: size, weight: weight))
     }
 }
 
@@ -167,7 +213,7 @@ struct YantraButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if let icon { Image(systemName: icon).font(.system(size: 15, weight: .semibold)) }
+                if let icon { Image(systemName: icon).icon(15, .semibold) }
                 Text(label).font(Face.text(15, .bold))
             }
             .padding(.horizontal, 20).padding(.vertical, 13)
@@ -210,7 +256,7 @@ struct NavCircle: View {
     @Environment(\.y) private var y
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+            Image(systemName: icon).icon(17, .semibold)
                 .foregroundStyle(accent ? y.accent : y.secondary)
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(accent ? y.accentFill : y.ink.opacity(0.05)))

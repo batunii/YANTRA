@@ -184,7 +184,7 @@ struct SmartListBuilder: View {
                 Menu {
                     ForEach(model.index.children(of: nil).filter { $0.type == NodeType.list }) { l in Button(inlinePlain(l.title ?? "Untitled")) { landsIn = l.id } }
                 } label: {
-                    HStack { Text(landsIn.flatMap { model.index.nodes[$0]?.title }.map { inlinePlain($0) } ?? "Inbox").font(Face.text(14, .bold)).foregroundStyle(y.accentText); Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(y.accentText) }
+                    HStack { Text(landsIn.flatMap { model.index.nodes[$0]?.title }.map { inlinePlain($0) } ?? "Inbox").font(Face.text(14, .bold)).foregroundStyle(y.accentText); Image(systemName: "chevron.down").icon(12, .bold).foregroundStyle(y.accentText) }
                         .padding(.horizontal, 12).padding(.vertical, 9).background(RoundedRectangle(cornerRadius: 10).fill(y.accentFill))
                 }
                 Text("Quick-add here auto-tags new tasks to match this view.").font(Face.text(12)).foregroundStyle(y.dim)

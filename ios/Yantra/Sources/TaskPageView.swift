@@ -73,7 +73,7 @@ struct TaskPageView: View {
                     }
                 }
                 Menu { Button("Delete", role: .destructive) { delete() } } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
+                    Image(systemName: "ellipsis").icon(17, .semibold).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
                 }
             }
             if !crumbs.isEmpty {
@@ -218,7 +218,7 @@ struct BlockRow: View {
                         HStack(spacing: 4) {
                             let kids = model.index.openChildCount(t.id)
                             if kids > 0 { Text("\(kids)").font(Face.mono(11)).foregroundStyle(y.dim) }
-                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(y.dim)
+                            Image(systemName: "chevron.right").icon(13, .semibold).foregroundStyle(y.dim)
                         }.padding(.top, 12)
                     }.buttonStyle(.plain)
                 }
