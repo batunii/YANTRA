@@ -239,4 +239,31 @@ extension ConformanceTests {
         XCTAssertNil(ISODuration("PT1.5H"))
         XCTAssertNil(ISODuration("1H"))
     }
+
+    // MARK: the label palette
+
+    struct SwatchFixture: Decodable { let name: String, light: String, dark: String }
+    struct SeedCase: Decodable { let name: String, swatch: String, light: String }
+    struct PaletteFixture: Decodable { let swatches: [SwatchFixture], seeds: [SeedCase] }
+
+    func testLabelPalette() throws {
+        let f = try JSONDecoder().decode(PaletteFixture.self, from: fixture("labels/palette.json"))
+        func hex(_ v: Int64) -> String { String(format: "%08X", v) }
+
+        XCTAssertEqual(LabelPalette.swatches.map(\.name), f.swatches.map(\.name))
+        for (mine, theirs) in zip(LabelPalette.swatches, f.swatches) {
+            XCTAssertEqual(hex(mine.light), theirs.light, theirs.name)
+            XCTAssertEqual(hex(mine.dark), theirs.dark, theirs.name)
+            // The twin swap is what lets one stored value dress for both themes.
+            XCTAssertEqual(LabelPalette.display(mine.light, dark: true), mine.dark)
+            XCTAssertEqual(LabelPalette.display(mine.dark, dark: false), mine.light)
+        }
+        // Anything not from the palette passes through untouched.
+        XCTAssertEqual(LabelPalette.display(0xFF123456, dark: true), 0xFF123456)
+
+        for c in f.seeds {
+            XCTAssertEqual(LabelPalette.defaultNameFor(c.name), c.swatch, "seed of \(c.name.debugDescription)")
+            XCTAssertEqual(hex(LabelPalette.defaultFor(c.name)), c.light, "seed of \(c.name.debugDescription)")
+        }
+    }
 }

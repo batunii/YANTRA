@@ -52,6 +52,8 @@ struct SettingsView: View {
                     Button { path.append(Route.archive) } label: { row(title: "\(archived) archived", subtitle: "See what left, and put any of it back", chevron: true) }.buttonStyle(.plain).padding(.top, 8)
                 }
 
+                CalendarSetting()
+
                 SectionLabel(text: "Accent").padding(.top, 28)
                 Text("The ink that means your effort").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 12)
                 HStack(spacing: 14) {
@@ -179,5 +181,83 @@ struct StatsView: View {
             Text(value).font(Face.display(25)).tracking(-0.5).foregroundStyle(accent ? y.accent : y.ink)
             Text(sub).font(Face.text(10.5)).foregroundStyle(y.dim)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Whether to draw the phone's own calendars, and which of them.
+///
+/// Off until somebody turns it on. Reading a person's meetings is not something to start doing
+/// because an app was updated, and the permission prompt is asked for by this switch rather than
+/// thrown at the first launch of a screen.
+struct CalendarSetting: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.y) private var y
+    @StateObject private var calendars = DeviceCalendars.shared
+    @State private var on = CalendarChoice.enabled
+    @State private var denied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Your calendars").padding(.top, 28)
+            Text("Meetings from this device, drawn beside your tasks. Yantra only ever reads them — nothing is added to or changed in your calendars.")
+                .font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
+
+            Toggle(isOn: Binding(get: { on }, set: { want in
+                if want {
+                    Task {
+                        let ok = await calendars.requestAccess()
+                        // A refusal is a refusal: the switch goes back rather than sitting on while
+                        // nothing is drawn, which would read as the feature being broken.
+                        on = ok; CalendarChoice.enabled = ok; denied = !ok
+                    }
+                } else {
+                    on = false; CalendarChoice.enabled = false; denied = false
+                }
+            })) {
+                Text("Show my calendars").font(Face.text(14.5)).foregroundStyle(y.ink)
+            }
+            .tint(y.accent)
+
+            if denied {
+                Text("Yantra was not given access. You can turn it on in Settings › Privacy › Calendars.")
+                    .font(Face.text(12)).foregroundStyle(y.warning).padding(.top, 8)
+            }
+
+            if on, let available = calendars.available, !available.isEmpty {
+                Text("Which ones").font(Face.text(12.5, .bold)).foregroundStyle(y.secondary).padding(.top, 14).padding(.bottom, 6)
+                // No stored choice is not the same as choosing none: until somebody ticks something,
+                // everything the owning app shows is what "my calendar" means.
+                let chosen = CalendarChoice.chosen
+                ForEach(available) { c in
+                    let picked = chosen?.contains(c.id) ?? true
+                    Button {
+                        var next = chosen ?? Set(available.map(\.id))
+                        if picked { next.remove(c.id) } else { next.insert(c.id) }
+                        CalendarChoice.chosen = next
+                    } label: {
+                        HStack(spacing: 10) {
+                            Circle().fill(deviceColor(c.color, y: y)).frame(width: 10, height: 10)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(c.title).font(Face.text(14)).foregroundStyle(y.ink)
+                                if !c.account.isEmpty {
+                                    Text(c.account).font(Face.text(11.5)).foregroundStyle(y.dim)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 17)).foregroundStyle(picked ? y.accent : y.dim)
+                        }
+                        .padding(.vertical, 9)
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+        .task {
+            calendars.refreshAuthorization()
+            if CalendarChoice.enabled { calendars.loadCalendars() }
+            // A permission revoked in Settings has to be noticed here, or the switch would claim
+            // something the app can no longer do.
+            if CalendarChoice.enabled, !calendars.authorized { on = false; CalendarChoice.enabled = false }
+        }
     }
 }

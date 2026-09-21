@@ -87,6 +87,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The colour a list wears, as a palette name — its own if somebody chose one, else the one its
+    /// name seeds to. Seeding rather than leaving it blank is what makes a colour correctable: there
+    /// is always one to change.
+    func listColor(_ pageId: String) -> String? {
+        guard let page = store.readPage(pageId) else { return nil }
+        return page.color ?? page.title.map { LabelPalette.defaultNameFor($0) }
+    }
+
     func smartListRows(_ n: Node) -> [Node] {
         guard let def = index.smartLists[n.id] else { return [] }
         return SmartListQuery.run(def, in: index)

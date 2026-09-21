@@ -114,19 +114,19 @@ enum CalendarChoice {
     /// The chosen ids, or nil when nobody has chosen yet.
     static var chosen: Set<String>? {
         get {
-            guard let s = AppGroup.defaults?.string(forKey: key) else { return nil }
+            guard let s = AppGroup.defaults.string(forKey: key) else { return nil }
             return Set(s.split(separator: "\n").map(String.init).filter { !$0.isEmpty })
         }
         set {
-            guard let v = newValue else { AppGroup.defaults?.removeObject(forKey: key); return }
-            AppGroup.defaults?.set(v.sorted().joined(separator: "\n"), forKey: key)
+            guard let v = newValue else { AppGroup.defaults.removeObject(forKey: key); return }
+            AppGroup.defaults.set(v.sorted().joined(separator: "\n"), forKey: key)
         }
     }
 
     /// Whether the calendar area is on at all. Off until somebody turns it on, because reading
     /// somebody's meetings is not a thing to start doing because an app was updated.
     static var enabled: Bool {
-        get { AppGroup.defaults?.bool(forKey: "device_calendars_on") ?? false }
-        set { AppGroup.defaults?.set(newValue, forKey: "device_calendars_on") }
+        get { AppGroup.defaults.bool(forKey: "device_calendars_on") }
+        set { AppGroup.defaults.set(newValue, forKey: "device_calendars_on") }
     }
 }

@@ -320,4 +320,38 @@ class ConformanceFixturesTest {
         assertEquals(page.blocks.map { stripRaw(it) },
             ie.shoonya.yantra.data.format.PageCodec.decode(text).blocks.map { stripRaw(it) })
     }
+
+    // ---- the label palette ----
+
+    /**
+     * The colour a name seeds to.
+     *
+     * A contract, not a detail: a list coloured by its name on one platform and read on the other
+     * has to come out the same colour, or the same repository would look like two different ones.
+     * The seed is `String.hashCode` over the lowercased name, which is a *specified* function —
+     * 32-bit and wrapping — and therefore reproducible rather than merely "some hash".
+     */
+    @Serializable data class SwatchFixture(val name: String, val light: String, val dark: String)
+    @Serializable data class SeedCase(val name: String, val swatch: String, val light: String)
+    @Serializable data class PaletteFixture(val swatches: List<SwatchFixture>, val seeds: List<SeedCase>)
+
+    @Test
+    fun labelPalette() {
+        fun hex(v: Long) = "%08X".format(v)
+        val names = listOf(
+            "", "a", "work", "Work", " work ", "groceries", "urgent", "Inbox", "Today",
+            "personal", "home", "café", "ñ", "日本語", "a very long label name indeed",
+        )
+        golden("labels/palette.json") {
+            PaletteFixture(
+                swatches = ie.shoonya.yantra.data.label.LabelPalette.swatches.map {
+                    SwatchFixture(it.name, hex(it.light), hex(it.dark))
+                },
+                seeds = names.map {
+                    SeedCase(it, ie.shoonya.yantra.data.label.LabelPalette.defaultNameFor(it),
+                             hex(ie.shoonya.yantra.data.label.LabelPalette.defaultFor(it)))
+                },
+            )
+        }
+    }
 }

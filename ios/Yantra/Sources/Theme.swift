@@ -1,4 +1,5 @@
 import SwiftUI
+import YantraCore
 
 // MARK: - OKLCH, the way YantraColors.kt builds every ground and ink
 
@@ -109,6 +110,25 @@ enum Face {
     }
     /// Instrument — Space Mono, the focus countdown and eyebrows, nothing else.
     static func mono(_ size: CGFloat, bold: Bool = false) -> Font { .custom(bold ? "SpaceMono-Bold" : "SpaceMono-Regular", size: size) }
+}
+
+/// The palette as colours.
+///
+/// `LabelPalette` itself is in the core and free of SwiftUI, the way the Kotlin one is free of
+/// Compose: nothing in the data layer may reach up into the views. This is that call site.
+extension LabelPalette {
+    /// What a label named `name` is painted, honouring a colour somebody chose for it in the
+    /// registry and otherwise the one its name seeds to.
+    static func color(_ name: String, registry: [LabelDef], dark: Bool) -> Color {
+        let stored = registry.first { $0.name.lowercased() == name.lowercased() }?.color ?? defaultFor(name)
+        return Color(argb: UInt32(truncatingIfNeeded: display(stored, dark: dark)))
+    }
+
+    /// A palette name as a colour for the current theme, or nil when nothing is called that.
+    static func swatchColor(_ name: String?, dark: Bool) -> Color? {
+        guard let s = byName(name) else { return nil }
+        return Color(argb: UInt32(truncatingIfNeeded: dark ? s.dark : s.light))
+    }
 }
 
 // MARK: - layout constants

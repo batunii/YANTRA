@@ -47,7 +47,7 @@ public struct LocalDate: Hashable, Comparable, Sendable, CustomStringConvertible
         (l.year, l.month, l.day) < (r.year, r.month, r.day)
     }
 
-    static func daysIn(month: Int, year: Int) -> Int {
+    public static func daysIn(month: Int, year: Int) -> Int {
         switch month {
         case 2: return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 ? 29 : 28
         case 4, 6, 9, 11: return 30

@@ -1,0 +1,106 @@
+{
+    "swatches": [
+        {
+            "name": "Moss",
+            "light": "FF5D8F52",
+            "dark": "FF7CBB6E"
+        },
+        {
+            "name": "Teal",
+            "light": "FF00948E",
+            "dark": "FF0AC0B9"
+        },
+        {
+            "name": "Blue",
+            "light": "FF3D88B8",
+            "dark": "FF54B1EE"
+        },
+        {
+            "name": "Violet",
+            "light": "FF8075BA",
+            "dark": "FFA799F1"
+        },
+        {
+            "name": "Plum",
+            "light": "FFA66799",
+            "dark": "FFD889C7"
+        }
+    ],
+    "seeds": [
+        {
+            "name": "",
+            "swatch": "Moss",
+            "light": "FF5D8F52"
+        },
+        {
+            "name": "a",
+            "swatch": "Blue",
+            "light": "FF3D88B8"
+        },
+        {
+            "name": "work",
+            "swatch": "Teal",
+            "light": "FF00948E"
+        },
+        {
+            "name": "Work",
+            "swatch": "Teal",
+            "light": "FF00948E"
+        },
+        {
+            "name": " work ",
+            "swatch": "Teal",
+            "light": "FF00948E"
+        },
+        {
+            "name": "groceries",
+            "swatch": "Moss",
+            "light": "FF5D8F52"
+        },
+        {
+            "name": "urgent",
+            "swatch": "Moss",
+            "light": "FF5D8F52"
+        },
+        {
+            "name": "Inbox",
+            "swatch": "Plum",
+            "light": "FFA66799"
+        },
+        {
+            "name": "Today",
+            "swatch": "Moss",
+            "light": "FF5D8F52"
+        },
+        {
+            "name": "personal",
+            "swatch": "Plum",
+            "light": "FFA66799"
+        },
+        {
+            "name": "home",
+            "swatch": "Moss",
+            "light": "FF5D8F52"
+        },
+        {
+            "name": "café",
+            "swatch": "Teal",
+            "light": "FF00948E"
+        },
+        {
+            "name": "ñ",
+            "swatch": "Teal",
+            "light": "FF00948E"
+        },
+        {
+            "name": "日本語",
+            "swatch": "Violet",
+            "light": "FF8075BA"
+        },
+        {
+            "name": "a very long label name indeed",
+            "swatch": "Plum",
+            "light": "FFA66799"
+        }
+    ]
+}

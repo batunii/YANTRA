@@ -11,6 +11,8 @@ enum Route: Hashable {
     case ink(String)
     case github
     case archive
+    /// The calendar, optionally landing on a day — how the widget points at one.
+    case calendar(String?)
 }
 
 struct HomeView: View {
@@ -46,7 +48,10 @@ struct HomeView: View {
                             Text(tally).font(Face.text(13.5)).foregroundStyle(y.secondary)
                         }
                         Spacer()
-                        NavCircle(icon: "slider.horizontal.3") { path.append(Route.settings) }
+                        HStack(spacing: 8) {
+                            NavCircle(icon: "calendar") { path.append(Route.calendar(nil)) }
+                            NavCircle(icon: "slider.horizontal.3") { path.append(Route.settings) }
+                        }
                     }
                     .padding(.top, 14).padding(.bottom, 22)
 

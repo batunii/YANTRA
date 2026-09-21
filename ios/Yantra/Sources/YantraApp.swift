@@ -43,6 +43,7 @@ struct RootView: View {
                     case let .ink(id): InkView(path: $path, inkId: id)
                     case .github: SignInView(path: $path)
                     case .archive: ArchiveView(path: $path)
+                    case let .calendar(day): CalendarView(path: $path, startOn: day)
                     }
                 }
         }
@@ -63,6 +64,7 @@ struct RootView: View {
             switch url.host {
             case "open": if let id = url.pathComponents.dropFirst().first { path.append(model.index.nodes[id]?.type == NodeType.smartList ? Route.smart(id) : Route.node(id)) }
             case "focus": path.append(Route.focus(nil))
+            case "calendar": path.append(Route.calendar(url.pathComponents.dropFirst().first))
             case "quickadd": quickAdd = true
             default: break
             }
@@ -90,6 +92,8 @@ struct RootView: View {
                     return
                 }
                 if r == "settings" { path.append(Route.settings); return }
+                if r == "calendar" { path.append(Route.calendar(nil)); return }
+                if r.hasPrefix("calendar:") { path.append(Route.calendar(String(r.dropFirst(9)))); return }
                 if r == "github" { path.append(Route.github); return }
                 if r == "archive" { path.append(Route.archive); return }
                 if r.hasPrefix("ink:") { path.append(Route.ink(String(r.dropFirst(4)))); return }

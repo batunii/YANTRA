@@ -59,6 +59,8 @@ targets:
         NSSupportsLiveActivitiesFrequentUpdates: false
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [ie.shoonya.yantra.sync]
+        NSCalendarsUsageDescription: Yantra draws your meetings beside your tasks. It only ever reads them — nothing is added to or changed in your calendars.
+        NSCalendarsFullAccessUsageDescription: Yantra draws your meetings beside your tasks. It only ever reads them — nothing is added to or changed in your calendars.
         CFBundleURLTypes:
           - CFBundleURLName: ie.shoonya.yantra
             CFBundleURLSchemes: [yantra]

@@ -82,28 +82,6 @@ struct DueSheet: View {
     }
 }
 
-/// The label palette both apps share: five swatches (light/dark pairs) and Java's string hash over
-/// the trimmed lowercase name to pick a default — `LabelPalette.kt`.
-enum LabelPalette {
-    static let swatches: [(light: UInt32, dark: UInt32)] = [
-        (0xFF5D8F52, 0xFF7CBB6E), (0xFF00948E, 0xFF0AC0B9), (0xFF3D88B8, 0xFF54B1EE), (0xFF8075BA, 0xFFA799F1), (0xFFA66799, 0xFFD889C7),
-    ]
-    static func defaultFor(_ name: String) -> UInt32 {
-        var h: Int32 = 0
-        for u in name.trimmingCharacters(in: .whitespaces).lowercased().utf16 { h = h &* 31 &+ Int32(u) }
-        let n = Int32(swatches.count)
-        return swatches[Int(((h % n) + n) % n)].light
-    }
-    static func display(_ stored: UInt32, dark: Bool) -> UInt32 {
-        if dark { return swatches.first { $0.light == stored }?.dark ?? stored }
-        return swatches.first { $0.dark == stored }?.light ?? stored
-    }
-    static func color(_ name: String, registry: [LabelDef], dark: Bool) -> Color {
-        let stored = registry.first { $0.name.lowercased() == name.lowercased() }?.color.map { UInt32(truncatingIfNeeded: $0) } ?? defaultFor(name)
-        return Color(argb: display(stored, dark: dark))
-    }
-}
-
 /// Add a label: search or create — `LabelPickerDialog`.
 struct LabelPicker: View {
     @EnvironmentObject var model: AppModel

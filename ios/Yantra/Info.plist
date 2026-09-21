@@ -35,6 +35,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Yantra draws your meetings beside your tasks. It only ever reads them — nothing is added to or changed in your calendars.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Yantra draws your meetings beside your tasks. It only ever reads them — nothing is added to or changed in your calendars.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

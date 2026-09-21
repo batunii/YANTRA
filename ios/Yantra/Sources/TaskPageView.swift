@@ -45,7 +45,8 @@ struct TaskPageView: View {
                     }
                     ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
                         BlockRow(pageId: nodeId, index: i, block: b, ordinal: ordinal(blocks, i), isEditing: editing == i, draft: $draft,
-                                 focus: $focus, onBegin: { begin(i, b) }, onCommit: { commit(i) }, onOpen: { id in path.append(Route.node(id)) })
+                                 focus: $focus, onBegin: { begin(i, b) }, onCommit: { commit(i) }, onOpen: { id in path.append(Route.node(id)) },
+                            onOpenCalendar: { day in path.append(Route.calendar(day.description)) })
                     }
                     Color.clear.frame(height: 160).contentShape(Rectangle()).onTapGesture { addBlock(NodeType.paragraph) }
                 }
@@ -199,6 +200,8 @@ struct BlockRow: View {
     let onBegin: () -> Void
     let onCommit: () -> Void
     let onOpen: (String) -> Void
+    /// An event row goes to the calendar on its own day, not to a page: an event has no page.
+    let onOpenCalendar: (LocalDate) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -236,6 +239,25 @@ struct BlockRow: View {
                 }.buttonStyle(.plain).padding(.vertical, 6)
             case .image:
                 RoundedRectangle(cornerRadius: 16).fill(y.surfaceHigh).frame(height: 120).overlay(Text("Image").font(Face.text(12)).foregroundStyle(y.dim)).padding(.vertical, 6)
+            case let .event(e):
+                // An event has no box to tick — it is not finished, it simply passes — so the row
+                // leads with when rather than with a checkbox, and opens the calendar rather than a
+                // page of its own.
+                Button { onOpenCalendar(e.time.start.date) } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(LabelPalette.swatchColor(e.color, dark: y.dark) ?? y.accent)
+                            .frame(width: 3).padding(.vertical, 2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(e.title.isEmpty ? "Event" : e.title)
+                                .font(Face.text(14.5, .medium)).foregroundStyle(y.ink)
+                                .multilineTextAlignment(.leading)
+                            Text(eventWhen(e.time)).font(Face.mono(11)).foregroundStyle(y.muted)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 8)
+                }.buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 6)
@@ -372,4 +394,19 @@ struct TaskRail: View {
         .frame(width: 340)
         .background(y.rail)
     }
+}
+
+/// When an event is, in words — the reading a row wants rather than the bytes the file keeps.
+func eventWhen(_ t: EventTime) -> String {
+    let day = dateLabel(t.start.date)
+    if t.allDay {
+        // Exclusive in the model, inclusive in the reading: "the 11th to the 13th" is what somebody
+        // who wrote that line meant.
+        let last = t.end.date.adding(days: -1)
+        return last <= t.start.date ? day : "\(day) – \(dateLabel(last))"
+    }
+    let f = DateFormatter(); f.dateFormat = "HH:mm"
+    let from = f.string(from: t.start.instant())
+    if t.isInstantaneous { return "\(day) \(from)" }
+    return "\(day) \(from)–\(f.string(from: t.end.instant()))"
 }
