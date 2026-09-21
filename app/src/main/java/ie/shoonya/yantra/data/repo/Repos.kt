@@ -241,6 +241,23 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         }
     }
 
+    /**
+     * The emoji a list wears, or null to go back to its drawn mark.
+     *
+     * Cleaned here rather than at the field, so every route in — the grid, the keyboard, a page
+     * written by a future version of the app — lands the same single character in the file. See
+     * [ie.shoonya.yantra.data.format.ListIcon.clean].
+     *
+     * [Change.STRUCTURAL] for the same reason as the colour: every row drawing this list is drawn
+     * from the index, and a glyph that appeared a beat after the tap would read as a missed tap.
+     */
+    suspend fun setListIcon(listId: String, icon: String?) {
+        val cleaned = ie.shoonya.yantra.data.format.ListIcon.clean(icon)
+        ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            it.copy(icon = cleaned)
+        }
+    }
+
     suspend fun moveToList(taskId: String, listId: String) {
         ws.moveAcross(taskId, listId)
     }

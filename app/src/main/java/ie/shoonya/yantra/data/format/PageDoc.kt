@@ -42,6 +42,19 @@ data class PageDoc(
      */
     val unknownKeys: Map<String, String> = emptyMap(),
     /**
+     * The emoji this list wears instead of its drawn mark, or null to keep the mark.
+     *
+     * In the file for the same reason as [color]: it is a choice somebody made, and choices live
+     * where the tasks do — a list given an icon on the phone has it on the laptop, and a dropped
+     * database costs nothing. See [ie.shoonya.yantra.data.format.ListIcon] for what one is allowed
+     * to be.
+     *
+     * Kept apart from [color] rather than folded into one "appearance" field, because they are
+     * genuinely independent: an emoji carries its own colours, so a list can have a mark and a
+     * colour, an emoji and a colour, or neither, and every combination means something.
+     */
+    val icon: String? = null,
+    /**
      * The colour this list wears, as a palette name.
      *
      * In the file, because it is a choice somebody made and the file is where choices live: a list

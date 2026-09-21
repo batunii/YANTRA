@@ -22,6 +22,7 @@ import ie.shoonya.yantra.data.db.MIGRATION_14_15
 import ie.shoonya.yantra.data.db.MIGRATION_15_16
 import ie.shoonya.yantra.data.db.MIGRATION_16_17
 import ie.shoonya.yantra.data.db.MIGRATION_17_18
+import ie.shoonya.yantra.data.db.MIGRATION_18_19
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -603,6 +604,36 @@ class MigrationTest {
                 "idx_focus_node",
                 db.scalar("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='focus_session' AND name NOT LIKE 'sqlite_%'"),
             )
+        }
+    }
+
+    /**
+     * v19 gives a list somewhere to keep its emoji, and keeps the rows it already had.
+     *
+     * An added nullable column is the safest migration there is, which is exactly why it is worth
+     * one test: the risk is not the `ALTER TABLE`, it is forgetting to register the migration or
+     * bumping the version without writing one, and both of those destroy an upgrading user's whole
+     * database rather than one column. `runMigrationsAndValidate` catches the shape; the assertions
+     * below catch the data.
+     */
+    @Test
+    fun v19AddsTheListIconAndLosesNothing() {
+        helper.createDatabase(DB, 18).use { db ->
+            db.execSQL(
+                "INSERT INTO node (id, type, rank, done, in_progress, indent, collapsed, " +
+                    "created_at, updated_at, workspace_id, title, color) " +
+                    "VALUES ('L1','list','a',0,0,0,0,1,1,'','Shopping','Teal')"
+            )
+        }
+
+        helper.runMigrationsAndValidate(DB, 19, true, MIGRATION_18_19).use { db ->
+            assertEquals("Shopping", db.scalar("SELECT title FROM node WHERE id = 'L1'"))
+            // The colour is the neighbour this column was modelled on, and the one an ALTER that
+            // rebuilt the table rather than extending it would quietly drop.
+            assertEquals("Teal", db.scalar("SELECT color FROM node WHERE id = 'L1'"))
+            // Null, not empty: a list that has never been given an emoji wears its drawn mark, and
+            // the two are different states everywhere above here.
+            assertNull(db.scalar("SELECT icon FROM node WHERE id = 'L1'"))
         }
     }
 }
