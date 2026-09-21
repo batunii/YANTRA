@@ -257,6 +257,9 @@ fun SignInScreen(nav: NavHostController) {
                     if (login == null) {
                         stage = failed("GitHub gave us a token it then would not accept")
                     } else {
+                        // Read before it is overwritten: any workspace still holding this exact
+                        // string took its token from the account, whatever its viaApp flag says.
+                        val previous = container.credentials.token(Credentials.ACCOUNT)
                         container.credentials.store(
                             Credentials.ACCOUNT, poll.token, login, viaApp = true,
                             // Kept whether or not GitHub sends them. Both null means the token does
@@ -270,7 +273,7 @@ fun SignInScreen(nav: NavHostController) {
                         // Down to the workspaces, or the new token reaches nothing that syncs.
                         // Their copies are snapshots, and a sign-in that leaves them behind fixes
                         // this screen and nothing else — see Credentials.spreadToWorkspaces.
-                        container.credentials.spreadToWorkspaces(poll.token, login)
+                        container.credentials.spreadToWorkspaces(poll.token, login, replacing = previous)
                         account = login
                         viaApp = true
                         // Freshly minted seconds ago by GitHub itself, so there is nothing to ask.

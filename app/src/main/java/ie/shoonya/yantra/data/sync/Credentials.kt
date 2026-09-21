@@ -222,9 +222,19 @@ class Credentials(context: Context) {
      * fine-grained token is deliberately left alone — that token was chosen for that repository, and
      * replacing it with a broader one nobody asked for would be a quiet escalation.
      */
-    fun spreadToWorkspaces(token: String, login: String) {
+    fun spreadToWorkspaces(token: String, login: String, replacing: String? = null) {
         storedIds()
-            .filter { it != ACCOUNT && viaApp(it) && login(it) == login }
+            .filter { it != ACCOUNT && login(it) == login }
+            // Either flagged as the account's, or *demonstrably* the account's: holding the exact
+            // token the account held a moment ago.
+            //
+            // The second test exists because the flag was not always recorded. A workspace added
+            // through Add a workspace stored `viaApp` at its default of false even when the token it
+            // used was the account's, so on an install that predates this fix the flag says nothing
+            // and filtering on it alone repairs nothing. Comparing against the outgoing token needs
+            // no flag and cannot be wrong: a pasted fine-grained token is a different string, so it
+            // is left exactly where it is.
+            .filter { viaApp(it) || (replacing != null && token(it) == replacing) }
             .forEach { store(it, token, login, viaApp = true) }
     }
 

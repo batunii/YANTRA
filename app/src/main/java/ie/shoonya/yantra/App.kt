@@ -480,7 +480,14 @@ class AppContainer(val app: Application) {
                     AddResult.Refused("${result.ref.slug} could not be joined")
                 }
                 is LinkResult.Ok -> {
-                    credentials.store(id, token, result.login)
+                    credentials.store(
+                        id, token, result.login,
+                        // Whether this workspace's token is the account's own, which decides
+                        // whether a later sign-in may replace it. Compared rather than passed down
+                        // from the screen: the screen knows whether a token was pasted, but this is
+                        // the only place that knows which token was actually used, and the two drift.
+                        viaApp = token == credentials.token(Credentials.ACCOUNT),
+                    )
                     // A workspace we joined already has a name, chosen by whoever started it. Taking
                     // ours over theirs would rename the same shared project on every device.
                     val store = WorkspaceStore(dir, id)
@@ -536,7 +543,10 @@ class AppContainer(val app: Application) {
                 is LinkResult.HasTasks ->
                     AddResult.HasTasks(result.ref.slug, db.nodeDao().countNodes(workspaceId))
                 is LinkResult.Ok -> {
-                    credentials.store(workspaceId, token, result.login)
+                    credentials.store(
+                        workspaceId, token, result.login,
+                        viaApp = token == credentials.token(Credentials.ACCOUNT),
+                    )
                     // Adopting replaced every file under this workspace, so the index is describing
                     // a tree that is gone. Rebuilt before anything reads a name off it.
                     if (result.adopted) workspaces.reindexAll()
