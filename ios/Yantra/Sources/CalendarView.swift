@@ -200,15 +200,20 @@ struct CalendarView: View {
         case .month:
             if twoPane {
                 HStack(alignment: .top, spacing: 18) {
+                    // The grid keeps its metric; the day list takes the rest of the width and the
+                    // whole height, because a day with twenty things on it is what the space is for.
                     MonthGrid(cal: cal).frame(maxWidth: 460)
                     DayList(cal: cal, path: $path, onOpenEvent: { sheet = .editing($0) })
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.horizontal, Layout.pageMargin)
             } else {
                 VStack(spacing: 0) {
                     MonthGrid(cal: cal)
                     DayList(cal: cal, path: $path, onOpenEvent: { sheet = .editing($0) })
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.horizontal, Layout.pageMargin)
             }
         case .week, .day:
@@ -231,7 +236,10 @@ struct ModeSwitch: View {
                         .foregroundStyle(mode == m ? y.accentText : y.muted)
                         .frame(width: 30, height: 30)
                         .background(RoundedRectangle(cornerRadius: 8).fill(mode == m ? y.accentFill : .clear))
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("calendar.mode.\(m.rawValue)")
+                .accessibilityLabel(m == .month ? "Month" : m == .week ? "Week" : "Day")
             }
         }
         .padding(2)
@@ -265,6 +273,7 @@ struct MonthBar: View {
     var body: some View {
         HStack {
             Text(heading).font(Face.text(15, .bold)).foregroundStyle(y.ink)
+                .accessibilityIdentifier("calendar.heading")
             Spacer()
             // Only worth drawing when today is somewhere else.
             if !cal.showsToday {
@@ -272,7 +281,7 @@ struct MonthBar: View {
                     Text("Today").font(Face.text(12.5, .bold)).foregroundStyle(y.accentText)
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(Capsule().fill(y.accentFill))
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).accessibilityIdentifier("calendar.today")
             }
         }
         .padding(.horizontal, Layout.pageMargin).padding(.vertical, 8)
@@ -315,6 +324,9 @@ struct MonthGrid: View {
                             .frame(maxWidth: .infinity, minHeight: cellHeight)
                             .contentShape(Rectangle())
                             .onTapGesture { cal.selected = day }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityIdentifier("calendar.cell.\(day)")
                     }
                 }
             }
@@ -395,7 +407,7 @@ struct DayList: View {
                     .font(Face.text(11, .bold)).kerning(1.4).foregroundStyle(y.muted)
                     .padding(.top, 14).padding(.bottom, 8)
                 if items.isEmpty {
-                    Text("Nothing on this day")
+                    Text("Nothing on this day").accessibilityIdentifier("calendar.empty")
                         .font(Face.text(13.5)).foregroundStyle(y.dim).padding(.vertical, 18)
                 }
                 ForEach(items) { item in
@@ -452,6 +464,7 @@ struct DayItemRow: View {
             .padding(.vertical, 9)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("calendar.item.\(title)")
     }
 
     private var title: String {
@@ -513,7 +526,7 @@ struct CalendarBar: View {
                     .foregroundStyle(y.onAccent)
                     .frame(width: 52, height: 52)
                     .background(Circle().fill(y.accent))
-            }.buttonStyle(.plain)
+            }.buttonStyle(.plain).accessibilityIdentifier("calendar.add").accessibilityLabel("New event")
         }
         .padding(.horizontal, Layout.pageMargin).padding(.bottom, 6)
     }

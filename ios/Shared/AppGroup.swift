@@ -22,12 +22,27 @@ public enum AppGroup {
 
     /// A store + writer over the shared workspace, scaffolded and seeded on first use.
     public static func openWorkspace() -> (WorkspaceStore, WorkspaceWriter) {
+        resetIfAsked()
         let store = WorkspaceStore(root: workspaceRoot, id: "")
         if !store.exists {
             store.scaffold(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000))
-            WorkspaceSeeder.seed(store)
+            if CommandLine.arguments.contains("-uitest") { UITestFixture.seed(store) }
+            else { WorkspaceSeeder.seed(store) }
         }
         return (store, WorkspaceWriter(store: store, device: device))
+    }
+
+    /// `-uitest-reset` empties the workspace and the preferences before anything reads them.
+    ///
+    /// UI tests need a known starting point, and the app group survives a reinstall of the app, so
+    /// "delete the app between runs" does not give them one. Guarded on the argument so it can only
+    /// happen when a test harness asks: nothing a person can do reaches this.
+    private static var didReset = false
+    private static func resetIfAsked() {
+        guard !didReset, CommandLine.arguments.contains("-uitest-reset") else { return }
+        didReset = true
+        try? FileManager.default.removeItem(at: container.appendingPathComponent("workspaces"))
+        for (k, _) in defaults.dictionaryRepresentation() { defaults.removeObject(forKey: k) }
     }
 }
 

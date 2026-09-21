@@ -127,6 +127,8 @@ struct TaskRow: View {
         HStack(alignment: .top, spacing: 12) {
             YantraCheckbox(state: state, size: 23, frameTint: node.done ? nil : y.priority(node.priority)) { model.toggleDone(node) }
                 .padding(.top, 1)
+                .accessibilityIdentifier("task.check.\(inlinePlain(node.title ?? ""))")
+                .accessibilityLabel(node.done ? "Mark not done" : "Mark done")
             Button(action: onOpen) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -143,7 +145,9 @@ struct TaskRow: View {
                     }
                     meta
                 }
-            }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("task.row.\(inlinePlain(node.title ?? ""))")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 16).fill(node.inProgress ? y.accentFill.opacity(0.5) : y.cardBg))

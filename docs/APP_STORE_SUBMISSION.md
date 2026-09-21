@@ -82,3 +82,32 @@ actually live:
 bash scripts/pull-metadata.sh apple
 python3 scripts/metadata-audit.py ./metadata
 ```
+
+## Running the tests
+
+Three suites, all on the iOS side.
+
+```sh
+# 1. The cross-platform contract. Kotlin writes conformance/, Swift reads it.
+./gradlew :app:testDebugUnitTest --tests '*ConformanceFixturesTest'
+
+# 2. The Swift core: format, calendar, timeline, writer, capture, widget model.
+cd ios/YantraCore && swift test
+
+# 3. The app itself, driven on a simulator.
+cd ios
+xcodebuild -project Yantra.xcodeproj -scheme Yantra \
+  -destination 'name=iPhone 17 Pro' test
+xcodebuild -project Yantra.xcodeproj -scheme Yantra \
+  -destination 'name=iPad Pro 13-inch (M5)' test
+```
+
+The UI tests reset and re-seed the workspace on every launch (`-uitest-reset -uitest`), so a run
+never depends on what the run before it left behind. The fixture is `UITestFixture` rather than the
+welcome content — otherwise every test that named a row would be a test of the welcome copy — and it
+uses stable ids (`fixture-groceries`) so a test can be pointed at a page with
+`-route open:<id>` instead of tapping its way there.
+
+Run both destinations. The iPad is not a bigger iPhone here: the task rail is a column rather than a
+sheet, and the month is two panes rather than one. Two of the bugs these tests caught only existed
+on one of them.

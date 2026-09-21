@@ -70,7 +70,7 @@ struct DayTimeline: View {
 
             if railOpen, wide {
                 Divider().frame(width: 0.5).overlay(y.hairline)
-                CalendarTaskRail(cal: cal).frame(width: 210)
+                CalendarTaskRail(cal: cal).frame(width: 248)
             }
         }
         // On a phone the rail is a sheet, not a column. It is the same rail answering the same
@@ -317,13 +317,14 @@ struct CalendarTaskRail: View {
                     ForEach(RailBucket.allCases, id: \.self) { b in
                         Button { shelf = b } label: {
                             Text(b.label).font(Face.text(11.5, shelf == b ? .bold : .regular))
+                                .lineLimit(1).fixedSize()
                                 .foregroundStyle(shelf == b ? y.accentText : y.muted)
-                                .padding(.horizontal, 9).padding(.vertical, 6)
+                                .padding(.horizontal, 7).padding(.vertical, 6)
                                 .background(RoundedRectangle(cornerRadius: 7).fill(shelf == b ? y.accentFill : .clear))
                         }.buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
+                .padding(.horizontal, 8).padding(.vertical, 8)
             }
             Divider().frame(height: 0.5).overlay(y.hairline)
             ScrollView {

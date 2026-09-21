@@ -17,6 +17,8 @@ build/
 # iOS. The Xcode project is generated from ios/project.yml by xcodegen; SwiftPM and xcodebuild
 # products live under ios/build and .build.
 /ios/Yantra.xcodeproj
-/ios/build
+# Every derived-data directory, not just the default one: the UI tests build per destination
+# (ios/build, ios/build-ipad, …) and a stray one is fifty thousand files into a commit.
+/ios/build*
 /ios/**/.build
 /ios/**/.swiftpm

@@ -144,3 +144,33 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra.share
         SKIP_INSTALL: YES
+
+  YantraUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Yantra
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra.uitests
+        TEST_TARGET_NAME: Yantra
+        # A UI-test bundle has no plist of its own in this spec, so let the toolchain make one.
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Yantra:
+    build:
+      targets:
+        Yantra: all
+        YantraWidgets: all
+        YantraShare: all
+        YantraUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - YantraUITests

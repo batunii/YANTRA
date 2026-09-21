@@ -45,12 +45,15 @@ struct HomeView: View {
                                 + Text(" · ").font(Face.text(12.5, .medium)).foregroundStyle(y.muted)
                                 + Text(Date(), format: .dateTime.day().month(.abbreviated)).font(Face.text(12.5, .medium)).foregroundStyle(y.muted)
                             Text(greeting).font(Face.display(24)).tracking(-0.3).foregroundStyle(y.ink)
+                                .accessibilityIdentifier("home.greeting")
                             Text(tally).font(Face.text(13.5)).foregroundStyle(y.secondary)
                         }
                         Spacer()
                         HStack(spacing: 8) {
                             NavCircle(icon: "calendar") { path.append(Route.calendar(nil)) }
+                                .accessibilityIdentifier("home.calendar").accessibilityLabel("Calendar")
                             NavCircle(icon: "slider.horizontal.3") { path.append(Route.settings) }
+                                .accessibilityIdentifier("home.settings").accessibilityLabel("Settings")
                         }
                     }
                     .padding(.top, 14).padding(.bottom, 22)
@@ -106,6 +109,10 @@ struct HomeRow: View {
             .padding(.vertical, 12)
         }
         .buttonStyle(.plain)
+        // Identifier only. A Button already reads as one control with its children folded into the
+        // label; adding an explicit combine on top makes an element that reports as a button and
+        // swallows the tap, which is a row that looks right in the tree and does nothing.
+        .accessibilityIdentifier("home.row.\(inlinePlain(node.title ?? ""))")
         .overlay(alignment: .bottom) { Rectangle().fill(y.hairline).frame(height: 1) }
     }
 }
@@ -150,6 +157,7 @@ struct HomeTabBar: View {
     var body: some View {
         HStack {
             Button(action: onHome) { Image(systemName: "house").icon(22).foregroundStyle(y.ink).frame(width: 44, height: 44) }
+                .accessibilityIdentifier("tab.home").accessibilityLabel("Home")
             Spacer()
             Button(action: onCreate) {
                 Image(systemName: "gearshape.fill").icon(26).foregroundStyle(y.accent)
@@ -157,8 +165,10 @@ struct HomeTabBar: View {
                     .background(RoundedRectangle(cornerRadius: 17).fill(y.accentFill))
                     .overlay(RoundedRectangle(cornerRadius: 17).stroke(y.accentBorder, lineWidth: 1))
             }
+            .accessibilityIdentifier("tab.create").accessibilityLabel("New")
             Spacer()
             Button(action: onStats) { Image(systemName: "chart.bar.fill").icon(20).foregroundStyle(y.accent).frame(width: 44, height: 44) }
+                .accessibilityIdentifier("tab.stats").accessibilityLabel("Stats")
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 40).padding(.top, 10).padding(.bottom, 6)
