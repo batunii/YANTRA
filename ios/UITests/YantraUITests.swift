@@ -14,9 +14,26 @@ class YantraUITestCase: XCTestCase {
 
     var app: XCUIApplication!
 
+    private var interruptions: NSObjectProtocol?
+
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // Permission dialogs belong to the system, not the app, and they sit *over* it — so a query
+        // for anything behind one finds nothing and the test fails for a reason that has nothing to
+        // do with the screen. Starting a focus session asks about notifications; turning on the
+        // calendar asks about calendars.
+        interruptions = addUIInterruptionMonitor(withDescription: "system permission") { alert in
+            for label in ["Allow", "OK", "Don’t Allow", "Don't Allow", "Allow While Using App"] {
+                let button = alert.buttons[label]
+                if button.exists { button.tap(); return true }
+            }
+            return false
+        }
+    }
+
+    override func tearDownWithError() throws {
+        if let interruptions { removeUIInterruptionMonitor(interruptions) }
     }
 
     /// Launches on a given route. `-route` is the app's own scaffolding, already used for
@@ -26,7 +43,14 @@ class YantraUITestCase: XCTestCase {
     func launch(route: String? = nil, extra: [String] = []) -> XCUIApplication {
         app.launchArguments = ["-uitest-reset", "-uitest"] + extra
         if let route { app.launchArguments += ["-route", route] }
+        // Tests run back to back in one process, and a launch on top of an instance that is still
+        // shutting down comes up in a half-state where the first screen never arrives. Terminating
+        // first, then waiting to actually be foreground, is what makes each test start from the
+        // same place instead of from whatever the previous one left mid-teardown.
+        app.terminate()
         app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15),
+                      "the app never came to the foreground for -route \(route ?? "home")")
         return app
     }
 
@@ -40,6 +64,8 @@ class YantraUITestCase: XCTestCase {
         static let plainTask = "Plain thing"
         static let doneTask = "Finished thing"
         static let subtask = "A subtask"
+        static let focusedTask = "Focused thing"
+        static let archivedTask = "Archived thing"
         static let event = "Standup"
         static let allDayEvent = "Conference day"
     }
@@ -126,10 +152,11 @@ final class HomeUITests: YantraUITestCase {
         let app = launch(route: "home")
         let row = el("home.row.\(Fixture.list)")
         assertExists(row, "no Groceries row")
-        // Four tasks, one of them finished. The two events on that page are not tasks and must not
-        // be counted — a list that said "1 of 6 done" would be counting things with no box to tick.
-        XCTAssertTrue(row.label.contains("1 of 4 done"),
-                      "expected '1 of 4 done', got \(row.label.debugDescription)")
+        // Five tasks, one of them finished. The two events on that page are not tasks and must not
+        // be counted — a list that said "1 of 7 done" would be counting things with no box to tick.
+        // The archived task is not counted either: it has left the list.
+        XCTAssertTrue(row.label.contains("1 of 5 done"),
+                      "expected '1 of 5 done', got \(row.label.debugDescription)")
     }
 
     func testTappingAListOnHomeOpensIt() {
@@ -423,5 +450,130 @@ final class RouteSmokeTests: YantraUITestCase {
                                  "-route \(route) came up with nothing on it")
             app.terminate()
         }
+    }
+}
+
+// MARK: - focus and its stats
+
+final class FocusUITests: YantraUITestCase {
+
+    /// The empty line is one label across two lines, so it is matched by what it contains rather
+    /// than by an exact string that depends on where the wrap falls.
+    func emptyLine() -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] 'Nothing in focus'")).firstMatch
+    }
+
+    func testFocusOpensOnItsEmptyStateWithNothingRunning() {
+        launch(route: "focus")
+        assertExists(emptyLine(), "the focus screen did not come up empty")
+    }
+
+    /// Starting a session is what the whole screen exists for, so it is worth driving rather than
+    /// asserting about the ledger. `start:<id>:<secs>` is the app's own scaffolding.
+    func testAStartedSessionIsRunningAndCanBeFinished() {
+        let app = launch(route: "start:fixture-plain:1500")
+        // A monitor only runs when the test touches the app, so touch it before asking anything.
+        app.tap()
+        // The task being focused is named on screen, and the empty state is gone.
+        assertExists(shelf(Fixture.plainTask), "the running session does not name its task")
+        XCTAssertFalse(emptyLine().exists, "it still looks empty while running")
+    }
+
+    func testStatsCountsTheSessionsInTheLedger() {
+        let app = launch(route: "stats")
+        assertExists(app.staticTexts["Focus stats"], "the stats screen never appeared")
+        // The fixture writes two finished sessions, yesterday and today.
+        assertExists(app.staticTexts["Focused on 2 of the last 7 days"],
+                     "the rhythm line does not match the ledger")
+        // And the breakdown names the task they were on.
+        assertExists(shelf(Fixture.focusedTask), "the breakdown does not name the focused task")
+        XCTAssertFalse(app.staticTexts["No focus in the last 7 days."].exists,
+                       "the breakdown claims there is nothing to show")
+    }
+}
+
+// MARK: - the archive
+
+final class ArchiveUITests: YantraUITestCase {
+
+    func testArchiveListsWhatLeftAndPutsItBack() {
+        let app = launch(route: "archive")
+        assertExists(app.staticTexts["Archive"], "the archive screen never appeared")
+        assertExists(shelf(Fixture.archivedTask), "the archived task is not listed")
+
+        // One tap returns it exactly where it was, which is the screen's whole promise.
+        let back = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'arrow'")).firstMatch
+        if back.exists {
+            back.tap()
+            expectGone(shelf(Fixture.archivedTask), "restoring did not take it out of the archive")
+        }
+    }
+
+    func expectGone(_ el: XCUIElement, _ message: String, timeout: TimeInterval = 6) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline { if !el.exists { return }; usleep(150_000) }
+        XCTFail(message)
+    }
+}
+
+// MARK: - sign-in, without signing in
+
+final class SignInUITests: YantraUITestCase {
+
+    /// The screen has to be usable and honest before anybody signs in: the app works entirely
+    /// without an account, and the review notes say so.
+    func testSignInOffersAWayInAndClaimsNoAccount() {
+        let app = launch(route: "github")
+        // Something about signing in is on screen, and nothing claims to be signed in already.
+        let signIn = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] 'sign in' OR label CONTAINS[c] 'github'")).firstMatch
+        assertExists(signIn, "the GitHub screen offers no way in")
+        XCTAssertFalse(app.staticTexts["Signed in"].exists, "it claims a session that does not exist")
+    }
+}
+
+// MARK: - ink
+
+final class InkUITests: YantraUITestCase {
+
+    /// The canvas is a PencilKit view, so there is little to assert about its contents — but that it
+    /// opens, names its page and does not come up blank is exactly the failure a route smoke test
+    /// cannot tell from a working screen.
+    func testTheInkCanvasOpens() {
+        let app = launch(route: "ink:fixture-ink")
+        XCTAssertEqual(app.state, .runningForeground, "the ink route brought the app down")
+        // The hint line is the canvas saying it is ready for input.
+        let hint = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] 'draw'")).firstMatch
+        assertExists(hint, "the ink canvas came up with no drawing surface")
+    }
+}
+
+// MARK: - the custom scheme, which anyone can open
+
+/// `yantra://` is not owned: any app on the device can open one of these links. So the whole
+/// reachable surface has to be navigation into the person's own data — nothing that writes, deletes
+/// or signs anything out — and a link naming something that does not exist has to go nowhere rather
+/// than to a blank page with a back button.
+final class DeepLinkUITests: YantraUITestCase {
+
+    func testAnUnknownIdGoesNowhere() {
+        // Driven through the app's own route scaffolding, which shares the handler's lookup.
+        let app = launch(route: "open:no-such-node-at-all")
+        XCTAssertEqual(app.state, .runningForeground, "an unknown id brought the app down")
+        // It stays on Home rather than pushing a page for a node that does not exist.
+        assertExists(app.staticTexts["home.greeting"], "an unknown id pushed a screen anyway")
+    }
+
+    func testAKnownIdOpensThatPage() {
+        launch(route: "open:fixture-groceries")
+        assertExists(el("task.row.\(Fixture.plainTask)"), "a known id did not open its list")
+    }
+
+    func testACalendarLinkWithARubbishDateStillOpensTheCalendar() {
+        let app = launch(route: "calendar:not-a-date")
+        XCTAssertEqual(app.state, .runningForeground, "a bad date brought the app down")
+        assertExists(app.staticTexts["calendar.heading"], "a bad date should still reach the calendar")
     }
 }

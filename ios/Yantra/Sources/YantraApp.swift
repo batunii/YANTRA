@@ -23,6 +23,16 @@ struct RootView: View {
     @State private var quickAdd = false
     @Environment(\.scenePhase) private var phase
 
+    /// Opens a node, if it is one.
+    ///
+    /// Shared by the `yantra://open/<id>` handler and the `-route open:<id>` scaffolding so the two
+    /// cannot drift: an id naming nothing navigates nowhere, rather than pushing a page for a node
+    /// that does not exist — which is a blank screen with a back button on it.
+    private func openNode(_ id: String) {
+        guard let node = model.index.nodes[id] else { return }
+        path.append(node.type == NodeType.smartList ? Route.smart(id) : Route.node(id))
+    }
+
     var body: some View {
         let y = theme.colors(systemDark: scheme == .dark)
         NavigationStack(path: $path) {
@@ -59,14 +69,28 @@ struct RootView: View {
             }
         }
         .onOpenURL { url in
-            // yantra://open/<id> · yantra://focus · yantra://quickadd/<id> — the widget and notification contract.
+            // yantra://open/<id> · yantra://focus · yantra://calendar/<date> · yantra://quickadd
+            // — the contract this app's own widgets, notifications and Live Activity use.
+            //
+            // A custom scheme is not owned: any app on the device can open one of these, so every
+            // one of them has to be a *navigation* and nothing else. None of these writes, deletes,
+            // signs anything out or spends a token, and an id that names nothing navigates nowhere
+            // rather than to a blank page. The reachable surface is "show the person a screen of
+            // their own data", which is the same thing the app icon does.
             guard url.scheme == "yantra" else { return }
             switch url.host {
-            case "open": if let id = url.pathComponents.dropFirst().first { path.append(model.index.nodes[id]?.type == NodeType.smartList ? Route.smart(id) : Route.node(id)) }
-            case "focus": path.append(Route.focus(nil))
-            case "calendar": path.append(Route.calendar(url.pathComponents.dropFirst().first))
-            case "quickadd": quickAdd = true
-            default: break
+            case "open":
+                url.pathComponents.dropFirst().first.map(openNode)
+            case "focus":
+                path.append(Route.focus(nil))
+            case "calendar":
+                // A date that will not parse means "the calendar", not a crash and not a nil day.
+                let day = url.pathComponents.dropFirst().first.flatMap { LocalDate($0) }
+                path.append(Route.calendar(day?.description))
+            case "quickadd":
+                quickAdd = true
+            default:
+                break
             }
         }
         .sheet(isPresented: $quickAdd) { CreateSheet(path: $path) }
@@ -98,10 +122,7 @@ struct RootView: View {
                 if r == "archive" { path.append(Route.archive); return }
                 if r.hasPrefix("ink:") { path.append(Route.ink(String(r.dropFirst(4)))); return }
                 if r == "stats" { path.append(Route.stats); return }
-                if r.hasPrefix("open:") {
-                    let id = String(r.dropFirst(5))
-                    path.append(model.index.nodes[id]?.type == NodeType.smartList ? Route.smart(id) : Route.node(id)); return
-                }
+                if r.hasPrefix("open:") { openNode(String(r.dropFirst(5))); return }
             }
             // Open on Today, as Android's splash does, when it still exists.
             if path.isEmpty, let today = model.index.node(systemKey: SystemKey.today) { path.append(Route.smart(today.id)) }

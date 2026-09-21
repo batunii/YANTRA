@@ -97,7 +97,7 @@ struct HomeRow: View {
             HStack(spacing: 14) {
                 ZStack {
                     if !isSmart { RoundedRectangle(cornerRadius: 10).fill(y.accentFill.opacity(0.75)) }
-                    Image(systemName: isSmart ? "sparkles" : "list.bullet").font(.system(size: isSmart ? 19 : 17, weight: .semibold)).foregroundStyle(y.accent)
+                    Image(systemName: isSmart ? "sparkles" : "list.bullet").icon(isSmart ? 19 : 17, .semibold).foregroundStyle(y.accent)
                 }.frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(inlinePlain(node.title ?? "").isEmpty ? "Untitled" : inlinePlain(node.title ?? "")).font(Face.display(15.5, .medium)).foregroundStyle(y.ink).lineLimit(1)

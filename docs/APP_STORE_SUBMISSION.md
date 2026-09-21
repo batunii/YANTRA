@@ -16,20 +16,51 @@ one accepted risk and two tasks that can only be done in App Store Connect.
 | `APPLE-PRIVACY-NUTRITION-LABELS` (high) | 5.1.1 | The manifest declares the truth — nothing collected, nothing tracked. The matching answers for App Store Connect are below. |
 | `APPLE-ACCESSIBILITY-DYNAMICTYPE` (medium) | Accessibility / EAA | Every face now scales: `Face.display/text/mono` use `Font.custom(_:size:relativeTo:)`, and the 25 SF Symbol call sites use a `.icon(_:_:)` modifier backed by `@ScaledMetric`. Widgets are deliberately excluded — WidgetKit gives a widget a fixed box, and type that grows inside one truncates rather than helps. |
 
-## Accepted risk
+## Accepted risk, now hardened
 
 **`BOTH-UNSAFE-DEEPLINK` (high) — `yantra://` without Universal Links.**
 
-The scheme is used only by this app's own widgets, notifications and Live Activity to reach a
-screen. The handler in `RootView.onOpenURL` switches on a closed set of hosts (`open`, `focus`,
-`quickadd`, `calendar`) and falls through to nothing, and the worst a hijacked link can do is
-navigate to a node in the person's own data — there is no destructive action and no credential
-behind a URL.
+A custom scheme is not owned: any app on the device can open one of these links. So the rule is that
+the entire reachable surface is *navigation into the person's own data* — nothing that writes,
+deletes, signs out or spends a token.
 
-Universal Links would need a domain serving `apple-app-site-association`. **If a domain is
-available, this should be done**; it is the only finding left that is worth real work. Until then
-the risk is that another app could open Yantra on a chosen screen, which is not a data-loss or
-credential path.
+What was tightened:
+
+- `RootView.onOpenURL` switches on a closed set of hosts (`open`, `focus`, `calendar`, `quickadd`)
+  and falls through to nothing.
+- `open/<id>` now goes through `openNode(_:)`, which **refuses an id that is not in the workspace**.
+  It used to push a route for a node that does not exist, which is a blank screen with a back button
+  on it. The same helper backs the `-route` scaffolding, so the two entry points cannot drift.
+- `calendar/<date>` with an unparseable date opens the calendar rather than doing anything odd.
+- `DeepLinkUITests` pins all three.
+
+Universal Links would still need a domain serving `apple-app-site-association`. **If a domain is
+available, do it** — but the residual risk is now only that another app can bring Yantra to a screen
+of your own data, which is what the app icon does too.
+
+## Scanner findings that are not real
+
+Re-running the guard after the test work raised two more. Both were checked against the source
+before being dismissed, and neither is a change worth making.
+
+**`APPLE-ODR-DEPRECATED-27` (high) — "On-Demand Resources in use".** False positive. The rule greps
+for `NSBundleResourceRequest|OnDemandResources|on-demand-resource`, and the only matches in the tree
+are Apple's own precompiled module caches under `ios/YantraCore/.build/` — SDK headers, not this
+app. There are zero matches in `Yantra/`, `Shared/`, `Widgets/`, `Share/` or the generated
+`project.pbxproj`. Verify with:
+
+```sh
+grep -rliE "NSBundleResourceRequest|OnDemandResources" ios/Yantra ios/Shared ios/Widgets ios/Share
+```
+
+**`APPLE-ACCESSIBILITY-DYNAMICTYPE` (medium) — "hardcoded system font size".** What is left is
+deliberate. Every icon in the shipped app UI goes through `.icon(_:_:)`, which scales with
+`@ScaledMetric`; the remaining `Font.system(size:)` calls are that modifier's own implementation,
+the debug `ConformanceView`, and the widgets. Widgets are excluded on purpose: WidgetKit gives a
+widget a fixed box, and type that grows inside one truncates rather than helps.
+
+(One real miss was found doing this: a Home row icon sized `isSmart ? 19 : 17` had escaped the
+earlier sweep, because that pass matched literal sizes only. It scales now.)
 
 ## Still to do in App Store Connect — cannot be done from the repository
 
@@ -111,3 +142,15 @@ uses stable ids (`fixture-groceries`) so a test can be pointed at a page with
 Run both destinations. The iPad is not a bigger iPhone here: the task rail is a column rather than a
 sheet, and the month is two panes rather than one. Two of the bugs these tests caught only existed
 on one of them.
+
+### What the UI suite covers
+
+30 tests: Home and lists, ticking a task through to the file and back, the calendar in all three
+modes, creating an event, the task rail on both shapes of window, settings including the
+device-calendar switch and the privacy policy, focus and its stats, the archive round trip,
+sign-in before anybody has signed in, the ink canvas opening, the `yantra://` scheme, and a smoke
+test over every route.
+
+Not covered: drawing *into* the ink canvas (PencilKit has no useful accessibility surface), the
+share extension (it needs a second host app to invoke it), and sync against a live GitHub — the
+sign-in screen is exercised, the network path is not.

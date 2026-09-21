@@ -22,6 +22,8 @@ enum UITestFixture {
         static let plainTask = "Plain thing"
         static let doneTask = "Finished thing"
         static let subtask = "A subtask"
+        static let focusedTask = "Focused thing"
+        static let archivedTask = "Archived thing"
         static let event = "Standup"
         static let allDayEvent = "Conference day"
     }
@@ -34,6 +36,9 @@ enum UITestFixture {
         static let secondList = "fixture-work"
         static let smartList = "fixture-today"
         static let plainTask = "fixture-plain"
+        static let focusedTask = "fixture-focused"
+        static let archivedTask = "fixture-archived"
+        static let ink = "fixture-ink"
     }
 
     static func seed(_ store: WorkspaceStore) {
@@ -69,6 +74,7 @@ enum UITestFixture {
                                 modifiedAt: now, device: "uitest", blocks: [
             .prose("Some notes on this task."),
             .task(TaskRef(id: id(), title: Names.subtask)),
+            .ink(id: Ids.ink),
         ]))
 
         store.writePage(PageDoc(id: Ids.secondList, type: NodeType.list, parent: nil, title: Names.secondList,
@@ -85,5 +91,36 @@ enum UITestFixture {
         store.writeSmartList(SmartListDef(nodeId: smart, filterJson: FilterJSON.encode(todayFilter),
                                           sortJson: FilterJSON.encode([SortSpec(by: .propDate, defId: BuiltIns.due)]),
                                           homeParentId: inbox))
+
+        seedFocus(store, taskId: Ids.focusedTask, listId: groceries, now: now)
+        seedArchive(store, pageId: groceries, now: now)
+    }
+
+    /// Two finished sessions on a task, so the stats screen has something to count.
+    ///
+    /// Yesterday and today rather than two of today, because the screen's headline number is how
+    /// many of the last seven days had any focus at all — one day would leave that untested.
+    private static func seedFocus(_ store: WorkspaceStore, taskId: String, listId: String, now: Date) {
+        // The task the sessions point at has to exist, or the breakdown has nothing to name.
+        if var page = store.readPage(listId) {
+            page.blocks.append(.task(TaskRef(id: taskId, title: Names.focusedTask)))
+            store.writePage(page)
+        }
+        func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
+        let yesterday = now.addingTimeInterval(-86_400)
+        for (i, start) in [yesterday, now.addingTimeInterval(-3_600)].enumerated() {
+            let session = FocusSession(id: "fixture-session-\(i)", nodeId: taskId, startedAt: ms(start),
+                                       endedAt: ms(start.addingTimeInterval(1_500)), plannedSecs: 1_500,
+                                       actualSecs: 1_500, outcome: FocusOutcome.ranOut)
+            store.appendFocus(session.line, month: session.monthKey)
+        }
+    }
+
+    /// One task that has already left its list, so the archive screen is not just its empty state.
+    private static func seedArchive(_ store: WorkspaceStore, pageId: String, now: Date) {
+        let line = PageCodec.encodeBlock(.task(TaskRef(
+            id: Ids.archivedTask, title: Names.archivedTask, status: .done,
+            doneAt: LocalDate.today().adding(days: -40))))
+        store.writeArchivedLines(pageId, [line])
     }
 }
