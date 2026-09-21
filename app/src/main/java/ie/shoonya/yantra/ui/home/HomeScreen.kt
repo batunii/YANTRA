@@ -274,7 +274,11 @@ fun HomeScreen(nav: NavHostController) {
                             // the one you are *in* should win. The row stays, because what is
                             // coming is exactly what you need while overrunning.
                             accented = live == null,
-                            onClick = { nav.navigate(Routes.node(event.event.nodeId)) },
+                            // The task, not the sitting — see EventWithTitle.displayTarget.
+                            // A sitting has no page worth opening, and this opened one:
+                            // a header reading "Untitled" for the thing the row above it
+                            // had just named correctly.
+                            onClick = { nav.navigate(Routes.node(event.displayTarget)) },
                         )
                     }
                 }

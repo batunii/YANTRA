@@ -507,7 +507,7 @@ interface PropertyDao {
      */
     @Query(
         """
-        SELECT pv.node_id AS nodeId, n.title AS ownTitle, n.done AS done,
+        SELECT pv.node_id AS nodeId, n.title AS title, n.done AS done,
                pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime,
                pv.v_duration_min AS durationMin,
                n.ext_uid AS extUid, n.ext_start AS extStart
@@ -528,7 +528,7 @@ interface PropertyDao {
      */
     @Query(
         """
-        SELECT n.id AS nodeId, n.title AS ownTitle,
+        SELECT n.id AS nodeId, n.title AS title,
                d.v_date AS dueMillis,
                l.v_date AS deadlineMillis,
                (SELECT COUNT(*) FROM event e WHERE e.for_node_id = n.id) AS sittings
@@ -838,6 +838,19 @@ data class EventWithTitle(
      */
     val displayTitle: String?
         get() = if (event.forNodeId != null) forTitle ?: ownTitle else ownTitle
+
+    /**
+     * The node a tap on this should open.
+     *
+     * A sitting has no page worth opening — it is an hour on Thursday, and there is nothing to
+     * write about that; its notes are the task's. Beside [displayTitle] because it is the same
+     * fact: a sitting borrows both its words and its destination from the task it is for.
+     *
+     * Here rather than resolved at each call site, which is how Home came to open a page titled
+     * "Untitled" from a row that had just been fixed to *say* the task's name. The two halves of
+     * "draw it as its task" were one line apart in the same row and only one of them was done.
+     */
+    val displayTarget: String get() = event.forNodeId ?: event.nodeId
 }
 
 @Dao
