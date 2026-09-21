@@ -227,7 +227,19 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
         return try {
             when (val code = conn.responseCode) {
                 200 -> SignInState.Ok
-                401, 403 -> SignInState.Unauthorized
+                401 -> SignInState.Unauthorized
+                // **403 is not only "revoked".** GitHub answers 403 for a secondary rate limit too,
+                // and reading that as a dead sign-in is expensive in a way nothing on the screen
+                // would explain: the user is told to sign in again, does, and burns one of the ten
+                // tokens GitHub will hold for this app — to fix a token that was never broken. Ten
+                // is roomy, but it is the same mistake that made a cap of two fatal, and the fix is
+                // to believe GitHub's own header rather than guess from the status line.
+                403 -> {
+                    val exhausted = conn.getHeaderField("x-ratelimit-remaining") == "0" ||
+                        conn.getHeaderField("retry-after") != null
+                    if (exhausted) SignInState.Failed("GitHub is rate-limiting this app — try later")
+                    else SignInState.Unauthorized
+                }
                 else -> SignInState.Failed("GitHub returned $code")
             }
         } catch (e: IOException) {

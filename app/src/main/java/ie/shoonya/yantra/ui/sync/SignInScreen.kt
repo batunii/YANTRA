@@ -168,7 +168,19 @@ fun SignInScreen(nav: NavHostController) {
                 signIn = null
                 return@launch
             }
-            signIn = withContext(Dispatchers.IO) { container.github.signInState(tok) }
+            // Asked twice before it is believed, and only for the one answer that costs something.
+            //
+            // "Sign in again" is the most expensive sentence this screen can say: acting on it mints
+            // a new token, and GitHub keeps only ten of those per app before it starts revoking the
+            // oldest — which is how a device that was working stops working. A single odd 401, from
+            // a request that raced a network handover, is not worth that. Every other answer is
+            // either good news or already says it is temporary, so neither needs confirming.
+            val first = withContext(Dispatchers.IO) { container.github.signInState(tok) }
+            signIn = if (first == SignInState.Unauthorized) {
+                withContext(Dispatchers.IO) { container.github.signInState(tok) }
+            } else {
+                first
+            }
         }
         onPauseOrDispose { job.cancel() }
     }

@@ -109,6 +109,29 @@ class GitHubApiTest {
     }
 
     @Test
+    fun `rate limiting is not mistaken for a revoked sign-in`() {
+        // The two need opposite things done: one is waiting, the other is signing in again — and
+        // signing in again mints a token, of which GitHub keeps only ten before revoking the oldest.
+        // Telling someone to spend one to fix a rate limit is how a working device stops working.
+        FakeGitHub().use { server ->
+            server.on("/user") { _ ->
+                403 to """{"message":"You have exceeded a secondary rate limit"}"""
+            }
+            server.header("x-ratelimit-remaining", "0")
+            assertTrue(api(server).signInState("t") is SignInState.Failed)
+        }
+    }
+
+    @Test
+    fun `a genuinely revoked token still reads as revoked`() {
+        FakeGitHub().use { server ->
+            // The same status, without the header that says why. This is the real thing.
+            server.on("/user", 403, """{"message":"Bad credentials"}""")
+            assertEquals(SignInState.Unauthorized, api(server).signInState("t"))
+        }
+    }
+
+    @Test
     fun `a new repository is asked for private, by name`() {
         FakeGitHub().use { server ->
             server.on("/user/repos", 201, """{"full_name":"batunii/team-tasks","default_branch":"main"}""")
