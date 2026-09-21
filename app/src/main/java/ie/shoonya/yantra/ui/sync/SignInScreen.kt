@@ -129,7 +129,6 @@ fun SignInScreen(nav: NavHostController) {
     val y = Yantra.colors
 
     var account by remember { mutableStateOf(container.credentials.login(Credentials.ACCOUNT)) }
-    var viaApp by remember { mutableStateOf(container.credentials.viaApp(Credentials.ACCOUNT)) }
     var stage: Stage by remember { mutableStateOf<Stage>(Stage.Idle) }
     // Open already when there is no App registered to sign into. Otherwise this screen says
     // "signing in is unavailable" and hides the only thing that works behind a link, which reads as
@@ -180,6 +179,36 @@ fun SignInScreen(nav: NavHostController) {
                 withContext(Dispatchers.IO) { container.github.signInState(tok) }
             } else {
                 first
+            }
+
+            // Then the question this screen could not answer, which is the one that mattered.
+            //
+            // "Signed in" is about the *account* token. Sync authenticates with each workspace's own
+            // copy, and the two can disagree — a copy goes stale and every push fails while this
+            // screen stays green, saying the only reassuring thing it knows. Someone looking at it
+            // has no way to tell a working sign-in from a broken workspace, so the report that
+            // reaches us is "it does not sync", which names neither.
+            //
+            // Counting them here costs one request per workspace on a screen opened deliberately,
+            // and turns that report into a number. It also makes the advice true: signing in now
+            // replaces exactly the refused copies.
+            if (signIn == SignInState.Ok) {
+                val refused = withContext(Dispatchers.IO) {
+                    container.credentials.storedIds()
+                        .filter { it != Credentials.ACCOUNT }
+                        .count { id ->
+                            val held = container.credentials.token(id)
+                            held == null ||
+                                (held != tok &&
+                                    container.github.signInState(held) == SignInState.Unauthorized)
+                        }
+                }
+                if (refused > 0) {
+                    note = "${refused} ${if (refused == 1) "workspace" else "workspaces"} cannot " +
+                        "reach GitHub — its saved access was refused. Sign in again here and it " +
+                        "will be repaired."
+                    noteBad = true
+                }
             }
         }
         onPauseOrDispose { job.cancel() }
@@ -257,38 +286,49 @@ fun SignInScreen(nav: NavHostController) {
                     if (login == null) {
                         stage = failed("GitHub gave us a token it then would not accept")
                     } else {
-                        // Read before it is overwritten: any workspace still holding this exact
-                        // string took its token from the account, whatever its viaApp flag says.
-                        val previous = container.credentials.token(Credentials.ACCOUNT)
-                        container.credentials.store(
-                            Credentials.ACCOUNT, poll.token, login, viaApp = true,
-                            // Kept whether or not GitHub sends them. Both null means the token does
-                            // not lapse; anything else is what TokenRenewal needs to keep it alive.
-                            refreshToken = poll.refreshToken,
-                            expiresAt = poll.expiresInSecs?.let { System.currentTimeMillis() + it * 1000L },
-                            // GitHub's own id for this account, which outlives a rename in a way
-                            // the login does not. Free here — we already have the answer in hand.
-                            accountId = who.id,
-                        )
-                        // Down to the workspaces, or the new token reaches nothing that syncs.
-                        // Their copies are snapshots, and a sign-in that leaves them behind fixes
-                        // this screen and nothing else — see Credentials.spreadToWorkspaces.
-                        container.credentials.spreadToWorkspaces(poll.token, login, replacing = previous)
-
-                        // Then the ones no flag and no comparison can identify: a workspace linked
-                        // under an older account token still, whose copy matches neither the flag
-                        // nor the token just replaced.
+                        // Every credential write in one place off the main thread.
                         //
-                        // Asked rather than assumed, because the alternative is guessing. Handing
-                        // the account's token to every workspace of the same login would repair
-                        // these and would also quietly replace a pasted fine-grained token with a
-                        // broader one nobody asked for — undoing a deliberate choice, invisibly. A
-                        // token GitHub refuses is not a choice worth keeping, and a token it accepts
-                        // is working, whatever it is, so this replaces exactly the dead ones.
-                        //
-                        // Affordable only here: one request per workspace, at the one moment the
-                        // user is already waiting on the network and a fresh token exists to offer.
+                        // store() ends in commit() — a synchronous disk write — and encrypts through
+                        // the Keystore first. One of those is not worth a thread hop; one per
+                        // workspace, on the thread drawing the screen, is how a sign-in becomes a
+                        // freeze on the phone with the most workspaces.
                         withContext(Dispatchers.IO) {
+                            // Read before it is overwritten: any workspace still holding this exact
+                            // string took its token from the account, whatever its viaApp flag says.
+                            val previous = container.credentials.token(Credentials.ACCOUNT)
+                            container.credentials.store(
+                                Credentials.ACCOUNT, poll.token, login, viaApp = true,
+                                // Kept whether or not GitHub sends them. Both null means the token
+                                // does not lapse; anything else is what TokenRenewal needs.
+                                refreshToken = poll.refreshToken,
+                                expiresAt = poll.expiresInSecs?.let {
+                                    System.currentTimeMillis() + it * 1000L
+                                },
+                                // GitHub's own id for this account, which outlives a rename in a way
+                                // the login does not. Free here — we already have the answer in hand.
+                                accountId = who.id,
+                            )
+
+                            // Down to the workspaces, or the new token reaches nothing that syncs.
+                            // Their copies are snapshots, and a sign-in that leaves them behind
+                            // fixes this screen and nothing else.
+                            container.credentials.spreadToWorkspaces(
+                                poll.token, login, replacing = previous,
+                            )
+
+                            // Then the ones no flag and no comparison can identify: a workspace
+                            // linked under an account token older than the one just replaced matches
+                            // neither.
+                            //
+                            // Asked rather than assumed, because the alternative is guessing.
+                            // Handing the account's token to every workspace of the same login would
+                            // repair these and would also quietly replace a pasted fine-grained
+                            // token with a broader one nobody asked for — undoing a deliberate
+                            // choice, invisibly. A token GitHub refuses is not a choice worth
+                            // keeping, and one it accepts is working, whatever it is.
+                            //
+                            // Affordable only here: one request per workspace, at the one moment the
+                            // user is already waiting on the network and a fresh token exists.
                             container.credentials.storedIds()
                                 .filter {
                                     it != Credentials.ACCOUNT &&
@@ -304,8 +344,8 @@ fun SignInScreen(nav: NavHostController) {
                                     container.credentials.store(it, poll.token, login, viaApp = true)
                                 }
                         }
+
                         account = login
-                        viaApp = true
                         // Freshly minted seconds ago by GitHub itself, so there is nothing to ask.
                         signIn = SignInState.Ok
                         stage = Stage.Idle
@@ -487,7 +527,6 @@ fun SignInScreen(nav: NavHostController) {
                         // workspaces that already sync — which is what signing out actually means.
                         container.credentials.clear(Credentials.ACCOUNT)
                         account = null
-                        viaApp = false
                         signIn = null
                         note = null
                         stage = Stage.Idle
@@ -611,7 +650,6 @@ fun SignInScreen(nav: NavHostController) {
                             } else {
                                 container.credentials.store(Credentials.ACCOUNT, token.trim(), login)
                                 account = login
-                                viaApp = false
                                 token = ""
                             }
                         }
