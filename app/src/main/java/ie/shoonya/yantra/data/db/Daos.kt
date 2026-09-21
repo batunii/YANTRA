@@ -507,7 +507,7 @@ interface PropertyDao {
      */
     @Query(
         """
-        SELECT pv.node_id AS nodeId, n.title AS title, n.done AS done,
+        SELECT pv.node_id AS nodeId, n.title AS ownTitle, n.done AS done,
                pv.v_date AS dueMillis, COALESCE(pv.v_bool, 0) AS hasTime,
                pv.v_duration_min AS durationMin,
                n.ext_uid AS extUid, n.ext_start AS extStart
@@ -528,7 +528,7 @@ interface PropertyDao {
      */
     @Query(
         """
-        SELECT n.id AS nodeId, n.title AS title,
+        SELECT n.id AS nodeId, n.title AS ownTitle,
                d.v_date AS dueMillis,
                l.v_date AS deadlineMillis,
                (SELECT COUNT(*) FROM event e WHERE e.for_node_id = n.id) AS sittings
@@ -804,8 +804,16 @@ interface LabelDao {
  */
 data class EventWithTitle(
     @Embedded val event: EventEntity,
-    /** The event's own title. Empty for a sitting, which has none by design. */
-    val title: String?,
+    /**
+     * The event's own title. Empty for a sitting, which has none by design.
+     *
+     * **Almost never the one to draw** — that is [displayTitle]. Named `title` until it was the
+     * cause of a bug: Home's next-up row read it, a sitting has no words of its own, and the row
+     * said "Untitled" for a task that was perfectly well named. Three other surfaces had the rule
+     * right, which is what made the fourth easy to miss. A name that reads as the obvious choice,
+     * on a field that is usually the wrong one, is a trap; this one now has to be asked for.
+     */
+    val ownTitle: String?,
     /** The title of the task a sitting is for, joined through `for_node_id`. Null for an event. */
     val forTitle: String? = null,
     /** Whether that task is finished — a sitting for something already done draws as spent. */
@@ -829,7 +837,7 @@ data class EventWithTitle(
      * for an event's *own* node gives a sitting nothing.
      */
     val displayTitle: String?
-        get() = if (event.forNodeId != null) forTitle ?: title else title
+        get() = if (event.forNodeId != null) forTitle ?: ownTitle else ownTitle
 }
 
 @Dao
@@ -853,7 +861,7 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+        SELECT e.*, n.title AS ownTitle, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
                n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
@@ -900,7 +908,7 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+        SELECT e.*, n.title AS ownTitle, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
                n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id
@@ -913,7 +921,7 @@ interface EventDao {
     /** One event, watched — for its own page to say when it is. */
     @Query(
         """
-        SELECT e.*, n.title AS title, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
+        SELECT e.*, n.title AS ownTitle, t.title AS forTitle, COALESCE(t.done, 0) AS forDone,
                n.ext_uid AS nodeExtUid, n.ext_start AS nodeExtStart
           FROM event e
           JOIN node n ON n.id = e.node_id

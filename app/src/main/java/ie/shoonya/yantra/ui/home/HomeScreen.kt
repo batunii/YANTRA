@@ -684,7 +684,11 @@ private fun NextRow(
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    event.title.orEmpty().ifBlank { "Untitled" },
+                    // A sitting borrows its task's words — see EventWithTitle.displayTitle. This
+                    // row read the event's own title, and a sitting has none, so the one place on
+                    // Home that says what you are next expected at said "Untitled" for a task that
+                    // was perfectly well named.
+                    event.displayTitle.orEmpty().ifBlank { "Untitled" },
                     fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )

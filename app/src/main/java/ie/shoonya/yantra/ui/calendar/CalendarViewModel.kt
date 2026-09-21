@@ -218,7 +218,11 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         for (row in ours) {
             val d = match(row.nodeExtUid, row.nodeExtStart) ?: continue
             val (start, end) = deviceLocalSpan(d, zone)
-            if (d.title == row.title &&
+            // The event's *own* words, deliberately: this is deciding whether the file still
+            // describes the meeting the device calendar holds. A sitting never reaches here —
+            // it has no external uid — and if one did, comparing the task's title to a
+            // meeting's would rewrite the file on every pass.
+            if (d.title == row.ownTitle &&
                 row.event.startLocal == start.toString() &&
                 row.event.endLocal == end.toString()
             ) continue

@@ -9,11 +9,14 @@ package ie.shoonya.yantra
 internal fun indexed(
     event: ie.shoonya.yantra.data.db.EventEntity,
     title: String? = null,
+    /** The title of the task a sitting is for, as the `for_node_id` join supplies it. */
+    forTitle: String? = null,
     extUid: String? = null,
     extStart: String? = null,
 ) = ie.shoonya.yantra.data.db.EventWithTitle(
     event = event,
-    title = title,
+    ownTitle = title,
+    forTitle = forTitle,
     nodeExtUid = extUid,
     nodeExtStart = extStart,
 )
