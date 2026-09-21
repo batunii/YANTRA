@@ -233,26 +233,20 @@ fun DueSheet(
             // told about notifications they are not asking for.
             if (reminder != null && !reach.willArrive) {
                 Box(pad) {
-                    Column(Modifier.padding(bottom = 4.dp)) {
-                        Text(
-                            reach.message,
-                            color = y.warning,
-                            fontSize = YantraType.caption,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            when (reach) {
-                                ReminderReach.NotPermitted -> "Allow notifications"
-                                else -> "Open notification settings"
-                            },
-                            color = y.accent,
-                            fontSize = YantraType.caption,
-                            modifier = Modifier.clickable {
+                    // The whole thing is one tappable line, and it has to be: see the note on
+                    // ReminderReach.message for what a second line costs in a sheet that cannot
+                    // scroll. The remedy is in the sentence rather than under it.
+                    Text(
+                        reach.message,
+                        color = y.warning,
+                        fontSize = YantraType.caption,
+                        modifier = Modifier
+                            .clickable {
                                 if (reach == ReminderReach.NotPermitted) requestPermissions()
                                 else context.startActivity(notificationSettings(context))
-                            },
-                        )
-                    }
+                            }
+                            .padding(bottom = 6.dp),
+                    )
                 }
             }
 

@@ -50,12 +50,20 @@ enum class ReminderReach {
      * Each one names the thing that is off rather than saying "notifications are disabled" three
      * times, because the three have three different remedies and only one of them is a tap inside
      * this app.
+     *
+     * **One line, and short enough to stay one.** The sheet it appears in cannot scroll — an M3
+     * date picker nested in a vertical scroll lays itself out at unbounded height and takes the
+     * whole sheet with it, which is why that column is deliberately fixed. So anything added here
+     * is height taken from something below, and the something below is Cancel, Clear and Set. A
+     * two-line explanation with an action underneath it pushed all three off the bottom of the
+     * screen: the warning was perfectly legible and the sheet could no longer be used, which is a
+     * worse bug than the one being reported.
      */
     val message: String get() = when (this) {
         Fine -> ""
-        NotPermitted -> "Yantra has not been allowed to send notifications, so this will not appear."
-        AppOff -> "Notifications are turned off for Yantra, so this will not appear. Turn them back on in Settings."
-        ChannelOff -> "The Reminders notification is turned off, so this will not appear. Turn it back on in Settings."
+        NotPermitted -> "Not allowed to notify — tap to allow"
+        AppOff -> "Notifications are off for Yantra — tap to fix"
+        ChannelOff -> "The Reminders notification is off — tap to fix"
     }
 
     companion object {
