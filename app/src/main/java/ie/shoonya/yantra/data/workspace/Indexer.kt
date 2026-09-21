@@ -106,7 +106,17 @@ class Indexer(private val db: AppDatabase) {
         // changes nodes and nothing else, so the event rows were cascaded away and then skipped —
         // and because `last` had already been told they were written, every rebuild afterwards
         // agreed they were there. Gone until the process restarted.
-        val linksChanged = nodesChanged || was?.nodeLabels != index.nodeLabels
+        //
+        // **`node_label` hangs off two parents, not one.** It cascades from `label` as well, and
+        // that edge was missed when the above was fixed: the comment said "hang off `node`", the
+        // fix OR'd in `nodesChanged`, and the second foreign key went unmentioned and unhandled.
+        // So recolouring a single tag — which changes `label` and nothing else — cleared every
+        // attachment in the workspace and then declined to write any of them back. Every chip on
+        // every task disappeared at once, from one tap on a colour, and stayed gone because `last`
+        // recorded them as present. The lesson is the edge, not the table: anything with a
+        // cascading key to `label` needs `labelsChanged` here exactly as `node`'s dependents need
+        // `nodesChanged`.
+        val linksChanged = nodesChanged || labelsChanged || was?.nodeLabels != index.nodeLabels
         val defsChanged = was?.defs != index.defs
         val smartChanged = was?.smartLists != index.smartLists
         val inkChanged = !sameInk(was?.ink, index.ink)
