@@ -324,6 +324,13 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <!--
+                    Revoking exact alarms cancels every exact alarm the app has already set, so
+                    without this the reminders are gone and nothing re-arms them — not even as the
+                    approximate ones ReminderScheduler already knows how to fall back to. 31 and 32
+                    only; from 33 the permission is USE_EXACT_ALARM and is never withdrawn.
+                -->
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

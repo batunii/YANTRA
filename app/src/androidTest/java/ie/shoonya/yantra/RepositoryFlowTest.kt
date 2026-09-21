@@ -162,7 +162,7 @@ class RepositoryFlowTest {
         val list = nodes.create(null, NodeType.LIST, "L")
         val task = nodes.create(list, NodeType.TASK, "Loaded")
 
-        props.setDue(task, 1_787_000_000_000L, hasTime = false, reminderOffsetMin = -540)
+        props.setDue(task, 1_787_000_000_000L, hasTime = false, reminderOffsets = listOf(-540))
         props.setValue(task, BuiltIns.PRIORITY_DEF_ID, text = "High")
         val label = labels.getOrCreate("shop")
         labels.attach(task, label.id)

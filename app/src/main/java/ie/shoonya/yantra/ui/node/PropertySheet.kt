@@ -105,7 +105,7 @@ private fun PropertyEditor(
     def: PropertyDefEntity,
     value: PropertyValueEntity?,
     onSet: (text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
-    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSetDue: (dateMillis: Long, hasTime: Boolean, reminders: List<Int>) -> Unit,
     onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: () -> Unit,
 ) {
@@ -160,7 +160,7 @@ private fun PropertyEditor(
                     DueSheet(
                         initialDateMillis = value?.vDate,
                         initialHasTime = value?.vBool == true,
-                        initialReminderMin = value?.vNumber?.toInt(),
+                        initialReminders = ie.shoonya.yantra.data.format.Reminders.parse(value?.vReminders),
                         onDismiss = { showPicker = false },
                         onSet = onSetDue,
                         onClear = value?.let { { onClear() } },

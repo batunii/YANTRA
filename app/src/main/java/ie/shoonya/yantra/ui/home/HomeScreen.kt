@@ -2,6 +2,8 @@ package ie.shoonya.yantra.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +69,8 @@ import ie.shoonya.yantra.ui.components.YantraButton
 import ie.shoonya.yantra.ui.components.ConfirmDialog
 import ie.shoonya.yantra.ui.components.NavCircle
 import ie.shoonya.yantra.ui.components.NavCircleSurface
+import ie.shoonya.yantra.ui.components.ListGlyph
+import ie.shoonya.yantra.ui.components.YantraField
 import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.components.SelectChip
 import ie.shoonya.yantra.ui.components.TextFieldDialog
@@ -105,7 +109,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.withStyle
 import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.data.format.ListIcon
 import ie.shoonya.yantra.data.label.LabelPalette
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import ie.shoonya.yantra.ui.theme.YantraType
@@ -425,10 +431,18 @@ fun HomeScreen(nav: NavHostController) {
         )
     }
     colouring?.let { node ->
-        ListColourDialog(
-            current = node.color,
+        // Re-read from the live list on every recomposition rather than held in `colouring`.
+        // The sheet applies each tap immediately and stays open, so a captured copy would show the
+        // grid and the colour row disagreeing with the row behind them the moment anything was
+        // picked.
+        val live = allLists.firstOrNull { it.id == node.id } ?: node
+        ListLookDialog(
+            icon = live.icon,
+            color = live.color,
+            smart = live.type == NodeType.SMART_LIST,
+            onIcon = { emoji -> vm.setListIcon(live.id, emoji) },
+            onColour = { name -> vm.setListColor(live.id, name) },
             onDismiss = { colouring = null },
-            onPick = { name -> vm.setListColor(node.id, name); colouring = null },
         )
     }
 
@@ -485,40 +499,137 @@ private val dateFmt = DateTimeFormatter.ofPattern("EEEE · d MMM")
  * and on dark. "None" is first and is not a colour — it is how a list goes back to frame ink, which
  * has to be as easy to reach as any hue or the screen fills up with colour nobody chose.
  */
+/**
+ * How a list looks: its icon and its colour, in one sheet.
+ *
+ * **Reached by tapping the glyph itself**, which is the thing being changed. It was behind a long
+ * press and a menu item called "Colour…", which is a fair place for a rename and the wrong place
+ * for an appearance: nothing on the row suggested the mark was a control, so the feature existed
+ * for whoever had already found it.
+ *
+ * **The list's own mark is the first cell, not the absence of a choice.** Somebody who wants the
+ * drawn mark in a different colour is doing something completely ordinary, and if the only way to
+ * say "no emoji" were to never touch the grid, then the moment you tried one emoji you could not
+ * get back without knowing that Reset also clears the colour you were happy with. So the mark sits
+ * in the grid, wearing the colour currently chosen, and is selected exactly when no emoji is.
+ *
+ * Every tap applies at once and the sheet stays open, because the two choices are judged together:
+ * you pick an emoji, see it against the colour, and change the colour rather than guessing. Done
+ * closes; there is nothing to confirm, since everything is already done.
+ */
 @Composable
-private fun ListColourDialog(
-    current: String?,
+private fun ListLookDialog(
+    icon: String?,
+    color: String?,
+    smart: Boolean,
+    onIcon: (String?) -> Unit,
+    onColour: (String?) -> Unit,
     onDismiss: () -> Unit,
-    onPick: (String?) -> Unit,
 ) {
     val y = Yantra.colors
+    var typed by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Colour") },
+        title = { Text("Icon & colour") },
         text = {
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Frame ink, shown as a swatch so "no colour" is a choice on the same row as the
-                // colours rather than a link underneath them.
-                ColourDot(
-                    colour = y.checkOutline,
-                    selected = current == null,
-                    onClick = { onPick(null) },
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                SectionLabel("Icon")
+                Spacer(Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // The list's own mark, offered as a choice rather than left as the state you
+                    // are in when you have not made one.
+                    IconCell(selected = icon == null, onClick = { onIcon(null) }) {
+                        ListGlyph(icon = null, color = color, smart = smart, size = 30.dp)
+                    }
+                    ListIcon.suggested.forEach { emoji ->
+                        IconCell(selected = icon == emoji, onClick = { onIcon(emoji) }) {
+                            Text(emoji, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                // The escape hatch from a curated set. Forty is enough for almost everybody and is
+                // wrong for somebody, and the somebody is the person whose list is about a thing
+                // nobody anticipated.
+                Text(
+                    "Or type one — your keyboard's emoji tab, or any character",
+                    color = y.textMuted,
+                    fontSize = YantraType.meta,
                 )
-                LabelPalette.swatches.forEach { swatch ->
+                Spacer(Modifier.height(8.dp))
+                YantraField(
+                    value = typed,
+                    onValue = { entered ->
+                        typed = entered
+                        // Applied as it is typed, so the grid selection and the row behind the
+                        // sheet both answer immediately. Cleaned to one character on the way in —
+                        // see ListIcon.
+                        ListIcon.clean(entered)?.let(onIcon)
+                    },
+                    placeholder = "🙂",
+                )
+
+                Spacer(Modifier.height(20.dp))
+                SectionLabel("Colour")
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (icon != null) "Sits behind the emoji" else "Colours the mark",
+                    color = y.textMuted,
+                    fontSize = YantraType.meta,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Frame ink, shown as a swatch so "no colour" is a choice on the same row as
+                    // the colours rather than a link underneath them.
                     ColourDot(
-                        colour = Color(LabelPalette.display(swatch.light, y.isDark)),
-                        selected = current.equals(swatch.name, ignoreCase = true),
-                        onClick = { onPick(swatch.name) },
+                        colour = y.checkOutline,
+                        selected = color == null,
+                        onClick = { onColour(null) },
                     )
+                    LabelPalette.swatches.forEach { swatch ->
+                        ColourDot(
+                            colour = Color(LabelPalette.display(swatch.light, y.isDark)),
+                            selected = color.equals(swatch.name, ignoreCase = true),
+                            onClick = { onColour(swatch.name) },
+                        )
+                    }
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = {
+            TextButton(
+                onClick = { typed = ""; onIcon(null); onColour(null) },
+            ) { Text("Reset") }
+        },
+    )
+}
+
+/** One cell of the icon grid. The ring says which is on, exactly as [ColourDot]'s does. */
+@Composable
+private fun IconCell(selected: Boolean, onClick: () -> Unit, content: @Composable () -> Unit) {
+    val y = Yantra.colors
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .border(
+                if (selected) 2.dp else 0.dp,
+                if (selected) y.textPrimary else Color.Transparent,
+                CircleShape,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+        content = { content() },
     )
 }
 
@@ -735,15 +846,19 @@ private fun HomeRow(
             // way a label already does, and then the colour on this screen comes from your data
             // rather than from the app having one loud idea. Uncoloured lists stay frame ink, which
             // is what makes a coloured one mean something.
-            val mine = node.color
-                ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) } }
-                ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
-            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                YantraIcon(
-                    if (smart) YantraMark.SmartList else YantraMark.List,
-                    tint = mine ?: y.checkOutline,
-                )
-            }
+            //
+            // And the glyph is the way in to changing it. It was behind a long press and a menu
+            // item, which meant nothing on the row said the mark could be anything else -- the
+            // feature was there for whoever had already found it. Tapping the thing you want to
+            // change is the gesture people try first, and it costs the row nothing: the title and
+            // the rest of it still open the list.
+            ListGlyph(
+                icon = node.icon,
+                color = node.color,
+                smart = smart,
+                onClick = onColour,
+                contentDescription = "Icon and colour",
+            )
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -775,7 +890,7 @@ private fun HomeRow(
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(
-                        text = { Text("Colour…") },
+                        text = { Text("Icon & colour…") },
                         onClick = { menu = false; onColour() },
                     )
                     DropdownMenuItem(

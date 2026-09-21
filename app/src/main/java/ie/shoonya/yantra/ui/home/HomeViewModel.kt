@@ -217,6 +217,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.nodes.setListColor(listId, color) }
     }
 
+    fun setListIcon(listId: String, icon: String?) {
+        viewModelScope.launch { container.nodes.setListIcon(listId, icon) }
+    }
+
     fun moveToGroup(id: String, groupId: String?) {
         viewModelScope.launch { nodes.moveToGroup(id, groupId) }
     }

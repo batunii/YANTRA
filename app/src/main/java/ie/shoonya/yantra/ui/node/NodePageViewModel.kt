@@ -628,8 +628,8 @@ class NodePageViewModel(
         viewModelScope.launch { properties.setValue(childId, def.id, text, number, date, bool) }
     }
 
-    fun setDue(childId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) {
-        viewModelScope.launch { properties.setDue(childId, dateMillis, hasTime, reminderOffsetMin) }
+    fun setDue(childId: String, dateMillis: Long, hasTime: Boolean, reminders: List<Int>) {
+        viewModelScope.launch { properties.setDue(childId, dateMillis, hasTime, reminders) }
     }
 
     fun setDeadline(childId: String, dateMillis: Long) {

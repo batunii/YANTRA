@@ -100,7 +100,10 @@ class QuickAddActivity : ComponentActivity() {
                         // Applied after creation so a smart list's own apply-on-create values
                         // land first and an explicit chip choice wins over them.
                         if (dueToday) {
-                            container.properties.setDue(newId, System.currentTimeMillis(), hasTime = false, reminderOffsetMin = null)
+                            container.properties.setDue(
+                                newId, System.currentTimeMillis(),
+                                hasTime = false, reminderOffsets = emptyList(),
+                            )
                         }
                         if (priority != null && priorityDef != null) {
                             container.properties.setValue(newId, priorityDef.id, text = priority)

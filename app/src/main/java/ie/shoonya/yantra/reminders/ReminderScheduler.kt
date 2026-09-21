@@ -24,8 +24,8 @@ class ReminderScheduler(private val context: Context) {
      */
     fun canExact(): Boolean = am.canScheduleExactAlarms()
 
-    fun schedule(nodeId: String, atMillis: Long) {
-        val pi = firePendingIntent(nodeId, atMillis)
+    fun schedule(nodeId: String, offsetMin: Int, atMillis: Long) {
+        val pi = firePendingIntent(nodeId, offsetMin, atMillis)
         if (canExact()) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
         } else {
@@ -33,17 +33,25 @@ class ReminderScheduler(private val context: Context) {
         }
     }
 
-    // Extras don't participate in Intent.filterEquals, so atMillis = 0 still matches.
-    fun cancel(nodeId: String) = am.cancel(firePendingIntent(nodeId, 0L))
+    // Extras don't participate in Intent.filterEquals, so atMillis = 0 still matches. The offset
+    // does participate, because it is in the data URI — which is the whole point of it being there.
+    fun cancel(nodeId: String, offsetMin: Int) = am.cancel(firePendingIntent(nodeId, offsetMin, 0L))
 
-    private fun firePendingIntent(nodeId: String, atMillis: Long): PendingIntent =
+    private fun firePendingIntent(nodeId: String, offsetMin: Int, atMillis: Long): PendingIntent =
         PendingIntent.getBroadcast(
             context, 0,
             Intent(context, ReminderReceiver::class.java).apply {
                 action = Reminders.ACTION_FIRE
-                // Per-node uniqueness via the data URI — no requestCode hashing collisions.
-                data = Uri.parse("yantra://reminder/$nodeId")
+                // Per *reminder* uniqueness via the data URI — no requestCode hashing collisions.
+                //
+                // The offset is in the path because a task can carry several reminders, and two
+                // PendingIntents that differ only in an extra are the same PendingIntent as far as
+                // AlarmManager is concerned: `Intent.filterEquals` ignores extras. Keyed by node
+                // alone, setting "30 minutes before" and "1 day before" would arm one alarm, fire
+                // once, and lose the other without a word.
+                data = Uri.parse("yantra://reminder/$nodeId/$offsetMin")
                 putExtra(Reminders.EXTRA_NODE_ID, nodeId)
+                putExtra(Reminders.EXTRA_OFFSET, offsetMin)
                 putExtra(Reminders.EXTRA_AT, atMillis)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
