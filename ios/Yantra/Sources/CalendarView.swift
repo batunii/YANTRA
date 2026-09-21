@@ -1,6 +1,18 @@
 import SwiftUI
 import YantraCore
 
+/// What the calendar screen can put in front of you. One sheet, so one value.
+enum CalendarPresentation: Identifiable, Equatable {
+    case event(EventSheetTarget)
+    /// The task rail, on a window too narrow to give it a column.
+    case rail
+
+    var id: String {
+        switch self { case let .event(t): return t.id; case .rail: return "rail" }
+    }
+    static func == (l: CalendarPresentation, r: CalendarPresentation) -> Bool { l.id == r.id }
+}
+
 /// Month, week, or one day. The switcher is three letters because the word for each is longer than
 /// the control needs to be, and a phone is only so wide.
 enum CalendarMode: String, CaseIterable { case month = "M", week = "W", day = "D" }
@@ -114,10 +126,21 @@ struct CalendarView: View {
     var startOn: String? = nil
 
     @StateObject private var cal = CalendarModel()
-    @State private var sheet: EventSheetTarget?
+    /// What the screen is presenting, if anything. One value, because there is one sheet.
+    @State private var presented: CalendarPresentation?
     /// Open by default where it is a column, closed where it is a sheet: a sheet thrown over the
     /// day the moment you arrive would hide the thing you came to look at.
     @State private var railOpen = false
+    /// Whether the default above has been applied yet.
+    ///
+    /// The default can only be chosen once the window has been measured, so it has to happen in
+    /// `onAppear` — but `onAppear` fires again on re-layout and whenever a sheet is dismissed, and
+    /// an unguarded assignment there would keep overwriting the choice the person just made. On a
+    /// phone that made the Tasks key look broken: it set `railOpen` true, the sheet began to
+    /// present, the re-layout fired `onAppear`, and the default put it straight back to false.
+    @State private var railDefaulted = false
+    /// The last measured width class, so the sheet modifiers outside the GeometryReader can read it.
+    @State private var isWide = false
     @Environment(\.scenePhase) private var phase
 
     /// How wide the calendar gets before it stops growing. A month is a fixed amount of information
@@ -143,10 +166,20 @@ struct CalendarView: View {
                 }
                 .frame(maxWidth: cal.mode == .month && !twoPaneMonth ? contentMaxWidth : .infinity)
                 .frame(maxWidth: .infinity)
-                CalendarBar(cal: cal, railOpen: $railOpen, onAdd: { sheet = .creating(cal.selected, nil) })
+                CalendarBar(cal: cal, railOpen: $railOpen, onAdd: { presented = .event(.creating(cal.selected, nil)) })
             }
-            .onAppear { cal.daysAcross = wide ? 7 : 3; railOpen = wide }
-            .onChange(of: wide) { _, w in cal.daysAcross = w ? 7 : 3 }
+            .onAppear {
+                isWide = wide
+                cal.daysAcross = wide ? 7 : 3
+                if !railDefaulted { railDefaulted = true; railOpen = wide }
+            }
+            .onChange(of: wide) { _, w in
+                isWide = w
+                cal.daysAcross = w ? 7 : 3
+                // Growing into a column retires the sheet; shrinking out of one brings it back.
+                if w, presented == .rail { presented = nil }
+                if !w, railOpen, presented == nil { presented = .rail }
+            }
         }
         .background(y.page.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
@@ -169,7 +202,30 @@ struct CalendarView: View {
         .onChange(of: cal.selected) { _, _ in refresh() }
         .onChange(of: cal.mode) { _, _ in refresh() }
         .onChange(of: cal.daysAcross) { _, _ in refresh() }
-        .sheet(item: $sheet) { t in EventSheet(target: t, cal: cal) { refresh() } }
+        // One sheet for the screen, chosen by what is being presented.
+        //
+        // Two `.sheet` modifiers on the *same* view do not give you two sheets: SwiftUI honours one
+        // and silently drops the other, with no error anywhere. That is what made the Tasks key a
+        // button that flipped its own state and opened nothing.
+        .sheet(item: $presented) { what in
+            switch what {
+            case let .event(target):
+                EventSheet(target: target, cal: cal) { refresh() }
+            case .rail:
+                CalendarTaskRail(cal: cal)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .environment(\.y, y)
+            }
+        }
+        .onChange(of: railOpen) { _, open in
+            if open, !isWide { presented = .rail }
+            if !open, presented == .rail { presented = nil }
+        }
+        .onChange(of: presented) { _, what in
+            // Dragging the rail away is the same as turning it off.
+            if what == nil, railOpen, !isWide { railOpen = false }
+        }
     }
 
     private func refresh() {
@@ -203,7 +259,7 @@ struct CalendarView: View {
                     // The grid keeps its metric; the day list takes the rest of the width and the
                     // whole height, because a day with twenty things on it is what the space is for.
                     MonthGrid(cal: cal).frame(maxWidth: 460)
-                    DayList(cal: cal, path: $path, onOpenEvent: { sheet = .editing($0) })
+                    DayList(cal: cal, path: $path, onOpenEvent: { presented = .event(.editing($0)) })
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -211,15 +267,15 @@ struct CalendarView: View {
             } else {
                 VStack(spacing: 0) {
                     MonthGrid(cal: cal)
-                    DayList(cal: cal, path: $path, onOpenEvent: { sheet = .editing($0) })
+                    DayList(cal: cal, path: $path, onOpenEvent: { presented = .event(.editing($0)) })
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.horizontal, Layout.pageMargin)
             }
         case .week, .day:
-            DayTimeline(cal: cal, path: $path, railOpen: railOpen, wide: wide, onCloseRail: { railOpen = false },
-                         onOpenEvent: { sheet = .editing($0) },
-                         onMark: { day, from, to in sheet = .creating(day, (from, to)) })
+            DayTimeline(cal: cal, path: $path, railOpen: railOpen, wide: wide,
+                         onOpenEvent: { presented = .event(.editing($0)) },
+                         onMark: { day, from, to in presented = .event(.creating(day, (from, to))) })
         }
     }
 }
@@ -518,7 +574,13 @@ struct CalendarBar: View {
                     .foregroundStyle(railOpen ? y.accentText : y.secondary)
                     .padding(.horizontal, 14).padding(.vertical, 11)
                     .background(Capsule().fill(railOpen ? y.accentFill : y.surfaceHigh))
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                // A control that toggles should say which way it is set, both to VoiceOver and to
+                // anything driving the app.
+                .accessibilityIdentifier("calendar.tasks")
+                .accessibilityLabel("Tasks")
+                .accessibilityValue(railOpen ? "shown" : "hidden")
             }
             Spacer()
             Button(action: onAdd) {

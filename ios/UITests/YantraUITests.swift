@@ -64,6 +64,37 @@ class YantraUITestCase: XCTestCase {
         words.tap()
     }
 
+    /// Taps once the element is actually there.
+    ///
+    /// A bare `.tap()` races the first layout: the screen is on its way up, the query finds nothing,
+    /// and the test fails for a reason that has nothing to do with the app.
+    func tap(_ identifier: String, _ message: String = "", timeout: TimeInterval = 8) {
+        let e = el(identifier)
+        XCTAssertTrue(e.waitForExistence(timeout: timeout),
+                      message.isEmpty ? "never found \(identifier) to tap" : message)
+        e.tap()
+    }
+
+    /// A shelf tab, whatever element SwiftUI made of it.
+    ///
+    /// In the iPad's column the tab's words are a `staticText`; in the phone's sheet the same view
+    /// is folded into a `button` and the words are its label. Querying one or the other is how a
+    /// test comes to "fail" on a rail that is plainly on screen.
+    func shelf(_ name: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", name, name)).firstMatch
+    }
+
+    /// Opens the rail, wherever it lives on this device.
+    ///
+    /// A column beside the day on a wide window, a sheet on a phone. `.exists` does not wait, so
+    /// probing it straight after the screen appears reports "no rail" on an iPad where the rail is
+    /// already open — and then tapping Tasks *closes* the one that was there.
+    func openRail() {
+        if shelf("Undated").waitForExistence(timeout: 4) { return }   // already a column
+        tap("calendar.tasks", "no Tasks key to open the rail with")
+        XCTAssertTrue(shelf("Undated").waitForExistence(timeout: 6), "the rail did not open")
+    }
+
     func waitFor(_ element: XCUIElement, _ seconds: TimeInterval = 8, _ message: String = "") -> Bool {
         element.waitForExistence(timeout: seconds)
     }
@@ -110,7 +141,7 @@ final class HomeUITests: YantraUITestCase {
 
     func testTheSettingsAndCalendarKeysGoSomewhere() {
         let app = launch(route: "home")
-        el("home.calendar").tap()
+        tap("home.calendar")
         assertExists(app.staticTexts["calendar.heading"], "the calendar key did not reach the calendar")
     }
 }
@@ -196,11 +227,11 @@ final class CalendarUITests: YantraUITestCase {
         assertExists(heading, "no heading")
         let month = heading.label
 
-        el("calendar.mode.D").tap()
+        tap("calendar.mode.D")
         let dayFmt = DateFormatter(); dayFmt.dateFormat = "EEE d MMM"
         expectHeading(heading, becomes: dayFmt.string(from: Date()), "Day mode should name the day you are on")
 
-        el("calendar.mode.M").tap()
+        tap("calendar.mode.M")
         expectHeading(heading, becomes: month, "going back to Month should name the month again")
     }
 
@@ -213,13 +244,13 @@ final class CalendarUITests: YantraUITestCase {
         // Page forward a month by swiping the bar, and it should appear.
         app.staticTexts["calendar.heading"].swipeLeft()
         assertExists(el("calendar.today"), "paging away from today should offer a way back")
-        el("calendar.today").tap()
+        tap("calendar.today")
         expectGone(el("calendar.today"), "tapping Today should bring today back and retire the key")
     }
 
     func testTheNewEventKeyOpensTheSheet() {
         let app = launch(route: "calendar")
-        el("calendar.add").tap()
+        tap("calendar.add")
         assertExists(app.navigationBars["New event"], "the + key did not open the event sheet")
         app.buttons["Cancel"].tap()
         expectGone(app.navigationBars["New event"], "Cancel did not close the sheet")
@@ -227,7 +258,7 @@ final class CalendarUITests: YantraUITestCase {
 
     func testCreatingAnEventPutsItOnTheDay() {
         let app = launch(route: "calendar")
-        el("calendar.add").tap()
+        tap("calendar.add")
         assertExists(app.navigationBars["New event"], "no event sheet")
 
         let field = app.textFields.firstMatch
@@ -299,17 +330,16 @@ final class LayoutUITests: YantraUITestCase {
         let app = launch(route: "calendar", extra: ["-calmode", "day"])
         assertExists(app.staticTexts["calendar.heading"], "the calendar never appeared")
 
-        // A column on a wide window, a sheet on a phone. Both are the same rail.
-        if !app.staticTexts["Undated"].exists { app.buttons["Tasks"].tap() }
+        openRail()
 
         let window = app.windows.firstMatch.frame
-        for shelf in ["Today", "Soon", "Undated", "Other"] {
-            let tab = app.staticTexts[shelf]
-            assertExists(tab, "the \(shelf) shelf is missing from the rail")
+        for name in ["Today", "Soon", "Undated", "Other"] {
+            let tab = shelf(name)
+            assertExists(tab, "the \(name) shelf is missing from the rail")
             XCTAssertLessThanOrEqual(tab.frame.maxX, window.maxX,
-                                     "the \(shelf) tab is cut off by the right edge: \(tab.frame)")
+                                     "the \(name) tab is cut off by the right edge: \(tab.frame)")
             XCTAssertGreaterThanOrEqual(tab.frame.minX, window.minX,
-                                        "the \(shelf) tab starts off the left edge: \(tab.frame)")
+                                        "the \(name) tab starts off the left edge: \(tab.frame)")
         }
     }
 
@@ -318,9 +348,9 @@ final class LayoutUITests: YantraUITestCase {
     func testTheUndatedShelfHoldsTheTaskWithNoDate() {
         let app = launch(route: "calendar", extra: ["-calmode", "day"])
         assertExists(app.staticTexts["calendar.heading"], "the calendar never appeared")
-        if !app.staticTexts["Undated"].exists { app.buttons["Tasks"].tap() }
-        app.staticTexts["Undated"].tap()
-        assertExists(app.staticTexts[Fixture.plainTask],
+        openRail()
+        shelf("Undated").tap()
+        assertExists(shelf(Fixture.plainTask),
                      "the task with no date is not on the Undated shelf")
     }
 
@@ -364,9 +394,13 @@ final class SettingsUITests: YantraUITestCase {
     /// is the one place somebody who already installed it will never look.
     func testThePrivacyPolicyIsReachableFromInsideTheApp() {
         let app = launch(route: "settings")
+        // Wait for the screen before deciding anything about it: `.exists` does not wait, so a
+        // probe on the way up reports "not there", scrolls past it, and fails for the wrong reason.
+        assertExists(app.staticTexts["Settings"], "settings never appeared")
         let link = app.staticTexts["Privacy policy"]
         // It is near the bottom, so it may need scrolling to.
-        if !link.exists { app.swipeUp(); app.swipeUp() }
+        var swipes = 0
+        while !link.exists, swipes < 4 { app.swipeUp(); swipes += 1 }
         assertExists(link, "there is no privacy policy link in settings")
     }
 }

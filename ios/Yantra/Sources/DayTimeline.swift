@@ -12,7 +12,6 @@ struct DayTimeline: View {
     let railOpen: Bool
     /// True once the window is wide enough for the rail to be a column beside the day.
     let wide: Bool
-    let onCloseRail: () -> Void
     let onOpenEvent: (String) -> Void
     /// A range marked on an empty day, waiting to be told what goes in it.
     let onMark: (LocalDate, LocalDateTime, LocalDateTime) -> Void
@@ -72,14 +71,6 @@ struct DayTimeline: View {
                 Divider().frame(width: 0.5).overlay(y.hairline)
                 CalendarTaskRail(cal: cal).frame(width: 248)
             }
-        }
-        // On a phone the rail is a sheet, not a column. It is the same rail answering the same
-        // question; 210 points of it beside a 390-point screen would leave the day it exists to
-        // help with too little room to read, which is the opposite of the point.
-        .sheet(isPresented: Binding(get: { railOpen && !wide }, set: { if !$0 { onCloseRail() } })) {
-            CalendarTaskRail(cal: cal)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
         }
     }
 
