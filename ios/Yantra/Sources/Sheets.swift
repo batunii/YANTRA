@@ -9,7 +9,8 @@ struct DueSheet: View {
     let node: Node
     @State private var date: Date
     @State private var hasTime: Bool
-    @State private var reminder: Int?
+    /// Every offset chosen, not one. Kept canonical so what the sheet shows is what the file gets.
+    @State private var reminders: [Int]
 
     static let onTheDay = -540   // 09:00 on the day, for an all-day due
 
@@ -18,7 +19,7 @@ struct DueSheet: View {
         let d = node.dueDate ?? LocalDate.today().startOfDay()
         _date = State(initialValue: d)
         _hasTime = State(initialValue: node.dueHasTime)
-        _reminder = State(initialValue: node.due?.reminderMin)
+        _reminders = State(initialValue: node.due?.reminders ?? [])
     }
 
     var body: some View {
@@ -31,25 +32,34 @@ struct DueSheet: View {
                 .datePickerStyle(.graphical).tint(y.accent).labelsHidden()
             Toggle(isOn: $hasTime) { Label("Time", systemImage: "clock").font(Face.text(14, .medium)).foregroundStyle(y.ink) }.tint(y.accent)
                 .onChange(of: hasTime) { _, on in
-                    // Switching to all-day resets a timed offset; setting a time defaults to "On time".
-                    if on { if reminder == nil || reminder == Self.onTheDay { reminder = 0 } } else if reminder != nil, reminder != Self.onTheDay { reminder = nil }
-                }
-            HStack {
-                Label("Reminder", systemImage: "bell").font(Face.text(14, .medium)).foregroundStyle(y.ink)
-                Spacer()
-                Menu {
-                    Button("None") { reminder = nil }
-                    if hasTime {
-                        Button("On time") { reminder = 0 }
-                        Button("30 min before") { reminder = 30 }
-                        Button("1 hour before") { reminder = 60 }
-                        Button("1 day before") { reminder = 1440 }
+                    // The offsets that make sense change with the shape of the due date: "30 min
+                    // before" needs a time to be before, and "on the day at nine" only means
+                    // anything without one. Keeping a stale offset would schedule a reminder the
+                    // sheet no longer offers and cannot show.
+                    if on {
+                        reminders = reminders.filter { $0 != Self.onTheDay }
+                        if reminders.isEmpty { reminders = [0] }
                     } else {
-                        Button("On the day (9:00)") { reminder = Self.onTheDay }
+                        reminders = reminders.contains(Self.onTheDay) ? [Self.onTheDay] : []
                     }
-                } label: {
-                    Text(reminderLabel).font(Face.text(13, .bold)).foregroundStyle(y.accentText).padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(y.accentFill))
+                }
+            // Reminders are chips rather than a menu, because there can be several now and a menu
+            // that has to say "1 day before, 30 min before" in its own label is a control that
+            // cannot show what it is set to. Each one toggles; what is on is what is lit.
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Reminders", systemImage: "bell").font(Face.text(14, .medium)).foregroundStyle(y.ink)
+                    Spacer()
+                    Text(remindersLabel).font(Face.text(12)).foregroundStyle(y.muted)
+                }
+                HStack(spacing: 6) {
+                    ForEach(offered, id: \.0) { offset, label in
+                        SelectChip(label: label, selected: reminders.contains(offset), stretch: true) {
+                            reminders = DueSpec.reminders(reminders.contains(offset)
+                                                          ? reminders.filter { $0 != offset }
+                                                          : reminders + [offset])
+                        }
+                    }
                 }
             }
             HStack(spacing: 10) {
@@ -57,8 +67,8 @@ struct DueSheet: View {
                 if node.due != nil { YantraButton(label: "Clear", tone: .quiet) { model.write { try model.writer.setDue(node.id, nil) }; dismiss() } }
                 YantraButton(label: "Set", tone: .soft) {
                     let value: DueValue = hasTime ? .at(date) : .allDay(.of(date))
-                    model.write { try model.writer.setDue(node.id, DueSpec(value, reminderMin: reminder)) }
-                    if reminder != nil { Task { _ = await Notifications.shared.requestPermission() } }
+                    model.write { try model.writer.setDue(node.id, DueSpec(value, reminders: reminders)) }
+                    if !reminders.isEmpty { Task { _ = await Notifications.shared.requestPermission() } }
                     dismiss()
                 }
             }
@@ -67,11 +77,16 @@ struct DueSheet: View {
         .presentationDetents([.large])
     }
 
-    private var reminderLabel: String {
-        switch reminder {
-        case nil: return "None"; case 0: return "On time"; case 30: return "30 min before"; case 60: return "1 hour before"; case 1440: return "1 day before"
-        case Self.onTheDay: return "On the day (9:00)"; case let m?: return "\(m) min before"
-        }
+    /// The offsets worth offering, which depend on whether the due date has a time in it.
+    private var offered: [(Int, String)] {
+        hasTime
+            ? [(0, "On time"), (30, "30 min"), (60, "1 hour"), (1440, "1 day")]
+            : [(Self.onTheDay, "On the day")]
+    }
+
+    private var remindersLabel: String {
+        if reminders.isEmpty { return "None" }
+        return reminders.count == 1 ? "1 set" : "\(reminders.count) set"
     }
 
     private func quick(_ label: String, _ d: LocalDate) -> some View {
@@ -112,7 +127,7 @@ struct LabelPicker: View {
                                 Circle().fill(LabelPalette.color(name, registry: model.index.labels, dark: y.dark)).frame(width: 10, height: 10)
                                 Text(name).font(Face.text(15, .medium)).foregroundStyle(y.ink)
                                 Spacer()
-                                if node.labels.contains(name) { Image(systemName: "checkmark").foregroundStyle(y.accent) }
+                                if node.labels.contains(name) { YantraIcon(mark: .check, size: YantraIcons.small, tint: y.accent) }
                             }.padding(.vertical, 10)
                         }.buttonStyle(.plain)
                     }
@@ -163,7 +178,7 @@ struct SmartListBuilder: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 8) { Image(systemName: "sparkles").foregroundStyle(y.accent); Text(editing == nil ? "New smart list" : "Edit smart list").font(Face.display(22)).foregroundStyle(y.ink) }
+                HStack(spacing: 8) { YantraIcon(mark: .smartList, size: YantraIcons.medium, tint: y.accent); Text(editing == nil ? "New smart list" : "Edit smart list").font(Face.display(22)).foregroundStyle(y.ink) }
                 TextField("Name — e.g. This week", text: $name).font(Face.text(15)).foregroundStyle(y.ink)
                     .padding(14).background(RoundedRectangle(cornerRadius: 12).fill(y.surfaceHigh)).overlay(RoundedRectangle(cornerRadius: 12).stroke(y.tileBorder, lineWidth: 1))
                 SectionLabel(text: "Start from")
@@ -184,7 +199,7 @@ struct SmartListBuilder: View {
                 Menu {
                     ForEach(model.index.children(of: nil).filter { $0.type == NodeType.list }) { l in Button(inlinePlain(l.title ?? "Untitled")) { landsIn = l.id } }
                 } label: {
-                    HStack { Text(landsIn.flatMap { model.index.nodes[$0]?.title }.map { inlinePlain($0) } ?? "Inbox").font(Face.text(14, .bold)).foregroundStyle(y.accentText); Image(systemName: "chevron.down").icon(12, .bold).foregroundStyle(y.accentText) }
+                    HStack { Text(landsIn.flatMap { model.index.nodes[$0]?.title }.map { inlinePlain($0) } ?? "Inbox").font(Face.text(14, .bold)).foregroundStyle(y.accentText); YantraIcon(mark: .down, size: YantraIcons.small, tint: y.accentText) }
                         .padding(.horizontal, 12).padding(.vertical, 9).background(RoundedRectangle(cornerRadius: 10).fill(y.accentFill))
                 }
                 Text("Quick-add here auto-tags new tasks to match this view.").font(Face.text(12)).foregroundStyle(y.dim)

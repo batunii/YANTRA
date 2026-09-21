@@ -12,7 +12,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                HStack { NavCircle(icon: "chevron.left") { path.removeLast() }; Spacer() }
+                HStack { NavCircle(mark: .back) { path.removeLast() }; Spacer() }
                 Text("Settings").font(Face.display(32)).tracking(-0.6).foregroundStyle(y.ink).padding(.top, 18).padding(.bottom, 26)
 
                 SectionLabel(text: "Theme").padding(.bottom, 10)
@@ -109,7 +109,7 @@ struct SettingsView: View {
                 Text(subtitle).font(Face.text(12.5)).foregroundStyle(y.muted)
             }
             Spacer()
-            if chevron { Image(systemName: "chevron.right").icon(14, .semibold).foregroundStyle(y.dim) }
+            if chevron { YantraIcon(mark: .forward, size: YantraIcons.small, tint: y.dim) }
         }
         .padding(16).background(RoundedRectangle(cornerRadius: Layout.cardRadius).fill(y.cardBg)).padding(.bottom, 8)
     }
@@ -153,7 +153,7 @@ struct StatsView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                HStack { NavCircle(icon: "chevron.left") { path.removeLast() }; Spacer() }
+                HStack { NavCircle(mark: .back) { path.removeLast() }; Spacer() }
                 Text("Focus stats").font(Face.display(32)).tracking(-0.6).foregroundStyle(y.ink).padding(.top, 18)
                 FocusGlyph(dayCounts: days == 0 ? [] : Array(repeating: 0, count: days - 1) + [todayCount], progress: model.timer.state.map(\.progress))
                     .frame(width: 208, height: 208).frame(maxWidth: .infinity).padding(.top, 18)
@@ -174,7 +174,7 @@ struct StatsView: View {
                                 Text("\(durationLabel(row.secs)) · \(row.n) session\(row.n == 1 ? "" : "s")").font(Face.text(11.5)).foregroundStyle(y.dim)
                             }
                             Spacer()
-                            Image(systemName: "play.fill").icon(15).foregroundStyle(y.accent).frame(width: 40, height: 40)
+                            YantraIcon(mark: .play, size: YantraIcons.small, tint: y.accent).frame(width: 40, height: 40)
                         }.padding(.vertical, 6)
                     }.buttonStyle(.plain)
                 }
@@ -254,8 +254,8 @@ struct CalendarSetting: View {
                                 }
                             }
                             Spacer()
-                            Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                                .icon(17).foregroundStyle(picked ? y.accent : y.dim)
+                            YantraIcon(mark: picked ? .check : .ring, size: YantraIcons.medium,
+                                       tint: picked ? y.accent : y.dim)
                         }
                         .padding(.vertical, 9)
                     }.buttonStyle(.plain)

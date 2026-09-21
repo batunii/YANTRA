@@ -61,7 +61,7 @@ enum WidgetData {
             if let d = t.due { due = dueText(d); if hideTodayDue, due == "Today" { due = nil } }
             let origin = isSmart ? ix.ancestors(of: t.id).last { $0.type == NodeType.list }?.title : nil
             return WidgetRow(id: t.id, title: inlinePlain(t.title ?? ""), done: t.done, inProgress: t.inProgress, priority: t.priority, due: due,
-                             overdue: overdue(t), labels: t.labels, origin: origin, reminder: t.due?.reminderMin != nil)
+                             overdue: overdue(t), labels: t.labels, origin: origin, reminder: !(t.due?.reminders.isEmpty ?? true))
         }
         if isSmart, let def = ix.smartLists[n.id] {
             let open = SmartListQuery.run(def, in: ix).map(row)

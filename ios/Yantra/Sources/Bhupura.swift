@@ -82,7 +82,11 @@ struct SeededRandom {
 }
 
 /// The mark with its bindu, for empty states and the splash.
-struct YantraMark: View {
+///
+/// `BhupuraMark` rather than `YantraMark`, which is the name the *icon set's* enum carries on both
+/// platforms. This is the brand shape; that is the vocabulary of functional marks, and one name
+/// cannot be both.
+struct BhupuraMark: View {
     var size: CGFloat = 34
     @Environment(\.y) private var y
     var body: some View {

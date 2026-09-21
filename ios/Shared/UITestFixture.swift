@@ -24,6 +24,7 @@ enum UITestFixture {
         static let subtask = "A subtask"
         static let focusedTask = "Focused thing"
         static let archivedTask = "Archived thing"
+        static let warnedTask = "Warned thing"
         static let event = "Standup"
         static let allDayEvent = "Conference day"
     }
@@ -39,6 +40,7 @@ enum UITestFixture {
         static let focusedTask = "fixture-focused"
         static let archivedTask = "fixture-archived"
         static let ink = "fixture-ink"
+        static let warnedTask = "fixture-warned"
     }
 
     static func seed(_ store: WorkspaceStore) {
@@ -62,6 +64,9 @@ enum UITestFixture {
             .task(TaskRef(id: id(), title: Names.todayTask,
                           due: DueSpec(.at(LocalDateTime(date: today, hour: 14).instant()), duration: .minutes(90)))),
             .task(TaskRef(id: id(), title: Names.doneTask, status: .done, doneAt: today)),
+            .task(TaskRef(id: Ids.warnedTask, title: Names.warnedTask,
+                          due: DueSpec(.at(LocalDateTime(date: today.adding(days: 1), hour: 9).instant()),
+                                       reminders: [1440, 30]))),
             .event(EventRef(id: id(), title: Names.event,
                             time: EventTime(start: LocalDateTime(date: today, hour: 9),
                                             end: LocalDateTime(date: today, hour: 9, minute: 30)),
@@ -78,7 +83,8 @@ enum UITestFixture {
         ]))
 
         store.writePage(PageDoc(id: Ids.secondList, type: NodeType.list, parent: nil, title: Names.secondList,
-                                modifiedAt: now, device: "uitest", blocks: []))
+                                modifiedAt: now, device: "uitest", blocks: [],
+                                icon: "\u{1F4BC}", color: "Violet"))
 
         // The same Today rule the real seed writes, so the smart list is exercised for real.
         let todayFilter: Filter = .all([.type(NodeType.task), .done(false), .anyOf([

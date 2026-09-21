@@ -59,21 +59,21 @@ struct TaskPageView: View {
     private var band: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                NavCircle(icon: "chevron.left") { path.removeLast() }
+                NavCircle(mark: .back) { path.removeLast() }
                 Spacer()
                 if let n = node, n.type == NodeType.task {
                     if let s = model.timer.state, s.nodeId == n.id, !s.isFinished {
                         Button { path.append(Route.focus(nil)) } label: {
-                            HStack(spacing: 6) { Image(systemName: "timer"); Text(sessionClock(s.isOpen ? s.elapsedSecs : s.remainingSecs)).font(Face.mono(13, bold: true)) }
+                            HStack(spacing: 6) { YantraIcon(mark: .focus, size: YantraIcons.small, tint: y.accent); Text(sessionClock(s.isOpen ? s.elapsedSecs : s.remainingSecs)).font(Face.mono(13, bold: true)) }
                                 .foregroundStyle(y.accentText).padding(.horizontal, 12).padding(.vertical, 8)
                                 .background(RoundedRectangle(cornerRadius: 14).fill(y.accentFill)).overlay(RoundedRectangle(cornerRadius: 14).stroke(y.accentBorder, lineWidth: 1))
                         }.buttonStyle(.plain)
                     } else {
-                        NavCircle(icon: "timer", accent: true) { path.append(Route.focus(n.id)) }
+                        NavCircle(mark: .focus, accent: true) { path.append(Route.focus(n.id)) }
                     }
                 }
                 Menu { Button("Delete", role: .destructive) { delete() } } label: {
-                    Image(systemName: "ellipsis").icon(17, .semibold).foregroundStyle(y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
+                    YantraIcon(mark: .more, size: YantraIcons.medium, tint: y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
                 }
             }
             if !crumbs.isEmpty {
@@ -218,7 +218,7 @@ struct BlockRow: View {
                         HStack(spacing: 4) {
                             let kids = model.index.openChildCount(t.id)
                             if kids > 0 { Text("\(kids)").font(Face.mono(11)).foregroundStyle(y.dim) }
-                            Image(systemName: "chevron.right").icon(13, .semibold).foregroundStyle(y.dim)
+                            YantraIcon(mark: .forward, size: YantraIcons.small, tint: y.dim)
                         }.padding(.top, 12)
                     }.buttonStyle(.plain)
                 }
@@ -294,7 +294,7 @@ struct PropertyPills: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminderMin != nil ? " · 🔔" : ""), color: isOverdue(node) ? y.overdue : y.due, ghost: false) { dueSheet = true } }
+                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminders.isEmpty ? "" : (due.reminders.count == 1 ? " · 🔔" : " · 🔔\(due.reminders.count)")), color: isOverdue(node) ? y.overdue : y.due, ghost: false) { dueSheet = true } }
                 if let p = node.priority { pill("Priority · " + p, color: y.priority(p) ?? y.secondary, ghost: false) { cyclePriority() } }
                 ForEach(node.labels, id: \.self) { l in
                     // Tap detaches, as on Android.
@@ -333,7 +333,7 @@ struct InkBlockPreview: View {
     var body: some View {
         let strokes = model.store.readInk(inkId).compactMap { try? StrokeEnvelope.decode($0) }
         if strokes.isEmpty {
-            HStack(spacing: 8) { Image(systemName: "scribble"); Text("Tap to sketch").font(Face.text(13)) }.foregroundStyle(y.dim).padding(20)
+            HStack(spacing: 8) { YantraIcon(mark: .ink, size: YantraIcons.medium, tint: y.dim); Text("Tap to sketch").font(Face.text(13)) }.foregroundStyle(y.dim).padding(20)
         } else {
             StrokeCanvas(strokes: strokes, dark: y.dark).frame(height: 180).padding(8)
         }

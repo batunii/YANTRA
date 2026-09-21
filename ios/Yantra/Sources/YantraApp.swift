@@ -54,6 +54,7 @@ struct RootView: View {
                     case .github: SignInView(path: $path)
                     case .archive: ArchiveView(path: $path)
                     case let .calendar(day): CalendarView(path: $path, startOn: day)
+                    case .marks: MarkSheetView()
                     }
                 }
         }
@@ -116,6 +117,7 @@ struct RootView: View {
                     return
                 }
                 if r == "settings" { path.append(Route.settings); return }
+                if r == "marks" { path.append(Route.marks); return }
                 if r == "calendar" { path.append(Route.calendar(nil)); return }
                 if r.hasPrefix("calendar:") { path.append(Route.calendar(String(r.dropFirst(9)))); return }
                 if r == "github" { path.append(Route.github); return }

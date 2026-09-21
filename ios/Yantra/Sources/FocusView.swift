@@ -18,7 +18,7 @@ struct FocusView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack { NavCircle(icon: "chevron.left") { path.removeLast() }; Spacer() }.padding(.horizontal, Layout.pageMargin).padding(.top, 8)
+            HStack { NavCircle(mark: .back) { path.removeLast() }; Spacer() }.padding(.horizontal, Layout.pageMargin).padding(.top, 8)
             if let s = live, s.isFinished {
                 done(s)
             } else if let s = live, requestedNodeId == nil || s.nodeId == requestedNodeId {
@@ -28,7 +28,7 @@ struct FocusView: View {
             } else {
                 Spacer()
                 VStack(spacing: 18) {
-                    YantraMark(size: 60)
+                    BhupuraMark(size: 60)
                     Text("Nothing in focus.\nStart a session from any task.").font(Face.text(14.5)).foregroundStyle(y.muted).multilineTextAlignment(.center)
                 }
                 Spacer()
@@ -54,7 +54,7 @@ struct FocusView: View {
             ZStack {
                 Circle().fill(y.accent.opacity(0.16)).frame(width: 74, height: 74)
                 Circle().fill(y.accent).frame(width: 46, height: 46)
-                Image(systemName: "checkmark").icon(22, .bold).foregroundStyle(y.onAccent)
+                YantraIcon(mark: .check, size: YantraIcons.large, tint: y.onAccent)
             }
             Text("Session complete").font(Face.display(24)).tracking(-0.4).foregroundStyle(y.ink)
             Text("\((s.isOpen ? s.elapsedSecs : s.plannedSecs) / 60) min on \(s.nodeTitle.isEmpty ? "your task" : s.nodeTitle)").font(Face.text(13.5)).foregroundStyle(y.muted).multilineTextAlignment(.center)
@@ -74,7 +74,7 @@ struct FocusView: View {
             Button { path.append(Route.node(s.nodeId)) } label: {
                 HStack(spacing: 6) {
                     Text(s.nodeTitle.isEmpty ? "Untitled task" : s.nodeTitle).font(Face.text(16, .bold)).foregroundStyle(y.ink).lineLimit(2).multilineTextAlignment(.center)
-                    Image(systemName: "chevron.right").icon(14, .semibold).foregroundStyle(y.dim)
+                    YantraIcon(mark: .forward, size: YantraIcons.small, tint: y.dim)
                 }
             }.buttonStyle(.plain).padding(.top, 6).padding(.horizontal, 30)
             FocusGlyph(dayCounts: dayCounts(history), progress: s.progress).frame(width: 272, height: 272).padding(.top, 18)
@@ -84,11 +84,11 @@ struct FocusView: View {
                 .font(Face.mono(11)).kerning(1).foregroundStyle(y.dim).padding(.top, 6)
             Spacer()
             Button { s.isRunning ? model.timer.pause() : model.timer.resume() } label: {
-                Image(systemName: s.isRunning ? "pause.fill" : "play.fill").icon(28).foregroundStyle(y.accent)
+                YantraIcon(mark: s.isRunning ? .pause : .play, size: 28, tint: y.accent)
                     .frame(width: 76, height: 76).background(Circle().fill(y.accentFill)).overlay(Circle().stroke(y.accentBorder, lineWidth: 1))
             }.buttonStyle(.plain)
             HStack(spacing: 10) {
-                YantraButton(label: "Finish", tone: .soft, icon: "timer") { stopping(s) { model.timer.finish() } }
+                YantraButton(label: "Finish", tone: .soft, mark: .focus) { stopping(s) { model.timer.finish() } }
                 YantraButton(label: "Drop", tone: .quiet) { stopping(s) { model.timer.abandon() } }
             }.padding(.horizontal, 30).padding(.top, 16)
             Spacer().frame(height: 32)
@@ -107,7 +107,7 @@ struct FocusView: View {
                 HStack(alignment: .top) {
                     Text(inlinePlain(n.title ?? "").isEmpty ? "Untitled task" : inlinePlain(n.title ?? "")).font(Face.display(32)).tracking(-0.4).foregroundStyle(y.ink).lineLimit(3).multilineTextAlignment(.leading)
                     Spacer()
-                    Image(systemName: "chevron.right").icon(20, .semibold).foregroundStyle(y.dim).padding(.top, 10)
+                    YantraIcon(mark: .forward, size: YantraIcons.medium, tint: y.dim).padding(.top, 10)
                 }
             }.buttonStyle(.plain).padding(.top, 6)
             if !history.isEmpty {
@@ -165,7 +165,7 @@ struct SessionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if FocusOutcome.keptItsPromise(session.outcome, planned: session.plannedSecs) {
-                Image(systemName: "timer").icon(14).foregroundStyle(y.accent).frame(width: 16)
+                YantraIcon(mark: .focus, size: YantraIcons.small, tint: y.accent).frame(width: 16)
             } else { Text("◌").font(Face.text(16)).foregroundStyle(y.dim).frame(width: 16) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(Date(timeIntervalSince1970: TimeInterval(session.startedAt) / 1000), format: .dateTime.month(.abbreviated).day().hour().minute()).font(Face.text(13.5, .medium)).foregroundStyle(y.ink)

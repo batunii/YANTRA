@@ -21,7 +21,7 @@ struct SignInView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack { NavCircle(icon: "chevron.left") { path.removeLast() }; Spacer() }
+                HStack { NavCircle(mark: .back) { path.removeLast() }; Spacer() }
                 Text("GitHub").font(Face.display(32)).tracking(-0.6).foregroundStyle(y.ink).padding(.top, 18).padding(.bottom, 8)
                 if let login { signedIn(login) } else { signedOut }
                 Spacer().frame(height: 40)
@@ -49,11 +49,11 @@ struct SignInView: View {
                 HStack {
                     Text(code.userCode).font(Face.mono(30, bold: true)).kerning(4).foregroundStyle(y.ink)
                     Spacer()
-                    Image(systemName: "doc.on.doc").foregroundStyle(y.secondary)
+                    YantraIcon(mark: .copy, size: YantraIcons.medium, tint: y.secondary)
                     Text(copied ? "Copied" : "Tap to copy").font(Face.text(12)).foregroundStyle(y.muted)
                 }.padding(16).background(RoundedRectangle(cornerRadius: 14).fill(y.cardBg))
             }.buttonStyle(.plain)
-            YantraButton(label: "Open GitHub", tone: .soft, icon: "arrow.up.right.square") { openURL(URL(string: code.verificationUri)!) }
+            YantraButton(label: "Open GitHub", tone: .soft, mark: .openOut) { openURL(URL(string: code.verificationUri)!) }
             Text("Waiting for you to approve it. This screen will notice by itself.").font(Face.text(12.5)).foregroundStyle(y.muted)
         }
     }
@@ -92,7 +92,7 @@ struct SignInView: View {
 
     @ViewBuilder private func signedIn(_ login: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(y.accent)
+            YantraIcon(mark: .check, size: YantraIcons.medium, tint: y.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(login).font(Face.text(15, .bold)).foregroundStyle(y.ink)
                 Text("The name on your commits, and who a task is assigned to").font(Face.text(12)).foregroundStyle(y.muted)
@@ -117,7 +117,7 @@ struct SignInView: View {
             HStack(spacing: 10) {
                 TextField("repository name", text: $newName).font(Face.mono(14)).foregroundStyle(y.ink).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .padding(14).background(RoundedRectangle(cornerRadius: 12).fill(y.surfaceHigh)).overlay(RoundedRectangle(cornerRadius: 12).stroke(y.tileBorder, lineWidth: 1))
-                YantraButton(label: "Create", tone: .quiet, icon: "arrow.up.right.square") {
+                YantraButton(label: "Create", tone: .quiet, mark: .openOut) {
                     openURL(GitHubAuth.newRepoURL(name: newName)); repoText = "\(login)/\(newName)"
                 }.frame(width: 120)
             }

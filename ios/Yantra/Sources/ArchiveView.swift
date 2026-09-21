@@ -13,7 +13,7 @@ struct ArchiveView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                HStack { NavCircle(icon: "chevron.left") { path.removeLast() }; Spacer() }
+                HStack { NavCircle(mark: .back) { path.removeLast() }; Spacer() }
                 Text("Archive").font(Face.display(32)).tracking(-0.6).foregroundStyle(y.ink).padding(.top, 18)
                 Text("Finished tasks that left your lists. They are still in the repository — putting one back returns it exactly where it was.")
                     .font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 6).padding(.bottom, 20)
@@ -27,7 +27,7 @@ struct ArchiveView: View {
                                 Text("Finished " + finishedLabel(t.doneAt)).font(Face.text(11.5)).foregroundStyle(y.dim)
                             }
                             Spacer()
-                            NavCircle(icon: "arrow.uturn.backward", accent: true) {
+                            NavCircle(mark: .undo, accent: true) {
                                 model.write { _ = try model.writer.restoreArchived(pageId: g.pageId, taskIds: [t.id]) }
                                 load()
                             }.frame(width: 34, height: 34)

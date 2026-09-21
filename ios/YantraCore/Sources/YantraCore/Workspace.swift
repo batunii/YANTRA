@@ -287,6 +287,9 @@ public struct Node: Identifiable, Equatable, Sendable {
     public var payload: String?
     /// The meeting in somebody else's calendar this line is about, when it is about one.
     public var external: ExternalRef?
+    /// The emoji a list wears, and the palette name it wears — both only on a page node.
+    public var icon: String?
+    public var color: String?
     /// The whole event line, for an event node.
     ///
     /// Kept intact rather than spread across the fields above: an event's span, zone, rule and
@@ -298,12 +301,14 @@ public struct Node: Identifiable, Equatable, Sendable {
                 done: Bool, inProgress: Bool, indent: Int, systemKey: String?, createdAt: Int64,
                 due: DueSpec? = nil, deadline: LocalDate? = nil, priority: String? = nil, labels: [String] = [],
                 assignee: String? = nil, doneAt: LocalDate? = nil, homePageId: String? = nil, lineIndex: Int? = nil,
-                payload: String? = nil, external: ExternalRef? = nil, event: EventRef? = nil) {
+                payload: String? = nil, external: ExternalRef? = nil, event: EventRef? = nil,
+                icon: String? = nil, color: String? = nil) {
         self.id = id; self.workspaceId = workspaceId; self.parentId = parentId; self.type = type; self.title = title
         self.rank = rank; self.done = done; self.inProgress = inProgress; self.indent = indent; self.systemKey = systemKey
         self.createdAt = createdAt; self.due = due; self.deadline = deadline; self.priority = priority; self.labels = labels
         self.assignee = assignee; self.doneAt = doneAt; self.homePageId = homePageId; self.lineIndex = lineIndex
         self.payload = payload; self.external = external; self.event = event
+        self.icon = icon; self.color = color
     }
 
     /// Due as an instant for filtering and sorting: all-day is local midnight.
@@ -364,7 +369,8 @@ public struct WorkspaceIndex: Sendable {
             if p.parent == nil {
                 ix.nodes[p.id] = Node(id: p.id, workspaceId: ws, parentId: nil, type: p.type, title: p.title, rank: Rank.first, done: false, inProgress: false,
                                       indent: 0, systemKey: p.systemKey, createdAt: stamp, due: nil, deadline: nil, priority: nil, labels: [], assignee: nil,
-                                      doneAt: nil, homePageId: nil, lineIndex: nil, payload: nil)
+                                      doneAt: nil, homePageId: nil, lineIndex: nil, payload: nil,
+                                      icon: p.icon, color: p.color)
             } else if let line = lineNodes[p.id] {
                 // The page file supplies identity and body; the parent's line supplies title, status, indent, rank.
                 var n = line; n.systemKey = p.systemKey

@@ -13,6 +13,8 @@ enum Route: Hashable {
     case archive
     /// The calendar, optionally landing on a day — how the widget points at one.
     case calendar(String?)
+    /// Every mark at once, for checking the drawings. `-route marks`.
+    case marks
 }
 
 struct HomeView: View {
@@ -20,6 +22,8 @@ struct HomeView: View {
     @Environment(\.y) private var y
     @Binding var path: NavigationPath
     @State private var creating = false
+    /// The list whose appearance is being chosen, if any.
+    @State private var look: Node?
 
     private var lists: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.list } }
     private var smart: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.smartList } }
@@ -49,33 +53,34 @@ struct HomeView: View {
                             Text(tally).font(Face.text(13.5)).foregroundStyle(y.secondary)
                         }
                         Spacer()
-                        HStack(spacing: 8) {
-                            NavCircle(icon: "calendar") { path.append(Route.calendar(nil)) }
-                                .accessibilityIdentifier("home.calendar").accessibilityLabel("Calendar")
-                            NavCircle(icon: "slider.horizontal.3") { path.append(Route.settings) }
-                                .accessibilityIdentifier("home.settings").accessibilityLabel("Settings")
-                        }
+                        NavCircle(mark: .settings) { path.append(Route.settings) }
+                            .accessibilityIdentifier("home.settings").accessibilityLabel("Settings")
                     }
                     .padding(.top, 14).padding(.bottom, 22)
 
                     if !smart.isEmpty {
                         SectionLabel(text: "Pinned").padding(.bottom, 6)
-                        ForEach(smart) { n in HomeRow(node: n, isSmart: true) { path.append(Route.smart(n.id)) } }
+                        ForEach(smart) { n in HomeRow(node: n, isSmart: true, open: { path.append(Route.smart(n.id)) }, look: $look) }
                         Spacer().frame(height: 18)
                     }
                     SectionLabel(text: "Lists").padding(.bottom, 6)
                     if lists.isEmpty {
                         ComposedEmpty(line: "Nothing here yet", action: "Make a list") { creating = true }
                     }
-                    ForEach(lists) { n in HomeRow(node: n, isSmart: false) { path.append(Route.node(n.id)) } }
+                    ForEach(lists) { n in HomeRow(node: n, isSmart: false, open: { path.append(Route.node(n.id)) }, look: $look) }
                     Spacer().frame(height: 120)
                 }
                 .padding(.horizontal, Layout.pageMargin)
             }
-            HomeTabBar(onHome: {}, onCreate: { creating = true }, onStats: { path.append(Route.stats) })
+            HomeTabBar(onCalendar: { path.append(Route.calendar(nil)) },
+                       onCreate: { creating = true },
+                       onStats: { path.append(Route.stats) })
         }
         .background(y.page.ignoresSafeArea())
         .sheet(isPresented: $creating) { CreateSheet(path: $path) }
+        .sheet(item: $look) { n in
+            ListLookSheet(nodeId: n.id, title: inlinePlain(n.title ?? ""), smart: n.type == NodeType.smartList)
+        }
     }
 }
 
@@ -85,6 +90,7 @@ struct HomeRow: View {
     let node: Node
     let isSmart: Bool
     let open: () -> Void
+    @Binding var look: Node?
 
     private var counts: (done: Int, total: Int) {
         let kids = isSmart ? model.smartListRows(node) + model.completedRows(node) : model.index.children(of: node.id).filter { $0.type == NodeType.task }
@@ -95,10 +101,7 @@ struct HomeRow: View {
         let c = counts
         Button(action: open) {
             HStack(spacing: 14) {
-                ZStack {
-                    if !isSmart { RoundedRectangle(cornerRadius: 10).fill(y.accentFill.opacity(0.75)) }
-                    Image(systemName: isSmart ? "sparkles" : "list.bullet").icon(isSmart ? 19 : 17, .semibold).foregroundStyle(y.accent)
-                }.frame(width: 34, height: 34)
+                ListGlyph(icon: node.icon, color: node.color, smart: isSmart)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(inlinePlain(node.title ?? "").isEmpty ? "Untitled" : inlinePlain(node.title ?? "")).font(Face.display(15.5, .medium)).foregroundStyle(y.ink).lineLimit(1)
                     Text(c.total == 0 ? "Empty" : "\(c.done) of \(c.total) done").font(Face.text(12.5)).foregroundStyle(y.muted)
@@ -113,6 +116,11 @@ struct HomeRow: View {
         // label; adding an explicit combine on top makes an element that reports as a button and
         // swallows the tap, which is a row that looks right in the tree and does nothing.
         .accessibilityIdentifier("home.row.\(inlinePlain(node.title ?? ""))")
+        // How a list looks is a second thing you can do to a row, so it is the second gesture
+        // rather than a control that would sit on every row for the once anybody uses it.
+        .contextMenu {
+            Button { look = node } label: { Label("How it looks", systemImage: "paintpalette") }
+        }
         .overlay(alignment: .bottom) { Rectangle().fill(y.hairline).frame(height: 1) }
     }
 }
@@ -139,7 +147,7 @@ struct ComposedEmpty: View {
     @Environment(\.y) private var y
     var body: some View {
         VStack(spacing: 14) {
-            YantraMark(size: 34)
+            BhupuraMark(size: 34)
             Text(line).font(Face.text(13, .medium)).foregroundStyle(y.muted)
             if let action {
                 Button(action: onAction) {
@@ -152,23 +160,38 @@ struct ComposedEmpty: View {
 }
 
 struct HomeTabBar: View {
-    let onHome: () -> Void, onCreate: () -> Void, onStats: () -> Void
+    let onCalendar: () -> Void, onCreate: () -> Void, onStats: () -> Void
     @Environment(\.y) private var y
     var body: some View {
         HStack {
-            Button(action: onHome) { Image(systemName: "house").icon(22).foregroundStyle(y.ink).frame(width: 44, height: 44) }
-                .accessibilityIdentifier("tab.home").accessibilityLabel("Home")
+            // Calendar, not a home key: this *is* the home screen, so a key back to it does
+            // nothing. The calendar is the other board, and it belongs where a thumb is.
+            Button(action: onCalendar) {
+                YantraIcon(mark: .calendar, size: YantraIcons.large, tint: y.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityIdentifier("home.calendar").accessibilityLabel("Calendar")
             Spacer()
+            // The make-something key.
+            //
+            // It wore a gearshape while opening the create sheet, and settings sat in the top-right
+            // circle wearing sliders — inverted from every other app on the phone, so a person
+            // reaching for a cog found a new-list sheet. The Kotlin hit the same thing and records
+            // the same fix; this is that fix, at the same 56 points and card radius so the key is
+            // the same object as the calendar's, in size, shape and position.
             Button(action: onCreate) {
-                Image(systemName: "gearshape.fill").icon(26).foregroundStyle(y.accent)
-                    .frame(width: 54, height: 54)
-                    .background(RoundedRectangle(cornerRadius: 17).fill(y.accentFill))
-                    .overlay(RoundedRectangle(cornerRadius: 17).stroke(y.accentBorder, lineWidth: 1))
+                YantraIcon(mark: .add, size: YantraIcons.large, tint: y.accent)
+                    .frame(width: 56, height: 56)
+                    .background(RoundedRectangle(cornerRadius: Layout.cardRadius).fill(y.accentFill))
+                    .overlay(RoundedRectangle(cornerRadius: Layout.cardRadius).stroke(y.accentBorder, lineWidth: 1))
             }
             .accessibilityIdentifier("tab.create").accessibilityLabel("New")
             Spacer()
-            Button(action: onStats) { Image(systemName: "chart.bar.fill").icon(20).foregroundStyle(y.accent).frame(width: 44, height: 44) }
-                .accessibilityIdentifier("tab.stats").accessibilityLabel("Stats")
+            Button(action: onStats) {
+                YantraIcon(mark: .stats, size: YantraIcons.large, tint: y.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityIdentifier("tab.stats").accessibilityLabel("Stats")
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 40).padding(.top, 10).padding(.bottom, 6)

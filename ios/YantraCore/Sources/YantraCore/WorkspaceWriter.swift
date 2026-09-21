@@ -194,6 +194,13 @@ public final class WorkspaceWriter {
         try editPage(pageId) { var p = $0; p.color = color; return p }
     }
 
+    /// The emoji a list wears instead of its mark. Cleaned to one user-perceived character on the
+    /// way in, so what reaches the file is what the slot can actually hold.
+    public func setPageIcon(_ pageId: String, _ icon: String?) throws {
+        let cleaned = ListIcon.clean(icon)
+        try editPage(pageId) { var p = $0; p.icon = cleaned; return p }
+    }
+
     /// Which page holds a task's line, and the line's index.
     public func locate(taskId: String) -> (String, Int)? {
         for p in store.readPages() {

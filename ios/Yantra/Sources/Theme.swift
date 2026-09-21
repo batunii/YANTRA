@@ -206,14 +206,14 @@ enum ButtonTone { case solid, soft, quiet }
 struct YantraButton: View {
     let label: String
     var tone: ButtonTone = .soft
-    var icon: String? = nil
+    var mark: YantraMark? = nil
     var enabled: Bool = true
     let action: () -> Void
     @Environment(\.y) private var y
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if let icon { Image(systemName: icon).icon(15, .semibold) }
+                if let mark { YantraIcon(mark: mark, size: YantraIcons.small, tint: fg) }
                 Text(label).font(Face.text(15, .bold))
             }
             .padding(.horizontal, 20).padding(.vertical, 13)
@@ -250,14 +250,13 @@ struct SelectChip: View {
 }
 
 struct NavCircle: View {
-    let icon: String
+    let mark: YantraMark
     var accent: Bool = false
     let action: () -> Void
     @Environment(\.y) private var y
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon).icon(17, .semibold)
-                .foregroundStyle(accent ? y.accent : y.secondary)
+            YantraIcon(mark: mark, size: YantraIcons.medium, tint: accent ? y.accent : y.secondary)
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(accent ? y.accentFill : y.ink.opacity(0.05)))
         }.buttonStyle(.plain)

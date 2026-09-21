@@ -18,7 +18,7 @@ struct InkView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                NavCircle(icon: "chevron.left") { save(); path.removeLast() }
+                NavCircle(mark: .back) { save(); path.removeLast() }
                 Spacer()
                 Text(model.index.nodes[inkId].flatMap { n in n.parentId.flatMap { model.index.nodes[$0]?.title } }.map { inlinePlain($0) + " · ink" } ?? "Sketch")
                     .font(Face.text(17, .bold)).foregroundStyle(y.ink).lineLimit(1)

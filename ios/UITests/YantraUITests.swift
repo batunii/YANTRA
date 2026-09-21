@@ -66,6 +66,7 @@ class YantraUITestCase: XCTestCase {
         static let subtask = "A subtask"
         static let focusedTask = "Focused thing"
         static let archivedTask = "Archived thing"
+        static let warnedTask = "Warned thing"
         static let event = "Standup"
         static let allDayEvent = "Conference day"
     }
@@ -107,7 +108,12 @@ class YantraUITestCase: XCTestCase {
     /// is folded into a `button` and the words are its label. Querying one or the other is how a
     /// test comes to "fail" on a rail that is plainly on screen.
     func shelf(_ name: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", name, name)).firstMatch
+        // Label, identifier *or* value. An editable title — a page's name, a text field — carries
+        // its words as a `value`, not a `label`, so matching only the first two finds nothing on a
+        // screen where the words are plainly on display.
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ OR identifier == %@ OR value == %@", name, name, name))
+            .firstMatch
     }
 
     /// Opens the rail, wherever it lives on this device.
@@ -152,11 +158,11 @@ final class HomeUITests: YantraUITestCase {
         let app = launch(route: "home")
         let row = el("home.row.\(Fixture.list)")
         assertExists(row, "no Groceries row")
-        // Five tasks, one of them finished. The two events on that page are not tasks and must not
-        // be counted — a list that said "1 of 7 done" would be counting things with no box to tick.
+        // Six tasks, one of them finished. The two events on that page are not tasks and must not
+        // be counted — a list that said "1 of 8 done" would be counting things with no box to tick.
         // The archived task is not counted either: it has left the list.
-        XCTAssertTrue(row.label.contains("1 of 5 done"),
-                      "expected '1 of 5 done', got \(row.label.debugDescription)")
+        XCTAssertTrue(row.label.contains("1 of 6 done"),
+                      "expected '1 of 6 done', got \(row.label.debugDescription)")
     }
 
     func testTappingAListOnHomeOpensIt() {
@@ -566,5 +572,89 @@ final class DeepLinkUITests: YantraUITestCase {
         let app = launch(route: "calendar:not-a-date")
         XCTAssertEqual(app.state, .runningForeground, "a bad date brought the app down")
         assertExists(app.staticTexts["calendar.heading"], "a bad date should still reach the calendar")
+    }
+}
+
+// MARK: - what main added: list icons, and more than one reminder
+
+final class ListLookUITests: YantraUITestCase {
+
+    /// A list wearing an emoji and a list wearing its mark are both on Home, and both are readable.
+    ///
+    /// The colour lands differently on each — a mark is tinted, an emoji sits on a disc because it
+    /// cannot be tinted — which is not something a test can see. What it can check is that choosing
+    /// an icon reaches the file and comes back, which is the part that would silently do nothing.
+    func testAListCanBeGivenAnIconAndItSticks() {
+        let app = launch(route: "home")
+        assertExists(shelf(Fixture.list), "the Groceries row is missing")
+
+        // The sheet is reached by long-pressing the row, because how a list looks is the second
+        // thing you can do to it and not worth a control on every row.
+        // A long press opens the context menu; the menu's item is what opens the sheet. Asserting
+        // on the sheet straight after the press was asking for the second step to have happened.
+        app.staticTexts[Fixture.list].press(forDuration: 1.2)
+        let item = app.buttons["How it looks"]
+        guard item.waitForExistence(timeout: 6) else {
+            XCTFail("long-pressing a list offered no menu"); return
+        }
+        item.tap()
+        let look = app.navigationBars["How it looks"]
+        guard look.waitForExistence(timeout: 6) else {
+            XCTFail("the menu item did not open the sheet"); return
+        }
+        // Pick the first suggested emoji and save. `firstMatch`, because once it is chosen the
+        // preview at the top of the sheet shows the same emoji and the query matches both.
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", ListIconGrid.first)).firstMatch.tap()
+        app.buttons["Save"].tap()
+        expectGone(look, "the sheet did not close after saving")
+
+        // Reopening shows the choice, which is the half that proves it reached the file.
+        app.staticTexts[Fixture.list].press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["How it looks"].waitForExistence(timeout: 6), "no menu on reopen")
+        app.buttons["How it looks"].tap()
+        XCTAssertTrue(look.waitForExistence(timeout: 6), "the sheet did not reopen")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", ListIconGrid.first)).firstMatch.exists,
+                      "the chosen icon is not in the sheet")
+    }
+
+    /// Only the grid's first cell is needed, and hard-coding it here rather than importing the core
+    /// keeps the UI bundle free of the package.
+    enum ListIconGrid { static let first = "📥" }
+
+    func expectGone(_ el: XCUIElement, _ message: String, timeout: TimeInterval = 6) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline { if !el.exists { return }; usleep(150_000) }
+        XCTFail(message)
+    }
+}
+
+final class ReminderUITests: YantraUITestCase {
+
+    /// A task warned about twice says so, rather than showing the same bell a single reminder does.
+    func testATaskWithTwoRemindersSaysHowMany() {
+        launch(route: "open:fixture-warned")
+        assertExists(shelf(Fixture.warnedTask), "the warned task's page did not open")
+        // The due pill carries the count once there is more than one.
+        let pill = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] 'Due'")).firstMatch
+        assertExists(pill, "the task page shows no due pill")
+        XCTAssertTrue(pill.label.contains("2"),
+                      "a task with two reminders should say so, got \(pill.label.debugDescription)")
+    }
+
+    /// The offsets on offer follow the shape of the due date, and several can be on at once.
+    func testSeveralRemindersCanBeChosenAtOnce() {
+        launch(route: "open:fixture-warned")
+        let pill = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] 'Due'")).firstMatch
+        assertExists(pill, "no due pill to open")
+        pill.tap()
+
+        assertExists(app.staticTexts["Reminders"], "the due sheet has no reminders section")
+        // The fixture sets a day and half an hour before, so both chips are already on.
+        for label in ["1 day", "30 min"] {
+            assertExists(shelf(label), "the \(label) chip is missing from the due sheet")
+        }
+        XCTAssertTrue(shelf("2 set").exists, "the sheet does not say how many are set")
     }
 }
