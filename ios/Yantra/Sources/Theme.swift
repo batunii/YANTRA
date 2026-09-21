@@ -182,6 +182,69 @@ extension View {
 enum Layout {
     static let pageMargin: CGFloat = 22
     static let buttonRadius: CGFloat = 13, cardRadius: CGFloat = 14, barRadius: CGFloat = 18, chipRadius: CGFloat = 10
+
+    // The named scale, matching `YantraRadius` on Android so a surface is the same shape on both.
+    /// The smallest mark that still has corners — a swatch, a dot with a square shoulder.
+    static let tinyRadius: CGFloat = 4
+    /// A block on the timeline, a row in the rail: small, clipped, many of them at once.
+    static let blockRadius: CGFloat = 8
+    /// A secondary surface inside something else — a panel in the ink kit, a tool tray.
+    static let panelRadius: CGFloat = 12
+    /// A band, a bottom sheet, the header's rounded foot.
+    static let sheetRadius: CGFloat = 18
+    /// The largest: a full-height surface that still wants a corner.
+    static let heroRadius: CGFloat = 28
+}
+
+/// Lays its children out in a row, wrapping to the next line when one will not fit.
+///
+/// The chips in a builder are as many as the person's own properties, so a fixed row would push the
+/// last of them off a narrow screen with nothing to say it had gone.
+struct YFlow: SwiftUI.Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat? = nil
+    private var vGap: CGFloat { lineSpacing ?? spacing }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: SwiftUI.LayoutSubviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let rows = layout(subviews, in: width)
+        let height = rows.last.map { $0.y + $0.height } ?? 0
+        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: SwiftUI.LayoutSubviews, cache: inout ()) {
+        for row in layout(subviews, in: bounds.width) {
+            var x = bounds.minX
+            for i in row.range {
+                let size = subviews[i].sizeThatFits(.unspecified)
+                subviews[i].place(at: CGPoint(x: x, y: bounds.minY + row.y),
+                                  proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+        }
+    }
+
+    private struct Row { var range: Range<Int>; var y: CGFloat; var width: CGFloat; var height: CGFloat }
+
+    private func layout(_ subviews: SwiftUI.LayoutSubviews, in width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var start = 0, x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0
+        for i in subviews.indices {
+            let size = subviews[i].sizeThatFits(.unspecified)
+            // A single child wider than the line still gets its own line rather than none.
+            if x > 0, x + size.width > width {
+                rows.append(Row(range: start..<i, y: y, width: x - spacing, height: lineHeight))
+                y += lineHeight + vGap
+                start = i; x = 0; lineHeight = 0
+            }
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        if start < subviews.count {
+            rows.append(Row(range: start..<subviews.count, y: y, width: max(x - spacing, 0), height: lineHeight))
+        }
+        return rows
+    }
 }
 
 // MARK: - small shared pieces
@@ -254,7 +317,11 @@ struct SelectChip: View {
                 .background(RoundedRectangle(cornerRadius: Layout.chipRadius).fill(selected ? y.accentFill : y.surfaceHigh))
                 .overlay(RoundedRectangle(cornerRadius: Layout.chipRadius).stroke(selected ? y.accentBorder : y.tileBorder, lineWidth: 1))
                 .foregroundStyle(selected ? y.accentText : y.secondary)
-        }.buttonStyle(.plain)
+        }
+        .buttonStyle(.plain)
+        // Colour is the only thing that says "chosen" here, which VoiceOver cannot see. The trait
+        // is how the state reaches anyone not looking at the coral.
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 

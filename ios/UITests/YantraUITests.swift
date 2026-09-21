@@ -67,6 +67,8 @@ class YantraUITestCase: XCTestCase {
         static let focusedTask = "Focused thing"
         static let archivedTask = "Archived thing"
         static let warnedTask = "Warned thing"
+        static let startedTask = "Started thing"
+        static let sittingTask = "Sitting thing"
         static let event = "Standup"
         static let allDayEvent = "Conference day"
     }
@@ -158,11 +160,11 @@ final class HomeUITests: YantraUITestCase {
         let app = launch(route: "home")
         let row = el("home.row.\(Fixture.list)")
         assertExists(row, "no Groceries row")
-        // Six tasks, one of them finished. The two events on that page are not tasks and must not
-        // be counted — a list that said "1 of 8 done" would be counting things with no box to tick.
-        // The archived task is not counted either: it has left the list.
-        XCTAssertTrue(row.label.contains("1 of 6 done"),
-                      "expected '1 of 6 done', got \(row.label.debugDescription)")
+        // Eight tasks, one of them finished. The three events on that page are not tasks and must
+        // not be counted — a list that said "1 of 11 done" would be counting things with no box to
+        // tick. The archived task is not counted either: it has left the list.
+        XCTAssertTrue(row.label.contains("1 of 8 done"),
+                      "expected '1 of 8 done', got \(row.label.debugDescription)")
     }
 
     func testTappingAListOnHomeOpensIt() {
@@ -540,10 +542,10 @@ final class InkUITests: YantraUITestCase {
     func testTheInkCanvasOpens() {
         let app = launch(route: "ink:fixture-ink")
         XCTAssertEqual(app.state, .runningForeground, "the ink route brought the app down")
-        // The hint line is the canvas saying it is ready for input.
-        let hint = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] 'draw'")).firstMatch
-        assertExists(hint, "the ink canvas came up with no drawing surface")
+        assertExists(el("ink.canvas"), "the ink canvas came up with no drawing surface")
+        // And the kit that makes it usable: a pen to draw with and a way to take a mark back.
+        assertExists(el("ink.slot.0"), "the ink canvas came up with no pen")
+        assertExists(el("ink.undo"), "the ink canvas came up with no undo")
     }
 }
 
@@ -658,5 +660,141 @@ final class ReminderUITests: YantraUITestCase {
             assertExists(shelf(label), "the \(label) chip is missing from the due sheet")
         }
         XCTAssertTrue(shelf("2 set").exists, "the sheet does not say how many are set")
+    }
+}
+
+// MARK: - the smart list builder
+
+/// The rule editor. What matters here is not that the controls draw but that opening a rule the
+/// form cannot fully express, and saving, leaves the part it cannot show alone.
+final class SmartListBuilderUITests: YantraUITestCase {
+
+    /// The seeded Today rule is "open AND (due today-or-earlier OR deadline today-or-earlier)".
+    /// The OR has no control, so the sheet has to say so rather than claim there are no conditions.
+    func testARuleTheFormCannotExpressSaysSoRatherThanLooksEmpty() {
+        launch(route: "rules:fixture-today")
+        assertExists(el("smart.show.Open"), "the builder did not come up")
+        XCTAssertTrue(el("smart.show.Open").isSelected, "Today shows open tasks, so Open should be the mode")
+        assertExists(el("smart.extrasNote"), "a rule with a clause the form cannot show said nothing about it")
+        // And no starting point claims to be what this rule is, because none of them is.
+        for t in ["Due today", "High priority", "All open tasks"] {
+            XCTAssertFalse(el("smart.preset.\(t)").isSelected,
+                           "\(t) claimed to be the current rule while a hidden clause was present")
+        }
+    }
+
+    /// The property this asserts is the one the whole `extras` mechanism exists for: edit what the
+    /// form controls, save, and the branch it never showed you is still in the rule afterwards.
+    func testSavingDoesNotDropTheClauseTheFormNeverShowed() {
+        launch(route: "rules:fixture-today")
+        assertExists(el("smart.show.All"), "the builder did not come up")
+        tap("smart.show.All", "could not change what the list shows")
+        tap("smart.save", "could not save the rule")
+
+        // Reopen and look again: the note is still there, so the branch survived the write.
+        launch(route: "rules:fixture-today")
+        assertExists(el("smart.extrasNote"),
+                     "saving an edit dropped the clause the form could not show — the rule was rewritten")
+    }
+
+    func testAConditionCanBeAddedAndRemoved() {
+        launch(route: "rules:fixture-today")
+        assertExists(el("smart.addCondition"), "the builder did not come up")
+        tap("smart.addCondition")
+        app.buttons["Priority"].tap()
+
+        let op = el("smart.op.builtin-priority")
+        assertExists(op, "adding Priority produced no condition row")
+        // A freshly added select condition already says something true rather than sitting blank.
+        assertExists(el("smart.value.builtin-priority"), "the new condition has no value to match")
+
+        tap("smart.remove.builtin-priority", "the condition could not be removed")
+        XCTAssertFalse(op.waitForExistence(timeout: 2), "the removed condition is still on screen")
+    }
+
+    /// Choosing a starting point is the one action that may discard the hidden branch — and it says
+    /// as much on screen before you touch it.
+    func testAStartingPointReplacesTheWholeRule() {
+        launch(route: "rules:fixture-today")
+        assertExists(el("smart.preset.High priority"), "the builder did not come up")
+        tap("smart.preset.High priority")
+
+        XCTAssertFalse(el("smart.extrasNote").exists,
+                       "a starting point kept a clause it said it would replace")
+        assertExists(el("smart.op.builtin-priority"), "the starting point did not fill in its condition")
+        XCTAssertTrue(el("smart.preset.High priority").isSelected,
+                      "the starting point did not light up after being chosen")
+    }
+}
+
+// MARK: - the player
+
+/// The bar at the foot of the screen holding whatever you are on.
+final class NowPlayerUITests: YantraUITestCase {
+
+    func testThePlayerNamesWhatIsOnTheGo() {
+        launch()
+        assertExists(el("now.player"), "nothing is on the bar although two tasks are started")
+        // The scheduled card leads: a sitting is you, earlier, saying this is the hour for this.
+        XCTAssertEqual(el("now.card").label, Fixture.sittingTask,
+                       "the card whose hour is now is not at the front")
+        // The one state with no numeral to carry it.
+        XCTAssertEqual(el("now.state").label, "IT IS TIME")
+    }
+
+    func testTheDeckSaysHowManyCardsThereAre() {
+        launch()
+        assertExists(el("now.deck"), "two started tasks and no deck indicator")
+        XCTAssertEqual(el("now.deck").label, "Card 1 of 2")
+    }
+
+    func testSwipingMovesToTheNextCard() {
+        launch()
+        assertExists(el("now.card"), "the player did not come up")
+        el("now.player").swipeLeft()
+        // The other started task, and with it the other end of the deck.
+        let card = el("now.card")
+        XCTAssertTrue(card.waitForExistence(timeout: 3))
+        XCTAssertEqual(card.label, Fixture.startedTask, "the swipe did not change cards")
+        XCTAssertEqual(el("now.deck").label, "Card 2 of 2")
+    }
+
+    /// The button starts an open stopwatch right here; the body opens the focus screen. Two targets,
+    /// two meanings, and the split is the point.
+    func testTheKeyStartsAndStopsTheClockWithoutLeavingTheScreen() {
+        launch()
+        assertExists(el("now.transport"), "the player has no transport key")
+        XCTAssertEqual(el("now.transport").label, "Start the clock")
+        tap("now.transport")
+
+        // The timed card is dealt to the front, and its state is now a clock rather than a word.
+        let state = el("now.state")
+        assertExists(state, "the running card has no state to read")
+        XCTAssertNotEqual(state.label, "IT IS TIME", "pressing play changed nothing on the bar")
+        XCTAssertEqual(el("now.transport").label, "Stop the clock", "the key did not become a stop")
+        XCTAssertTrue(el("now.player").exists, "the player left when the clock started")
+
+        tap("now.transport", "could not stop the clock")
+        XCTAssertEqual(el("now.transport").label, "Start the clock", "the key did not go back to play")
+        // Stopping the clock does not put the task down — you are usually still on the thing.
+        assertExists(el("now.player"), "stopping the clock cleared the task as well")
+    }
+
+    func testTappingTheCardOpensTheFocusScreen() {
+        launch()
+        assertExists(el("now.card"), "the player did not come up")
+        el("now.card").tap()
+        // The focus screen is where a length is committed to, which the bar's key deliberately is
+        // not — so the screen that arrives must be the one naming that task.
+        assertExists(shelf(Fixture.sittingTask), "tapping the card did not reach the focus screen")
+    }
+
+    /// The player is never the outermost thing on a screen with a permanent bar: it slots in above
+    /// it, so the bottom of the app does not reshuffle itself between screens.
+    func testTheCaptureFieldStaysReachableWhileSomethingIsRunning() {
+        launch(route: "open:fixture-groceries")
+        assertExists(el("now.player"), "the list screen shows no player")
+        XCTAssertTrue(app.textFields["Add a task…"].exists,
+                      "capture went behind a mode because something was running")
     }
 }

@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
         Notifications.shared.onMarkDone = { [weak self] id in self?.write { try self?.writer.setDone(id, true) } }
         reindex()
         timer.wake()
+        startMinuteTick()
         sweepArchive()
     }
 
@@ -29,12 +30,13 @@ final class AppModel: ObservableObject {
         index = WorkspaceIndex.read(store)
         sessions = FocusLedger.read(store)
         Notifications.shared.syncReminders(index)
+        rebuildRunning()
         WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Called when the app comes to the foreground: another process (a widget, the island, the
     /// share sheet) may have written files or moved the session.
-    func wake() { reindex(); timer.wake() }
+    func wake() { reindex(); timer.wake(); startMinuteTick() }
 
     /// Sync observes; it never participates in a write. Runs on open, on leaving, and on request.
     @Published private(set) var syncing = false
@@ -93,6 +95,113 @@ final class AppModel: ObservableObject {
     func listColor(_ pageId: String) -> String? {
         guard let page = store.readPage(pageId) else { return nil }
         return page.color ?? page.title.map { LabelPalette.defaultNameFor($0) }
+    }
+
+    // MARK: what is on the go
+
+    /// The player's stack — see `RunningStack`.
+    ///
+    /// Recomputed on reindex and on the timer's tick, because the front card's clock is the one
+    /// thing here that changes without a file changing.
+    @Published private(set) var running: [RunningStack.Now] = []
+
+    /// Ticks on the minute so a sitting that has arrived is noticed without anybody opening a
+    /// screen. On the minute rather than every sixty seconds from whenever this started, so the bar
+    /// changes as the clock does rather than up to a minute after it.
+    ///
+    /// Only the *set* is rebuilt here. The front card's clock is read live from the timer where it
+    /// is drawn, so a running second does not put every task row in the app on a one-second loop to
+    /// re-render "still not me".
+    private var minuteTick: Timer?
+
+    private func startMinuteTick() {
+        minuteTick?.invalidate()
+        let now = Date().timeIntervalSince1970
+        let toNextMinute = 60 - now.truncatingRemainder(dividingBy: 60)
+        minuteTick = Timer.scheduledTimer(withTimeInterval: toNextMinute, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.rebuildRunning(); self?.startMinuteTick() }
+        }
+    }
+
+    func rebuildRunning() {
+        let live = timer.state.flatMap { $0.isFinished ? nil : $0 }
+        let started = index.nodes.values
+            .filter { $0.type == NodeType.task && $0.inProgress && !$0.done }
+            // Newest first, which is the order the bar's third rank keeps.
+            .sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
+
+        var lists: [String: (String?, String?)] = [:]
+        for n in started {
+            guard let page = n.homePageId, let doc = store.readPage(page) else { continue }
+            lists[n.id] = (doc.title.map { inlinePlain($0) }, listColor(page))
+        }
+
+        running = RunningStack.stack(
+            started: started.map { ($0.id, inlinePlain($0.title ?? "")) },
+            timing: live.map { ($0.nodeId, $0.elapsedSecs) },
+            sittings: sittingsNow(),
+            at: Int64(Date().timeIntervalSince1970 * 1000),
+            lists: lists)
+    }
+
+    /// Which task holds the live clock. Null when things are started but nothing is being timed.
+    var timingId: String? { timer.state.flatMap { $0.isFinished ? nil : $0.nodeId } }
+
+    /// Picks a task up. Nothing else is put down — several things can be on the go.
+    func startRunning(_ nodeId: String) { write { try writer.setInProgress(nodeId, true) } }
+
+    /// Presses play: an **open** stopwatch, not a committed length.
+    ///
+    /// The player's button is a control on a bar you were passing anyway — it means "start
+    /// counting", which promises nothing about how long. Committing to a length is a decision with
+    /// its own screen, and tapping the body of the player is how you get there.
+    func startTiming(_ nodeId: String, title: String) -> RunningStack.Play {
+        if let busy = timingId, busy != nodeId {
+            return .occupied(byId: busy, byTitle: inlinePlain(index.nodes[busy]?.title ?? ""))
+        }
+        // Starting a session marks the task: you cannot be focusing on something you have not
+        // started. The reverse does not hold, which is why nothing here puts anything down.
+        if index.nodes[nodeId]?.inProgress == false { startRunning(nodeId) }
+        timer.start(nodeId: nodeId, title: inlinePlain(title), plannedSecs: 0)
+        rebuildRunning()
+        return .started
+    }
+
+    /// Takes the clock. The previous session closes as interrupted; its time still counts.
+    func switchTimingTo(_ nodeId: String, title: String) {
+        if index.nodes[nodeId]?.inProgress == false { startRunning(nodeId) }
+        timer.start(nodeId: nodeId, title: inlinePlain(title), plannedSecs: 0)
+        rebuildRunning()
+    }
+
+    /// Ends the session but leaves the task started.
+    ///
+    /// Finishing a focus is not the same as putting the task down — you stopped timing, and you are
+    /// usually still on the thing. Clearing the mark here would make the card vanish the moment a
+    /// pomodoro ran out, which is the opposite of what just happened.
+    func stopTiming() {
+        if timingId != nil { timer.finish() }
+        rebuildRunning()
+    }
+
+    /// The sittings covering this moment, read through the same bucketer the calendar uses so a
+    /// block that repeats is expanded once, in one place, by one set of rules.
+    private func sittingsNow() -> [SittingSpan] {
+        let today = LocalDate.today()
+        // Yesterday too: a sitting that began before midnight is still happening now.
+        let days = CalendarBucketer.bucket(nodes: Array(index.nodes.values),
+                                           from: today.adding(days: -1), toExclusive: today.adding(days: 1))
+        var out: [SittingSpan] = []
+        for (_, items) in days {
+            for case let .event(e) in items {
+                guard let taskId = e.forTaskId, !e.allDay else { continue }
+                out.append(SittingSpan(taskId: taskId,
+                                       title: index.nodes[taskId]?.title ?? e.title,
+                                       startUtc: Int64(e.start.instant().timeIntervalSince1970 * 1000),
+                                       endUtc: Int64(e.end.instant().timeIntervalSince1970 * 1000)))
+            }
+        }
+        return out
     }
 
     func smartListRows(_ n: Node) -> [Node] {

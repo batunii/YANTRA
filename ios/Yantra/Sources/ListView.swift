@@ -49,15 +49,21 @@ struct ListView: View {
                 }
                 .padding(.horizontal, Layout.pageMargin).padding(.top, 10)
             }
-            if !isSmart || model.index.smartLists[nodeId]?.homeParentId != nil {
-                QuickAddBar(text: $capture, placeholder: "Add a task…") {
-                    model.capture(capture, into: node); capture = ""
+            // Capture is always open — writing something down should never cost a mode — and the
+            // player slots in above it, so the field is pinned to the screen edge whatever is or is
+            // not running.
+            BottomBar(onOpenNow: { path.append(Route.focus($0.nodeId)) }) {
+                if !isSmart || model.index.smartLists[nodeId]?.homeParentId != nil {
+                    QuickAddBar(text: $capture, placeholder: "Add a task…") {
+                        model.capture(capture, into: node); capture = ""
+                    }
                 }
             }
         }
         .background(y.page.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { if LaunchRoute.rulesFor == nodeId { editingRules = true } }
         .sheet(isPresented: $editingRules) { if let n = node { SmartListBuilder(editing: n, path: $path) } }
     }
 
@@ -201,7 +207,8 @@ struct QuickAddBar: View {
         .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: Layout.barRadius).fill(y.cardBg))
         .overlay(RoundedRectangle(cornerRadius: Layout.barRadius).stroke(y.tileBorder, lineWidth: 1))
-        .padding(.horizontal, Layout.pageMargin).padding(.bottom, 10).padding(.top, 6)
-        .background(y.page)
+        // One number, not two: the field's breathing room at the screen edge is the same whether
+        // or not a player is above it, which is the point of it being the outermost row.
+        .padding(.horizontal, Layout.pageMargin).padding(.bottom, 22).padding(.top, 10)
     }
 }

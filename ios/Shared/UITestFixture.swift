@@ -24,6 +24,8 @@ enum UITestFixture {
         static let doneTask = "Finished thing"
         static let subtask = "A subtask"
         static let focusedTask = "Focused thing"
+    static let startedTask = "Started thing"
+    static let sittingTask = "Sitting thing"
         static let archivedTask = "Archived thing"
         static let warnedTask = "Warned thing"
         static let event = "Standup"
@@ -43,6 +45,8 @@ enum UITestFixture {
         static let ink = "fixture-ink"
         static let warnedTask = "fixture-warned"
         static let image = "fixture-image"
+    static let startedTask = "fixture-started"
+    static let sittingTask = "fixture-sitting"
     }
 
     /// A tiny valid JPEG, so an image block has real bytes to read rather than a stub.
@@ -80,6 +84,15 @@ enum UITestFixture {
             .task(TaskRef(id: id(), title: Names.todayTask,
                           due: DueSpec(.at(LocalDateTime(date: today, hour: 14).instant()), duration: .minutes(90)))),
             .task(TaskRef(id: id(), title: Names.doneTask, status: .done, doneAt: today)),
+            // Two things on the go, so the player has a deck to swipe rather than one card.
+            .task(TaskRef(id: Ids.startedTask, title: Names.startedTask, status: .inProgress)),
+            .task(TaskRef(id: Ids.sittingTask, title: Names.sittingTask, status: .inProgress)),
+            // Time set aside for one of them, running now: the bar's "IT IS TIME" state, which is
+            // the one reading with no numeral to carry it.
+            .event(EventRef(id: id(), title: "",
+                            time: EventTime(start: LocalDateTime(date: today, hour: 0),
+                                            end: LocalDateTime(date: today).adding(days: 1)),
+                            forTaskId: Ids.sittingTask)),
             .task(TaskRef(id: Ids.warnedTask, title: Names.warnedTask,
                           due: DueSpec(.at(LocalDateTime(date: today.adding(days: 1), hour: 9).instant()),
                                        reminders: [1440, 30]))),

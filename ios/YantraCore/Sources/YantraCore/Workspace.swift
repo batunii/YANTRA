@@ -36,6 +36,33 @@ public struct PropertyDef: Codable, Equatable, Sendable {
     public init(id: String, name: String, kind: String, config: String? = nil) { self.id = id; self.name = name; self.kind = kind; self.config = config }
 }
 
+/// One choice a select property offers.
+public struct SelectOption: Codable, Equatable, Sendable {
+    public var name: String
+    /// ARGB, as both apps store it. Optional: an option is allowed to be just a word.
+    public var color: Int64?
+    public init(name: String, color: Int64? = nil) { self.name = name; self.color = color }
+}
+
+/// The options a select property holds, as stored in `PropertyDef.config`.
+public struct SelectConfig: Codable, Equatable, Sendable {
+    public var options: [SelectOption]
+    public init(options: [SelectOption] = []) { self.options = options }
+}
+
+public extension PropertyDef {
+    /// The select options this def declares — empty for any other kind, and empty rather than a
+    /// throw for config that will not decode. A malformed registry entry should cost you a picker
+    /// with nothing in it, not the screen that draws it.
+    var selectConfig: SelectConfig {
+        config.flatMap { FilterJSON.decode(SelectConfig.self, $0) } ?? SelectConfig()
+    }
+
+    func optionColor(_ name: String) -> Int64? {
+        selectConfig.options.first { $0.name == name }?.color
+    }
+}
+
 public struct LabelDef: Codable, Equatable, Sendable {
     public var id: String, name: String, color: Int64?
     public init(id: String, name: String, color: Int64? = nil) { self.id = id; self.name = name; self.color = color }

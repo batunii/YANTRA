@@ -72,9 +72,13 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, Layout.pageMargin)
             }
-            HomeTabBar(onCalendar: { path.append(Route.calendar(nil)) },
-                       onCreate: { creating = true },
-                       onStats: { path.append(Route.stats) })
+            // The player is never the outermost thing on a screen with a permanent bar: it slots in
+            // above the nav strip, so the bottom of the app does not reshuffle between screens.
+            BottomBar(onOpenNow: { path.append(Route.focus($0.nodeId)) }) {
+                HomeTabBar(onCalendar: { path.append(Route.calendar(nil)) },
+                           onCreate: { creating = true },
+                           onStats: { path.append(Route.stats) })
+            }
         }
         .background(y.page.ignoresSafeArea())
         .sheet(isPresented: $creating) { CreateSheet(path: $path) }
@@ -194,8 +198,9 @@ struct HomeTabBar: View {
             .accessibilityIdentifier("tab.stats").accessibilityLabel("Stats")
         }
         .buttonStyle(.plain)
+        // No ground of its own: it is a row inside the dock, which is what carries the surface and
+        // the rounded top. A second background here would be the two-objects problem the dock fixed.
         .padding(.horizontal, 40).padding(.top, 10).padding(.bottom, 6)
-        .background(y.page)
     }
 }
 

@@ -226,3 +226,16 @@ enum JSONText {
         return s.contains(".") ? s : s + ".0"
     }
 }
+
+/// The brush families a stroke's header can name — the Kotlin's `StrokeCodec` constants.
+///
+/// Strings in the file, so they are strings here; named in one place because they are written into
+/// every sidecar and a typo would be a stroke that comes back as the wrong pen on the other app.
+public enum StrokeCodec {
+    public static let familyPressurePen = "pressure_pen"
+    public static let familyMarker = "marker"
+    public static let familyHighlighter = "highlighter"
+
+    /// Highlighters are translucent — they tint, never cover. (~35% opacity.)
+    public static let highlighterAlpha: UInt32 = 0x59
+}

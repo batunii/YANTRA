@@ -23,6 +23,7 @@ public enum AppGroup {
     /// A store + writer over the shared workspace, scaffolded and seeded on first use.
     public static func openWorkspace() -> (WorkspaceStore, WorkspaceWriter) {
         resetIfAsked()
+        connectIfAsked()
         let store = WorkspaceStore(root: workspaceRoot, id: "")
         if !store.exists {
             store.scaffold(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000))
@@ -30,6 +31,31 @@ public enum AppGroup {
             else { WorkspaceSeeder.seed(store) }
         }
         return (store, WorkspaceWriter(store: store, device: device))
+    }
+
+    /// `-uitest-connect <owner/name> <token>` signs a simulator in without the device flow.
+    ///
+    /// **Debug builds only**, and deliberately so: this installs a live credential from a launch
+    /// argument, which is a thing a release binary must not be able to do at all, whatever it is
+    /// guarded on. `#if DEBUG` is the only guard strong enough — the code is not in the shipped
+    /// binary to be reached.
+    ///
+    /// It exists because sync between two devices cannot otherwise be tested end to end: the device
+    /// flow needs a human at github.com, and "two devices agreeing" is exactly the property that
+    /// cannot be checked with one.
+    private static func connectIfAsked() {
+        #if DEBUG
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-uitest-connect"), i + 2 < args.count,
+              let ref = RepoRef.parse(args[i + 1]) else { return }
+        SyncSettings.repo = ref
+        Keychain.accountToken = GitHubAuth.Token(accessToken: args[i + 2])
+        // The name on this device's commits and `device:` lines, and what makes the screen show as
+        // signed in. Two devices sharing one must not happen here of all places — telling them
+        // apart is the whole point of the exercise.
+        let named = i + 3 < args.count && !args[i + 3].hasPrefix("-") ? args[i + 3] : "tester"
+        SyncSettings.login = named
+        #endif
     }
 
     /// `-uitest-reset` empties the workspace and the preferences before anything reads them.

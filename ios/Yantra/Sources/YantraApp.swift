@@ -102,9 +102,7 @@ struct RootView: View {
         .task {
             // `-route open:<id>` / `-route focus` / `-route home` — a launch argument for UI tests and
             // demos, so a screen can be reached without tapping.
-            let args = CommandLine.arguments
-            if let i = args.firstIndex(of: "-route"), i + 1 < args.count {
-                let r = args[i + 1]
+            if let r = LaunchRoute.value {
                 if r == "home" { return }
                 if r == "focus" { path.append(Route.focus(nil)); return }
                 if r.hasPrefix("focus:") { path.append(Route.focus(String(r.dropFirst(6)))); return }
@@ -123,11 +121,33 @@ struct RootView: View {
                 if r == "github" { path.append(Route.github); return }
                 if r == "archive" { path.append(Route.archive); return }
                 if r.hasPrefix("ink:") { path.append(Route.ink(String(r.dropFirst(4)))); return }
+                // `rules:<id>` opens a smart list with its builder already up — the sheet is not
+                // reachable by a route of its own, since it only exists over the list it edits.
+                if r.hasPrefix("rules:") {
+                    let id = String(r.dropFirst(6))
+                    if model.index.smartLists[id] != nil { path.append(Route.smart(id)) }
+                    return
+                }
                 if r == "stats" { path.append(Route.stats); return }
                 if r.hasPrefix("open:") { openNode(String(r.dropFirst(5))); return }
             }
             // Open on Today, as Android's splash does, when it still exists.
             if path.isEmpty, let today = model.index.node(systemKey: SystemKey.today) { path.append(Route.smart(today.id)) }
         }
+    }
+}
+
+/// The `-route <value>` launch argument, read in one place so a screen that needs to act on it can
+/// ask the same question the root asked rather than being handed the answer through view state.
+enum LaunchRoute {
+    static var value: String? {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-route"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
+    /// The smart list whose builder the launch asked to have open, if any.
+    static var rulesFor: String? {
+        value.flatMap { $0.hasPrefix("rules:") ? String($0.dropFirst(6)) : nil }
     }
 }

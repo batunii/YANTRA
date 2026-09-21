@@ -64,17 +64,55 @@ public enum GitHubAuth {
             case "slow_down": return .slowDown((obj["interval"] as? Int) ?? code.interval + 5)
             case "expired_token": return .expired
             case "access_denied": return .denied
-            case let e?: return .failed(e)
+            case .some: return .failed(describe(obj) ?? "Sign-in failed")
             default: return .failed("unexpected reply")
             }
         } catch { return .offline }
     }
 
-    /// GitHub rotates the refresh token: store what comes back.
-    public static func refresh(_ token: Token) async -> Token? {
-        guard let r = token.refreshToken, let data = try? await form("https://github.com/login/oauth/access_token", [
-            "client_id": clientId, "grant_type": "refresh_token", "refresh_token": r]) else { return nil }
-        return try? JSONDecoder().decode(Token.self, from: data)
+    /// What a renewal attempt came to — `TokenRenewal.Outcome` on Android.
+    ///
+    /// Three answers, not two, and the third is the point. A refresh that was **refused** means the
+    /// sign-in is gone and only signing in again will fix it. A refresh that could not be **asked**
+    /// — a tunnel, a dead cell, a captive portal — means nothing at all, and must leave the stored
+    /// credential exactly where it is. Collapsing those two into "nil" is how a train journey signs
+    /// somebody out, and how a genuinely dead token goes on being presented forever instead of
+    /// saying so.
+    public enum Renewal: Equatable {
+        case renewed(Token)
+        /// GitHub refused it. The stored credential is scrap.
+        case needsSignIn(String)
+        /// GitHub was not reachable. Nothing is known and nothing should change.
+        case couldNotAsk
+        /// There is nothing to renew — a token with no refresh token beside it never expires.
+        case nothingToDo
+    }
+
+    /// Trades a refresh token for a fresh access token.
+    ///
+    /// GitHub **rotates the refresh token on every use**, so the one that comes back has to be
+    /// stored in place of the one that was sent: keeping the old one makes the next refresh fail in
+    /// exactly the way this exists to prevent.
+    public static func refresh(_ token: Token) async -> Renewal {
+        guard let r = token.refreshToken else { return .nothingToDo }
+        guard let data = try? await form("https://github.com/login/oauth/access_token", [
+            "client_id": clientId, "grant_type": "refresh_token", "refresh_token": r]) else {
+            return .couldNotAsk
+        }
+        if let t = try? JSONDecoder().decode(Token.self, from: data) { return .renewed(t) }
+        let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        return .needsSignIn(describe(obj) ?? "GitHub would not renew the sign-in")
+    }
+
+    /// What GitHub said went wrong, preferring its sentence to its slug.
+    static func describe(_ obj: [String: Any]) -> String? {
+        switch obj["error"] as? String {
+        case "device_flow_disabled": return "This build's GitHub app does not have device flow enabled"
+        case "unsupported_grant_type", "incorrect_client_credentials":
+            return "This build's GitHub app is misconfigured"
+        case nil: return nil
+        default: return (obj["error_description"] as? String) ?? (obj["error"] as? String)
+        }
     }
 
     static func form(_ url: String, _ fields: [String: String]) async throws -> Data {
@@ -143,6 +181,13 @@ public struct GitHubTransport: GitTransport {
         var req = URLRequest(url: URL(string: api + path)!)
         req.httpMethod = method
         req.timeoutInterval = 30
+        // Never a cached answer. GitHub sends an ETag on every read, and URLSession's default policy
+        // will happily serve the stored body for a repeated GET — so a ref read straight after a
+        // push can report the tip the branch had *before* it. Sync reads the same three URLs over
+        // and over by design, and a stale one is indistinguishable from another device having moved
+        // the branch: the engine rebases onto the past, the update is refused, and it retries until
+        // it gives up with "the branch kept moving".
+        req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
@@ -153,7 +198,11 @@ public struct GitHubTransport: GitTransport {
 
     public func head(branch: String) async throws -> RemoteHead? {
         let (code, data) = try await request("GET", "/repos/\(repo.slug)/git/ref/heads/\(branch)")
-        if code == 404 { return nil }
+        // 404 is "no such branch". 409 is "Git Repository is empty" — a repository with no commits
+        // at all, which is what GitHub hands back for one freshly created. Both mean the same thing
+        // to a caller: there is nothing up there yet. Treating 409 as an error made the very first
+        // sync into a new repository fail, which is the one sync everybody does.
+        if code == 404 || code == 409 { return nil }
         guard code == 200, let ref = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let obj = ref["object"] as? [String: Any], let sha = obj["sha"] as? String else { throw SyncError.http(code, "ref") }
         let (c2, cdata) = try await request("GET", "/repos/\(repo.slug)/git/commits/\(sha)")
@@ -172,7 +221,44 @@ public struct GitHubTransport: GitTransport {
         return Data(base64Encoded: content.replacingOccurrences(of: "\n", with: "")) ?? Data()
     }
 
+    /// Whether this repository has no commits at all, which GitHub answers 409 to.
+    func isEmptyRepository(branch: String) async throws -> Bool {
+        let (code, _) = try await request("GET", "/repos/\(repo.slug)/git/ref/heads/\(branch)")
+        return code == 409
+    }
+
+    /// Brings an empty repository into existence, because the ordinary path cannot.
+    ///
+    /// The Git Data API refuses **every** call on a repository with no commits — blobs included —
+    /// with 409 "Git Repository is empty", so the first commit cannot be built the way every later
+    /// one is. The Contents API can make it, and once a single commit exists the ordinary path works
+    /// forever after.
+    ///
+    /// The file it writes is one of the files being pushed, chosen deterministically, rather than a
+    /// placeholder: a `.gitkeep` invented here would be pulled down into every workspace afterwards
+    /// and belong to nothing.
+    func bootstrapEmptyRepository(branch: String, files: [String: Data?], message: String) async throws -> RemoteHead? {
+        let present = files.compactMap { path, content in content.map { (path, $0) } }
+        guard let (path, content) = present.min(by: { $0.0 < $1.0 }) else { return nil }
+        let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        let (code, _) = try await request("PUT", "/repos/\(repo.slug)/contents/\(encoded)", body: [
+            "message": message,
+            "content": content.base64EncodedString(),
+            "branch": branch,
+        ])
+        guard code == 201 else { throw SyncError.http(code, "first commit") }
+        return try await head(branch: branch)
+    }
+
     public func commit(branch: String, parent: String?, baseTree: String?, files: [String: Data?], message: String) async throws -> String? {
+        var parent = parent, baseTree = baseTree
+        // A first push into a repository that has never held a commit has to start it off before
+        // anything else can be written to it.
+        if parent == nil, try await isEmptyRepository(branch: branch) {
+            guard let started = try await bootstrapEmptyRepository(branch: branch, files: files, message: message) else { return nil }
+            parent = started.commit
+            baseTree = started.treeSha
+        }
         var entries: [[String: Any?]] = []
         for (path, content) in files.sorted(by: { $0.key < $1.key }) {
             if let content {
