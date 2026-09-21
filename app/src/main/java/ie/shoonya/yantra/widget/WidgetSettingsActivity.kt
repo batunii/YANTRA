@@ -77,6 +77,15 @@ class WidgetSettingsActivity : ComponentActivity() {
     companion object {
         const val EXTRA_WIDGET_ID = "ie.shoonya.yantra.widget.WIDGET_ID"
         const val EXTRA_IS_TODAY = "ie.shoonya.yantra.widget.IS_TODAY"
+
+        /**
+         * The calendar widget, which has no list to choose and only a pane to quieten.
+         *
+         * It reaches this screen through its own `more` key rather than through a configure
+         * activity: a calendar that asked a question before it would show you anything would be
+         * the wrong shape for the one glance it exists to answer.
+         */
+        const val EXTRA_IS_CALENDAR = "ie.shoonya.yantra.widget.IS_CALENDAR"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +95,7 @@ class WidgetSettingsActivity : ComponentActivity() {
         val widgetId = intent?.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             ?: AppWidgetManager.INVALID_APPWIDGET_ID
         val isToday = intent?.getBooleanExtra(EXTRA_IS_TODAY, false) ?: false
+        val isCalendar = intent?.getBooleanExtra(EXTRA_IS_CALENDAR, false) ?: false
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
             finish()
             return
@@ -105,7 +115,11 @@ class WidgetSettingsActivity : ComponentActivity() {
                     // The instance must match the provider, or the widget re-renders as the
                     // other variant: TodayWidget resolves the Today list, YantraListWidget
                     // reads the configured binding.
-                    (if (isToday) TodayWidget() else YantraListWidget()).update(app, gid)
+                    when {
+                        isCalendar -> YantraCalendarWidget()
+                        isToday -> TodayWidget()
+                        else -> YantraListWidget()
+                    }.update(app, gid)
                 }
             }
         }
@@ -129,13 +143,19 @@ class WidgetSettingsActivity : ComponentActivity() {
                         val prefs = getAppWidgetState(
                             applicationContext, PreferencesGlanceStateDefinition, gid,
                         )
-                        opacity = (prefs[ListWidgetKeys.OPACITY] ?: ListWidgetDefaults.OPACITY).toFloat()
+                        opacity = if (isCalendar) {
+                            (prefs[CalendarWidgetKeys.OPACITY] ?: CalendarWidgetDefaults.OPACITY).toFloat()
+                        } else {
+                            (prefs[ListWidgetKeys.OPACITY] ?: ListWidgetDefaults.OPACITY).toFloat()
+                        }
                         showDone = prefs[ListWidgetKeys.SHOW_DONE] ?: ListWidgetDefaults.SHOW_DONE
                         boundId = prefs[ListWidgetKeys.NODE_ID]
                     }
                     // The pre-Glance fallback, for a widget placed before the migration: its
                     // binding only ever lived in prefs, and it should still show as chosen.
-                    if (boundId == null) boundId = WidgetPrefs.nodeId(applicationContext, widgetId)
+                    if (boundId == null && !isCalendar) {
+                        boundId = WidgetPrefs.nodeId(applicationContext, widgetId)
+                    }
                     loaded = true
                 }
                 // Resolved so a task-bound widget can show what it is on. Re-runs on every pick,
@@ -146,11 +166,17 @@ class WidgetSettingsActivity : ComponentActivity() {
 
                 SettingsScreen(
                     isToday = isToday,
+                    isCalendar = isCalendar,
                     enabled = loaded,
                     opacity = opacity,
                     showDone = showDone,
                     onOpacity = { opacity = it },
-                    onOpacitySettled = { apply { prefs -> prefs[ListWidgetKeys.OPACITY] = it.toInt() } },
+                    onOpacitySettled = {
+                        apply { prefs ->
+                            if (isCalendar) prefs[CalendarWidgetKeys.OPACITY] = it.toInt()
+                            else prefs[ListWidgetKeys.OPACITY] = it.toInt()
+                        }
+                    },
                     onShowDone = {
                         showDone = it
                         apply { prefs -> prefs[ListWidgetKeys.SHOW_DONE] = it }
@@ -188,6 +214,7 @@ class WidgetSettingsActivity : ComponentActivity() {
 @Composable
 private fun SettingsScreen(
     isToday: Boolean,
+    isCalendar: Boolean,
     enabled: Boolean,
     opacity: Float,
     showDone: Boolean,
@@ -275,6 +302,8 @@ private fun SettingsScreen(
                         value = opacity,
                         onValueChange = onOpacity,
                         onValueChangeFinished = { onOpacitySettled(opacity) },
+                        // Both panes floor at the same 50: below that no scrim survives a busy
+                        // wallpaper, so it is not offered on either.
                         valueRange = ListWidgetDefaults.MIN_OPACITY.toFloat()..100f,
                         enabled = enabled,
                         colors = SliderDefaults.colors(
@@ -302,7 +331,9 @@ private fun SettingsScreen(
             // choose. Everything else can now be pointed at any list, smart list or task — the
             // same picker the placement screen uses, so changing your mind afterwards offers
             // exactly what placing it did.
-            if (!isToday) {
+            // The Today widget resolves its own list and the calendar widget has none to resolve,
+            // so for both of them the pane's opacity is the whole of this screen.
+            if (!isToday && !isCalendar) {
                 item(key = "list-label") {
                     SectionLabel("Shows", modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
                 }

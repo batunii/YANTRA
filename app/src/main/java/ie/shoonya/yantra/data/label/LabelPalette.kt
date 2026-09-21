@@ -69,6 +69,41 @@ object LabelPalette {
         return swatches[((h % swatches.size) + swatches.size) % swatches.size].name
     }
 
+    /**
+     * The hues of the five light swatches, in HSV degrees: Moss 109, Teal 178, Blue 203,
+     * Violet 250, Plum 312. Measured from [swatches], not chosen — they are the same arc.
+     */
+    private val hues = intArrayOf(109, 178, 203, 250, 312)
+
+    /**
+     * Somebody else's colour, snapped into ours — the one way a third-party hue may reach a
+     * surface of this app.
+     *
+     * A device calendar arrives with whatever colour a server assigned it, and drawing that raw is
+     * the colour law switched off: it can land anywhere, including in the 24-71 arc the law
+     * reserves for priority and effort, and at any chroma it likes. Snapping by hue keeps the one
+     * thing that matters — the same calendar is always the same colour — while the ink it wears is
+     * this app's.
+     *
+     * Null when the colour is not a hue at all. A grey or near-black calendar has nothing to snap
+     * to, and the honest reading of "no colour" is frame ink rather than a hue picked by rounding.
+     * Two of somebody's calendars within thirty degrees will collide on one swatch; that is the
+     * accepted cost, and it is smaller than a second palette.
+     */
+    fun nearest(argb: Int, dark: Boolean): Long? {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(argb, hsv)
+        if (hsv[1] < 0.12f || hsv[2] < 0.15f) return null
+        var best = 0
+        var bestDistance = 360f
+        hues.forEachIndexed { i, hue ->
+            val raw = kotlin.math.abs(hsv[0] - hue)
+            val d = kotlin.math.min(raw, 360f - raw)
+            if (d < bestDistance) { bestDistance = d; best = i }
+        }
+        return swatches[best].let { if (dark) it.dark else it.light }
+    }
+
     /** A palette name to its light value, or null if nothing is called that. */
     fun byName(name: String?): Swatch? =
         name?.let { n -> swatches.firstOrNull { it.name.equals(n.trim(), ignoreCase = true) } }

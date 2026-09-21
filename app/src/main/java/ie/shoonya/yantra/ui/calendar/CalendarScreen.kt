@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -112,6 +113,16 @@ private val CONTENT_MAX_WIDTH = 460.dp
 
 /** Where a screen stops being a phone. The usual breakpoint, and where seven columns start to fit. */
 private val TABLET_WIDTH = 600.dp
+
+/**
+ * Where the month stops being one column and becomes two.
+ *
+ * Higher than [TABLET_WIDTH] on purpose, and the arithmetic is the whole argument: the panes split
+ * the width evenly, so side-by-side at 600dp would give the grid 300dp — cells barely wider than
+ * the numerals in them — and the day list the same 300dp, which is narrower than the phone it was
+ * designed for. Two cramped panes are worse than one good column. At 720dp both are real.
+ */
+private val MONTH_TWO_PANE = 720.dp
 private val CELL_HEIGHT = 52.dp
 
 /**
@@ -122,8 +133,20 @@ private val CELL_HEIGHT = 52.dp
  * a thing lands on is [CalendarBucketer], kept out of here so the off-by-ones can be tested.
  */
 @Composable
-fun CalendarScreen(nav: NavHostController) {
+fun CalendarScreen(
+    nav: NavHostController,
+    /**
+     * A day to land on, as an ISO date — how the calendar widget points at one.
+     *
+     * Applied once, keyed by the string: the screen is re-composed for every state it has, and a
+     * selection re-applied on each of those would make the grid un-tappable from the outside in.
+     */
+    startOn: String? = null,
+) {
     val vm: CalendarViewModel = viewModel { CalendarViewModel(container()) }
+    LaunchedEffect(startOn) {
+        startOn?.let { iso -> runCatching { LocalDate.parse(iso) }.getOrNull()?.let(vm::select) }
+    }
     val month by vm.month.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
     val days by vm.days.collectAsStateWithLifecycle()
@@ -185,6 +208,30 @@ fun CalendarScreen(nav: NavHostController) {
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
+        // Two panes rather than one narrow column — see [MONTH_TWO_PANE].
+        val twoPaneMonth = mode == CalendarMode.MONTH && widthDp >= MONTH_TWO_PANE
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .wrapContentWidth(Alignment.CenterHorizontally)
+                // A month is a fixed amount of information and stretching it gives cells the size
+                // of playing cards. A timeline is not: an hour with three things in it wants every
+                // pixel there is, and the rail beside it wants a quarter of a real width rather
+                // than a quarter of 460dp.
+                //
+                // Two panes are not capped either: the cap is on the **grid**, and the day list
+                // beside it should have whatever is left.
+                .widthIn(
+                    max = if (mode == CalendarMode.MONTH && !twoPaneMonth) CONTENT_MAX_WIDTH
+                    else Dp.Unspecified
+                )
+                // Weighted, so the bar below it gets a height at all. Without this the content
+                // takes every remaining pixel — the timeline inside asks for weight(1f) and there
+                // was nothing above it competing — and the bar is laid out past the bottom edge,
+                // which looks exactly like a bar that was never added.
+                .weight(1f),
+        ) {
         // The screen was named twice — CALENDAR_UI.md §1.
         //
         // PageHeader carried "Calendar", the mode switch and the `+`; MonthBar underneath carried
@@ -196,23 +243,12 @@ fun CalendarScreen(nav: NavHostController) {
         // action of the screen parked in the one corner a thumb cannot reach, at a 34dp target
         // under the 48dp minimum. It is a proper key in the bottom bar now, the same object as
         // Home's.
+        //
+        // Inside the capped column, not above it. Left outside, the title sat hard against the
+        // left margin while the month it names floated in the middle of a tablet — the screen
+        // named in one place and drawn in another, which reads as two unrelated screens.
         PageHeader("Calendar", onBack = { nav.popBackStack() })
 
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .wrapContentWidth(Alignment.CenterHorizontally)
-                // A month is a fixed amount of information and stretching it gives cells the size
-                // of playing cards. A timeline is not: an hour with three things in it wants every
-                // pixel there is, and the rail beside it wants a quarter of a real width rather
-                // than a quarter of 460dp.
-                .widthIn(max = if (mode == CalendarMode.MONTH) CONTENT_MAX_WIDTH else Dp.Unspecified)
-                // Weighted, so the bar below it gets a height at all. Without this the content
-                // takes every remaining pixel — the timeline inside asks for weight(1f) and there
-                // was nothing above it competing — and the bar is laid out past the bottom edge,
-                // which looks exactly like a bar that was never added.
-                .weight(1f),
-        ) {
         MonthBar(month = month, selected = selected, mode = mode, days = daysAcross)
 
         // Swipe to page — CALENDAR_UI.md §1.
@@ -249,8 +285,71 @@ fun CalendarScreen(nav: NavHostController) {
             }
         }
 
+        // What is on the day you tapped. Hoisted out of the layout because the month now draws it
+        // in two places — under the grid on a phone, beside it on a tablet — and the two must be
+        // the same list rather than two lists that drift.
+        val dayPane: @Composable (Modifier) -> Unit = { paneModifier ->
+            Column(paneModifier) {
+                Text(
+                    selected.format(DAY_LABEL),
+                    fontSize = YantraType.section,
+                    fontWeight = FontWeight.W700,
+                    color = y.textDim,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = PAGE_MARGIN, vertical = 6.dp),
+                )
+                if (items.isEmpty()) {
+                    Text(
+                        "Nothing on this day.",
+                        fontSize = YantraType.body,
+                        color = y.textMuted,
+                        modifier = Modifier.padding(horizontal = PAGE_MARGIN, vertical = 12.dp),
+                    )
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = PAGE_MARGIN, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(items, key = { it.nodeId + it.sortKey }) { item ->
+                            DayRow(item) { openItem(item, vm, scope, nav, context, { d -> vm.openLocally(d) { id -> nav.navigate(Routes.node(id)) } }) { t -> sheet = t } }
+                        }
+                    }
+                }
+            }
+        }
+
         when (mode) {
-            CalendarMode.MONTH -> MonthGrid(
+            // The month, and the day you tapped — stacked on a phone, side by side on a tablet.
+            //
+            // Capping the whole column was the wrong answer to a stretched grid. It left 460dp
+            // marooned in the middle of a thousand, with half the width of the screen holding
+            // nothing at all — and the day list, which *does* want room, squeezed into the same
+            // 460dp as the grid that cannot use any more. The cap belongs on the grid alone. Two
+            // panes is also the shape the day view already has: the thing you are reading, and
+            // what is on it.
+            CalendarMode.MONTH -> if (twoPaneMonth) {
+                Row(Modifier.fillMaxWidth().weight(1f).then(pageGestures)) {
+                    // The grid takes what a grid needs and no more; the day list takes the rest.
+                    // Weighting them evenly instead put the spare width *between* them — the grid
+                    // capped and centred in an over-wide pane, adrift from the month heading and
+                    // the page title that are hard against the left margin above it.
+                    MonthGrid(
+                        month = month,
+                        selected = selected,
+                        days = days,
+                        onSelect = vm::select,
+                        modifier = Modifier
+                            .width(CONTENT_MAX_WIDTH)
+                            .padding(horizontal = PAGE_MARGIN),
+                    )
+                    // The same hairline the day view puts between the timeline and the rail: two
+                    // panes on one screen have to read as two surfaces.
+                    Box(Modifier.fillMaxHeight().width(1.dp).background(y.hairline))
+                    dayPane(Modifier.weight(1f).fillMaxHeight())
+                }
+            } else MonthGrid(
                 month = month,
                 selected = selected,
                 days = days,
@@ -284,39 +383,10 @@ fun CalendarScreen(nav: NavHostController) {
             )
         }
 
-        if (mode == CalendarMode.MONTH) {
-        Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                selected.format(DAY_LABEL),
-                fontSize = YantraType.section,
-                fontWeight = FontWeight.W700,
-                color = y.textDim,
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        if (items.isEmpty()) {
-            Text(
-                "Nothing on this day.",
-                fontSize = YantraType.body,
-                color = y.textMuted,
-                modifier = Modifier.padding(horizontal = PAGE_MARGIN, vertical = 12.dp),
-            )
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = PAGE_MARGIN, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(items, key = { it.nodeId + it.sortKey }) { item ->
-                    DayRow(item) { openItem(item, vm, scope, nav, context, { d -> vm.openLocally(d) { id -> nav.navigate(Routes.node(id)) } }) { t -> sheet = t } }
-                }
-            }
-        }
+        // Stacked under the grid, on the screens where there is no room beside it.
+        if (mode == CalendarMode.MONTH && !twoPaneMonth) {
+            Spacer(Modifier.height(8.dp))
+            dayPane(Modifier.fillMaxSize())
         }
         }
 

@@ -6,6 +6,8 @@
     <string name="widget_quick_add_description">One-tap task capture into your Inbox</string>
     <string name="widget_focus_description">Your focus timer, live on the home screen</string>
     <string name="widget_settings_title">Widget settings</string>
+    <string name="widget_calendar_label">Calendar</string>
+    <string name="widget_calendar_description">A month, three days or one — with what is on them</string>
     <string name="widget_bhupura_description">The mark itself, with your focus inside it</string>
 
     <!-- Content descriptions for the focus notification's transport. The toggle's label changes

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    No configure activity, and no `android:configure`. It opens on today, and the three views are
+    switched from the widget's own header — a calendar that asked a question before it would show
+    you anything would be the wrong shape for the one glance it exists to answer.
+
+    This briefly pointed `android:configure` at WidgetSettingsActivity to buy `reconfigurable`.
+    That activity is `exported="false"` and, as its own manifest comment says, is deliberately not
+    an APPWIDGET_CONFIGURE handler: it returns no result and the launcher cannot start it. The
+    widget's `more` key is the route to its settings, and it is the only one.
+
+    minResize matches the smallest declared layout: the widget has a real design at 2x2 and none
+    below it, and a launcher that lets somebody drag it smaller than its smallest layout is a
+    launcher drawing a clipped one.
+
+    30-minute updatePeriodMillis for the reason the Today widget has one: what "today" means
+    changes at midnight, and nothing else re-renders a widget nobody is touching.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="4"
+    android:updatePeriodMillis="1800000"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:description="@string/widget_calendar_description" />
