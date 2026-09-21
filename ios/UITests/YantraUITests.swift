@@ -337,3 +337,57 @@ final class LayoutUITests: YantraUITestCase {
         }
     }
 }
+
+// MARK: - settings, including what the App Store audit added
+
+final class SettingsUITests: YantraUITestCase {
+
+    func testSettingsShowsTheWorkspaceAndTheTheme() {
+        let app = launch(route: "settings")
+        assertExists(app.staticTexts["Settings"], "settings never appeared")
+        assertExists(app.staticTexts["THEME"], "no theme section")
+        assertExists(app.staticTexts["Personal"], "the workspace is not named")
+    }
+
+    /// Reading somebody's meetings is off until they turn it on, and the switch is what asks for the
+    /// permission — not the first launch of a screen.
+    func testTheCalendarSwitchIsOffUntilItIsTurnedOn() {
+        let app = launch(route: "settings")
+        let toggle = app.switches["Show my calendars"]
+        assertExists(toggle, "the device-calendar switch is missing from settings")
+        XCTAssertEqual(toggle.value as? String, "0", "calendar access should start off")
+        // Nothing should be listed while it is off: there is nothing to list until access is given.
+        XCTAssertFalse(app.staticTexts["Which ones"].exists)
+    }
+
+    /// 5.1.1 wants the policy reachable from inside the app, not only from the store listing — which
+    /// is the one place somebody who already installed it will never look.
+    func testThePrivacyPolicyIsReachableFromInsideTheApp() {
+        let app = launch(route: "settings")
+        let link = app.staticTexts["Privacy policy"]
+        // It is near the bottom, so it may need scrolling to.
+        if !link.exists { app.swipeUp(); app.swipeUp() }
+        assertExists(link, "there is no privacy policy link in settings")
+    }
+}
+
+// MARK: - every route opens
+
+/// A smoke test over the app's own navigation scaffolding.
+///
+/// Cheap, and it catches the class of failure that is otherwise only found by hand: a screen that
+/// crashes or comes up blank because something it reads was renamed underneath it.
+final class RouteSmokeTests: YantraUITestCase {
+
+    func testEveryRouteOpensSomething() {
+        for route in ["home", "settings", "calendar", "archive", "github", "stats",
+                      "open:fixture-groceries", "open:fixture-plain"] {
+            let app = launch(route: route)
+            // Something has to be on screen, and the app has to still be running.
+            XCTAssertEqual(app.state, .runningForeground, "the app is not running after -route \(route)")
+            XCTAssertGreaterThan(app.descendants(matching: .any).count, 3,
+                                 "-route \(route) came up with nothing on it")
+            app.terminate()
+        }
+    }
+}
