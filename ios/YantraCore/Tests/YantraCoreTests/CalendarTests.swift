@@ -245,3 +245,100 @@ final class CalendarTests: XCTestCase {
         XCTAssertEqual(monthGrid(day("2026-06-01")).first?.description, "2026-06-01")
     }
 }
+
+/// What one render of the calendar widget is given.
+final class CalendarWidgetTests: XCTestCase {
+
+    let zone = TimeZone(identifier: "Europe/Dublin")!
+    let today = LocalDate("2026-09-11")!
+
+    func index(_ nodes: [Node]) -> WorkspaceIndex {
+        var ix = WorkspaceIndex()
+        for n in nodes { ix.nodes[n.id] = n }
+        return ix
+    }
+
+    func eventNode(_ id: String, _ title: String, _ when: String) -> Node {
+        guard case let .event(e) = PageCodec.decodeBlock("@ \(when) \(title) ^\(id)") else { fatalError() }
+        return Node(id: id, workspaceId: "w1", parentId: "p1", type: NodeType.event, title: title, rank: "i",
+                    done: false, inProgress: false, indent: 0, systemKey: nil, createdAt: 0, event: e)
+    }
+
+    func build(_ shape: CalendarWidgetShape, _ nodes: [Node], rowLimit: Int = 4) -> CalendarWidgetData {
+        CalendarWidgetBuilder.build(shape: shape, anchor: today, index: index(nodes), rowLimit: rowLimit,
+                                    today: today, locale: Locale(identifier: "en_GB"), zone: zone)
+    }
+
+    func testDayShowsOneColumnAndThreeDayShowsThree() {
+        XCTAssertEqual(build(.day, []).columns.count, 1)
+        XCTAssertEqual(build(.threeDay, []).columns.count, 3)
+        // The month carries the grid and the selected day beneath it.
+        let m = build(.month, [])
+        XCTAssertEqual(m.cells.count, 42)
+        XCTAssertEqual(m.columns.count, 1)
+    }
+
+    func testRowsBeyondTheLimitAreCountedNotDropped() {
+        let nodes = (0..<7).map { eventNode("e\($0)", "Thing\($0)", "2026-09-11T\(String(format: "%02d", 9 + $0)):00/PT30M") }
+        let col = build(.day, nodes, rowLimit: 4).columns[0]
+        XCTAssertEqual(col.rows.count, 4)
+        XCTAssertEqual(col.more, 3, "a column says +3 rather than quietly showing four of seven")
+    }
+
+    func testAnEmptyDaySaysWhenTheQuietEnds() {
+        // Nothing today; something on the 15th. The useful line is not "nothing on".
+        let d = build(.day, [eventNode("e1", "Dentist", "2026-09-15T10:00/PT1H")])
+        XCTAssertTrue(d.columns[0].rows.isEmpty)
+        XCTAssertEqual(d.nextUp?.date, LocalDate("2026-09-15"))
+        XCTAssertEqual(d.nextUp?.title, "Dentist")
+    }
+
+    func testNextUpIsOnlyOfferedWhenThereIsNothingOnScreen() {
+        let d = build(.day, [eventNode("e1", "Standup", "2026-09-11T09:00/PT30M"),
+                             eventNode("e2", "Dentist", "2026-09-15T10:00/PT1H")])
+        XCTAssertFalse(d.columns[0].rows.isEmpty)
+        XCTAssertNil(d.nextUp, "a day with something on it has no line to spare")
+    }
+
+    func testFinishedTasksSortLastRatherThanVanish() {
+        let done = Node(id: "t1", workspaceId: "w1", parentId: "p", type: NodeType.task, title: "Done thing",
+                        rank: "i", done: true, inProgress: false, indent: 0, systemKey: nil, createdAt: 0,
+                        due: DueSpec(.allDay(today)))
+        let open = Node(id: "t2", workspaceId: "w1", parentId: "p", type: NodeType.task, title: "Open thing",
+                        rank: "j", done: false, inProgress: false, indent: 0, systemKey: nil, createdAt: 0,
+                        due: DueSpec(.allDay(today)))
+        let rows = build(.day, [done, open]).columns[0].rows
+        XCTAssertEqual(rows.map(\.nodeId), ["t2", "t1"])
+        XCTAssertTrue(rows[1].done)
+    }
+
+    func testTimesArePrintedAsAListingNotAsAClock() {
+        let gb = Locale(identifier: "en_GB"), us = Locale(identifier: "en_US")
+        let nine = LocalDateTime("2026-09-11T09:30")!, two = LocalDateTime("2026-09-11T14:00")!
+        // No leading zero: the gutter already carries the column.
+        XCTAssertEqual(CalendarWidgetBuilder.listingTime(nine, locale: gb), "9:30")
+        XCTAssertEqual(CalendarWidgetBuilder.listingTime(two, locale: gb), "14:00")
+        // One character for the half-day, not three.
+        XCTAssertEqual(CalendarWidgetBuilder.listingTime(nine, locale: us), "9:30a")
+        XCTAssertEqual(CalendarWidgetBuilder.listingTime(two, locale: us), "2:00p")
+        XCTAssertEqual(CalendarWidgetBuilder.listingTime(LocalDateTime("2026-09-11T00:15")!, locale: us), "12:15a")
+    }
+
+    func testAMeetingWithNoNoteCarriesNoNodeToOpen() {
+        let d = DeviceEvent(instanceId: "i1", uid: "u1", eventId: "e", title: "Theirs",
+                            beginUtc: LocalDateTime("2026-09-11T09:00")!.instant(in: zone),
+                            endUtc: LocalDateTime("2026-09-11T10:00")!.instant(in: zone), allDay: false)
+        let data = CalendarWidgetBuilder.build(shape: .day, anchor: today, index: index([]), device: [d],
+                                               rowLimit: 4, today: today, locale: Locale(identifier: "en_GB"), zone: zone)
+        let row = data.columns[0].rows[0]
+        XCTAssertEqual(row.title, "Theirs")
+        XCTAssertNil(row.nodeId, "we can show their meeting and we cannot open it")
+    }
+
+    func testPagingStepsByWhatYouAreLookingAt() {
+        XCTAssertEqual(CalendarWidgetShape.day.step(from: today, forward: 1).description, "2026-09-12")
+        XCTAssertEqual(CalendarWidgetShape.threeDay.step(from: today, forward: 1).description, "2026-09-14")
+        XCTAssertEqual(CalendarWidgetShape.month.step(from: today, forward: 1).description, "2026-10-01")
+        XCTAssertEqual(CalendarWidgetShape.month.step(from: today, forward: -1).description, "2026-08-31")
+    }
+}

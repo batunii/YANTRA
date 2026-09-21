@@ -20,6 +20,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Yantra draws your meetings on the calendar widget. It only ever reads them.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Yantra draws your meetings on the calendar widget. It only ever reads them.</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

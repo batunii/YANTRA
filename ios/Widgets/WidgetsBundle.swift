@@ -10,5 +10,6 @@ struct YantraWidgets: WidgetBundle {
         TodayWidget()
         ListWidget()
         QuickAddWidget()
+        CalendarWidget()
     }
 }

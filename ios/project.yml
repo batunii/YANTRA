@@ -99,6 +99,11 @@ targets:
       properties:
         CFBundleDisplayName: Yantra
         UIAppFonts: [bricolage_grotesque.ttf, space_grotesk.ttf, space_mono_regular.ttf, space_mono_bold.ttf]
+        # The calendar widget reads events. The permission itself is granted to the containing
+        # app and inherited here, but an extension that touches EventKit still needs its own
+        # string or the read fails silently and the widget just looks empty.
+        NSCalendarsUsageDescription: Yantra draws your meetings on the calendar widget. It only ever reads them.
+        NSCalendarsFullAccessUsageDescription: Yantra draws your meetings on the calendar widget. It only ever reads them.
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
