@@ -274,6 +274,36 @@ fun SignInScreen(nav: NavHostController) {
                         // Their copies are snapshots, and a sign-in that leaves them behind fixes
                         // this screen and nothing else — see Credentials.spreadToWorkspaces.
                         container.credentials.spreadToWorkspaces(poll.token, login, replacing = previous)
+
+                        // Then the ones no flag and no comparison can identify: a workspace linked
+                        // under an older account token still, whose copy matches neither the flag
+                        // nor the token just replaced.
+                        //
+                        // Asked rather than assumed, because the alternative is guessing. Handing
+                        // the account's token to every workspace of the same login would repair
+                        // these and would also quietly replace a pasted fine-grained token with a
+                        // broader one nobody asked for — undoing a deliberate choice, invisibly. A
+                        // token GitHub refuses is not a choice worth keeping, and a token it accepts
+                        // is working, whatever it is, so this replaces exactly the dead ones.
+                        //
+                        // Affordable only here: one request per workspace, at the one moment the
+                        // user is already waiting on the network and a fresh token exists to offer.
+                        withContext(Dispatchers.IO) {
+                            container.credentials.storedIds()
+                                .filter {
+                                    it != Credentials.ACCOUNT &&
+                                        container.credentials.login(it) == login
+                                }
+                                .filter { id ->
+                                    val held = container.credentials.token(id)
+                                    held != null && held != poll.token &&
+                                        container.github.signInState(held) ==
+                                        SignInState.Unauthorized
+                                }
+                                .forEach {
+                                    container.credentials.store(it, poll.token, login, viaApp = true)
+                                }
+                        }
                         account = login
                         viaApp = true
                         // Freshly minted seconds ago by GitHub itself, so there is nothing to ask.
