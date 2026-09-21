@@ -188,6 +188,15 @@ data class PropertyValueEntity(
     @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "v_text") val vText: String? = null,  // populate the column matching def.kind
     @ColumnInfo(name = "v_number") val vNumber: Double? = null,
+    /**
+     * Every reminder on a Due value, in minutes before it, comma-separated and largest first.
+     *
+     * [vNumber] holds the first of them and keeps doing so. The two are not two sources of truth —
+     * both are projections of the same `+r` tail in the file, written together by one mapper — and
+     * the split earns its keep: "does this task have a reminder at all" is asked by a widget and a
+     * chip on every draw, and that question should not cost a string split.
+     */
+    @ColumnInfo(name = "v_reminders") val vReminders: String? = null,
     @ColumnInfo(name = "v_date") val vDate: Long? = null,    // epoch millis: comparable + indexable
     @ColumnInfo(name = "v_bool") val vBool: Boolean? = null,
     /**

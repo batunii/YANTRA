@@ -33,9 +33,34 @@ data class NodePomoCount(
     val totalSecs: Int,
 )
 
+/**
+ * One alarm: which node, how far before it, and the instant that falls on.
+ *
+ * [offsetMin] is part of the identity and not decoration. A task can carry several reminders now —
+ * half an hour before and a day before are different answers to different questions — so the node
+ * alone no longer names an alarm, and two of them keyed only by node would arm one PendingIntent
+ * twice and deliver once.
+ */
 data class ReminderRow(
     val nodeId: String,
+    val offsetMin: Int,
     val atMillis: Long,
+) {
+    /** Stable identity for the alarm and its notification. */
+    val key: String get() = "$nodeId@$offsetMin"
+}
+
+/**
+ * A due row as SQL can return it: the instant, and the offsets as they are stored.
+ *
+ * Expanded into [ReminderRow]s in Kotlin rather than in SQL, because the offsets are one
+ * comma-separated column and SQLite has no way to turn that into rows without a recursive CTE that
+ * nobody would thank us for reading.
+ */
+data class DueReminderRow(
+    val nodeId: String,
+    val dueMillis: Long,
+    val reminders: String?,
 )
 
 /**
@@ -452,24 +477,26 @@ interface PropertyDao {
     @Query(
         """
         SELECT pv.node_id AS nodeId,
-               pv.v_date - CAST(pv.v_number AS INTEGER) * 60000 AS atMillis
+               pv.v_date AS dueMillis,
+               pv.v_reminders AS reminders
           FROM property_value pv JOIN node n ON n.id = pv.node_id
-         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL AND pv.v_number IS NOT NULL
+         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL AND pv.v_reminders IS NOT NULL
            AND n.deleted_at IS NULL AND n.done = 0
         """
     )
-    fun observeActiveReminders(defId: String): Flow<List<ReminderRow>>
+    fun observeActiveReminders(defId: String): Flow<List<DueReminderRow>>
 
     @Query(
         """
         SELECT pv.node_id AS nodeId,
-               pv.v_date - CAST(pv.v_number AS INTEGER) * 60000 AS atMillis
+               pv.v_date AS dueMillis,
+               pv.v_reminders AS reminders
           FROM property_value pv JOIN node n ON n.id = pv.node_id
-         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL AND pv.v_number IS NOT NULL
+         WHERE pv.def_id = :defId AND pv.v_date IS NOT NULL AND pv.v_reminders IS NOT NULL
            AND n.deleted_at IS NULL AND n.done = 0
         """
     )
-    suspend fun activeRemindersOnce(defId: String): List<ReminderRow>
+    suspend fun activeRemindersOnce(defId: String): List<DueReminderRow>
 
     /**
      * Tasks due inside `[fromUtc, toUtc)` — the other half of what a calendar day holds.
@@ -916,7 +943,8 @@ interface EventDao {
      */
     @Query(
         """
-        SELECT e.node_id AS nodeId, e.start_utc - e.reminder_min * 60000 AS atMillis
+        SELECT e.node_id AS nodeId, e.reminder_min AS offsetMin,
+               e.start_utc - e.reminder_min * 60000 AS atMillis
           FROM event e JOIN node n ON n.id = e.node_id
          WHERE e.reminder_min IS NOT NULL AND e.cancelled = 0 AND n.deleted_at IS NULL
         """
@@ -925,7 +953,8 @@ interface EventDao {
 
     @Query(
         """
-        SELECT e.node_id AS nodeId, e.start_utc - e.reminder_min * 60000 AS atMillis
+        SELECT e.node_id AS nodeId, e.reminder_min AS offsetMin,
+               e.start_utc - e.reminder_min * 60000 AS atMillis
           FROM event e JOIN node n ON n.id = e.node_id
          WHERE e.reminder_min IS NOT NULL AND e.cancelled = 0 AND n.deleted_at IS NULL
         """

@@ -10,5 +10,7 @@ object Reminders {
     const val ACTION_FIRE = "ie.shoonya.yantra.action.REMINDER_FIRE"
     const val ACTION_MARK_DONE = "ie.shoonya.yantra.action.REMINDER_MARK_DONE"
     const val EXTRA_NODE_ID = "node_id"
+    /** Minutes before the due instant — the half of a reminder's identity that is not the node. */
+    const val EXTRA_OFFSET = "offset_min"
     const val EXTRA_AT = "at_millis"
 }

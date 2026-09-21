@@ -516,6 +516,28 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
  * index, and a glyph that arrived a beat after the row would read as the list changing under you.
  * Null is the ordinary case and means the mark, which is why nothing is backfilled.
  */
+/**
+ * `property_value.v_reminders` — every reminder on a due date, not just the first.
+ *
+ * Backfilled from `v_number`, which held the single offset until now, so a task with a reminder
+ * keeps it across the update instead of waiting for its file to be reindexed. The subquery finds
+ * the Due definition by name because its id is a per-install UUID, and the whole thing is a no-op
+ * on an install that has no Due rows yet.
+ */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `property_value` ADD COLUMN `v_reminders` TEXT")
+        db.execSQL(
+            """
+            UPDATE property_value
+               SET v_reminders = CAST(CAST(v_number AS INTEGER) AS TEXT)
+             WHERE v_number IS NOT NULL
+               AND def_id IN (SELECT id FROM property_def WHERE name = 'Due')
+            """
+        )
+    }
+}
+
 val MIGRATION_18_19 = object : Migration(18, 19) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `node` ADD COLUMN `icon` TEXT")

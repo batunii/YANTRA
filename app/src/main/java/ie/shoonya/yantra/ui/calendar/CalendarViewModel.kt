@@ -352,7 +352,7 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                             } else {
                                 ie.shoonya.yantra.data.format.DueValue.At(b.time.start.atZone(zone).toInstant())
                             },
-                            reminderMin = b.reminderMin,
+                            reminders = listOfNotNull(b.reminderMin),
                             // An all-day task is a day, not a span: giving it twenty-four hours
                             // would draw a block down the whole ruler for something that has no
                             // hours of its own.
