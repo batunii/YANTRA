@@ -47,6 +47,30 @@ class NodePageViewModel(
     /** Picking a task up and putting it down; see [RunningTask]. */
     private val running = container.running
 
+    /**
+     * What a row on this page may say — see [ie.shoonya.yantra.ui.components.LocalRowContext].
+     *
+     * A constant for the life of the view model, and correctly so: a page has no rule, so its
+     * grammar cannot change, and neither the open repositories nor the stored logins move under a
+     * page that is already on screen.
+     */
+    val rowContext: ie.shoonya.yantra.ui.components.RowContext =
+        ie.shoonya.yantra.ui.components.RowContext(
+            // A page's rule is "children of this page", which pins the list it *is*.
+            grammar = ie.shoonya.yantra.data.filter.Salience.grammar(
+                ie.shoonya.yantra.data.filter.ViewContext(
+                    filter = null,
+                    singleWorkspace = container.openWorkspaces().size <= 1,
+                )
+            ),
+            expected = ie.shoonya.yantra.ui.components.Expected(
+                logins = container.openWorkspaces()
+                    .associate { it.id to container.credentials.login(it.id) } +
+                    (ie.shoonya.yantra.data.sync.Credentials.ACCOUNT to
+                        container.credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)),
+            ),
+        )
+
     /** The player's play/stop, and the consent it needs when the clock is elsewhere. */
     val timing = TimingRequest(container.running)
 

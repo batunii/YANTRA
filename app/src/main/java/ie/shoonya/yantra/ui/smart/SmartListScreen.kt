@@ -78,6 +78,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val origins by vm.origins.collectAsStateWithLifecycle()
+    val rowContext by vm.rowContext.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val completed by vm.completed.collectAsStateWithLifecycle()
@@ -226,7 +227,11 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             // is most pressing rather than by where things live, so it cannot group by repository;
             // an aggregated view carries its provenance on each row instead. Absent while a single
             // repository is open, when there is nothing to tell apart.
-            val spineInk = origins[task.id]?.workspaceHue
+            // Two gates, asked in one place: `spineHue` reads whether the rule leaves the
+            // repository varying *and* whether there is a hue to paint at all. Reading the hue
+            // alone is how this surface and the list widget each grew their own answer.
+            val spineInk = ie.shoonya.yantra.ui.components
+                .spineHue(rowContext.grammar, origins[task.id])
                 ?.let { Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark)) }
             ListGroupRow(started = task.inProgress) {
                 // A row here cannot be typed into, so a link in a title is collapsed and tappable —
@@ -239,6 +244,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 CompositionLocalProvider(
                     LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
                     LocalLinkResolver provides resolveLink,
+                    ie.shoonya.yantra.ui.components.LocalRowContext provides rowContext,
                 ) {
                     TextualBlockRow(
                         child = task,
