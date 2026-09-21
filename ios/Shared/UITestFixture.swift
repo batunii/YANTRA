@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import YantraCore
 
 /// A workspace with known contents, for the UI tests to assert against.
@@ -41,6 +42,21 @@ enum UITestFixture {
         static let archivedTask = "fixture-archived"
         static let ink = "fixture-ink"
         static let warnedTask = "fixture-warned"
+        static let image = "fixture-image"
+    }
+
+    /// A tiny valid JPEG, so an image block has real bytes to read rather than a stub.
+    private static func sampleJPEG() -> Data {
+        let size = CGSize(width: 240, height: 140)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true; format.scale = 1
+        let img = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            UIColor(red: 0.18, green: 0.42, blue: 0.45, alpha: 1).setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.90, green: 0.55, blue: 0.35, alpha: 1).setFill()
+            ctx.fill(CGRect(x: 24, y: 24, width: 92, height: 92))
+        }
+        return img.jpegData(compressionQuality: 0.85) ?? Data()
     }
 
     static func seed(_ store: WorkspaceStore) {
@@ -80,7 +96,9 @@ enum UITestFixture {
             .prose("Some notes on this task."),
             .task(TaskRef(id: id(), title: Names.subtask)),
             .ink(id: Ids.ink),
+            .image(uri: "\(Ids.image).jpg"),
         ]))
+        store.writeImage(Ids.image, sampleJPEG())
 
         store.writePage(PageDoc(id: Ids.secondList, type: NodeType.list, parent: nil, title: Names.secondList,
                                 modifiedAt: now, device: "uitest", blocks: [],

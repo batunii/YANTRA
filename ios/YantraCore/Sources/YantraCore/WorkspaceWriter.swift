@@ -59,6 +59,9 @@ public final class WorkspaceWriter {
         switch type {
         case NodeType.task: id = newId(); block = .task(TaskRef(id: id, title: text, indent: indent, due: due, priority: priority, labels: labels))
         case NodeType.ink: id = newId(); block = .ink(id: id, indent: indent)
+        // The text carries the file name, which is what the line points at: the bytes are written
+        // beside the page, and the block only names them.
+        case NodeType.image: block = .image(uri: text, indent: indent)
         case NodeType.heading: block = .heading(text, indent: indent)
         case NodeType.bullet: block = .bullet(text, indent: indent)
         case NodeType.numbered: block = .numbered(text, indent: indent)
@@ -261,6 +264,20 @@ public final class WorkspaceWriter {
             case .event(var e): e.title = text; p.blocks[index] = .event(e)
             default: break
             }
+            return p
+        }
+    }
+
+    /// Nudges a block's visual indent, clamped so it cannot go negative or run away.
+    ///
+    /// Indent is *visual*, not nesting — a guillemet on the front of the line, which markdown reads
+    /// as nothing. Four levels is as deep as a phone can show a line and still leave room for it.
+    public func indentBlock(pageId: String, index: Int, by delta: Int) throws {
+        try editPage(pageId) { page in
+            var p = page
+            guard index < p.blocks.count else { return p }
+            let next = min(max(p.blocks[index].indent + delta, 0), 4)
+            p.blocks[index] = p.blocks[index].withIndent(next)
             return p
         }
     }

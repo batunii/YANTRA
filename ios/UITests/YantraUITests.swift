@@ -635,8 +635,9 @@ final class ReminderUITests: YantraUITestCase {
         launch(route: "open:fixture-warned")
         assertExists(shelf(Fixture.warnedTask), "the warned task's page did not open")
         // The due pill carries the count once there is more than one.
-        let pill = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] 'Due'")).firstMatch
+        // By identifier, not by "contains Due" — that also matches a task called "Overdue thing",
+        // which is exactly what it picked up on an iPad where the rows lay out differently.
+        let pill = el("task.due")
         assertExists(pill, "the task page shows no due pill")
         XCTAssertTrue(pill.label.contains("2"),
                       "a task with two reminders should say so, got \(pill.label.debugDescription)")
@@ -645,8 +646,9 @@ final class ReminderUITests: YantraUITestCase {
     /// The offsets on offer follow the shape of the due date, and several can be on at once.
     func testSeveralRemindersCanBeChosenAtOnce() {
         launch(route: "open:fixture-warned")
-        let pill = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] 'Due'")).firstMatch
+        // By identifier, not by "contains Due" — that also matches a task called "Overdue thing",
+        // which is exactly what it picked up on an iPad where the rows lay out differently.
+        let pill = el("task.due")
         assertExists(pill, "no due pill to open")
         pill.tap()
 

@@ -235,11 +235,20 @@ struct SelectChip: View {
     let label: String
     let selected: Bool
     var stretch: Bool = false
+    /// The mark beside the word, where the kind has one. Task and Note deliberately have none: the
+    /// task's mark is the checkbox the row already draws, and a paragraph is the absence of a kind.
+    var mark: YantraMark? = nil
     let action: () -> Void
     @Environment(\.y) private var y
     var body: some View {
         Button(action: action) {
-            Text(label).font(Face.text(13, selected ? .bold : .medium))
+            HStack(spacing: 6) {
+                if let mark {
+                    YantraIcon(mark: mark, size: YantraIcons.small,
+                               tint: selected ? y.accentText : y.secondary)
+                }
+                Text(label).font(Face.text(13, selected ? .bold : .medium))
+            }
                 .padding(.horizontal, stretch ? 6 : 14).padding(.vertical, stretch ? 12 : 9)
                 .frame(maxWidth: stretch ? .infinity : nil)
                 .background(RoundedRectangle(cornerRadius: Layout.chipRadius).fill(selected ? y.accentFill : y.surfaceHigh))

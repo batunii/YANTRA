@@ -281,6 +281,21 @@ public enum Block: Equatable, Sendable {
         }
     }
     /// Prose and headings breathe; consecutive list items do not, and an event line is one.
+    /// The same block at a different visual depth. `raw` goes with it: the line it was parsed from
+    /// no longer describes it, and keeping it would write the old indent straight back.
+    public func withIndent(_ indent: Int) -> Block {
+        switch self {
+        case let .prose(t, _, _): return .prose(t, indent: indent)
+        case let .heading(t, _, _): return .heading(t, indent: indent)
+        case let .bullet(t, _, _): return .bullet(t, indent: indent)
+        case let .numbered(t, _, _): return .numbered(t, indent: indent)
+        case let .ink(id, _, _): return .ink(id: id, indent: indent)
+        case let .image(u, _, _): return .image(uri: u, indent: indent)
+        case var .task(t): t.indent = indent; t.raw = nil; return .task(t)
+        case var .event(e): e.indent = indent; e.raw = nil; return .event(e)
+        }
+    }
+
     public var isListish: Bool {
         switch self { case .task, .bullet, .numbered, .event: return true; default: return false }
     }

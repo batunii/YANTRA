@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import YantraCore
 
@@ -95,16 +96,40 @@ struct TaskPageView: View {
         .background(y.band.clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18)).ignoresSafeArea(edges: .top))
     }
 
+    /// The photo being picked, if the Image key was tapped.
+    @State private var picked: PhotosPickerItem?
+
     private var typeBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach([("Task", NodeType.task), ("Note", NodeType.paragraph), ("Heading", NodeType.heading), ("Bullet", NodeType.bullet), ("Numbered", NodeType.numbered)], id: \.1) { label, type in
-                    SelectChip(label: label, selected: editing.flatMap { i in page?.blocks[safe: i]?.nodeType } == type) {
+                // The kinds, in the Kotlin's order and wearing the Kotlin's marks. Task and Note
+                // carry none on purpose: a task's mark is the checkbox its row already draws, and a
+                // note is the absence of a kind rather than a kind of its own.
+                ForEach([("Task", NodeType.task, YantraMark?.none),
+                         ("Note", NodeType.paragraph, nil),
+                         ("Heading", NodeType.heading, .heading),
+                         ("Bullet", NodeType.bullet, .list),
+                         ("Numbered", NodeType.numbered, .numbered)], id: \.1) { label, type, mark in
+                    SelectChip(label: label,
+                               selected: editing.flatMap { i in page?.blocks[safe: i]?.nodeType } == type,
+                               mark: mark) {
                         if let i = editing { convert(i, to: type) } else { addBlock(type) }
                     }
                 }
                 Rectangle().fill(y.hairline).frame(width: 1, height: 22)
-                SelectChip(label: "Ink", selected: false) { addBlock(NodeType.ink) }
+                SelectChip(label: "Ink", selected: false, mark: .ink) { addBlock(NodeType.ink) }
+                imageChip
+                // Indent is *visual*, not nesting — a guillemet on the front of the line, which
+                // markdown reads as nothing. It only means something with a line in hand.
+                if let i = editing {
+                    Rectangle().fill(y.hairline).frame(width: 1, height: 22)
+                    SelectChip(label: "Outdent", selected: false, mark: .indentOut) {
+                        model.write { try model.writer.indentBlock(pageId: nodeId, index: i, by: -1) }
+                    }
+                    SelectChip(label: "Indent", selected: false, mark: .indentIn) {
+                        model.write { try model.writer.indentBlock(pageId: nodeId, index: i, by: 1) }
+                    }
+                }
                 if let i = editing {
                     Rectangle().fill(y.hairline).frame(width: 1, height: 22)
                     Button { model.write { try model.writer.removeBlock(pageId: nodeId, index: i) }; editing = nil } label: {
@@ -141,6 +166,41 @@ struct TaskPageView: View {
         guard let n = node else { return }
         let t = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if n.type == NodeType.task { model.write { try model.writer.setTitle(n.id, t) } } else { model.write { try model.writer.renamePage(n.id, t) } }
+    }
+
+    /// The Image key. A `PhotosPicker` rather than a button opening one, so what appears is the
+    /// system's own sheet and the app never asks for the photo library as a whole — it is handed
+    /// one picked item and nothing else.
+    private var imageChip: some View {
+        PhotosPicker(selection: $picked, matching: .images, photoLibrary: .shared()) {
+            HStack(spacing: 6) {
+                YantraIcon(mark: .image, size: YantraIcons.small, tint: y.secondary)
+                Text("Image").font(Face.text(13, .medium))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(RoundedRectangle(cornerRadius: Layout.chipRadius).fill(y.surfaceHigh))
+            .overlay(RoundedRectangle(cornerRadius: Layout.chipRadius).stroke(y.tileBorder, lineWidth: 1))
+            .foregroundStyle(y.secondary)
+        }
+        .onChange(of: picked) { _, item in
+            guard let item else { return }
+            Task {
+                defer { picked = nil }
+                guard let raw = try? await item.loadTransferable(type: Data.self),
+                      let bytes = ImageImport.prepare(raw) else { return }
+                await MainActor.run { addImage(bytes) }
+            }
+        }
+    }
+
+    /// Writes the photo beside the page and puts a line in for it.
+    private func addImage(_ bytes: Data) {
+        if let e = editing { commit(e) }
+        let name = UUID().uuidString.lowercased() + ".jpg"
+        model.write {
+            model.store.writeImage(String(name.dropLast(4)), bytes)
+            _ = try model.writer.addBlock(to: nodeId, type: NodeType.image, text: name, afterIndex: editing)
+        }
     }
 
     private func addBlock(_ type: String) {
@@ -237,8 +297,8 @@ struct BlockRow: View {
                     InkBlockPreview(inkId: id).frame(maxWidth: .infinity).frame(minHeight: 64)
                         .background(RoundedRectangle(cornerRadius: 14).fill(y.surface)).overlay(RoundedRectangle(cornerRadius: 14).stroke(y.tileBorder, lineWidth: 1))
                 }.buttonStyle(.plain).padding(.vertical, 6)
-            case .image:
-                RoundedRectangle(cornerRadius: 16).fill(y.surfaceHigh).frame(height: 120).overlay(Text("Image").font(Face.text(12)).foregroundStyle(y.dim)).padding(.vertical, 6)
+            case let .image(uri, _, _):
+                ImageBlock(uri: uri).padding(.vertical, 6)
             case let .event(e):
                 // An event has no box to tick — it is not finished, it simply passes — so the row
                 // leads with when rather than with a checkbox, and opens the calendar rather than a
@@ -294,7 +354,7 @@ struct PropertyPills: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminders.isEmpty ? "" : (due.reminders.count == 1 ? " · 🔔" : " · 🔔\(due.reminders.count)")), color: isOverdue(node) ? y.overdue : y.due, ghost: false) { dueSheet = true } }
+                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminders.isEmpty ? "" : (due.reminders.count == 1 ? " · 🔔" : " · 🔔\(due.reminders.count)")), color: isOverdue(node) ? y.overdue : y.due, ghost: false, id: "task.due") { dueSheet = true } }
                 if let p = node.priority { pill("Priority · " + p, color: y.priority(p) ?? y.secondary, ghost: false) { cyclePriority() } }
                 ForEach(node.labels, id: \.self) { l in
                     // Tap detaches, as on Android.
@@ -315,13 +375,16 @@ struct PropertyPills: View {
         let i = order.firstIndex(of: node.priority) ?? 3
         model.write { try model.writer.setPriority(node.id, order[(i + 1) % order.count]) }
     }
-    private func pill(_ text: String, color: Color, ghost: Bool, action: @escaping () -> Void) -> some View {
+    private func pill(_ text: String, color: Color, ghost: Bool, id: String? = nil,
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text).font(Face.text(11.5, .semibold)).foregroundStyle(color).padding(.horizontal, 9).padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 5).fill(ghost ? .clear : color.opacity(0.14)))
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(color.opacity(ghost ? 0.55 : 0), style: StrokeStyle(lineWidth: 1, dash: ghost ? [6, 4] : [])))
                 .opacity(ghost ? 0.7 : 1)
-        }.buttonStyle(.plain)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id ?? "")
     }
 }
 
@@ -409,4 +472,42 @@ func eventWhen(_ t: EventTime) -> String {
     let from = f.string(from: t.start.instant())
     if t.isInstantaneous { return "\(day) \(from)" }
     return "\(day) \(from)–\(f.string(from: t.end.instant()))"
+}
+
+/// A photo that lives beside the page.
+///
+/// Read from the workspace rather than from a bundle or a cache: the file *is* the picture, and a
+/// block that drew from anywhere else would show something the repository does not contain.
+struct ImageBlock: View {
+    let uri: String
+    @EnvironmentObject var model: AppModel
+    @Environment(\.y) private var y
+
+    private var image: UIImage? {
+        // The line names a file; the bytes sit next to the page under the same stem.
+        let stem = uri.hasSuffix(".jpg") ? String(uri.dropLast(4)) : uri
+        return (try? Data(contentsOf: model.store.imageFile(stem))).flatMap(UIImage.init(data:))
+    }
+
+    var body: some View {
+        if let image {
+            Image(uiImage: image)
+                .resizable().scaledToFit()
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: Layout.cardRadius))
+                .overlay(RoundedRectangle(cornerRadius: Layout.cardRadius).stroke(y.tileBorder, lineWidth: 1))
+                .accessibilityLabel("Image")
+        } else {
+            // A line whose file is missing says so. Drawing nothing would make a block that is
+            // plainly in the file look like a blank in the page.
+            RoundedRectangle(cornerRadius: Layout.cardRadius).fill(y.surfaceHigh)
+                .frame(height: 96)
+                .overlay(
+                    VStack(spacing: 6) {
+                        YantraIcon(mark: .image, size: YantraIcons.medium, tint: y.dim)
+                        Text("Picture not in this workspace").font(Face.text(11.5)).foregroundStyle(y.dim)
+                    }
+                )
+        }
+    }
 }

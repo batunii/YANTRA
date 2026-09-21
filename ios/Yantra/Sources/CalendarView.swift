@@ -568,7 +568,7 @@ struct CalendarBar: View {
             if cal.mode != .month {
                 Button { withAnimation(.snappy) { railOpen.toggle() } } label: {
                     HStack(spacing: 7) {
-                        YantraIcon(mark: .properties, size: YantraIcons.small, tint: railOpen ? y.accentText : y.secondary)
+                        YantraIcon(mark: .list, size: YantraIcons.small, tint: railOpen ? y.accentText : y.secondary)
                         Text("Tasks").font(Face.text(13, .bold))
                     }
                     .foregroundStyle(railOpen ? y.accentText : y.secondary)
