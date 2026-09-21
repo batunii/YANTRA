@@ -84,18 +84,35 @@ sealed interface RepoCheck {
 }
 
 /**
- * Whether this build's GitHub App is installed for the signed-in user.
+ * Whether the stored sign-in still works.
  *
- * Worth a type of its own rather than a boolean, because the three ways of not being installed need
- * three different things said. [Absent] is a browser trip. [Unauthorized] is a sign-in. [Failed] is
- * a network that will probably work in a minute and should not be dressed up as either.
+ * What is left of the old install check, and worth keeping for the half that was never about
+ * installing. An OAuth app has no installation to be missing, so the "you are signed in and can see
+ * nothing" state is gone with it — but a token that has been revoked, or one whose Keystore key did
+ * not survive a device restore, still needs saying out loud rather than surfacing later as a failed
+ * push. [Failed] is kept apart because a dead network is not a dead sign-in.
  */
-sealed interface InstallState {
-    data object Installed : InstallState
-    data object Absent : InstallState
-    /** The token no longer works: revoked, uninstalled, or undecryptable on this device. */
-    data object Unauthorized : InstallState
-    data class Failed(val message: String) : InstallState
+sealed interface SignInState {
+    data object Ok : SignInState
+    data object Unauthorized : SignInState
+    data class Failed(val message: String) : SignInState
+}
+
+/** What GitHub did when asked to make a repository. */
+sealed interface RepoCreate {
+    data class Ok(val ref: RepoRef, val defaultBranch: String) : RepoCreate
+    /**
+     * A repository of that name is already there.
+     *
+     * Its own answer rather than a [Failed] carrying GitHub's wording, because it is the one
+     * failure here the user can act on without leaving the screen: pick another name, or go to the
+     * other tab and join the one that exists. It is also the likeliest — people name their task
+     * repository the obvious thing, and then do it again on a second device.
+     */
+    data object Exists : RepoCreate
+    /** The token no longer works, or was issued without the scope that can create a repository. */
+    data object Unauthorized : RepoCreate
+    data class Failed(val message: String) : RepoCreate
 }
 
 /**
@@ -106,13 +123,15 @@ sealed interface InstallState {
  * cannot arbitrate deterministically. And discovering you have no push access *after* a week of
  * local commits is a much worse conversation than discovering it while pasting the URL.
  *
- * There is deliberately nothing here that writes. Creating a repository and inviting people both
- * happen in the browser on GitHub's own pages — creation because a GitHub App cannot do it for a
- * personal account at all, invites because they need a permission far heavier than the one the App
- * asks for. So this file only ever asks questions, which is also why every call is a GET.
+ * [createRepo] is the one call that writes, and it is new: this file used to be all GETs because a
+ * GitHub App cannot create a repository in a personal account, so the app opened GitHub's own
+ * new-repository form and asked the user to press the button. An OAuth app's `repo` scope can do it
+ * directly, which removes a browser trip, a return-to-the-app, and the polling that watched for a
+ * repository to appear. Inviting people still happens on GitHub's own pages, because it needs
+ * Administration rights this app has no business holding.
  *
- * Uses `HttpURLConnection` on purpose. It is enough for three GET requests, and an HTTP client is a
- * large dependency to add to an app whose whole transport is otherwise JGit's.
+ * Uses `HttpURLConnection` on purpose. It is enough for a handful of requests, and an HTTP client is
+ * a large dependency to add to an app whose whole transport is otherwise JGit's.
  */
 open class GitHubApi(private val base: String = "https://api.github.com") {
 
@@ -125,11 +144,23 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
         val permissions: Permissions? = null,
     )
 
+    /**
+     * No default on [private], and that is load-bearing.
+     *
+     * kotlinx does not serialise a property that still holds its default, so `private = true` as a
+     * default would be left out of the body entirely — and GitHub's own default for a repository
+     * created through the API is public. The repository would have been made, the workspace would
+     * have attached to it, everything would have worked, and someone's task list would have been
+     * world-readable with nothing on any screen saying so.
+     */
     @Serializable
-    private data class Installations(val installations: List<Installation> = emptyList())
+    private data class NewRepo(val name: String, val description: String, val private: Boolean)
 
     @Serializable
-    private data class Installation(val id: Long, @SerialName("app_slug") val appSlug: String = "")
+    private data class CreatedRepo(
+        @SerialName("full_name") val fullName: String = "",
+        @SerialName("default_branch") val defaultBranch: String = "main",
+    )
 
     @Serializable
     private data class Permissions(val push: Boolean = false, val admin: Boolean = false)
@@ -185,33 +216,75 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
     }
 
     /**
-     * Whether this build's App is installed for whoever owns [token].
+     * Whether [token] is still one GitHub will answer.
      *
-     * A user token with no installation is the trap this exists to catch: it authenticates perfectly,
-     * `/user` answers, and every repository request comes back empty or 404 — because a user token's
-     * reach is the App's permissions *intersected* with the user's own, and an App installed nowhere
-     * contributes nothing to that intersection. Without this check the app would look signed in and
-     * be unable to explain why nothing worked.
+     * `/user` because it is the cheapest authenticated call there is and needs no scope at all: the
+     * question is only whether the token is alive, and asking it against a repository would confuse
+     * a revoked sign-in with a repository that has been renamed or deleted.
      */
-    open fun installState(token: String, appSlug: String): InstallState {
-        val conn = open("$base/user/installations", token)
+    open fun signInState(token: String): SignInState {
+        val conn = open("$base/user", token)
         return try {
-            when (conn.responseCode) {
-                200 -> {
-                    val body = conn.inputStream.bufferedReader().readText()
-                    val found = runCatching {
-                        json.decodeFromString(Installations.serializer(), body).installations
-                    }.getOrDefault(emptyList())
-                    // Matched by slug, not by count: someone may have other GitHub Apps installed,
-                    // and any of them would otherwise read as ours.
-                    if (found.any { it.appSlug == appSlug }) InstallState.Installed
-                    else InstallState.Absent
-                }
-                401, 403 -> InstallState.Unauthorized
-                else -> InstallState.Failed("GitHub returned ${conn.responseCode}")
+            when (val code = conn.responseCode) {
+                200 -> SignInState.Ok
+                401, 403 -> SignInState.Unauthorized
+                else -> SignInState.Failed("GitHub returned $code")
             }
         } catch (e: IOException) {
-            InstallState.Failed(e.message ?: "could not reach GitHub")
+            SignInState.Failed(e.message ?: "could not reach GitHub")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * Makes a private repository for tasks, and says where it landed.
+     *
+     * Private without asking. A task list is the most personal thing this app holds, and a public
+     * repository cannot be made private again by anyone who is not an admin of it — so the safe
+     * default is the one that can be widened later rather than the one that cannot be narrowed.
+     *
+     * The name is sent as the user typed it. GitHub does its own normalising (spaces become dashes,
+     * and it will say so in the response), and guessing at that here would mean the app telling
+     * someone their repository is called one thing while GitHub calls it another — which then fails
+     * at the first push, a long way from the screen that caused it.
+     */
+    open fun createRepo(name: String, token: String, description: String = "Tasks, kept by Yantra"): RepoCreate {
+        val body = runCatching {
+            json.encodeToString(NewRepo.serializer(), NewRepo(name, description, private = true))
+        }.getOrNull() ?: return RepoCreate.Failed("could not ask for that name")
+
+        val conn = open("$base/user/repos", token, "POST")
+        return try {
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            when (val code = conn.responseCode) {
+                201 -> {
+                    val made = json.decodeFromString(
+                        CreatedRepo.serializer(),
+                        conn.inputStream.bufferedReader().readText(),
+                    )
+                    // Parsed back rather than assembled from what we sent, because what we sent is
+                    // not necessarily what exists: GitHub rewrites a name it does not like, and the
+                    // workspace has to point at the repository that is actually there.
+                    RepoRef.parse(made.fullName)
+                        ?.let { RepoCreate.Ok(it, made.defaultBranch) }
+                        ?: RepoCreate.Failed("GitHub made it but would not say where")
+                }
+                401, 403 -> RepoCreate.Unauthorized
+                // 422 is every kind of "no" this endpoint gives — a name already taken, a name made
+                // only of punctuation, a plan limit. Only the first is worth its own answer, and
+                // GitHub names it in the body rather than in the status.
+                422 -> {
+                    val why = conn.errorStream?.bufferedReader()?.readText().orEmpty()
+                    if (why.contains("already exists", ignoreCase = true)) RepoCreate.Exists
+                    else RepoCreate.Failed("GitHub would not make that one")
+                }
+                else -> RepoCreate.Failed("GitHub returned $code")
+            }
+        } catch (e: IOException) {
+            RepoCreate.Failed(e.message ?: "could not reach GitHub")
         } finally {
             conn.disconnect()
         }
@@ -272,9 +345,9 @@ open class GitHubApi(private val base: String = "https://api.github.com") {
         }
     }
 
-    private fun open(url: String, token: String): HttpURLConnection =
+    private fun open(url: String, token: String, method: String = "GET"): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
+            requestMethod = method
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("Authorization", "Bearer $token")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")

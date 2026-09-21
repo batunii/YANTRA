@@ -9,7 +9,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * The client id of the GitHub OAuth app this build signs in through.
+ * The client id of the OAuth app this build signs in through.
  *
  * **This is not a secret.** The device flow exists precisely so that an app with no server can
  * authenticate without holding one: the client id is public, the user proves their own identity on
@@ -17,57 +17,44 @@ import java.net.URLEncoder
  * design, not a compromise of it.
  *
  * It is empty here because only the person who owns the OAuth app can create it — register one at
- * github.com/settings/developers, tick **Enable Device Flow**, and paste the client id below. Until
- * then the sign-in path is offline and the app says so instead of failing at the network.
+ * github.com/settings/developers, tick **Enable Device Flow**, untick **Expire user access tokens**,
+ * and paste the client id below. Until then the sign-in path is offline and the app says so instead
+ * of failing at the network.
+ *
+ * **Why an OAuth app and not a GitHub App**, which is what this was until the two-device bug was
+ * finally pinned down: a GitHub App holds at most *two* user access tokens per user, and issuing a
+ * third silently revokes the oldest. Two phones filled both slots, so signing in anywhere a third
+ * time — including signing in again on a phone that already had a token — killed whichever device
+ * had been quiet longest. It presents as "sign in again" on a device nobody touched, days later,
+ * with nothing in any log to connect it to the sign-in that caused it. That cap is not documented
+ * anywhere; it was found by minting tokens until one died. An OAuth app's limit is ten per
+ * user/application/scope, which is documented, and which two phones do not come close to.
+ *
+ * The price is honest and worth stating: [SCOPE] is `repo`, which is read and write to every
+ * repository the user owns. A GitHub App could be installed on one repository and reach no further.
+ * There is no fine-grained middle ground for an OAuth app, and no way to create a repository at all
+ * without it.
  */
 object GitHubAuth {
-    const val CLIENT_ID = "Iv23lijaR2qLqzo9ALWw"
+    const val CLIENT_ID = ""
 
     /**
-     * The App's URL slug — the last segment of github.com/apps/<slug>, not its display name.
+     * What the token may do, shown to the user on GitHub's consent screen before they agree.
      *
-     * Must match the registration exactly or the install link 404s, which is a dead end with no
-     * error: the browser opens, says the page does not exist, and the app goes on waiting for an
-     * installation that can never arrive.
+     * `repo` is the only scope that can create a repository, which is the whole reason this app
+     * stopped sending people to github.com/new to press a button themselves. It is coarse — it
+     * cannot be narrowed to one repository, and it carries delete and visibility rights this app
+     * never uses — and GitHub offers nothing finer for an OAuth app.
+     *
+     * Kept as one constant because it appears in the consent the user gives and in the token limit
+     * GitHub enforces: ten tokens per user, per application, *per scope*. Changing this string
+     * starts a fresh set of ten and strands every token already issued under the old one.
      */
-    const val APP_SLUG = "yantra-tasks"
+    const val SCOPE = "repo"
 
     val configured: Boolean get() = CLIENT_ID.isNotBlank()
 
-    /**
-     * Where to install the App.
-     *
-     * A user token with no installation is not broken — it authenticates fine and can see nothing at
-     * all, which is the most confusing possible state to leave someone in. So the sign-in screen
-     * checks for an installation and sends them here when there is none.
-     */
-    fun installUrl(targetId: Long? = null): String {
-        val base = "https://github.com/apps/$APP_SLUG/installations"
-        // Aimed at the account that just signed in. Without the id GitHub shows a chooser first —
-        // one page whose only real answer is the account already in the address bar — and installing
-        // costs two taps in a browser instead of one.
-        return if (targetId != null) "$base/new/permissions?suggested_target_id=$targetId"
-        else "$base/new"
-    }
-
-    /**
-     * GitHub's new-repository form, with the name and visibility already filled in.
-     *
-     * This is why the app never asks anyone to create an access token. Repository *creation* has no
-     * GitHub App permission for a personal account — there is no fine-grained equivalent of the old
-     * `repo` scope — so rather than demand a token broad enough to create one, the app opens the form
-     * GitHub already has and lets the user press the button. They type nothing.
-     *
-     * Deliberately the real browser and never a WebView: in an embedded WebView there is no URL bar
-     * to check, and the session is not shared, so the user would be asked for their GitHub password
-     * inside our app — which is indistinguishable from how credential phishing works.
-     */
-    fun newRepoUrl(name: String, description: String = "Tasks, kept by Yantra"): String {
-        fun esc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
-        return "https://github.com/new?name=${esc(name)}&visibility=private&description=${esc(description)}"
-    }
-
-    /** Where someone invites people to a repository. Also the browser, and for the same reason. */
+    /** Where someone invites people to a repository. The real browser, never a WebView. */
     fun accessSettingsUrl(slug: String): String = "https://github.com/$slug/settings/access"
 }
 
@@ -154,16 +141,22 @@ class GitHubDeviceAuth(
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Asks for a code to show. Null if we could not even get that far.
+     * Asks for a code to show, and says what the token will be allowed to do.
      *
-     * **No scope is sent, and that is not an omission.** A GitHub App's user token does not use
-     * scopes at all: its reach is the App's configured permissions intersected with what the user
-     * themselves can access. So there is nothing to ask for here — the consent screen shows what the
-     * App was registered to want, and sending a scope would be describing the wrong permission model.
+     * **The scope is sent here, not at the token exchange.** GitHub reads it when the code is
+     * created, because the consent screen the user is about to read is built from it — asking later
+     * would mean asking after they had already agreed to something else. A device flow started with
+     * no scope yields a token that can read public data and nothing more, which authenticates
+     * perfectly and then fails at the first private repository.
      */
     fun start(): DeviceStart {
         if (clientId.isBlank()) return DeviceStart.Failed("This build has no GitHub app registered")
-        return when (val body = post("$base/login/device/code", mapOf("client_id" to clientId))) {
+        return when (
+            val body = post(
+                "$base/login/device/code",
+                mapOf("client_id" to clientId, "scope" to GitHubAuth.SCOPE),
+            )
+        ) {
             is Post.Broken -> DeviceStart.Failed(body.why)
             is Post.Body ->
                 runCatching { json.decodeFromString(CodeResponse.serializer(), body.text) }

@@ -54,7 +54,8 @@ import ie.shoonya.yantra.data.sync.DeviceCode
 import ie.shoonya.yantra.data.sync.DeviceStart
 import ie.shoonya.yantra.data.sync.DevicePoll
 import ie.shoonya.yantra.data.sync.GitHubAuth
-import ie.shoonya.yantra.data.sync.InstallState
+import ie.shoonya.yantra.data.sync.RepoCreate
+import ie.shoonya.yantra.data.sync.SignInState
 import ie.shoonya.yantra.data.sync.RepoCheck
 import ie.shoonya.yantra.data.sync.RepoRef
 import ie.shoonya.yantra.ui.appContainer
@@ -107,17 +108,17 @@ private sealed interface Stage {
  * strange thing to demand as the first act of a task app. Signing in is one tap and a short code
  * typed on GitHub's own page.
  *
- * The cost of that is a shape rather than a compromise, and it is worth naming because it looks like
- * an extra step until you see what it buys. A GitHub App cannot create a repository in a personal
- * account — there is no such permission, only the old blanket `repo` scope of an OAuth app could do
- * it — so instead of asking for write access to everything the user owns, the app opens GitHub's own
- * new-repository form with the name and visibility already filled in, and the user presses one
- * button. The App itself only ever asks for `Contents: read and write`: enough to read and write task
- * files, and nothing that could delete a repository or change who can see it.
+ * **The whole flow is one trip to the browser**: enter the code, approve, come back. Granting access
+ * and creating the repository used to be two more — the first because a GitHub App reaches nothing
+ * until it is installed somewhere, the second because a GitHub App cannot create a repository in a
+ * personal account at all, so the app opened GitHub's new-repository form and asked the user to press
+ * the button themselves. An OAuth app needs neither: there is no installation, and `repo` can create
+ * one directly.
  *
- * So the whole flow is three taps in the browser at most — sign in, grant access, create — and the
- * app holds no secret bigger than what its daily job needs. Pasting a token remains, one screen down,
- * for anyone who would rather grant one repository and nothing else.
+ * What that costs is stated plainly on the button below, because the user is agreeing to it: `repo`
+ * is read and write to every repository they own. The narrower permission was real and it is gone,
+ * traded for a sign-in that survives a second device — see [GitHubAuth]. Pasting a fine-grained token
+ * remains, one screen down, for anyone who would rather grant one repository and nothing else.
  */
 @Composable
 fun SignInScreen(nav: NavHostController) {
@@ -139,20 +140,11 @@ fun SignInScreen(nav: NavHostController) {
     var copied by remember { mutableStateOf(false) }
     /** Set while polls are failing, so the wait does not silently pretend to be going well. */
     var struggling by remember { mutableStateOf<String?>(null) }
-    /**
-     * True while a look-for-the-new-repository attempt is in flight.
-     *
-     * Closing the browser and the app being brought forward are two resumes, so without this the
-     * effect runs twice, both jobs read the same pending name, and the workspace is attached twice —
-     * the second one arriving as a failure on top of a success.
-     */
-    var checking by remember { mutableStateOf(false) }
-
-    var install by remember { mutableStateOf<InstallState?>(null) }
-    var accountId by remember { mutableStateOf(container.credentials.accountId(Credentials.ACCOUNT)) }
+    var signIn by remember { mutableStateOf<SignInState?>(null) }
     var localSlug by remember { mutableStateOf(container.slugOf("")) }
     var repoName by remember { mutableStateOf("yantra-tasks") }
-    var awaiting by remember { mutableStateOf<String?>(null) }
+    /** True while a repository is being made and attached. */
+    var creating by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     var noteBad by remember { mutableStateOf(false) }
     /** Set when the repository turned out to have a task list of its own — see [LinkOutcome.Asks]. */
@@ -161,57 +153,22 @@ fun SignInScreen(nav: NavHostController) {
     var linking by remember { mutableStateOf(false) }
 
     /**
-     * Everything that happened in the browser, noticed on the way back.
+     * Whether the stored sign-in still works, re-asked whenever this screen comes forward.
      *
-     * The two web trips — granting access, creating the repository — end with the user returning to
-     * this screen and nothing else telling us they did. So resuming *is* the signal: re-ask whether
-     * the App is installed, and if we sent someone off to make a repository, look for it.
+     * It used to do considerably more: two errands happened in the browser — granting access, then
+     * creating the repository — and each ended with the user simply returning here, so resuming was
+     * the only signal that either had happened. Both now happen without leaving the app, and what is
+     * left is the one question a returning user really might have changed the answer to, by revoking
+     * Yantra on GitHub while they were over there.
      */
-    LifecycleResumeEffect(account, viaApp) {
+    LifecycleResumeEffect(account) {
         val job = scope.launch {
             val tok = container.credentials.token(Credentials.ACCOUNT)
             if (account == null || tok == null) {
-                install = null
+                signIn = null
                 return@launch
             }
-            // A pasted token has no App installation and needs none — asking would send someone off
-            // to install something they have no use for.
-            install = if (!viaApp) InstallState.Installed
-            else withContext(Dispatchers.IO) {
-                container.github.installState(tok, GitHubAuth.APP_SLUG)
-            }
-
-            // An account signed in before the id was being stored still deserves the direct link.
-            // Only when there is something to install, and only once — the answer never changes.
-            if (install == InstallState.Absent && container.credentials.accountId(Credentials.ACCOUNT) == null) {
-                withContext(Dispatchers.IO) { container.github.account(tok) }
-                    ?.let { container.credentials.rememberAccountId(Credentials.ACCOUNT, it.id) }
-                accountId = container.credentials.accountId(Credentials.ACCOUNT)
-            }
-
-            val wanted = awaiting
-            if (wanted != null && install == InstallState.Installed && !checking) {
-                checking = true
-                try {
-                    when (val outcome = linkCreated(container, account!!, wanted, tok)) {
-                        null -> Unit
-                        is LinkOutcome.Done -> {
-                            awaiting = null
-                            note = outcome.said.message
-                            noteBad = !outcome.said.ok
-                            localSlug = container.slugOf("")
-                        }
-                        // Nothing was written. The repository has a list of its own, and which list
-                        // wins is not a question this screen may answer on its own.
-                        is LinkOutcome.Asks -> {
-                            awaiting = null
-                            asking = outcome
-                        }
-                    }
-                } finally {
-                    checking = false
-                }
-            }
+            signIn = withContext(Dispatchers.IO) { container.github.signInState(tok) }
         }
         onPauseOrDispose { job.cancel() }
     }
@@ -294,35 +251,15 @@ fun SignInScreen(nav: NavHostController) {
                             // not lapse; anything else is what TokenRenewal needs to keep it alive.
                             refreshToken = poll.refreshToken,
                             expiresAt = poll.expiresInSecs?.let { System.currentTimeMillis() + it * 1000L },
-                            // Kept now so the install link can be aimed at this account rather than
-                            // landing on a chooser. It costs nothing here and is a request we would
-                            // otherwise have to make later, at the one moment someone is waiting.
+                            // GitHub's own id for this account, which outlives a rename in a way
+                            // the login does not. Free here — we already have the answer in hand.
                             accountId = who.id,
                         )
                         account = login
-                        accountId = who.id
                         viaApp = true
+                        // Freshly minted seconds ago by GitHub itself, so there is nothing to ask.
+                        signIn = SignInState.Ok
                         stage = Stage.Idle
-
-                        // Straight on to the second half, without coming back here to be told to.
-                        //
-                        // Signing in and granting access are two errands on GitHub, and only the
-                        // first one ends by itself. The second used to wait behind a button on this
-                        // screen — so the reward for finishing sign-in was a screen saying there was
-                        // one more step, and a token that could see nothing until it was taken.
-                        // Chaining them makes it one trip: enter the code, choose All repositories,
-                        // and the Setup URL brings you back finished.
-                        //
-                        // Only here, never on resume. The resume handler also knows when the App is
-                        // not installed, and opening the browser from *there* would send someone
-                        // who backed out of the page straight back into it, forever.
-                        val installed = withContext(Dispatchers.IO) {
-                            container.github.installState(poll.token, GitHubAuth.APP_SLUG)
-                        }
-                        install = installed
-                        if (installed == InstallState.Absent) {
-                            uri.openUri(GitHubAuth.installUrl(who.id))
-                        }
                     }
                     return@LaunchedEffect
                 }
@@ -396,18 +333,67 @@ fun SignInScreen(nav: NavHostController) {
             if (account != null) {
                 SignedIn(
                     account = account!!,
-                    install = install,
+                    signIn = signIn,
                     localSlug = localSlug,
                     repoName = repoName,
-                    awaiting = awaiting,
+                    creating = creating,
                     note = note,
                     noteBad = noteBad,
                     onRepoName = { repoName = it; note = null },
-                    onInstall = { uri.openUri(GitHubAuth.installUrl(accountId)) },
                     onCreate = {
                         note = null
-                        awaiting = repoName.trim()
-                        uri.openUri(GitHubAuth.newRepoUrl(repoName.trim()))
+                        noteBad = false
+                        creating = true
+                        scope.launch {
+                            try {
+                                val tok = container.credentials.token(Credentials.ACCOUNT)
+                                val who = account
+                                if (tok == null || who == null) {
+                                    note = "Sign in again — we do not know who you are"
+                                    noteBad = true
+                                    return@launch
+                                }
+                                val made = withContext(Dispatchers.IO) {
+                                    container.github.createRepo(repoName.trim(), tok)
+                                }
+                                when (made) {
+                                    // Attached straight away rather than reported and left for a
+                                    // second tap. An empty repository nobody is pushing to is not
+                                    // what anyone asked for — making it was only ever the first
+                                    // half of "put my tasks somewhere".
+                                    is RepoCreate.Ok -> when (
+                                        val outcome = linkCreated(container, made.ref, tok)
+                                    ) {
+                                        null -> {
+                                            note = "Made ${made.ref.slug}, but it is not answering yet"
+                                            noteBad = true
+                                        }
+                                        is LinkOutcome.Done -> {
+                                            note = outcome.said.message
+                                            noteBad = !outcome.said.ok
+                                            localSlug = container.slugOf("")
+                                        }
+                                        is LinkOutcome.Asks -> asking = outcome
+                                    }
+                                    RepoCreate.Exists -> {
+                                        note = "You already have a ${repoName.trim()} — use it below, " +
+                                            "or pick another name"
+                                        noteBad = true
+                                    }
+                                    RepoCreate.Unauthorized -> {
+                                        note = "This sign-in cannot make repositories. Sign in again."
+                                        noteBad = true
+                                        signIn = SignInState.Unauthorized
+                                    }
+                                    is RepoCreate.Failed -> {
+                                        note = made.message
+                                        noteBad = true
+                                    }
+                                }
+                            } finally {
+                                creating = false
+                            }
+                        }
                     },
                     linking = linking,
                     onUseExisting = {
@@ -423,7 +409,8 @@ fun SignInScreen(nav: NavHostController) {
                                         noteBad = true
                                     }
                                     else -> when (
-                                        val outcome = linkCreated(container, who, repoName.trim(), tok)
+                                        val outcome =
+                                            linkCreated(container, RepoRef(who, repoName.trim()), tok)
                                     ) {
                                         // Only the resume check may treat "not there yet" as
                                         // patience; asked for directly, it is an answer.
@@ -451,10 +438,8 @@ fun SignInScreen(nav: NavHostController) {
                         // workspaces that already sync — which is what signing out actually means.
                         container.credentials.clear(Credentials.ACCOUNT)
                         account = null
-                        accountId = null
                         viaApp = false
-                        install = null
-                        awaiting = null
+                        signIn = null
                         note = null
                         stage = Stage.Idle
                     },
@@ -523,9 +508,9 @@ fun SignInScreen(nav: NavHostController) {
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "Asks to read and write files in your repositories — enough to keep task "
-                                + "lists there, and nothing that can delete a repository or change "
-                                + "who can see it. You approve it on GitHub.",
+                            "GitHub will ask you to approve access to your repositories. Yantra "
+                                + "reads and writes task files, and makes the one private repository "
+                                + "you ask it for — it never touches your code.",
                             color = y.textDim,
                             fontSize = YantraType.caption,
                         )
@@ -605,14 +590,13 @@ fun SignInScreen(nav: NavHostController) {
 @Composable
 internal fun SignedIn(
     account: String,
-    install: InstallState?,
+    signIn: SignInState?,
     localSlug: String?,
     repoName: String,
-    awaiting: String?,
+    creating: Boolean,
     note: String?,
     noteBad: Boolean,
     onRepoName: (String) -> Unit,
-    onInstall: () -> Unit,
     onCreate: () -> Unit,
     /** Point Personal at a repository that is already there. */
     onUseExisting: () -> Unit,
@@ -642,36 +626,8 @@ internal fun SignedIn(
         }
     }
 
-    when (install) {
-        // Authenticated and able to see nothing at all, which is the most confusing state there is,
-        // so it gets the whole screen until it is fixed rather than a warning under something else.
-        InstallState.Absent -> {
-            Spacer(Modifier.height(26.dp))
-            SectionLabel("One more step")
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "Yantra needs your permission to read and write files in your repositories. Choose "
-                    + "All repositories so that a repo you make later is included without coming "
-                    + "back here.",
-                color = y.textMuted,
-                fontSize = YantraType.meta,
-            )
-            Spacer(Modifier.height(12.dp))
-            YantraButton(
-                "Grant access on GitHub",
-                modifier = Modifier.fillMaxWidth(),
-                mark = YantraMark.OpenOut,
-                onClick = onInstall,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "This screen notices when you come back.",
-                color = y.textDim,
-                fontSize = YantraType.caption,
-            )
-        }
-
-        InstallState.Unauthorized -> {
+    when (signIn) {
+        SignInState.Unauthorized -> {
             Spacer(Modifier.height(26.dp))
             Note(
                 "This sign-in no longer works — it may have been revoked, or the key that protects "
@@ -680,12 +636,12 @@ internal fun SignedIn(
             )
         }
 
-        is InstallState.Failed -> {
+        is SignInState.Failed -> {
             Spacer(Modifier.height(26.dp))
-            Note("Could not reach GitHub: ${install.message}")
+            Note("Could not reach GitHub: ${signIn.message}")
         }
 
-        InstallState.Installed -> {
+        SignInState.Ok -> {
             Spacer(Modifier.height(26.dp))
             SectionLabel(if (localSlug == null) "Back up your tasks" else "Your tasks")
             Spacer(Modifier.height(2.dp))
@@ -703,9 +659,8 @@ internal fun SignedIn(
                 YantraButton(
                     label = "Create a private repository",
                     modifier = Modifier.fillMaxWidth(),
-                    mark = YantraMark.OpenOut,
-                    busy = awaiting != null,
-                    enabled = repoName.isNotBlank(),
+                    busy = creating,
+                    enabled = repoName.isNotBlank() && !creating && !linking,
                     onClick = onCreate,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -721,18 +676,14 @@ internal fun SignedIn(
                     tone = ButtonTone.Quiet,
                     modifier = Modifier.fillMaxWidth(),
                     busy = linking,
-                    enabled = repoName.isNotBlank() && awaiting == null,
+                    enabled = repoName.isNotBlank() && !creating && !linking,
                     onClick = onUseExisting,
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    if (awaiting != null)
-                        "Waiting for $awaiting to appear. Press Create repository on GitHub, then "
-                            + "come back."
-                    else
-                        "Opens GitHub with the name and Private already filled in — press one button. "
-                            + "Yantra cannot create repositories itself, and asking for permission "
-                            + "broad enough to do it would mean access to far more than task files.",
+                    if (creating) "Making it, and moving your tasks in."
+                    else "Made private, here, without opening GitHub. Nobody else can see it until "
+                        + "you invite them.",
                     color = y.textDim,
                     fontSize = YantraType.caption,
                 )
@@ -858,11 +809,9 @@ internal sealed interface LinkOutcome {
 
 private suspend fun linkCreated(
     container: AppContainer,
-    login: String,
-    name: String,
+    ref: RepoRef,
     token: String,
 ): LinkOutcome? = withContext(Dispatchers.IO) {
-    val ref = RepoRef(login, name)
     when (val check = container.github.check(ref, token)) {
         is RepoCheck.Ok ->
             if (!check.canPush) {
@@ -873,7 +822,8 @@ private suspend fun linkCreated(
                 is AddResult.HasTasks ->
                     LinkOutcome.Asks(attached.slug, attached.localTasks, token)
             }
-        // Not there yet, or the App has not been granted it. Either way: keep waiting.
+        // Not there yet. Straight after creating one this is a repository GitHub has acknowledged
+        // and not yet begun serving, which settles itself in a second or two.
         RepoCheck.NotFound -> null
         RepoCheck.Unauthorized ->
             LinkOutcome.Done(Said(false, "Yantra was not given access to ${ref.slug}"))

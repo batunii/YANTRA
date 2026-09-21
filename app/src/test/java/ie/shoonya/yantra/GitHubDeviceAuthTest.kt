@@ -44,10 +44,12 @@ class GitHubDeviceAuthTest {
             val sent = server.seen.single()
             assertEquals("POST", sent.method)
             assertTrue(sent.body.contains("client_id=Iv1.testclient"))
-            // No scope, deliberately. A GitHub App's user token does not use scopes at all — its
-            // reach is the App's configured permissions intersected with the user's own access — so
-            // sending one would be describing the wrong permission model on the consent screen.
-            assertTrue("a scope was sent: ${sent.body}", !sent.body.contains("scope"))
+            // The scope goes out with the *code* request, not the token exchange: GitHub builds
+            // the consent screen from it, so asking later would be asking after the user had already
+            // agreed to something narrower. Sent with no scope at all, the device flow yields a token
+            // that can read public data and nothing else — which authenticates perfectly and then
+            // fails at the first private repository.
+            assertTrue("no scope was sent: ${sent.body}", sent.body.contains("scope=repo"))
         }
     }
 
