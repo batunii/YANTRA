@@ -51,6 +51,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.layout.height
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import ie.shoonya.yantra.reminders.ReminderReach
+import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.Yantra
 import java.time.Instant
 import java.time.LocalDate
@@ -103,6 +107,15 @@ fun DueSheet(
     var showTimePicker by remember { mutableStateOf(false) }
     var reminderMenu by remember { mutableStateOf(false) }
     val requestPermissions = rememberReminderPermissionRequest()
+    // Re-asked every time this sheet comes forward, because all three answers change outside the
+    // app — in the permission dialog, or in Settings — and a remembered one is wrong exactly when
+    // somebody has just gone and fixed it.
+    val context = LocalContext.current
+    var reach by remember { mutableStateOf(ReminderReach.Fine) }
+    LifecycleResumeEffect(Unit) {
+        reach = ReminderReach.of(context)
+        onPauseOrDispose { }
+    }
     val timeFmt = remember { DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT) }
 
     fun utcMidnight(d: LocalDate): Long = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -203,6 +216,41 @@ fun DueSheet(
                         DropdownMenuItem(
                             text = { Text(reminderLabel(option, timed = time != null)) },
                             onClick = { reminder = option; reminderMenu = false },
+                        )
+                    }
+                }
+            }
+
+            // Said here, where the reminder is being chosen, and not after it fails to arrive.
+            //
+            // Everything about a reminder worked except arriving: the alarm was armed, the phone
+            // woke on time, the task was checked, and then nothing was shown because notifications
+            // were off. The sheet went on offering "30 minutes before" as though it meant
+            // something. A promise the app cannot keep is worth interrupting for, and this is the
+            // only moment anybody is thinking about it.
+            //
+            // Only when a reminder is actually chosen. Nobody setting a plain due date needs to be
+            // told about notifications they are not asking for.
+            if (reminder != null && !reach.willArrive) {
+                Box(pad) {
+                    Column(Modifier.padding(bottom = 4.dp)) {
+                        Text(
+                            reach.message,
+                            color = y.warning,
+                            fontSize = YantraType.caption,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            when (reach) {
+                                ReminderReach.NotPermitted -> "Allow notifications"
+                                else -> "Open notification settings"
+                            },
+                            color = y.accent,
+                            fontSize = YantraType.caption,
+                            modifier = Modifier.clickable {
+                                if (reach == ReminderReach.NotPermitted) requestPermissions()
+                                else context.startActivity(notificationSettings(context))
+                            },
                         )
                     }
                 }
@@ -313,3 +361,16 @@ fun rememberReminderPermissionRequest(): () -> Unit {
         }
     }
 }
+
+/**
+ * The system screen for this app's notifications, which is the only place the last two
+ * [ReminderReach] answers can be undone.
+ *
+ * Not a permission dialog: once notifications are off for the app or for the channel, nothing the
+ * app can ask will turn them back on, and offering a button that silently does nothing would be
+ * the same failure one level up.
+ */
+private fun notificationSettings(context: android.content.Context): Intent =
+    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

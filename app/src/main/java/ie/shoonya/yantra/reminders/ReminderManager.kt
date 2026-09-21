@@ -47,23 +47,75 @@ class ReminderManager(
 
     @Synchronized
     private fun sync(rows: List<ReminderRow>) {
-        val now = System.currentTimeMillis()
-        val current = rows.associate { it.nodeId to it.atMillis }
-        // Cancel only what left the row set (cleared/done/deleted). A row whose instant merely
-        // became "past" keeps its armed alarm — Doze/setWindow can deliver after the nominal
-        // time, and cancelling here would silently eat the reminder mid-flight.
-        (scheduled.keys - current.keys).forEach(scheduler::cancel)
-        current.forEach { (id, at) -> if (at > now && scheduled[id] != at) scheduler.schedule(id, at) }
-        scheduled = current
+        apply(Plan.from(scheduled, rows, System.currentTimeMillis()))
     }
 
-    /** One-shot for [BootReceiver] — alarms don't survive reboot. */
+    /**
+     * Arms everything future as though nothing were armed, and forgets what it thought it knew.
+     *
+     * **Not the same call as [sync], and the difference is the whole point.** [sync] skips a row
+     * whose instant it believes is already armed, which is what stops every keystroke re-arming
+     * every alarm. That belief is exactly what is wrong after the system has cancelled the alarms
+     * underneath us — revoking exact-alarm access does precisely that — so syncing then would
+     * compare the rows against a map that still says "armed", change nothing, and leave the person
+     * with no reminders at all and no way to tell.
+     *
+     * Harmless when the belief was right: arming the same instant again replaces an equal
+     * PendingIntent, which is the same no-op it would have been to skip.
+     */
+    @Synchronized
+    private fun rearm(rows: List<ReminderRow>) {
+        scheduled = emptyMap()
+        apply(Plan.from(emptyMap(), rows, System.currentTimeMillis()))
+    }
+
+    private fun apply(plan: Plan) {
+        plan.cancel.forEach(scheduler::cancel)
+        plan.arm.forEach { (id, at) -> scheduler.schedule(id, at) }
+        scheduled = plan.armed
+    }
+
+    /**
+     * One-shot for [BootReceiver] — after a reboot, an update, a clock change, or exact-alarm
+     * access being taken away, none of which leave an alarm behind.
+     */
     suspend fun rescheduleAll() {
         val defId = db.propertyDao().builtInDefIdByName(BuiltIns.DUE_NAME)
         val tasks = if (defId == null) emptyList() else db.propertyDao().activeRemindersOnce(defId)
         // Events do not depend on the property registry having been seeded, so they are rearmed even
         // when the Due def is somehow missing — a boot that lost the registry should not also lose
         // every meeting alarm.
-        sync(tasks + db.eventDao().eventRemindersOnce())
+        rearm(tasks + db.eventDao().eventRemindersOnce())
+    }
+
+    /**
+     * What to cancel and what to arm — the whole decision, with no AlarmManager in it.
+     *
+     * Separated so it can be tested. Everything this class does that could be wrong is in these
+     * eight lines, and reaching them through Room, a Flow and the alarm service meant none of it
+     * had ever been tested at all.
+     */
+    internal data class Plan(
+        val cancel: List<String>,
+        val arm: Map<String, Long>,
+        /** What is armed once this plan is applied — the caller's new memory. */
+        val armed: Map<String, Long>,
+    ) {
+        companion object {
+            fun from(scheduled: Map<String, Long>, rows: List<ReminderRow>, now: Long): Plan {
+                val current = rows.associate { it.nodeId to it.atMillis }
+                return Plan(
+                    // Cancel only what left the row set (cleared/done/deleted). A row whose instant
+                    // merely became "past" keeps its armed alarm — Doze and setWindow can deliver
+                    // after the nominal time, and cancelling here would silently eat a reminder
+                    // mid-flight. It is safe to leave armed because the receiver validates against
+                    // the database before it shows anything.
+                    cancel = (scheduled.keys - current.keys).toList(),
+                    // Only the future, and only where the instant is not the one already armed.
+                    arm = current.filter { (id, at) -> at > now && scheduled[id] != at },
+                    armed = current,
+                )
+            }
+        }
     }
 }

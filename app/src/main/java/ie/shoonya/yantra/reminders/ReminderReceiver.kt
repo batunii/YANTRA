@@ -1,14 +1,11 @@
 package ie.shoonya.yantra.reminders
 
-import android.Manifest
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -139,9 +136,25 @@ class ReminderReceiver : BroadcastReceiver() {
                 )
             }
             .build()
-        val canNotify = Build.VERSION.SDK_INT < 33 ||
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (canNotify) NotificationManagerCompat.from(context).notify(nodeId.hashCode(), notification)
+        // The last thing that can go wrong, and it used to go wrong in silence.
+        //
+        // Everything above here succeeded: the alarm was armed, the phone woke on time, the task
+        // was still open and the instant still matched. Posting is the only step left, and on a
+        // phone where notifications are off it does nothing at all — so a reminder that was set,
+        // stored and delivered simply never appeared, and left nothing behind to explain it. The
+        // report that reaches us is "my reminder did not go off", which is indistinguishable from
+        // a scheduling bug and sends anybody looking at the wrong half of this file.
+        //
+        // Three things mean off and the permission was only one of them — see ReminderReach.
+        val reach = ReminderReach.of(context)
+        if (!reach.willArrive) {
+            ie.shoonya.yantra.Trace.warn(
+                "reminder",
+                "fired for ${ie.shoonya.yantra.Trace.id(nodeId)} and could not be shown: $reach",
+            )
+            return
+        }
+        NotificationManagerCompat.from(context).notify(nodeId.hashCode(), notification)
     }
 
     /** "14:00" for a timed event, or the plain word for one that owns the whole day. */
