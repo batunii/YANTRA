@@ -99,7 +99,16 @@ class Credentials(context: Context) {
         token: String,
         login: String,
         viaApp: Boolean = false,
-        /** GitHub's refresh token, when it issued one. Null leaves any stored one untouched. */
+        /**
+         * GitHub's refresh token, when it issued one.
+         *
+         * Null *clears* any stored one, rather than leaving it. Keeping it would be the more
+         * cautious-looking choice and is the wrong one: a sign-in that returns no refresh token is
+         * GitHub saying this token does not lapse, and a leftover refresh token from an earlier
+         * sign-in is one that has already been spent. TokenRenewal would find it, see no expiry
+         * beside it, refresh on that basis and be refused — reporting "sign in again" for a token
+         * that was working perfectly.
+         */
         refreshToken: String? = null,
         /** When [token] stops working, or null when it does not. */
         expiresAt: Long? = null,
@@ -118,6 +127,9 @@ class Credentials(context: Context) {
                     val rc = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
                     putString(refreshKey(workspaceId), Base64.encodeToString(rc.doFinal(refreshToken.toByteArray()), Base64.NO_WRAP))
                     putString(refreshIvKey(workspaceId), Base64.encodeToString(rc.iv, Base64.NO_WRAP))
+                } else {
+                    remove(refreshKey(workspaceId))
+                    remove(refreshIvKey(workspaceId))
                 }
                 if (expiresAt != null) putLong(expiryKey(workspaceId), expiresAt) else remove(expiryKey(workspaceId))
                 if (accountId != null) putLong(accountIdKey(workspaceId), accountId)
