@@ -122,6 +122,9 @@ public enum ConflictResolver {
         switch b {
         case .prose: return "Prose"; case .heading: return "Heading"; case .bullet: return "Bullet"; case .numbered: return "Numbered"
         case .task: return "TaskRef"; case .ink: return "InkRef"; case .image: return "ImageRef"
+        // Positional, exactly as Kotlin keys it: an event carries an id, but the Kotlin side does
+        // not key on it, and a key the two apps computed differently would merge the wrong lines.
+        case .event: return "EventRef"
         }
     }
 }

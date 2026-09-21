@@ -211,4 +211,113 @@ class ConformanceFixturesTest {
         }
         golden("sync/manifest-merge.json") { MergeFixture(WorkspaceStore.MANIFEST_PATH, cases) }
     }
+
+    // ---- the page format ----
+
+    /**
+     * One source line, what it parses to, and the bytes it renders back to once its `raw` is gone.
+     *
+     * Dropping `raw` is the point. With it the emitter returns the source untouched, which pins
+     * nothing: every parser that can read a line would pass. Without it the line has to be rebuilt
+     * from the model, so the fixture catches a token written in the wrong order, a duration printed
+     * differently, or a value whose spaces were not put back.
+     */
+    @Serializable data class LineCase(val source: String, val kind: String, val rendered: String)
+
+    private fun stripRaw(b: ie.shoonya.yantra.data.format.Block): ie.shoonya.yantra.data.format.Block = when (b) {
+        is ie.shoonya.yantra.data.format.Prose -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.Heading -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.Bullet -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.Numbered -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.TaskRef -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.InkRef -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.ImageRef -> b.copy(raw = null)
+        is ie.shoonya.yantra.data.format.EventRef -> b.copy(raw = null)
+    }
+
+    @Test
+    fun pageLines() {
+        val sources = listOf(
+            // the plain kinds, including the two empties that used to change shape on a round trip
+            "Just some prose",
+            "# A heading",
+            "- a bullet",
+            "3. a numbered item",
+            "» » indented prose",
+            "- [ ]",
+            "- [ ] Open task",
+            "- [x] Done task ^t1 done:2026-09-11",
+            "- [~] Started ^t2",
+            "![[ink:i1]]",
+            "![[image:img1.jpg]]",
+            // tasks: every token, and the right-to-left scan's edge cases
+            "- [ ] Buy #2 pencils",
+            "- [ ] Buy milk #groceries #urgent !High @sam",
+            "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15",
+            "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20",
+            "- [ ] About a meeting ^t5 ext:abc123@google.com",
+            "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00",
+            "- [ ] See [[Buy milk #2|^abc]] today",
+            // events
+            "@ 2026-09-11 Birthday ^e1",
+            "@ 2026-09-11/2026-09-13 Conference ^e2",
+            "@ 2026-09-11T14:00 Reminder ^e3",
+            "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO",
+            "@ 2026-09-11T14:00/2026-09-11T15:30 Review ^e5",
+            "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6",
+            "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1",
+            "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00",
+            "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled",
+            "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex",
+            "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00",
+            "@ 2026-09-11T14:00 Coffee with #2",
+            // a `@ ` line whose when-slot will not parse is somebody's text, not an event
+            "@ not-a-time at all",
+        )
+        val cases = sources.map { src ->
+            val b = ie.shoonya.yantra.data.format.PageCodec.decodeBlock(src)
+            LineCase(src, b::class.simpleName.orEmpty(), ie.shoonya.yantra.data.format.PageCodec.encodeBlock(stripRaw(b)))
+        }
+        golden("pages/lines.json") { cases }
+    }
+
+    /**
+     * A whole page file, emitted from a model built in code.
+     *
+     * Pins what no per-line fixture can: the frontmatter's key order, which blocks get a blank line
+     * between them, how a numbered run counts, and that an empty block still occupies a line.
+     */
+    @Test
+    fun pageFile() {
+        val page = ie.shoonya.yantra.data.format.PageDoc(
+            id = "p1",
+            type = ie.shoonya.yantra.data.db.NodeType.LIST,
+            parent = null,
+            title = "Sample",
+            systemKey = ie.shoonya.yantra.data.db.SystemKey.INBOX,
+            modifiedAt = java.time.Instant.parse("2026-09-11T14:22:31.402Z"),
+            device = "android-a",
+            blocks = listOf(
+                ie.shoonya.yantra.data.format.Heading("Welcome"),
+                ie.shoonya.yantra.data.format.Prose("A list holds tasks."),
+                ie.shoonya.yantra.data.format.Prose(""),
+                ie.shoonya.yantra.data.format.TaskRef(id = "t1", title = "First", due = ie.shoonya.yantra.data.format.DueSpec(
+                    ie.shoonya.yantra.data.format.DueValue.AllDay(java.time.LocalDate.parse("2026-09-11")))),
+                ie.shoonya.yantra.data.format.TaskRef(id = "t2", title = "Second", indent = 1),
+                ie.shoonya.yantra.data.format.EventRef(id = "e1", title = "Standup", time = ie.shoonya.yantra.data.format.EventTime(
+                    start = java.time.LocalDateTime.parse("2026-09-11T09:00"),
+                    end = java.time.LocalDateTime.parse("2026-09-11T09:15"))),
+                ie.shoonya.yantra.data.format.Numbered("one"),
+                ie.shoonya.yantra.data.format.Numbered("two"),
+                ie.shoonya.yantra.data.format.Bullet("a bullet"),
+                ie.shoonya.yantra.data.format.InkRef("i1"),
+            ),
+            color = "teal",
+        )
+        val text = ie.shoonya.yantra.data.format.PageCodec.encode(page)
+        goldenBytes("pages/sample.md", text.toByteArray())
+        // And it reads back as what it was, which is the half a byte fixture cannot state.
+        assertEquals(page.blocks.map { stripRaw(it) },
+            ie.shoonya.yantra.data.format.PageCodec.decode(text).blocks.map { stripRaw(it) })
+    }
 }

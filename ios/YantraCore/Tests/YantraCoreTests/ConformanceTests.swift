@@ -143,4 +143,100 @@ extension ConformanceTests {
             XCTAssertEqual(got.spans.map { "\($0.kind.rawValue):\($0.range.location)-\($0.range.location + $0.range.length)" }, c.spans, c.input)
         }
     }
+
+    // MARK: the page format
+
+    /// The Kotlin class name for each block kind, which the fixture records so a line that parsed
+    /// to the *wrong kind* fails here rather than by rendering identically for a different reason.
+    static func kindName(_ b: Block) -> String {
+        switch b {
+        case .prose: return "Prose"
+        case .heading: return "Heading"
+        case .bullet: return "Bullet"
+        case .numbered: return "Numbered"
+        case .task: return "TaskRef"
+        case .ink: return "InkRef"
+        case .image: return "ImageRef"
+        case .event: return "EventRef"
+        }
+    }
+
+    struct LineCase: Decodable { let source: String, kind: String, rendered: String }
+
+    func testPageLines() throws {
+        let cases = try JSONDecoder().decode([LineCase].self, from: fixture("pages/lines.json"))
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let block = PageCodec.decodeBlock(c.source)
+            XCTAssertEqual(Self.kindName(block), c.kind, "kind of \(c.source)")
+            // Without `raw` the emitter has to rebuild the line from the model, which is the half
+            // that pins token order, durations and escaped values.
+            XCTAssertEqual(PageCodec.encodeBlock(block.strippingRaw), c.rendered, "render of \(c.source)")
+            // And the source itself survives untouched when nothing about it changed. A numbered
+            // item is the exception by construction: its ordinal is positional and therefore not
+            // part of the model, so a line written `3.` cannot come back as one from a block that
+            // does not know it is third. Both platforms re-render it, which is what the fixture's
+            // `0.` records.
+            if case .numbered = block {} else {
+                XCTAssertEqual(PageCodec.encodeBlock(block), c.source.isEmpty ? " " : c.source, "passthrough of \(c.source)")
+            }
+        }
+    }
+
+    func testPageFile() throws {
+        let expected = try String(data: fixture("pages/sample.md"), encoding: .utf8)!
+        let page = PageDoc(
+            id: "p1", type: NodeType.list, parent: nil, title: "Sample", systemKey: SystemKey.inbox,
+            modifiedAt: InstantText.parse("2026-09-11T14:22:31.402Z")!, device: "android-a",
+            blocks: [
+                .heading("Welcome"),
+                .prose("A list holds tasks."),
+                .prose(""),
+                .task(TaskRef(id: "t1", title: "First", due: DueSpec(.allDay(LocalDate("2026-09-11")!)))),
+                .task(TaskRef(id: "t2", title: "Second", indent: 1)),
+                .event(EventRef(id: "e1", title: "Standup", time: EventTime(
+                    start: LocalDateTime("2026-09-11T09:00")!, end: LocalDateTime("2026-09-11T09:15")!))),
+                .numbered("one"),
+                .numbered("two"),
+                .bullet("a bullet"),
+                .ink(id: "i1"),
+            ],
+            color: "teal")
+        XCTAssertEqual(PageCodec.encode(page), expected)
+        // And it reads back as what it was, which is the half no byte fixture can state.
+        XCTAssertEqual(PageCodec.decode(expected).blocks.map(\.strippingRaw), page.blocks.map(\.strippingRaw))
+        XCTAssertEqual(PageCodec.decode(expected).color, "teal")
+    }
+
+    /// The when-slot's readings, spelled out — the table in `PageCodec.parseWhen`.
+    func testEventWhenSlot() {
+        func when(_ s: String) -> EventTime? {
+            guard case let .event(e)? = Optional(PageCodec.decodeBlock("@ \(s) Thing")) else { return nil }
+            return e.time
+        }
+        // All-day: inclusive in the text, exclusive in the model.
+        XCTAssertEqual(when("2026-09-11")?.end, LocalDateTime("2026-09-12T00:00"))
+        XCTAssertEqual(when("2026-09-11/2026-09-13")?.end, LocalDateTime("2026-09-14T00:00"))
+        XCTAssertEqual(when("2026-09-11")?.allDay, true)
+        // A moment has no span.
+        XCTAssertEqual(when("2026-09-11T14:00")?.isInstantaneous, true)
+        XCTAssertEqual(when("2026-09-11T14:00/PT1H")?.duration, ISODuration.hours(1))
+        XCTAssertEqual(when("2026-09-11T14:00/2026-09-11T15:30")?.duration, ISODuration.minutes(90))
+        XCTAssertEqual(when("2026-09-11T09:00[Europe/Dublin]/PT30M")?.zone, "Europe/Dublin")
+        // An end before the start, and a zone that is not one, are not events.
+        XCTAssertNil(when("2026-09-11T14:00/2026-09-11T13:00"))
+        XCTAssertNil(when("2026-09-11T09:00[Nowhere/Fake]/PT30M"))
+    }
+
+    /// `java.time.Duration`'s printed form, which the when-slot writes.
+    func testDurationText() {
+        XCTAssertEqual(ISODuration(seconds: 0).description, "PT0S")
+        XCTAssertEqual(ISODuration.hours(1).description, "PT1H")
+        XCTAssertEqual(ISODuration.minutes(90).description, "PT1H30M")
+        XCTAssertEqual(ISODuration(seconds: 86_400).description, "PT24H")   // a day is hours, as Java prints it
+        XCTAssertEqual(ISODuration("PT1H30M")?.seconds, 5400)
+        XCTAssertEqual(ISODuration("P1DT2H")?.seconds, 93_600)
+        XCTAssertNil(ISODuration("PT1.5H"))
+        XCTAssertNil(ISODuration("1H"))
+    }
 }

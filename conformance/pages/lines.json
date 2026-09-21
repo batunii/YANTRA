@@ -1,0 +1,157 @@
+[
+    {
+        "source": "Just some prose",
+        "kind": "Prose",
+        "rendered": "Just some prose"
+    },
+    {
+        "source": "# A heading",
+        "kind": "Heading",
+        "rendered": "# A heading"
+    },
+    {
+        "source": "- a bullet",
+        "kind": "Bullet",
+        "rendered": "- a bullet"
+    },
+    {
+        "source": "3. a numbered item",
+        "kind": "Numbered",
+        "rendered": "0. a numbered item"
+    },
+    {
+        "source": "» » indented prose",
+        "kind": "Prose",
+        "rendered": "» » indented prose"
+    },
+    {
+        "source": "- [ ]",
+        "kind": "TaskRef",
+        "rendered": "- [ ]"
+    },
+    {
+        "source": "- [ ] Open task",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Open task"
+    },
+    {
+        "source": "- [x] Done task ^t1 done:2026-09-11",
+        "kind": "TaskRef",
+        "rendered": "- [x] Done task ^t1 done:2026-09-11"
+    },
+    {
+        "source": "- [~] Started ^t2",
+        "kind": "TaskRef",
+        "rendered": "- [~] Started ^t2"
+    },
+    {
+        "source": "![[ink:i1]]",
+        "kind": "InkRef",
+        "rendered": "![[ink:i1]]"
+    },
+    {
+        "source": "![[image:img1.jpg]]",
+        "kind": "ImageRef",
+        "rendered": "![[image:img1.jpg]]"
+    },
+    {
+        "source": "- [ ] Buy #2 pencils",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Buy #2 pencils"
+    },
+    {
+        "source": "- [ ] Buy milk #groceries #urgent !High @sam",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Buy milk !High #groceries #urgent @sam"
+    },
+    {
+        "source": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15"
+    },
+    {
+        "source": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20",
+        "kind": "TaskRef",
+        "rendered": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20"
+    },
+    {
+        "source": "- [ ] About a meeting ^t5 ext:abc123@google.com",
+        "kind": "TaskRef",
+        "rendered": "- [ ] About a meeting ^t5 ext:abc123@google.com"
+    },
+    {
+        "source": "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00",
+        "kind": "TaskRef",
+        "rendered": "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00"
+    },
+    {
+        "source": "- [ ] See [[Buy milk #2|^abc]] today",
+        "kind": "TaskRef",
+        "rendered": "- [ ] See [[Buy milk #2|^abc]] today"
+    },
+    {
+        "source": "@ 2026-09-11 Birthday ^e1",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 Birthday ^e1"
+    },
+    {
+        "source": "@ 2026-09-11/2026-09-13 Conference ^e2",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11/2026-09-13 Conference ^e2"
+    },
+    {
+        "source": "@ 2026-09-11T14:00 Reminder ^e3",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00 Reminder ^e3"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/2026-09-11T15:30 Review ^e5",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H30M Review ^e5"
+    },
+    {
+        "source": "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00"
+    },
+    {
+        "source": "@ 2026-09-11T14:00 Coffee with #2",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00 Coffee with #2"
+    },
+    {
+        "source": "@ not-a-time at all",
+        "kind": "Prose",
+        "rendered": "@ not-a-time at all"
+    }
+]

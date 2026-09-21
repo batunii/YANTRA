@@ -84,6 +84,10 @@ public enum NodeType {
     public static let list = "list", task = "task", paragraph = "paragraph", heading = "heading"
     public static let bullet = "bullet", numbered = "numbered", ink = "ink", image = "image"
     public static let smartList = "smart_list", group = "group"
+    /// Something that happens at a time. Deliberately **not** in `textual`: those convert freely
+    /// between each other because a line of text is all any of them holds, and there is nothing
+    /// honest to invent when a paragraph is asked to become a span.
+    public static let event = "event"
     public static let textual: Set<String> = [task, paragraph, heading, bullet, numbered]
 }
 
@@ -100,7 +104,99 @@ public struct DueSpec: Equatable, Sendable {
     public var value: DueValue
     /// Minutes *before* the due moment; negative means after. nil is no reminder.
     public var reminderMin: Int?
-    public init(_ value: DueValue, reminderMin: Int? = nil) { self.value = value; self.reminderMin = reminderMin }
+    /// How long it is expected to take — what makes a task drawable on a timeline beside an event.
+    ///
+    /// Null for an all-day task and for one that is merely *at* a time, because a moment and a span
+    /// are different claims and only one of them can be drawn to scale.
+    public var duration: ISODuration?
+    public init(_ value: DueValue, reminderMin: Int? = nil, duration: ISODuration? = nil) {
+        self.value = value; self.reminderMin = reminderMin; self.duration = duration
+    }
+}
+
+/// The event **in somebody else's calendar** that a line is a note about — CALENDAR_PLAN.md §19.
+///
+/// `uid` is the identity the sync source gave the event, never the provider's local row id: that is
+/// a number this device made up, different on your other phone and gone after a reinstall, so a
+/// file carrying one would claim a relationship it cannot honour anywhere else.
+public struct ExternalRef: Equatable, Sendable {
+    public var uid: String
+    public var occurrence: LocalDateTime?
+    public init(_ uid: String, occurrence: LocalDateTime? = nil) { self.uid = uid; self.occurrence = occurrence }
+}
+
+/// The occurrence of a repeating event that this line replaces. `originalStart` is the start the
+/// rule would have produced, not where the override moved it to; nil means "the occurrence starting
+/// at this line's own start", which keeps a cancellation short.
+public struct SeriesRef: Equatable, Sendable {
+    public var id: String
+    public var originalStart: LocalDateTime?
+    public init(_ id: String, originalStart: LocalDateTime? = nil) { self.id = id; self.originalStart = originalStart }
+}
+
+/// When an event happens — a wall clock and a zone, deliberately not an instant. See `LocalDateTime`.
+///
+/// `zone` nil means **floating**: "09:00 wherever you are". A birthday is floating; a meeting with
+/// someone in another country is not.
+///
+/// `end` is **exclusive**, so a length is `end - start` with no off-by-one. All-day events are
+/// written in the file with an *inclusive* last date, because that is what somebody reading the line
+/// means by "the 11th to the 13th"; `PageCodec` is where that seam lives.
+public struct EventTime: Equatable, Sendable {
+    public var start: LocalDateTime
+    public var end: LocalDateTime
+    public var zone: String?
+    public var allDay: Bool
+    public init(start: LocalDateTime, end: LocalDateTime, zone: String? = nil, allDay: Bool = false) {
+        self.start = start; self.end = end; self.zone = zone; self.allDay = allDay
+    }
+    public var duration: ISODuration { ISODuration(seconds: start.seconds(until: end)) }
+    /// True for a moment rather than a span — a reminder-shaped event.
+    public var isInstantaneous: Bool { start == end }
+}
+
+/// Something that happens, as opposed to something to be done.
+///
+/// An event has a span and no done state — it is not finished, it simply passes. Written
+/// `@ <when> <title> ^<id> <tokens…>`; the marker is `@ ` rather than `* ` because a leading
+/// asterisk is a bullet in every markdown editor there is, and a bullet somebody types by hand must
+/// not become a meeting.
+public struct EventRef: Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var time: EventTime
+    /// RFC 5545 subset, stored verbatim — including rules this build cannot expand.
+    public var rrule: String?
+    /// The task this block is time set aside for — a **sitting**. It carries no title of its own;
+    /// it draws with the task's, because storing the name twice gives two places to rename from.
+    public var forTaskId: String?
+    public var external: ExternalRef?
+    /// What colour it wears, by **name** — `col:teal`. A name, not a value, so the same word can be
+    /// a slightly different ink on paper and at night.
+    public var color: String?
+    public var series: SeriesRef?
+    /// Only meaningful alongside `series`: how one occurrence of a repeat is removed without
+    /// rewriting the series line.
+    public var cancelled: Bool
+    public var location: String?
+    /// Minutes *before* the start; negative means after.
+    public var reminderMin: Int?
+    public var labels: [String]
+    /// Who is involved, as `@name`. Nothing is sent to anybody; this is a note about who.
+    public var attendees: [String]
+    public var priority: String?
+    public var indent: Int
+    public var raw: String?
+
+    public init(id: String, title: String, time: EventTime, rrule: String? = nil, forTaskId: String? = nil,
+                external: ExternalRef? = nil, color: String? = nil, series: SeriesRef? = nil, cancelled: Bool = false,
+                location: String? = nil, reminderMin: Int? = nil, labels: [String] = [], attendees: [String] = [],
+                priority: String? = nil, indent: Int = 0, raw: String? = nil) {
+        self.id = id; self.title = title; self.time = time; self.rrule = rrule; self.forTaskId = forTaskId
+        self.external = external; self.color = color; self.series = series; self.cancelled = cancelled
+        self.location = location; self.reminderMin = reminderMin; self.labels = labels; self.attendees = attendees
+        self.priority = priority; self.indent = indent; self.raw = raw
+    }
 }
 
 public struct TaskRef: Equatable, Sendable {
@@ -114,11 +210,17 @@ public struct TaskRef: Equatable, Sendable {
     public var labels: [String] = []
     public var assignee: String? = nil
     public var doneAt: LocalDate? = nil
+    /// The meeting **in somebody else's calendar** this task is about. A task that carries one is a
+    /// task *about* a meeting, not a copy of it: the day draws one block at the meeting's hours and
+    /// the meeting's own details are read live rather than written here.
+    public var external: ExternalRef? = nil
     public var raw: String? = nil
     public init(id: String, title: String, status: TaskStatus = .open, indent: Int = 0, due: DueSpec? = nil, deadline: LocalDate? = nil,
-                priority: String? = nil, labels: [String] = [], assignee: String? = nil, doneAt: LocalDate? = nil, raw: String? = nil) {
+                priority: String? = nil, labels: [String] = [], assignee: String? = nil, doneAt: LocalDate? = nil,
+                external: ExternalRef? = nil, raw: String? = nil) {
         self.id = id; self.title = title; self.status = status; self.indent = indent; self.due = due; self.deadline = deadline
-        self.priority = priority; self.labels = labels; self.assignee = assignee; self.doneAt = doneAt; self.raw = raw
+        self.priority = priority; self.labels = labels; self.assignee = assignee; self.doneAt = doneAt
+        self.external = external; self.raw = raw
     }
 }
 
@@ -132,17 +234,20 @@ public enum Block: Equatable, Sendable {
     case task(TaskRef)
     case ink(id: String, indent: Int = 0, raw: String? = nil)
     case image(uri: String, indent: Int = 0, raw: String? = nil)
+    case event(EventRef)
 
     public var indent: Int {
         switch self {
         case let .prose(_, i, _), let .heading(_, i, _), let .bullet(_, i, _), let .numbered(_, i, _), let .ink(_, i, _), let .image(_, i, _): return i
         case let .task(t): return t.indent
+        case let .event(e): return e.indent
         }
     }
     public var raw: String? {
         switch self {
         case let .prose(_, _, r), let .heading(_, _, r), let .bullet(_, _, r), let .numbered(_, _, r), let .ink(_, _, r), let .image(_, _, r): return r
         case let .task(t): return t.raw
+        case let .event(e): return e.raw
         }
     }
     public var strippingRaw: Block {
@@ -154,16 +259,19 @@ public enum Block: Equatable, Sendable {
         case let .ink(id, i, _): return .ink(id: id, indent: i)
         case let .image(u, i, _): return .image(uri: u, indent: i)
         case var .task(t): t.raw = nil; return .task(t)
+        case var .event(e): e.raw = nil; return .event(e)
         }
     }
+    /// Prose and headings breathe; consecutive list items do not, and an event line is one.
     public var isListish: Bool {
-        switch self { case .task, .bullet, .numbered: return true; default: return false }
+        switch self { case .task, .bullet, .numbered, .event: return true; default: return false }
     }
     /// The text a textual block carries; nil for ink and image.
     public var text: String? {
         switch self {
         case let .prose(t, _, _), let .heading(t, _, _), let .bullet(t, _, _), let .numbered(t, _, _): return t
         case let .task(t): return t.title
+        case let .event(e): return e.title
         default: return nil
         }
     }
@@ -176,6 +284,7 @@ public enum Block: Equatable, Sendable {
         case .task: return NodeType.task
         case .ink: return NodeType.ink
         case .image: return NodeType.image
+        case .event: return NodeType.event
         }
     }
 }
@@ -192,16 +301,20 @@ public struct PageDoc: Equatable, Sendable {
     public var blocks: [Block]
     /// Frontmatter keys this version does not understand, in file order.
     public var unknownKeys: [(String, String)]
+    /// The colour this list wears, as a palette **name** — in the file, because it is a choice
+    /// somebody made and the file is where choices live.
+    public var color: String?
 
     public init(id: String, type: String, parent: String?, title: String?, systemKey: String? = nil, modifiedAt: Date,
-                device: String?, blocks: [Block], unknownKeys: [(String, String)] = []) {
+                device: String?, blocks: [Block], unknownKeys: [(String, String)] = [], color: String? = nil) {
         self.id = id; self.type = type; self.parent = parent; self.title = title; self.systemKey = systemKey
         self.modifiedAt = modifiedAt; self.device = device; self.blocks = blocks; self.unknownKeys = unknownKeys
+        self.color = color
     }
 
     public static func == (l: PageDoc, r: PageDoc) -> Bool {
         l.id == r.id && l.type == r.type && l.parent == r.parent && l.title == r.title && l.systemKey == r.systemKey
-            && l.modifiedAt == r.modifiedAt && l.device == r.device && l.blocks == r.blocks
+            && l.modifiedAt == r.modifiedAt && l.device == r.device && l.blocks == r.blocks && l.color == r.color
             && l.unknownKeys.count == r.unknownKeys.count && zip(l.unknownKeys, r.unknownKeys).allSatisfy { $0 == $1 }
     }
 }
@@ -214,7 +327,7 @@ public enum PageCodec {
     /// One level of visual indent — a guillemet, which means nothing to markdown.
     public static let indentMarker = "\u{00BB}"
     static let fence = "---"
-    static let known: Set<String> = ["id", "type", "parent", "title", "system_key", "modified_at", "device"]
+    static let known: Set<String> = ["id", "type", "parent", "title", "system_key", "color", "modified_at", "device"]
 
     public static func decode(_ text: String) -> PageDoc {
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
@@ -246,7 +359,8 @@ public enum PageCodec {
             systemKey: nonBlank(f("system_key")),
             modifiedAt: f("modified_at").flatMap(InstantText.parse) ?? Date(timeIntervalSince1970: 0),
             device: nonBlank(f("device")), blocks: blocks,
-            unknownKeys: front.filter { !known.contains($0.0) })
+            unknownKeys: front.filter { !known.contains($0.0) },
+            color: nonBlank(f("color")))
     }
 
     static func splitIndent(_ line: String) -> (Int, String) {
@@ -259,6 +373,8 @@ public enum PageCodec {
         return (depth, String(rest))
     }
 
+    /// An event line. See `EventRef` for why it is not `* `.
+    public static let eventMarker = "@ "
     static let taskMarker = try! NSRegularExpression(pattern: #"^- \[([ xX~])] ?"#)
     static let numbered = try! NSRegularExpression(pattern: #"^(\d+)\.\s+(.*)$"#, options: [.dotMatchesLineSeparators])
     static let inkRef = try! NSRegularExpression(pattern: #"^!\[\[ink:([^\]]+)]]$"#)
@@ -270,6 +386,12 @@ public enum PageCodec {
         let all = NSRange(location: 0, length: ns.length)
         if let m = inkRef.firstMatch(in: rest, range: all) { return .ink(id: ns.substring(with: m.range(at: 1)), indent: indent, raw: raw) }
         if let m = imageRef.firstMatch(in: rest, range: all) { return .image(uri: ns.substring(with: m.range(at: 1)), indent: indent, raw: raw) }
+        // `@ ` cannot collide with the checkbox or with a bullet, so the order here is only for
+        // reading. A `@ ` line whose time makes no sense is not an event and must not be silently
+        // dropped: it falls through to prose holding exactly what was written.
+        if rest.hasPrefix(eventMarker), let e = parseEvent(String(rest.dropFirst(eventMarker.count)), indent: indent, raw: raw) {
+            return .event(e)
+        }
         if let m = taskMarker.firstMatch(in: rest, range: all) {
             let status: TaskStatus
             switch ns.substring(with: m.range(at: 1)) { case "x", "X": status = .done; case "~": status = .inProgress; default: status = .open }
@@ -287,7 +409,7 @@ public enum PageCodec {
     static func parseTask(_ body: String, status: TaskStatus, indent: Int, raw: String) -> TaskRef {
         var words = body.trimmingCharacters(in: .whitespaces).components(separatedBy: " ")
         var id = "", due: DueSpec? = nil, deadline: LocalDate? = nil, doneAt: LocalDate? = nil
-        var priority: String? = nil, assignee: String? = nil, labels: [String] = []
+        var priority: String? = nil, assignee: String? = nil, labels: [String] = [], external: ExternalRef? = nil
         while let w = words.last {
             var consumed = false
             if w.contains(Links.close) { consumed = false }
@@ -295,6 +417,7 @@ public enum PageCodec {
             else if w.hasPrefix("due:") { if let d = parseDue(String(w.dropFirst(4))) { due = d; consumed = true } }
             else if w.hasPrefix("deadline:") { if let d = LocalDate(String(w.dropFirst(9))) { deadline = d; consumed = true } }
             else if w.hasPrefix("done:") { if let d = LocalDate(String(w.dropFirst(5))) { doneAt = d; consumed = true } }
+            else if w.hasPrefix("ext:") { if let x = parseExternal(String(w.dropFirst(4))) { external = x; consumed = true } }
             else if w.hasPrefix("!"), w.count > 1 { priority = String(w.dropFirst()); consumed = true }
             else if w.hasPrefix("@"), w.count > 1 { assignee = String(w.dropFirst()); consumed = true }
             else if w.hasPrefix("#"), w.count > 1 { labels.append(String(w.dropFirst())); consumed = true }
@@ -302,23 +425,175 @@ public enum PageCodec {
             words.removeLast()
         }
         return TaskRef(id: id, title: words.joined(separator: " "), status: status, indent: indent, due: due, deadline: deadline,
-                       priority: priority, labels: labels.reversed(), assignee: assignee, doneAt: doneAt, raw: raw)
+                       priority: priority, labels: labels.reversed(), assignee: assignee, doneAt: doneAt,
+                       external: external, raw: raw)
     }
 
-    /// `2026-08-26`, `2026-08-26T09:00:00Z`, either optionally suffixed `+r<minutes>`.
+    /// `2026-08-26`, `2026-08-26T09:00:00Z`, either optionally carrying a length and a reminder:
+    /// `due:2026-08-26T09:00:00Z/PT1H+r15`.
+    ///
+    /// The `/PT1H` tail is the same ISO interval the event when-slot uses, deliberately — a task
+    /// blocked out from nine to ten and a meeting from nine to ten are the same shape on a timeline.
+    /// A length on an all-day task is refused rather than kept: "all of Tuesday, for one hour" does
+    /// not mean anything, and storing it would leave the timeline to decide what it meant.
     static func parseDue(_ token: String) -> DueSpec? {
-        var body = token, reminder: Int? = nil
+        var head = token, reminder: Int? = nil
         if let at = token.range(of: "+r") {
-            body = String(token[..<at.lowerBound])
+            head = String(token[..<at.lowerBound])
             guard let r = Int(token[at.upperBound...]) else { return nil }
             reminder = r
         }
+        var body = head, duration: ISODuration? = nil
+        if let slash = head.firstIndex(of: "/") {
+            body = String(head[..<slash])
+            guard let d = ISODuration(String(head[head.index(after: slash)...])) else { return nil }
+            duration = d
+        }
         if body.contains("T") {
             guard let d = InstantText.parse(body) else { return nil }
-            return DueSpec(.at(d), reminderMin: reminder)
+            return DueSpec(.at(d), reminderMin: reminder, duration: duration)
         }
         guard let d = LocalDate(body) else { return nil }
+        if duration != nil { return nil }
         return DueSpec(.allDay(d), reminderMin: reminder)
+    }
+
+    // MARK: the event line
+
+    /// `@ <when> <title> <tokens…>`.
+    ///
+    /// The when comes **first**, unlike a task's `due:`: a line that opens with its time reads like
+    /// a calendar, and a file of events sorts and greps by time without a parser. It is always
+    /// exactly one whitespace-free word, so the split is unambiguous. Everything after it is scanned
+    /// right to left for tokens, the same way and for the same reason as `parseTask`.
+    ///
+    /// Returns nil for a when-slot that will not parse, so the caller can fall back to prose.
+    static func parseEvent(_ body: String, indent: Int, raw: String) -> EventRef? {
+        let trimmed = body.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return nil }
+        let whenWord = String(trimmed.prefix(while: { $0 != " " }))
+        guard let time = parseWhen(whenWord) else { return nil }
+
+        var words = trimmed.dropFirst(whenWord.count).trimmingCharacters(in: .whitespaces)
+            .components(separatedBy: " ").filter { !$0.isEmpty }
+        var id = "", rrule: String? = nil, forTask: String? = nil, series: SeriesRef? = nil
+        var cancelled = false, location: String? = nil, color: String? = nil
+        var external: ExternalRef? = nil, reminder: Int? = nil, priority: String? = nil
+        var labels: [String] = [], attendees: [String] = []
+
+        while let w = words.last {
+            var consumed = false
+            if w.contains(Links.close) { consumed = false }
+            else if w.hasPrefix("^"), id.isEmpty { id = String(w.dropFirst()); consumed = true }
+            else if w.hasPrefix("rrule:") { let v = String(w.dropFirst(6)); if !v.isEmpty { rrule = v; consumed = true } }
+            else if w.hasPrefix("for:") { let v = String(w.dropFirst(4)); if !v.isEmpty { forTask = v; consumed = true } }
+            else if w.hasPrefix("series:") { if let x = parseSeries(String(w.dropFirst(7))) { series = x; consumed = true } }
+            else if w == "cancelled" { cancelled = true; consumed = true }
+            else if w.hasPrefix("loc:") { let v = String(w.dropFirst(4)); if !v.isEmpty { location = decodeValue(v); consumed = true } }
+            else if w.hasPrefix("col:") { let v = String(w.dropFirst(4)); if !v.isEmpty { color = v; consumed = true } }
+            else if w.hasPrefix("ext:") { if let x = parseExternal(String(w.dropFirst(4))) { external = x; consumed = true } }
+            else if w.hasPrefix("remind:") { if let r = Int(w.dropFirst(7)) { reminder = r; consumed = true } }
+            else if w.hasPrefix("!"), w.count > 1 { priority = String(w.dropFirst()); consumed = true }
+            else if w.hasPrefix("@"), w.count > 1 { attendees.append(String(w.dropFirst())); consumed = true }
+            else if w.hasPrefix("#"), w.count > 1 { labels.append(String(w.dropFirst())); consumed = true }
+            if !consumed { break }
+            words.removeLast()
+        }
+
+        return EventRef(id: id, title: words.joined(separator: " "), time: time, rrule: rrule, forTaskId: forTask,
+                        external: external, color: color, series: series, cancelled: cancelled, location: location,
+                        reminderMin: reminder, labels: labels.reversed(), attendees: attendees.reversed(),
+                        priority: priority, indent: indent, raw: raw)
+    }
+
+    /// A token's value, with the spaces put back — CALENDAR_PLAN.md §27.
+    ///
+    /// **A token is one word.** The whole line grammar rests on it: tokens are scanned right to left
+    /// and the first word that is not one ends the scan. So a value with a space in it does not
+    /// merely look untidy, it *ends the scan early* and swallows every token written before it into
+    /// the title — including `^id`.
+    static func decodeValue(_ raw: String) -> String {
+        raw.contains("%") ? raw.replacingOccurrences(of: "%20", with: " ").replacingOccurrences(of: "%25", with: "%") : raw
+    }
+
+    /// The inverse. Percent first, or encoding a space would then be re-encoded.
+    static func encodeValue(_ raw: String) -> String {
+        guard raw.contains(" ") || raw.contains("%") else { return raw }
+        return raw.replacingOccurrences(of: "%", with: "%25").replacingOccurrences(of: " ", with: "%20")
+    }
+
+    /// `ext:<uid>` or `ext:<uid>@<occurrence>`.
+    ///
+    /// The split is on the **last** `@`, because an iCalendar UID very often contains one —
+    /// `abc123@google.com` is the ordinary form — and splitting on the first would take the domain
+    /// for an occurrence start and lose the identity of every Google event there is.
+    static func parseExternal(_ token: String) -> ExternalRef? {
+        if token.isEmpty { return nil }
+        guard let at = token.lastIndex(of: "@") else { return ExternalRef(decodeValue(token)) }
+        let tail = String(token[token.index(after: at)...])
+        guard let occurrence = LocalDateTime(tail) else { return ExternalRef(decodeValue(token)) }  // an @ in the uid
+        let uid = String(token[..<at])
+        return uid.isEmpty ? nil : ExternalRef(decodeValue(uid), occurrence: occurrence)
+    }
+
+    /// `s1` or `s1@2026-10-28T09:00`. The bare form means "the occurrence at this line's own start".
+    static func parseSeries(_ token: String) -> SeriesRef? {
+        if token.isEmpty { return nil }
+        guard let at = token.firstIndex(of: "@") else { return SeriesRef(token) }
+        let id = String(token[..<at])
+        if id.isEmpty { return nil }
+        guard let original = LocalDateTime(String(token[token.index(after: at)...])) else { return nil }
+        return SeriesRef(id, originalStart: original)
+    }
+
+    /// The when-slot: an ISO-8601 instant-or-interval, in local time.
+    ///
+    /// | Written | Means |
+    /// |---|---|
+    /// | `2026-09-11` | all day, that day |
+    /// | `2026-09-11/2026-09-13` | all day, the 11th to the 13th **inclusive** |
+    /// | `2026-09-11T14:00` | a moment |
+    /// | `2026-09-11T14:00/PT1H` | an hour from then |
+    /// | `2026-09-11T14:00/2026-09-11T15:30` | until then |
+    /// | `2026-09-11T14:00[Europe/Dublin]/PT1H` | the same, pinned to a zone |
+    ///
+    /// All-day spans are inclusive in the text and exclusive in `EventTime`, because the inclusive
+    /// reading is what a person writing "the 11th to the 13th" means and the exclusive one is what
+    /// arithmetic wants. This function is the seam.
+    ///
+    /// The split on `/` has to happen *outside* the zone brackets: `Europe/Dublin` contains one.
+    static func parseWhen(_ token: String) -> EventTime? {
+        guard let (head, zone) = splitZone(token) else { return nil }
+        let slash = head.firstIndex(of: "/")
+        let startText = slash.map { String(head[..<$0]) } ?? head
+        let tailText = slash.map { String(head[head.index(after: $0)...]) }
+        let allDay = !startText.contains("T")
+
+        guard let start = LocalDateTime(startText) else { return nil }
+        let end: LocalDateTime
+        if let tail = tailText {
+            if tail.hasPrefix("P") {
+                guard let d = ISODuration(tail) else { return nil }
+                end = start.adding(seconds: d.seconds)
+            } else {
+                guard let parsed = LocalDateTime(tail) else { return nil }
+                // Inclusive last day in the text, exclusive end in the model.
+                end = allDay ? parsed.adding(days: 1) : parsed
+            }
+        } else {
+            end = allDay ? start.adding(days: 1) : start        // a day, or a moment
+        }
+        if end < start { return nil }
+        return EventTime(start: start, end: end, zone: zone, allDay: allDay)
+    }
+
+    /// Peels a trailing `[Zone/Id]`, returning the rest and the zone. Nil zone when absent.
+    static func splitZone(_ token: String) -> (String, String?)? {
+        guard let open = token.firstIndex(of: "[") else { return (token, nil) }
+        guard let close = token[open...].firstIndex(of: "]") else { return nil }
+        let name = String(token[token.index(after: open)..<close])
+        guard TimeZone(identifier: name) != nil else { return nil }
+        return (String(token[..<open]) + String(token[token.index(after: close)...]), name)
     }
 
     // MARK: encode
@@ -337,6 +612,7 @@ public enum PageCodec {
         if let p = page.parent { s += "parent: \(p)\n" }
         if let t = page.title { s += "title: \(t)\n" }
         if let k = page.systemKey { s += "system_key: \(k)\n" }
+        if let c = page.color { s += "color: \(c)\n" }
         s += "modified_at: \(InstantText.format(page.modifiedAt))\n"
         if let d = page.device { s += "device: \(d)\n" }
         for (k, v) in page.unknownKeys { s += "\(k): \(v)\n" }
@@ -380,6 +656,7 @@ public enum PageCodec {
         case let .ink(id, _, _): return pad + "![[ink:\(id)]]"
         case let .image(u, _, _): return pad + "![[image:\(u)]]"
         case let .task(t): return pad + renderTask(t)
+        case let .event(e): return pad + renderEvent(e)
         }
     }
 
@@ -391,16 +668,75 @@ public enum PageCodec {
         if let d = t.due { s += " due:" + renderDue(d) }
         if let d = t.deadline { s += " deadline:" + d.description }
         if t.status == .done, let d = t.doneAt { s += " done:" + d.description }
+        if let x = t.external {
+            s += " ext:" + encodeValue(x.uid)
+            if let o = x.occurrence { s += "@" + renderLocal(o) }
+        }
         if let p = t.priority { s += " !" + p }
         for l in t.labels { s += " #" + l }
         if let a = t.assignee { s += " @" + a }
         return s
     }
 
+    static func renderEvent(_ e: EventRef) -> String {
+        var s = String(eventMarker.dropLast())
+        s += " " + renderWhen(e.time)
+        if !e.title.isEmpty { s += " " + e.title }
+        // Fixed order, for the reason renderTask gives: two devices holding the same event must
+        // produce the same bytes, or every sync looks like a change.
+        if !e.id.isEmpty { s += " ^" + e.id }
+        if let r = e.rrule { s += " rrule:" + r }
+        if let f = e.forTaskId { s += " for:" + f }
+        if let x = e.series {
+            s += " series:" + x.id
+            // The bare form means "the occurrence at this line's own start", so an override that
+            // moved somewhere else has to say which occurrence it replaces, and a cancellation
+            // sitting on its original start does not.
+            if let o = x.originalStart, o != e.time.start { s += "@" + renderLocal(o) }
+        }
+        if e.cancelled { s += " cancelled" }
+        if let l = e.location { s += " loc:" + encodeValue(l) }
+        if let c = e.color { s += " col:" + c }
+        if let x = e.external {
+            s += " ext:" + encodeValue(x.uid)
+            // The occurrence only when there is one to name. A one-off meeting has a single
+            // instance, and writing its start twice would be two places to disagree.
+            if let o = x.occurrence { s += "@" + renderLocal(o) }
+        }
+        if let r = e.reminderMin { s += " remind:\(r)" }
+        if let p = e.priority { s += " !" + p }
+        for l in e.labels { s += " #" + l }
+        for a in e.attendees { s += " @" + a }
+        return s
+    }
+
+    /// The inverse of `parseWhen`, preferring a duration over an explicit end.
+    ///
+    /// A meeting that moves keeps its length, and a diff shows one changed field instead of two.
+    /// Somebody who wrote an explicit end by hand keeps it regardless: `rawStillDescribes` re-parses
+    /// their line, gets the same event back, and writes their bytes rather than these.
+    static func renderWhen(_ t: EventTime) -> String {
+        let zoneSuffix = t.zone.map { "[\($0)]" } ?? ""
+        if t.allDay {
+            let lastDay = t.end.date.adding(days: -1)   // exclusive in the model, inclusive in the text
+            let head = t.start.date.description
+            return lastDay <= t.start.date ? head + zoneSuffix : "\(head)\(zoneSuffix)/\(lastDay)"
+        }
+        let head = renderLocal(t.start) + zoneSuffix
+        if t.isInstantaneous { return head }
+        return head + "/" + t.duration.description
+    }
+
+    /// `2026-09-11T14:00`, dropping seconds when they are zero — the common case and less to read.
+    static func renderLocal(_ d: LocalDateTime) -> String { d.description }
+
     static func renderDue(_ d: DueSpec) -> String {
         let body: String
         switch d.value { case let .allDay(day): body = day.description; case let .at(date): body = InstantText.format(date) }
-        return d.reminderMin.map { "\(body)+r\($0)" } ?? body
+        // Length before reminder, always: the reminder's `+r` is a suffix on the whole thing, and
+        // two devices holding the same task must produce the same bytes or every sync is a diff.
+        let withLength = d.duration.map { "\(body)/\($0)" } ?? body
+        return d.reminderMin.map { "\(withLength)+r\($0)" } ?? withLength
     }
 }
 
