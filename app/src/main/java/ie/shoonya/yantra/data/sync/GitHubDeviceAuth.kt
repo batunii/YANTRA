@@ -36,7 +36,7 @@ import java.net.URLEncoder
  * without it.
  */
 object GitHubAuth {
-    const val CLIENT_ID = ""
+    const val CLIENT_ID = "Ov23liWz2CApMbchpQOg"
 
     /**
      * What the token may do, shown to the user on GitHub's consent screen before they agree.
