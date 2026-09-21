@@ -115,6 +115,14 @@ data class NodeEntity(
      */
     val color: String? = null,
     /**
+     * The emoji this list wears instead of its drawn mark, or null to keep the mark.
+     *
+     * Beside [color] because they are chosen together and drawn together, and independent of it
+     * because an emoji brings its own colours: the colour tints the mark when there is no emoji,
+     * and sits behind the emoji when there is. See [ie.shoonya.yantra.data.format.ListIcon].
+     */
+    val icon: String? = null,
+    /**
      * How far this block is indented on its page, purely visually. Deliberately *not* parentage:
      * indenting a block under a task must not move the block into that task, so how a line is laid
      * out and where it lives are two separate facts. Nesting is what a task's own page is for.
@@ -180,6 +188,15 @@ data class PropertyValueEntity(
     @ColumnInfo(name = "workspace_id") val workspaceId: String = "",
     @ColumnInfo(name = "v_text") val vText: String? = null,  // populate the column matching def.kind
     @ColumnInfo(name = "v_number") val vNumber: Double? = null,
+    /**
+     * Every reminder on a Due value, in minutes before it, comma-separated and largest first.
+     *
+     * [vNumber] holds the first of them and keeps doing so. The two are not two sources of truth —
+     * both are projections of the same `+r` tail in the file, written together by one mapper — and
+     * the split earns its keep: "does this task have a reminder at all" is asked by a widget and a
+     * chip on every draw, and that question should not cost a string split.
+     */
+    @ColumnInfo(name = "v_reminders") val vReminders: String? = null,
     @ColumnInfo(name = "v_date") val vDate: Long? = null,    // epoch millis: comparable + indexable
     @ColumnInfo(name = "v_bool") val vBool: Boolean? = null,
     /**

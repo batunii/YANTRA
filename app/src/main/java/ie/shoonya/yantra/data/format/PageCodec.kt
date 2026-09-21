@@ -60,7 +60,7 @@ object PageCodec {
             i++ // closing fence
         }
 
-        val known = setOf("id", "type", "parent", "title", "system_key", "color", "modified_at", "device")
+        val known = setOf("id", "type", "parent", "title", "system_key", "icon", "color", "modified_at", "device")
         val blocks = ArrayList<Block>()
         while (i < lines.size) {
             val line = lines[i]
@@ -78,6 +78,7 @@ object PageCodec {
             parent = front["parent"]?.takeIf { it.isNotBlank() },
             title = front["title"]?.takeIf { it.isNotBlank() },
             systemKey = front["system_key"]?.takeIf { it.isNotBlank() },
+            icon = front["icon"]?.takeIf { it.isNotBlank() },
             color = front["color"]?.takeIf { it.isNotBlank() },
             modifiedAt = front["modified_at"]?.let { runCatching { Instant.parse(it) }.getOrNull() }
                 ?: Instant.EPOCH,
@@ -420,8 +421,18 @@ object PageCodec {
     private fun parseDue(token: String): DueSpec? {
         val at = token.indexOf("+r")
         val head = if (at >= 0) token.take(at) else token
-        val reminder = if (at >= 0) token.drop(at + 2).toIntOrNull() else null
-        if (at >= 0 && reminder == null) return null
+        // `+r30` and `+r30,15` are the same syntax with one and two reminders in it. The older
+        // spelling is the new one with a single element, so every file written before this parses
+        // unchanged and nothing needs converting.
+        //
+        // All or nothing: a tail that is partly unreadable — `+r30,x` — is refused rather than
+        // quietly kept as `+r30`, because a task that silently loses one of its two reminders is
+        // the failure this whole feature exists to avoid.
+        val reminders = if (at < 0) emptyList() else {
+            val parts = token.drop(at + 2).split(',').map { it.trim().toIntOrNull() }
+            if (parts.isEmpty() || parts.any { it == null }) return null
+            DueSpec.reminders(parts.filterNotNull())
+        }
 
         val slash = head.indexOf('/')
         val body = if (slash < 0) head else head.take(slash)
@@ -434,7 +445,7 @@ object PageCodec {
             parseDate(body)?.let { DueValue.AllDay(it) }
         }
         if (value is DueValue.AllDay && duration != null) return null
-        return value?.let { DueSpec(it, reminder, duration) }
+        return value?.let { DueSpec(it, reminders, duration) }
     }
 
     private fun parseDate(s: String): LocalDate? =
@@ -459,6 +470,7 @@ object PageCodec {
         page.parent?.let { append("parent: ").append(it).append('\n') }
         page.title?.let { append("title: ").append(it).append('\n') }
         page.systemKey?.let { append("system_key: ").append(it).append('\n') }
+        page.icon?.let { append("icon: ").append(it).append('\n') }
         page.color?.let { append("color: ").append(it).append('\n') }
         append("modified_at: ").append(page.modifiedAt).append('\n')
         page.device?.let { append("device: ").append(it).append('\n') }
@@ -639,6 +651,9 @@ object PageCodec {
         // Length before reminder, always: the reminder's `+r` is a suffix on the whole thing, and
         // two devices holding the same task must produce the same bytes or every sync is a diff.
         val withLength = if (d.duration == null) body else "$body/${d.duration}"
-        return if (d.reminderMin == null) withLength else "$withLength+r${d.reminderMin}"
+        // One reminder writes exactly what it always wrote, so adding the feature did not rewrite
+        // every task file on the first sync after updating.
+        return if (d.reminders.isEmpty()) withLength
+        else withLength + "+r" + d.reminders.joinToString(",")
     }
 }

@@ -111,7 +111,7 @@ internal fun PillDialogHost(
     allLabels: List<LabelEntity>,
     attachedLabels: List<LabelEntity>,
     onSet: (def: PropertyDefEntity, text: String?, number: Double?, date: Long?, bool: Boolean?) -> Unit,
-    onSetDue: (dateMillis: Long, hasTime: Boolean, reminderMin: Int?) -> Unit,
+    onSetDue: (dateMillis: Long, hasTime: Boolean, reminders: List<Int>) -> Unit,
     onSetDeadline: (dateMillis: Long) -> Unit,
     onClear: (defId: String) -> Unit,
     onAttachLabel: (LabelEntity) -> Unit,
@@ -173,7 +173,7 @@ internal fun PillDialogHost(
         is PillRequest.Due -> DueSheet(
             initialDateMillis = request.value?.vDate,
             initialHasTime = request.value?.vBool == true,
-            initialReminderMin = request.value?.vNumber?.toInt(),
+            initialReminders = ie.shoonya.yantra.data.format.Reminders.parse(request.value?.vReminders),
             onDismiss = onDismiss,
             onSet = { d, hasTime, rem -> onSetDue(d, hasTime, rem); onDismiss() },
             onClear = request.value?.let { { onClear(request.def.id); onDismiss() } },

@@ -241,6 +241,23 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         }
     }
 
+    /**
+     * The emoji a list wears, or null to go back to its drawn mark.
+     *
+     * Cleaned here rather than at the field, so every route in — the grid, the keyboard, a page
+     * written by a future version of the app — lands the same single character in the file. See
+     * [ie.shoonya.yantra.data.format.ListIcon.clean].
+     *
+     * [Change.STRUCTURAL] for the same reason as the colour: every row drawing this list is drawn
+     * from the index, and a glyph that appeared a beat after the tap would read as a missed tap.
+     */
+    suspend fun setListIcon(listId: String, icon: String?) {
+        val cleaned = ie.shoonya.yantra.data.format.ListIcon.clean(icon)
+        ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            it.copy(icon = cleaned)
+        }
+    }
+
     suspend fun moveToList(taskId: String, listId: String) {
         ws.moveAcross(taskId, listId)
     }
@@ -382,7 +399,7 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
                 id,
                 at.atZone(zone).toInstant().toEpochMilli(),
                 hasTime = parsed.time != null,
-                reminderOffsetMin = null,
+                reminderOffsets = emptyList(),
             )
         }
         parsed.priority?.let { properties.setValue(id, BuiltIns.PRIORITY_DEF_ID, text = it) }
@@ -534,7 +551,8 @@ class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces
             BuiltIns.PRIORITY_DEF_ID -> t.copy(priority = text)
             BuiltIns.ASSIGNEE_DEF_ID -> t.copy(assignee = text)
             BuiltIns.DEADLINE_DEF_ID -> t.copy(deadline = date?.let { localDateOf(it) })
-            BuiltIns.DUE_DEF_ID -> t.copy(due = date?.let { dueSpec(it, bool == true, number?.toInt()) })
+            BuiltIns.DUE_DEF_ID ->
+                t.copy(due = date?.let { dueSpec(it, bool == true, listOfNotNull(number?.toInt())) })
             else -> t
         }
     }
@@ -547,9 +565,9 @@ class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces
      * calendar day. The file distinguishes the two natively — a date has no `T` in it — so the
      * hasTime flag stops being a separate column and becomes a property of the value itself.
      */
-    suspend fun setDue(nodeId: String, dateMillis: Long, hasTime: Boolean, reminderOffsetMin: Int?) =
+    suspend fun setDue(nodeId: String, dateMillis: Long, hasTime: Boolean, reminderOffsets: List<Int>) =
         ws.writerFor(nodeId).editTask(nodeId) {
-            it.copy(due = dueSpec(dateMillis, hasTime, reminderOffsetMin))
+            it.copy(due = dueSpec(dateMillis, hasTime, reminderOffsets))
         }
 
     suspend fun setDeadline(nodeId: String, dateMillis: Long) =
@@ -565,10 +583,10 @@ class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces
         }
     }
 
-    private fun dueSpec(millis: Long, hasTime: Boolean, reminderMin: Int?) = DueSpec(
+    private fun dueSpec(millis: Long, hasTime: Boolean, reminders: List<Int>) = DueSpec(
         if (hasTime) DueValue.At(java.time.Instant.ofEpochMilli(millis))
         else DueValue.AllDay(localDateOf(millis)),
-        reminderMin,
+        DueSpec.reminders(reminders),
     )
 
 }

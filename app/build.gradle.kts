@@ -34,8 +34,8 @@ android {
         // four API levels nobody was served on and buys a build that means something.
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.5.0"
+        versionCode = 10
+        versionName = "0.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Every string in this app is a Kotlin literal in English — there is not one
