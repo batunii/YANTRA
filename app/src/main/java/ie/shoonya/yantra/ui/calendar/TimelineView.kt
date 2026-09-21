@@ -67,8 +67,35 @@ import ie.shoonya.yantra.ui.theme.YantraRadius
 import ie.shoonya.yantra.ui.components.spine
 import ie.shoonya.yantra.ui.components.SPINE_WIDTH
 
-/** Where a timeline opens. Early enough to catch a morning, late enough to skip the small hours. */
+/** Where a timeline opens on a day that is not today. Early enough to catch a morning, late
+ * enough to skip the small hours. */
 private const val OPEN_AT_HOUR = 7
+
+/**
+ * How much of the hour before now to keep in view when a timeline opens on today.
+ *
+ * Not zero. Landing with the line at the very top hides the thing you are most likely looking for —
+ * the meeting you are twenty minutes into, the block you started before lunch — and answers "what
+ * is happening" with only "what is next". An hour behind is enough to see what you are in the
+ * middle of without the day above it taking the screen.
+ */
+private const val CONTEXT_HOURS_BEFORE_NOW = 1
+
+/**
+ * Where a timeline should open, in hours past midnight.
+ *
+ * **Today opens where you are.** It used to open at seven whatever the time was, so a calendar
+ * checked at four in the afternoon began with nine hours of morning and the answer scrolled off the
+ * bottom — every single look at the day started with a scroll. Any other day has no "now" to show,
+ * and seven is the right guess there for the same reason it always was.
+ *
+ * A fraction rather than a whole hour: half past two opens at half past one, not at one, so the
+ * line lands in the same place whatever the minute.
+ */
+internal fun openAtHour(days: List<LocalDate>, now: LocalDateTime = LocalDateTime.now()): Float =
+    if (days.none { it == now.toLocalDate() }) OPEN_AT_HOUR.toFloat()
+    else (now.toLocalTime().toSecondOfDay() / 3600f - CONTEXT_HOURS_BEFORE_NOW)
+        .coerceAtLeast(0f)
 
 /** Everything snaps to the quarter hour. */
 private const val SNAP = 15
@@ -319,13 +346,19 @@ fun DayTimeline(
     val editing = remember(day) { Editing() }
     SettleHeld(editing, laid.blocks)
 
-    // Open on the working day rather than at midnight, which is eight hours of nothing.
+    // Open where you are on today, and on the working day otherwise — see [openAtHour].
     //
     // Converted through the density: `scrollTo` counts pixels and `hourHeight.value` is a dp
     // number, so passing it raw scrolled to about three in the morning on a 3x screen — and to a
     // different hour on every different screen, which is the tell.
+    //
+    // Keyed on the day alone, deliberately. This places the view once, when the day is opened; it
+    // is not a thing that follows the clock, because a timeline that scrolls itself out from under
+    // a finger is worse than one that opened in the wrong place.
     val density = LocalDensity.current
-    LaunchedEffect(day) { scroll.scrollTo(with(density) { (hourHeight * OPEN_AT_HOUR).roundToPx() }) }
+    LaunchedEffect(day) {
+        scroll.scrollTo(with(density) { (hourHeight * openAtHour(listOf(day))).roundToPx() })
+    }
 
     Column(modifier) {
         AllDayBar(laid.allDay, onOpen)
@@ -381,8 +414,10 @@ fun WeekTimeline(
     val density = LocalDensity.current
     val editing = remember(week.first()) { Editing() }
     SettleHeld(editing, laid.flatMap { it.blocks })
+    // Today if it is one of the days on screen — three days share one scroll, so the question is
+    // whether *any* of them is today rather than whether the first one is.
     LaunchedEffect(week.first()) {
-        scroll.scrollTo(with(density) { (hourHeight * OPEN_AT_HOUR).roundToPx() })
+        scroll.scrollTo(with(density) { (hourHeight * openAtHour(week)).roundToPx() })
     }
 
     // Observable, unlike Locale.getDefault() — the same lint the month grid's weekday letters
