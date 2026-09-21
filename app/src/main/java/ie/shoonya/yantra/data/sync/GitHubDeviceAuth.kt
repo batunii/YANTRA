@@ -9,19 +9,99 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * The client id of the GitHub OAuth app this build signs in through.
+ * How this build asks GitHub for a token, and what that token is allowed to see.
  *
- * **This is not a secret.** The device flow exists precisely so that an app with no server can
- * authenticate without holding one: the client id is public, the user proves their own identity on
- * github.com, and the token comes back to the device that asked. Shipping it in the APK is the
+ * **The client ids here are not secrets.** The device flow exists precisely so that an app with no
+ * server can authenticate without holding one: the id is public, the user proves their own identity
+ * on github.com, and the token comes back to the device that asked. Shipping them in the APK is the
  * design, not a compromise of it.
  *
- * It is empty here because only the person who owns the OAuth app can create it — register one at
- * github.com/settings/developers, tick **Enable Device Flow**, and paste the client id below. Until
- * then the sign-in path is offline and the app says so instead of failing at the network.
+ * **There are two of them because neither one is right for everybody.** This app signed in through a
+ * GitHub App, moved to an OAuth app when a two-device bug was finally pinned down, and the move cost
+ * something real — so both are kept and the choice is the user's. What separates them is written out
+ * on [Method], because it is the only thing anyone needs to read to choose.
  */
 object GitHubAuth {
-    const val CLIENT_ID = "Iv23lijaR2qLqzo9ALWw"
+
+    /**
+     * The two ways in.
+     *
+     * **[Full] is the default because it is the one that survives a second device.** A GitHub App
+     * holds at most *two* user access tokens per user, and issuing a third silently revokes the
+     * oldest. Two phones fill both slots, so signing in anywhere a third time — including signing in
+     * again on a phone that already had a token — kills whichever device had been quiet longest. It
+     * presents as "sign in again" on a device nobody touched, days later, with nothing in any log to
+     * connect it to the sign-in that caused it. That cap is not documented anywhere; it was found by
+     * minting tokens against the real App until one died. An OAuth app's limit is ten per
+     * user/application/scope, which is documented, and which two phones do not come close to.
+     *
+     * **[Restricted] is kept because that cap is the only thing wrong with it.** A GitHub App is
+     * installed on the repositories you choose and can reach nothing else — not your employer's
+     * code, not the private repository you would rather no phone could read. [Full] cannot be
+     * narrowed that way: `repo` is read and write to every repository you own, and OAuth has no
+     * fine-grained middle ground. On a single device, [Restricted] is the better bargain, and
+     * pretending otherwise would be choosing for the user.
+     *
+     * What [Restricted] costs beyond the cap: a GitHub App cannot create a repository in a personal
+     * account at all, so making one means a trip to GitHub's own form and a tap there. Every screen
+     * that offers to create one says so rather than showing a button that cannot work.
+     */
+    enum class Method(
+        /** Public, and different per method: these are two separate registrations on GitHub. */
+        val clientId: String,
+        /**
+         * What the token may do, sent with the device-code request.
+         *
+         * Empty for [Restricted]: a GitHub App's permissions are fixed at registration and chosen
+         * again at each installation, so there is nothing to ask for here. `repo` for [Full] is the
+         * only scope that can create a repository, and it appears in the limit GitHub enforces —
+         * ten tokens per user, per application, *per scope*. Changing the string starts a fresh set
+         * of ten and strands every token already issued under the old one.
+         */
+        val scope: String,
+    ) {
+        Full(clientId = "Ov23liWz2CApMbchpQOg", scope = "repo"),
+        Restricted(clientId = "Iv23lijaR2qLqzo9ALWw", scope = ""),
+        ;
+
+        /** False when this half was never registered, in which case it is not offered at all. */
+        val configured: Boolean get() = clientId.isNotBlank()
+
+        /**
+         * Whether a fresh token can see anything yet.
+         *
+         * A GitHub App reaches nothing until it is installed somewhere, and a user token with no
+         * installation is not broken — it authenticates perfectly and can see nothing at all, which
+         * is the most confusing state to leave someone in. An OAuth token has no such step.
+         */
+        val needsInstall: Boolean get() = this == Restricted
+
+        /** Only `repo` can `POST /user/repos`. The other has to send the user to GitHub's form. */
+        val makesRepos: Boolean get() = this == Full
+
+        /** The name of the bargain, for the place where it is chosen. */
+        val title: String get() = when (this) {
+            Full -> "All my repositories"
+            Restricted -> "Only the ones I pick"
+        }
+
+        /** The rest of the bargain, in the two sentences that actually decide it. */
+        val summary: String get() = when (this) {
+            Full -> "Works on as many devices as you like, and makes repositories without leaving " +
+                "the app. Yantra can read and write every repository you own."
+            Restricted -> "Yantra sees only the repositories you install it on. Two devices at " +
+                "most — signing in on a third ends the oldest — and new repositories are made on " +
+                "GitHub."
+        }
+    }
+
+    /** What the sign-in button uses when nobody has said otherwise. */
+    val DEFAULT = Method.Full
+
+    val configured: Boolean get() = Method.entries.any { it.configured }
+
+    /** The methods this build can actually offer, which on a build with one id is one of them. */
+    fun offered(): List<Method> = Method.entries.filter { it.configured }
 
     /**
      * The App's URL slug — the last segment of github.com/apps/<slug>, not its display name.
@@ -32,20 +112,15 @@ object GitHubAuth {
      */
     const val APP_SLUG = "yantra-tasks"
 
-    val configured: Boolean get() = CLIENT_ID.isNotBlank()
-
     /**
-     * Where to install the App.
+     * Where someone installs the App on the repositories they want Yantra to see.
      *
-     * A user token with no installation is not broken — it authenticates fine and can see nothing at
-     * all, which is the most confusing possible state to leave someone in. So the sign-in screen
-     * checks for an installation and sends them here when there is none.
+     * Only ever reached from [Method.Restricted]. Aimed at the account that just signed in, because
+     * without the id GitHub shows a chooser first — one page whose only real answer is the account
+     * already in the address bar — and installing costs two taps in a browser instead of one.
      */
     fun installUrl(targetId: Long? = null): String {
         val base = "https://github.com/apps/$APP_SLUG/installations"
-        // Aimed at the account that just signed in. Without the id GitHub shows a chooser first —
-        // one page whose only real answer is the account already in the address bar — and installing
-        // costs two taps in a browser instead of one.
         return if (targetId != null) "$base/new/permissions?suggested_target_id=$targetId"
         else "$base/new"
     }
@@ -53,17 +128,17 @@ object GitHubAuth {
     /**
      * GitHub's new-repository form, with the name and visibility already filled in.
      *
-     * This is why the app never asks anyone to create an access token. Repository *creation* has no
-     * GitHub App permission for a personal account — there is no fine-grained equivalent of the old
-     * `repo` scope — so rather than demand a token broad enough to create one, the app opens the form
-     * GitHub already has and lets the user press the button. They type nothing.
+     * The [Method.Restricted] answer to "make me a repository", because there is no GitHub App
+     * permission for creating one in a personal account — no fine-grained equivalent of `repo`
+     * exists. Rather than demand a token broad enough, the app opens the form GitHub already has.
+     * The user types nothing.
      *
      * Deliberately the real browser and never a WebView: in an embedded WebView there is no URL bar
-     * to check, and the session is not shared, so the user would be asked for their GitHub password
+     * to check and the session is not shared, so the user would be asked for their GitHub password
      * inside our app — which is indistinguishable from how credential phishing works.
      */
     fun newRepoUrl(name: String, description: String = "Tasks, kept by Yantra"): String {
-        fun esc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
+        fun esc(s: String) = URLEncoder.encode(s, "UTF-8")
         return "https://github.com/new?name=${esc(name)}&visibility=private&description=${esc(description)}"
     }
 
@@ -78,6 +153,15 @@ data class DeviceCode(
     val verificationUri: String,
     val intervalSecs: Int,
     val expiresInSecs: Int,
+    /**
+     * Which registration this code belongs to.
+     *
+     * Carried on the code rather than passed to [GitHubDeviceAuth.poll] separately, so the two
+     * cannot drift. A device code is only meaningful to the client id that asked for it, and polling
+     * with the other one answers `incorrect_client_credentials` — a refusal that reads like a
+     * misconfigured build rather than like the mix-up it is.
+     */
+    val method: GitHubAuth.Method = GitHubAuth.DEFAULT,
 )
 
 /** Asking GitHub for a code to show. */
@@ -128,8 +212,12 @@ sealed interface DevicePoll {
  * ours. Nothing here ever sees a password.
  */
 class GitHubDeviceAuth(
-    private val clientId: String = GitHubAuth.CLIENT_ID,
     private val base: String = "https://github.com",
+    /**
+     * Which id to use for a method. A function rather than a value because there are now two, and
+     * because a test needs to point both at a server it controls.
+     */
+    private val clientId: (GitHubAuth.Method) -> String = { it.clientId },
 ) {
 
     @Serializable
@@ -154,16 +242,30 @@ class GitHubDeviceAuth(
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Asks for a code to show. Null if we could not even get that far.
+     * Asks for a code to show, and says what the token will be allowed to do.
      *
-     * **No scope is sent, and that is not an omission.** A GitHub App's user token does not use
-     * scopes at all: its reach is the App's configured permissions intersected with what the user
-     * themselves can access. So there is nothing to ask for here — the consent screen shows what the
-     * App was registered to want, and sending a scope would be describing the wrong permission model.
+     * **The scope is sent here, not at the token exchange.** GitHub reads it when the code is
+     * created, because the consent screen the user is about to read is built from it — asking later
+     * would mean asking after they had already agreed to something else. A device flow started with
+     * no scope yields a token that can read public data and nothing more, which authenticates
+     * perfectly and then fails at the first private repository.
      */
-    fun start(): DeviceStart {
-        if (clientId.isBlank()) return DeviceStart.Failed("This build has no GitHub app registered")
-        return when (val body = post("$base/login/device/code", mapOf("client_id" to clientId))) {
+    fun start(method: GitHubAuth.Method = GitHubAuth.DEFAULT): DeviceStart {
+        val id = clientId(method)
+        if (id.isBlank()) return DeviceStart.Failed("This build has no GitHub app registered")
+        return when (
+            val body = post(
+                "$base/login/device/code",
+                // No `scope` key at all for a GitHub App, rather than an empty one. Its permissions
+                // were fixed when it was registered and are chosen again at each installation, so
+                // there is nothing to ask for — and an empty scope sent to the OAuth endpoint is a
+                // different request from one that omits it.
+                buildMap {
+                    put("client_id", id)
+                    if (method.scope.isNotBlank()) put("scope", method.scope)
+                },
+            )
+        ) {
             is Post.Broken -> DeviceStart.Failed(body.why)
             is Post.Body ->
                 runCatching { json.decodeFromString(CodeResponse.serializer(), body.text) }
@@ -179,6 +281,7 @@ class GitHubDeviceAuth(
                                 // rate-limited for everyone using it.
                                 intervalSecs = it.interval.coerceAtLeast(1),
                                 expiresInSecs = it.expiresIn,
+                                method = method,
                             )
                         )
                     }
@@ -198,7 +301,7 @@ class GitHubDeviceAuth(
             val result = post(
                 "$base/login/oauth/access_token",
                 mapOf(
-                    "client_id" to clientId,
+                    "client_id" to clientId(code.method),
                     "device_code" to code.deviceCode,
                     "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
                 ),
@@ -249,13 +352,14 @@ class GitHubDeviceAuth(
      * comes back has to be stored in place of the one that was sent — keeping the old one means the
      * next refresh fails and the failure looks exactly like the one this exists to prevent.
      */
-    fun refresh(refreshToken: String): DevicePoll {
-        if (clientId.isBlank()) return DevicePoll.Failed("This build has no GitHub app registered")
+    fun refresh(refreshToken: String, method: GitHubAuth.Method = GitHubAuth.DEFAULT): DevicePoll {
+        val id = clientId(method)
+        if (id.isBlank()) return DevicePoll.Failed("This build has no GitHub app registered")
         val body = when (
             val result = post(
                 "$base/login/oauth/access_token",
                 mapOf(
-                    "client_id" to clientId,
+                    "client_id" to id,
                     "grant_type" to "refresh_token",
                     "refresh_token" to refreshToken,
                 ),
@@ -289,7 +393,35 @@ class GitHubDeviceAuth(
         data class Broken(val why: String) : Post
     }
 
+    /**
+     * Posts, and tries a second time if the connection broke before GitHub said anything.
+     *
+     * **Why a retry is safe here, when it usually is not.** A POST may not be replayed in general,
+     * because the first one may have taken effect before the connection died. Neither request this
+     * class makes has an effect to repeat: asking for a device code twice yields a second code that
+     * is simply unused, and polling the token endpoint is a question about state, not a change to
+     * it. Both are idempotent in practice, which is what makes this allowed rather than merely
+     * convenient.
+     *
+     * **Why it is needed.** Polling reuses a pooled keep-alive connection every few seconds. When
+     * the far end closes an idle one at the same moment it is picked up, the write fails with
+     * `unexpected end of stream` or a reset — and Android will not retry a POST by itself, since it
+     * cannot know the request is repeatable. The result is one failed poll in an otherwise healthy
+     * sign-in, which recovers on its own a few seconds later and is exactly the "having trouble
+     * connecting and then it worked" this is chasing. A fresh connection is opened for the second
+     * attempt, so a stale socket cannot fail it twice.
+     *
+     * A retry only for a broken *connection*. Anything GitHub actually answers — including a
+     * refusal — is returned untouched, because a second identical question has the same answer and
+     * asking it again is just noise.
+     */
     private fun post(url: String, form: Map<String, String>, readErrorBody: Boolean = false): Post {
+        val first = postOnce(url, form, readErrorBody)
+        if (first is Post.Body) return first
+        return postOnce(url, form, readErrorBody)
+    }
+
+    private fun postOnce(url: String, form: Map<String, String>, readErrorBody: Boolean = false): Post {
         val encoded = form.entries.joinToString("&") { (k, v) ->
             "${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}"
         }

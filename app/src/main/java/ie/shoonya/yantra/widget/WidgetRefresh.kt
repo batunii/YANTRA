@@ -20,6 +20,10 @@ object WidgetRefresh {
      */
     suspend fun refreshAll(context: Context) {
         refreshListWidgets(context)
+        // A calendar widget goes stale on a write it cannot see — an event moved in the app, a
+        // task given a due date — and unlike the list widgets it also goes stale on somebody
+        // else's calendar, which it watches for itself.
+        YantraCalendarWidget().updateAll(context)
         FocusWidget().updateAll(context)
         BhupuraWidget().updateAll(context)
     }

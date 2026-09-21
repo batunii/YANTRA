@@ -50,6 +50,18 @@ class SyncEngine(
      * was built with, which by then was the one that had stopped working.
      */
     private val credentials: suspend () -> CredentialsProvider? = { null },
+    /**
+     * Where to say that this pass has reached the network, so a screen can show it.
+     *
+     * Reported from **inside** the engine rather than around it, because only the engine knows
+     * whether a pass touches the network at all. A workspace with no remote commits locally and
+     * returns, and announcing "Syncing with GitHub" for that would be a claim about a conversation
+     * that never happened — which is the same kind of misleading feedback this was added to end.
+     *
+     * Defaulted, like [credentials], so the tests of *what this engine does* carry nothing about
+     * what it announces.
+     */
+    private val activity: NetworkActivity = NetworkActivity(),
 ) {
     /**
      * One pass at a time per workspace.
@@ -65,6 +77,47 @@ class SyncEngine(
         const val MAX_ATTEMPTS = 3
 
         private const val TAG = "YantraSync"
+
+        /**
+         * What to put on screen when a pass fails.
+     *
+     * **Walks the cause chain**, because JGit's top-level message is almost never the one worth
+     * reading. A failed `add` says "Exception caught during execution of add command" and keeps the
+     * actual reason — the lock, the missing file, the refusal — one or two causes down. Matching
+     * only the outer message meant the screen showed a sentence that named a command rather than a
+     * problem, and for the lock case it showed a 90-character absolute path into app-private
+     * storage, which nobody can act on.
+     *
+     * Every branch says what to *do*. An error a reader cannot act on is a worse outcome than no
+     * error, because it invites the one response that makes things worse — trying again immediately,
+     * which is precisely wrong for the lock.
+     */
+        internal fun readable(e: Throwable): String {
+            val chain = generateSequence(e) { it.cause }.take(8)
+            val text = chain.mapNotNull { it.message }.joinToString(" | ")
+            fun has(vararg needles: String) = needles.any { text.contains(it, ignoreCase = true) }
+            return when {
+                has("not authorized", "Authentication is required", "invalid credentials") ->
+                    "GitHub would not accept the sign-in — sign in again in Settings"
+                // The one that reads as broken forever and fixes itself. A write that was interrupted —
+                // the app force-stopped, killed for memory, the battery pulled — leaves .git/index.lock
+                // behind, and git refuses every write while it is there. The next pass a minute later
+                // clears it (GitRepo.clearStaleLock), so the honest instruction is to wait, not retry.
+                has("Cannot lock", "index.lock", "LockFailed") ->
+                    "A change was still being written — this clears itself, try again in a minute"
+                has("UnknownHost", "Unable to access", "Connection refused", "timed out", "Network is unreachable") ->
+                    "Could not reach GitHub — this will sync when the connection is back"
+                has("non-fast-forward", "cannot be resolved to any branch") ->
+                    "Someone else pushed first — the next sync will pick their work up"
+                has("protected branch", "pre-receive hook declined", "GH006") ->
+                    "GitHub refused the push — the branch is protected"
+                has("No space left", "ENOSPC") ->
+                    "The phone is out of storage — free some space and sync again"
+                has("Short read of block", "corrupt", "Invalid object id") ->
+                    "The local copy of the repository is damaged — forget the workspace and join it again"
+                else -> chain.lastOrNull()?.message ?: e.toString()
+            }
+        }
     }
 
     /**
@@ -89,6 +142,9 @@ class SyncEngine(
         val resolutions = ArrayList<ConflictResolver.Resolution>()
         var committed = false
         var pulled = false
+        // Whether the network was reached, so the announcement is withdrawn exactly once and only
+        // if it was ever made. The body below returns from a dozen places.
+        var networked = false
 
         // Before the first request, so an expiring token is renewed rather than discovered dead.
         val creds = runCatching { credentials() }.getOrNull()
@@ -102,6 +158,10 @@ class SyncEngine(
                     // the whole of sync for it, and saying "no remote" as an error would be wrong.
                     return SyncResult(committed = committed, problems = reindex() + listOfNotNull(unlocked))
                 }
+
+                // Past this line there is a remote, so everything below is a conversation with it.
+                networked = true
+                activity.enter(NetworkWords.SYNCING)
 
                 var attempt = 0
                 while (true) {
@@ -165,8 +225,14 @@ class SyncEngine(
             Log.w(TAG, "sync failed", e)
             SyncResult(
                 committed = committed, pulled = pulled, conflicts = resolutions,
-                error = readable(e.message ?: e.toString()),
+                error = readable(e),
             )
+        } finally {
+            // Whatever happened — a clean push, a refusal, a throw, or one of the returns scattered
+            // through the body above — the screen stops saying this is in progress. A label that
+            // outlives its work is worse than no label, because it is the one people would learn to
+            // ignore.
+            if (networked) activity.leave()
         }
     }
 
@@ -177,12 +243,6 @@ class SyncEngine(
      * access — accurate, and no help at all to someone holding a phone. The remedy is the same in
      * every case and worth stating.
      */
-    private fun readable(message: String): String =
-        if (message.contains("not authorized", ignoreCase = true) ||
-            message.contains("Authentication is required", ignoreCase = true)
-        ) "GitHub would not accept the sign-in — sign in again in Settings"
-        else message
-
     private fun hasRemote(git: Git): Boolean =
         git.repository.config.getSubsections("remote").contains("origin")
 

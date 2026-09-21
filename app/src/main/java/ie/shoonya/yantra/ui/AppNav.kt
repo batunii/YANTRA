@@ -48,6 +48,13 @@ data class OpenTarget(
     val focus: Boolean = false,
     /** GitHub sent them back here after installing the App — see [Routes.GITHUB]. */
     val github: Boolean = false,
+    /**
+     * A day the calendar should open on, as an ISO date — the calendar widget's targets.
+     *
+     * A date rather than a node, because what the widget points at is a day: its heading, its
+     * column headings and its empty days all mean "show me this one".
+     */
+    val calendarDate: String? = null,
 )
 
 object Routes {
@@ -75,6 +82,13 @@ object Routes {
     const val GITHUB = "github"
     const val ADD_WORKSPACE = "workspace/add"
     const val ARCHIVE = "archive"
+    const val CALENDAR = "calendar"
+
+    /**
+     * The calendar, opened on a day. The bare [CALENDAR] route stays, so nothing that already
+     * navigates to it has to learn about a date it does not have an opinion about.
+     */
+    fun calendar(date: String) = "calendar?date=${arg(date)}"
 }
 
 @Composable
@@ -105,6 +119,7 @@ fun AppNav(
         val route = when {
             target.github -> Routes.GITHUB
             target.focus -> Routes.FOCUS_CURRENT
+            target.calendarDate != null -> Routes.calendar(target.calendarDate)
             target.nodeId == null -> return@LaunchedEffect
             target.isSmart -> Routes.smart(target.nodeId)
             else -> Routes.node(target.nodeId)
@@ -160,6 +175,24 @@ fun AppNav(
         }
         composable(Routes.STATS) {
             StatsScreen(navController)
+        }
+        // One registration, not two. A query argument is optional by construction, so navigating
+        // to the bare "calendar" matches this route with `date` null — registering the bare route
+        // as well meant two composables for one screen and two places to change it.
+        composable(
+            "${Routes.CALENDAR}?date={date}",
+            arguments = listOf(
+                androidx.navigation.navArgument("date") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
+        ) { backStack ->
+            ie.shoonya.yantra.ui.calendar.CalendarScreen(
+                navController,
+                startOn = backStack.arguments?.getString("date"),
+            )
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(navController)

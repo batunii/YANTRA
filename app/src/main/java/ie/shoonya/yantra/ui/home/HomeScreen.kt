@@ -21,13 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,8 +64,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import ie.shoonya.yantra.ui.components.CaptureSuggestions
 import ie.shoonya.yantra.ui.components.rememberCaptureHighlight
 import ie.shoonya.yantra.ui.components.YantraButton
-import ie.shoonya.yantra.ui.components.Compass
 import ie.shoonya.yantra.ui.components.ConfirmDialog
+import ie.shoonya.yantra.ui.components.NavCircle
 import ie.shoonya.yantra.ui.components.NavCircleSurface
 import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.components.SelectChip
@@ -88,7 +81,6 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.smart.SmartListBuilderSheet
-import ie.shoonya.yantra.ui.components.GearMark
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.text.KeyboardActions
@@ -105,11 +97,30 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import androidx.compose.foundation.combinedClickable
+import java.time.LocalDateTime
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.data.label.LabelPalette
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
-private enum class CreateType(val label: String, val placeholder: String, val action: String) {
-    TASK("Task", "New task", "Create task"),
-    LIST("List", "New list", "Create list"),
-    GROUP("Group", "New group", "Create group"),
+private enum class CreateType(
+    val label: String,
+    val placeholder: String,
+    val action: String,
+    /** Its mark — ICONS.md §1. The chips here were words where every other chip bar is marked. */
+    val mark: YantraMark,
+) {
+    TASK("Task", "New task", "Create task", YantraMark.Task),
+    LIST("List", "New list", "Create list", YantraMark.List),
+    GROUP("Group", "New group", "Create group", YantraMark.Group),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -146,9 +157,32 @@ fun HomeScreen(nav: NavHostController) {
     val openCount = allRegularLists
         .mapNotNull { counts[it.id] }
         .sumOf { (it.total - it.doneCount).coerceAtLeast(0) }
-    val listCount = allRegularLists.size
+    // The list whose colour is being chosen — the colour law, as remade.
+    var colouring by remember { mutableStateOf<NodeEntity?>(null) }
+    val booked by vm.bookedMinutes.collectAsStateWithLifecycle()
+    val next by vm.nextToday.collectAsStateWithLifecycle()
+    val live = timer
 
-    val renderRow: @Composable (NodeEntity) -> Unit = { node ->
+    // Which repository each list came from, as a word and a hue — the one resolver in AppContainer,
+    // so Home does not derive a colour of its own. Both maps are empty while a single workspace is
+    // open, and then the row says nothing about a distinction there is nothing to distinguish.
+    val app = ie.shoonya.yantra.ui.appContainer()
+    val spaceNames = remember { app.workspaceNames() }
+    val spaceHues = remember { app.workspaceColours() }
+    // One section per open repository, in registry order (the local one first), or a single
+    // untitled-by-repo section when there is only one and the split would say nothing. A null id
+    // means "everything", which is also the safety net for a list whose repository has since been
+    // closed — it lands in a section rather than vanishing off the screen.
+    val sections: List<Pair<String?, String>> = remember(spaceNames, allLists) {
+        if (spaceNames.size < 2) listOf(null to "Lists")
+        else {
+            val known = spaceNames.keys
+            val strays = allLists.map { it.workspaceId }.filterNot { it in known }.distinct()
+            spaceNames.map { (id, name) -> id as String? to name } + strays.map { it as String? to "Workspace" }
+        }
+    }
+
+    val renderRow: @Composable (NodeEntity, Boolean) -> Unit = { node, closesRun ->
         val smart = node.type == NodeType.SMART_LIST
         val c = counts[node.id]
         HomeRow(
@@ -165,13 +199,17 @@ fun HomeScreen(nav: NavHostController) {
             onRename = { renaming = node },
             onDelete = { deleting = node },
             onMove = { movingNode = node },
+            onColour = { colouring = node },
+            closesRun = closesRun,
         )
     }
 
     Scaffold(
         containerColor = y.page,
         bottomBar = {
-            Column {
+            // One dock, two rows — see NowDock. Home's keys and whatever is running are the same
+            // object at the foot of the screen, not a panel parked on top of a bar.
+            ie.shoonya.yantra.ui.components.NowDock {
                 // The same bar as every other screen, above the strip rather than replacing it —
                 // Home's capture is already a key in that strip (the cog), so there is nothing here
                 // for the now bar to take.
@@ -185,6 +223,8 @@ fun HomeScreen(nav: NavHostController) {
                     },
                     onToggleClock = { n -> vm.toggleClock(n.nodeId, n.title) },
                 )
+                // Only when there is a player above them to be separated from.
+                if (stack.isNotEmpty()) ie.shoonya.yantra.ui.components.NowDockSeam()
                 val timingOccupied by vm.timing.occupied.collectAsStateWithLifecycle()
                 timingOccupied?.let {
                     SwitchHereDialog(
@@ -194,8 +234,9 @@ fun HomeScreen(nav: NavHostController) {
                     )
                 }
                 HomeTabBar(
-                    onCog = { showCreate = true },
+                    onCreate = { showCreate = true },
                     onStats = { nav.navigate(Routes.STATS) },
+                    onCalendar = { nav.navigate(Routes.CALENDAR) },
                 )
             }
         },
@@ -208,9 +249,28 @@ fun HomeScreen(nav: NavHostController) {
                 item(key = "greet") {
                     Greeting(
                         openCount = openCount,
-                        listCount = listCount,
+                        bookedMinutes = booked,
                         onSettings = { nav.navigate(Routes.SETTINGS) },
                     )
+                }
+
+                // NEXT — HOME_UI.md §6. Above PINNED, today only, gone when there is nothing left.
+                //
+                // This gives Home the symmetry it lacked: NEXT at the top is what is coming, the
+                // now player at the bottom is what you are on. Both contextual, both vanish empty.
+                next?.let { event ->
+                    item(key = "next-header") { SectionHeader("Next") }
+                    item(key = "next-row") {
+                        NextRow(
+                            event = event,
+                            // Neutral while a session runs — HOME_UI.md §7. Two accented things at
+                            // opposite ends of the screen signal two kinds of urgency at once, and
+                            // the one you are *in* should win. The row stays, because what is
+                            // coming is exactly what you need while overrunning.
+                            accented = live == null,
+                            onClick = { nav.navigate(Routes.node(event.event.nodeId)) },
+                        )
+                    }
                 }
 
                 // The session used to be reported twice on this screen — a card up here and,
@@ -231,22 +291,76 @@ fun HomeScreen(nav: NavHostController) {
                 }
                 if (ungroupedSmart.isNotEmpty()) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
-                    items(ungroupedSmart, key = { it.id }) { renderRow(it) }
+                    items(ungroupedSmart, key = { it.id }) { node ->
+                        renderRow(node, node.id == ungroupedSmart.last().id)
+                    }
                 }
-                if (ungroupedLists.isNotEmpty()) {
-                    item(key = "lists-header") { SectionHeader("Lists") }
-                    items(ungroupedLists, key = { it.id }) { renderRow(it) }
-                }
-                groups.forEach { group ->
-                    item(key = "g-${group.id}") {
-                        GroupBanner(
-                            title = group.title.orEmpty().ifBlank { "Untitled group" },
-                            count = byGroup[group.id]?.size ?: 0,
-                            onRename = { renaming = group },
-                            onDelete = { deleting = group },
+                // Lists under the repository they belong to, and groups nested inside it.
+                //
+                // Said once instead of on every row. The workspace *replaces* the "Lists" heading
+                // rather than sitting above it, so the screen gains a fact and no depth: it was
+                // LISTS → group → row and it is PERSONAL → group → row. This is the shape every
+                // app with more than one account converges on — Todoist's team workspaces, Notion's
+                // teamspaces, an account section in Notes and in Mail — and it holds here for the
+                // reason it holds there: a list belongs to exactly one repository, so the grouping
+                // is a fact about the data rather than a view someone chose.
+                //
+                // **Pinned is deliberately not grouped.** A smart list's rule spans every open repo
+                // unless it names one, so it has no repository to sit under, and heading it with a
+                // repo name would be a claim the rule contradicts. It goes on top, ungrouped, which
+                // is where All Inboxes sits in Mail and All Notes in Notes.
+                //
+                // With a single repository open there is nothing to tell apart, so it goes back to
+                // being one section called "Lists".
+                sections.forEach { (id, name) ->
+                    // Lists and groups **in one rank order**, not lists-then-groups.
+                    //
+                    // They were rendered as two buckets, which put every group at the bottom of its
+                    // repository however you had arranged them — the ordering you dragged into
+                    // place was thrown away on the way to the screen. A group is a sibling of a
+                    // top-level list: `topLevel()` already returns both in rank order, and the only
+                    // thing that had to change is not taking them apart again.
+                    val entries = nodes.filter {
+                        (it.type == NodeType.LIST || it.type == NodeType.GROUP) &&
+                            (id == null || it.workspaceId == id)
+                    }
+                    if (entries.isEmpty()) return@forEach
+                    item(key = "ws-$id") {
+                        SectionHeader(
+                            name,
+                            // The heading is the legend the spine is read against — DESIGN.md §4.7.
+                            // A hue is a glance and its name is right here, once.
+                            ink = LabelPalette.byName(spaceHues[id])
+                                ?.let { Color(LabelPalette.display(it.light, y.isDark)) },
                         )
                     }
-                    items(byGroup[group.id].orEmpty(), key = { it.id }) { renderRow(it) }
+                    entries.forEachIndexed { i, node ->
+                        if (node.type != NodeType.GROUP) {
+                            // A loose row closes its run when a group — or the end of the
+                            // repository — comes next.
+                            val next = entries.getOrNull(i + 1)
+                            item(key = node.id) {
+                                renderRow(node, next == null || next.type == NodeType.GROUP)
+                            }
+                            return@forEachIndexed
+                        }
+                        item(key = "g-${node.id}") {
+                            GroupBanner(
+                                title = node.title.orEmpty().ifBlank { "Untitled group" },
+                                count = byGroup[node.id]?.size ?: 0,
+                                collapsed = node.collapsed,
+                                onToggle = { vm.setCollapsed(node.id, !node.collapsed) },
+                                onRename = { renaming = node },
+                                onDelete = { deleting = node },
+                            )
+                        }
+                        if (!node.collapsed) {
+                            val kids = byGroup[node.id].orEmpty()
+                            items(kids, key = { it.id }) { kid ->
+                                renderRow(kid, kid.id == kids.last().id)
+                            }
+                        }
+                    }
                 }
 
                 item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
@@ -310,9 +424,25 @@ fun HomeScreen(nav: NavHostController) {
             onConfirm = { vm.createGroup(it, vm.defaultWorkspaceId); showNewGroup = false },
         )
     }
+    colouring?.let { node ->
+        ListColourDialog(
+            current = node.color,
+            onDismiss = { colouring = null },
+            onPick = { name -> vm.setListColor(node.id, name); colouring = null },
+        )
+    }
+
     movingNode?.let { node ->
         MoveToGroupDialog(
-            groups = groups,
+            // Only groups from this list's own repository — the rule Todoist arrived at for the
+            // same shape (a folder is scoped to one workspace, and cannot span two).
+            //
+            // It offered every group before, and `moveToGroup` only reparents: it does not move a
+            // node between repositories. So a Personal list could be given a v2-tasks parent, and
+            // the parent id it then carried does not exist in Personal's files — the group is
+            // unresolvable on any device that has not added v2-tasks. It was a broken write before
+            // Home grouped by repository; grouping is what makes it visible.
+            groups = groups.filter { it.workspaceId == node.workspaceId },
             currentGroupId = node.parentId,
             onDismiss = { movingNode = null },
             onPick = { groupId -> vm.moveToGroup(node.id, groupId); movingNode = null },
@@ -347,8 +477,139 @@ fun HomeScreen(nav: NavHostController) {
 
 private val dateFmt = DateTimeFormatter.ofPattern("EEEE · d MMM")
 
+/**
+ * Choosing the colour a list wears.
+ *
+ * The same closed strip a label uses, and deliberately the same one: two palettes would mean two
+ * vocabularies for the one idea, and the swatches are curated so a mark stays legible on warm paper
+ * and on dark. "None" is first and is not a colour — it is how a list goes back to frame ink, which
+ * has to be as easy to reach as any hue or the screen fills up with colour nobody chose.
+ */
 @Composable
-private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
+private fun ListColourDialog(
+    current: String?,
+    onDismiss: () -> Unit,
+    onPick: (String?) -> Unit,
+) {
+    val y = Yantra.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Colour") },
+        text = {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Frame ink, shown as a swatch so "no colour" is a choice on the same row as the
+                // colours rather than a link underneath them.
+                ColourDot(
+                    colour = y.checkOutline,
+                    selected = current == null,
+                    onClick = { onPick(null) },
+                )
+                LabelPalette.swatches.forEach { swatch ->
+                    ColourDot(
+                        colour = Color(LabelPalette.display(swatch.light, y.isDark)),
+                        selected = current.equals(swatch.name, ignoreCase = true),
+                        onClick = { onPick(swatch.name) },
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ColourDot(colour: Color, selected: Boolean, onClick: () -> Unit) {
+    val y = Yantra.colors
+    Box(
+        Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            // The ring says which one is on. It is drawn outside the fill rather than over it, so
+            // the swatch is still the colour you are judging.
+            .border(if (selected) 2.dp else 0.dp, if (selected) y.textPrimary else Color.Transparent, CircleShape)
+            .padding(if (selected) 4.dp else 0.dp)
+            .clip(CircleShape)
+            .background(colour)
+            .clickable(onClick = onClick),
+    )
+}
+
+/**
+ * The next thing today — HOME_UI.md §6.
+ *
+ * A row rather than a line in the band, because At-a-Glance-style information wants to be tappable
+ * and DESIGN.md §6 says nothing in the band is. As a row it opens the event and sits in the same
+ * grammar as PINNED and LISTS.
+ */
+@Composable
+private fun NextRow(
+    event: ie.shoonya.yantra.data.db.EventWithTitle,
+    accented: Boolean,
+    onClick: () -> Unit,
+) {
+    val y = Yantra.colors
+    val ink = if (accented) y.accent else y.checkOutline
+    val start = runCatching { LocalDateTime.parse(event.event.startLocal) }.getOrNull()
+    val end = runCatching { LocalDateTime.parse(event.event.endLocal) }.getOrNull()
+    val minutesAway = start?.let {
+        java.time.Duration.between(LocalDateTime.now(), it).toMinutes()
+    } ?: 0L
+    Column {
+        Row(
+            // 8, not 11 — the same step the list rows took. The mark is 34dp tall, so the row is
+            // still 50 and clear of the 48dp a finger needs; the space was doing nothing the mark's
+            // own height was not already doing.
+            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                YantraIcon(YantraMark.Calendar, tint = ink)
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    event.title.orEmpty().ifBlank { "Untitled" },
+                    fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
+                    color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    buildString {
+                        if (start != null && end != null) {
+                            append(start.format(CLOCK_FMT))
+                            append("–")
+                            append(end.format(CLOCK_FMT))
+                        }
+                        // How long until it starts, inside the same window that promotes a Join
+                        // control. Further out than that it is noise: you are not about to leave.
+                        if (minutesAway in 1..MINUTES_BEFORE) append("  ·  in ${minutesAway}m")
+                        else if (minutesAway <= 0L) append("  ·  now")
+                    },
+                    fontFamily = YantraMono, fontSize = YantraType.caption,
+                    color = if (accented) y.accent else y.textMuted,
+                )
+            }
+        }
+        HorizontalDivider(color = y.hairline, thickness = 1.dp)
+    }
+}
+
+/** The window inside which "in 12m" is worth saying — the same one that promotes a Join control. */
+private const val MINUTES_BEFORE = 30L
+
+private val CLOCK_FMT: java.time.format.DateTimeFormatter =
+    java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+/** "2h 20m", "45m" — how much of the day is already spoken for. */
+private fun bookedWords(minutes: Int): String =
+    if (minutes < 60) "${minutes}m" else "${minutes / 60}h ${minutes % 60}m".removeSuffix(" 0m")
+
+@Composable
+private fun Greeting(openCount: Int, bookedMinutes: Int, onSettings: () -> Unit) {
     val y = Yantra.colors
     val greeting = remember {
         when (LocalTime.now().hour) {
@@ -359,26 +620,70 @@ private fun Greeting(openCount: Int, listCount: Int, onSettings: () -> Unit) {
         }
     }
     val date = remember { LocalDate.now().format(dateFmt) }
+    // **The pulse is drawn over the header, not laid out inside it.**
+    //
+    // It sat in this Row, and a Row shares its width out: the pill expanding took width from the
+    // weighted column beside it, the greeting re-wrapped to fit what was left, the header grew a
+    // line taller, and the whole screen moved down — every time a sync started, and back up when it
+    // finished. A report that something is happening in the background must not rearrange the
+    // foreground; that is the one thing it was built not to do.
+    //
+    // Chrome's shared header does not have the problem and does not need this: the pill eats a
+    // flexible spacer there, and the title beside it is one line with an ellipsis, so nothing it
+    // takes can make anything taller.
+    Box(Modifier.fillMaxWidth()) {
     Row(
         Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(date, fontFamily = YantraText, fontSize = 12.5.sp, fontWeight = FontWeight.W500, color = y.textMuted)
+            Text(date, fontFamily = YantraText, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted)
             Text(greeting, style = MaterialTheme.typography.headlineSmall, color = y.textPrimary, modifier = Modifier.padding(top = 3.dp))
+            // What the day costs, not how it is filed — HOME_UI.md §5.
+            //
+            // "across 2 lists" told you nothing you could not get by looking down the screen.
+            // Booked hours is the one figure Home cannot otherwise show, and the only one that
+            // makes tasks and events commensurable — which is this app's actual argument about
+            // time. Numerals in mono, per the type rule.
             Text(
-                if (openCount == 0) "Nothing open. Breathe." else "$openCount open across $listCount ${if (listCount == 1) "list" else "lists"}",
-                fontFamily = YantraText, fontSize = 12.5.sp, fontWeight = FontWeight.W500, color = y.textMuted,
+                buildAnnotatedString {
+                    if (openCount == 0 && bookedMinutes == 0) {
+                        append("Nothing open. Breathe.")
+                    } else {
+                        withStyle(SpanStyle(fontFamily = YantraMono)) { append("$openCount") }
+                        append(" open")
+                        if (bookedMinutes > 0) {
+                            append(" · ")
+                            withStyle(SpanStyle(fontFamily = YantraMono)) {
+                                append(bookedWords(bookedMinutes))
+                            }
+                            append(" booked")
+                        }
+                    }
+                },
+                fontFamily = YantraText, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted,
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
-        NavCircleSurface(onClick = onSettings, size = 40.dp) { SettingsGlyph() }
+        NavCircle(mark = YantraMark.Settings, contentDescription = "Settings", onClick = onSettings, size = 40.dp)
+    }
+        // Home has its own header rather than the shared one, so it needs this explicitly. It is
+        // also the screen most likely to be open while a sync runs, since that is where you land
+        // after writing something. Aligned past the cog's 40dp and its gap, into the space beside
+        // the date, which is empty on every screen width this app supports.
+        ie.shoonya.yantra.ui.components.NetworkPulse(
+            Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 48.dp),
+        )
     }
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    SectionLabel(text, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp))
+private fun SectionHeader(text: String, ink: Color? = null) {
+    SectionLabel(
+        text,
+        modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
+        color = ink ?: Yantra.colors.textMuted,
+    )
 }
 
 @Composable
@@ -393,46 +698,86 @@ private fun HomeRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onMove: () -> Unit,
+    onColour: () -> Unit,
+    /**
+     * Whether to close the run with a hairline.
+     *
+     * **A line ends a run; it does not separate two rows inside one.** Every row used to carry one,
+     * which drew four rules through a four-row screen and read as padding — and it was saying what
+     * the heading above already said, since a heading and the space under it is what groups these
+     * rows in the first place. Now the only rule is the one under the last row before the next
+     * heading, which is a boundary and therefore worth a mark.
+     */
+    closesRun: Boolean = true,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
     Column {
         Row(
-            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 11.dp),
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+                // 8dp against a 34dp mark: a 50dp row, which still clears the 48 a finger needs.
+                // Rows were separated by a rule when this was 11, and a line and a gap were both
+                // paying for the same separation; with the rules gone the gap can come in.
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(34.dp).background(
-                    if (smart) Color.Transparent else y.accent.copy(alpha = 0.12f),
-                    RoundedCornerShape(10.dp),
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (smart) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = y.accent, modifier = Modifier.size(19.dp))
-                } else {
-                    Icon(Icons.AutoMirrored.Filled.List, null, tint = y.accent, modifier = Modifier.size(18.dp))
-                }
+            // Both bare, and wearing whatever colour you gave them — HOME_UI.md §1, and the
+            // colour law as remade.
+            //
+            // A list used to be a coral-tinted tile around its mark while a smart list was a bare
+            // mark: the same kind of thing in two treatments, and the tile was the heaviest element
+            // on the screen after the title. They are told apart by their drawing now.
+            //
+            // The colour is *yours*, not the app's. The accent means your own effort and a list is
+            // not effort, so it cannot borrow the accent — but it can carry a hue you chose, the
+            // way a label already does, and then the colour on this screen comes from your data
+            // rather than from the app having one loud idea. Uncoloured lists stay frame ink, which
+            // is what makes a coloured one mean something.
+            val mine = node.color
+                ?.let { name -> LabelPalette.swatches.firstOrNull { it.name.equals(name, true) } }
+                ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                YantraIcon(
+                    if (smart) YantraMark.SmartList else YantraMark.List,
+                    tint = mine ?: y.checkOutline,
+                )
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     node.title.orEmpty().ifBlank { "Untitled" },
-                    fontFamily = YantraDisplay, fontSize = 15.sp, fontWeight = FontWeight.W500,
+                    fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = y.textMuted)
+                // Mono, per the type rule for numbers — HOME_UI.md §2. The subtitle is "0 of 4
+                // done", which is a count and reads as one — and only that, now that the repository
+                // is named once at the top of its section rather than on every row under it.
+                Text(
+                    subtitle,
+                    fontFamily = YantraMono,
+                    fontSize = YantraType.caption,
+                    color = y.textMuted,
+                )
             }
-            if (showCompass) {
-                Compass(fraction = fraction, size = 30.dp)
-                Spacer(Modifier.width(4.dp))
-            }
+            // The ring is gone, and so is the trailing key.
+            //
+            // The ring said what "0 of 4 done" already said, less precisely — the same argument
+            // NAMING.md makes for keeping Rhythm as a numeral. It was also a collision: a ring means
+            // "a task you have taken up" in the deck counter, so one beside a list title claimed a
+            // state a list cannot be in.
+            //
+            // Four identical overflow keys at full ink ran down the right edge of a four-row screen.
+            // The menu is on long press, which also fixes the ragged edge where Inbox carried a key
+            // but no ring while its neighbours carried both.
             Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.MoreVert, "Options", tint = y.textDim, modifier = Modifier.size(20.dp))
-                }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+                    DropdownMenuItem(
+                        text = { Text("Colour…") },
+                        onClick = { menu = false; onColour() },
+                    )
                     DropdownMenuItem(
                         text = { Text(if (grouped) "Move to another group…" else "Move to group…") },
                         onClick = { menu = false; onMove() },
@@ -441,34 +786,73 @@ private fun HomeRow(
                 }
             }
         }
-        HorizontalDivider(color = y.hairline, thickness = 1.dp)
+        if (closesRun) HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
+/**
+ * A group of lists, inside the repository that owns it.
+ *
+ * **It is a heading, and it was louder than both its neighbours.** The Display face at 14.5/W700 in
+ * full ink put it above the rows it heads (15/W500) in weight and far above the workspace heading
+ * that contains it (11/W700, muted) — a child heading shouting over its parent. Three levels now
+ * step down in the order they nest: the repository is tracked caps in its own hue, a group is a
+ * quiet secondary line, a list row is the loudest thing because it is the thing you came for.
+ *
+ * **It folds, and remembers.** Every app with folders lets you collapse them, and the app already
+ * had the machinery — `node.collapsed` with a deliberately device-local write, on the grounds that
+ * whether a section is folded is about this screen and not about the work. A group on Home is that
+ * exact case, so it reuses it rather than inventing a second kind of memory.
+ *
+ * The trailing overflow key is gone, for the reason HomeRow gave when it dropped its own: a column
+ * of identical keys down the right edge. Tap folds, long-press is the menu — the same gesture the
+ * rows beneath it already use, so there is one rule on this screen rather than two.
+ */
 @Composable
-private fun GroupBanner(title: String, count: Int, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun GroupBanner(
+    title: String,
+    count: Int,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val y = Yantra.colors
     var menu by remember { mutableStateOf(false) }
-    Row(
-        Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            title, fontFamily = YantraDisplay, fontSize = 14.sp, fontWeight = FontWeight.W700,
-            color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text("$count", fontFamily = YantraMono, fontSize = 10.sp, color = y.textDim)
-        Spacer(Modifier.weight(1f))
-        Box {
-            IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Default.MoreVert, "Group options", tint = y.textDim, modifier = Modifier.size(20.dp))
-            }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
-                DropdownMenuItem(text = { Text("Delete group") }, onClick = { menu = false; onDelete() })
-            }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onToggle, onLongClick = { menu = true })
+                .padding(top = 16.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // One drawing at two rotations — see YantraMark.Up. The wedge is the fold's only
+            // affordance now, so it is the one part of this line that is not muted into the paper.
+            YantraIcon(
+                if (collapsed) YantraMark.Forward else YantraMark.Down,
+                size = YantraIcons.Small,
+                tint = y.textMuted,
+                contentDescription = if (collapsed) "Expand group" else "Collapse group",
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                title,
+                fontFamily = YantraText,
+                fontSize = YantraType.label,
+                fontWeight = FontWeight.W600,
+                color = y.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(8.dp))
+            // The count is what a folded group still has to say: it is the only thing left of it.
+            Text("$count", fontFamily = YantraMono, fontSize = YantraType.dense, color = y.textDim)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+            DropdownMenuItem(text = { Text("Delete group") }, onClick = { menu = false; onDelete() })
         }
     }
 }
@@ -549,7 +933,14 @@ private fun CreatePanel(
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             CreateType.entries.forEach { t ->
-                SelectChip(t.label, selected = t == type, onClick = { type = t }, modifier = Modifier.weight(1f))
+                SelectChip(
+                    t.label,
+                    selected = t == type,
+                    mark = t.mark,
+                    stretch = true,
+                    onClick = { type = t },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
         // Only for the things that have no parent to inherit from. A task goes to the Inbox and a
@@ -577,8 +968,8 @@ private fun CreatePanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Make this a smart list", color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W600, fontSize = 14.sp)
-                    Text("Auto-updates from conditions you set, instead of a fixed set of tasks", color = y.textMuted, fontSize = 11.5.sp)
+                    Text("Make this a smart list", color = y.textPrimary, fontFamily = YantraText, fontWeight = FontWeight.W600, fontSize = YantraType.body)
+                    Text("Auto-updates from conditions you set, instead of a fixed set of tasks", color = y.textMuted, fontSize = YantraType.caption)
                 }
                 Switch(checked = makeSmart, onCheckedChange = { makeSmart = it })
             }
@@ -595,71 +986,60 @@ private fun CreatePanel(
 
 
 @Composable
-private fun HomeTabBar(onCog: () -> Unit, onStats: () -> Unit) {
+private fun HomeTabBar(onCreate: () -> Unit, onStats: () -> Unit, onCalendar: () -> Unit) {
     val y = Yantra.colors
+    // Three zones, one thing in each, and the cog in the middle where it can be found without
+    // looking — it is the biggest, the only accented, and the only one whose position does not move
+    // when something is added beside it.
+    //
+    // **The home mark is gone.** It sat on the left of the home screen's own bar doing nothing: a
+    // button for where you already are is a button that can only ever be a no-op, and it was taking
+    // the best-reachable corner of the bar to do it. The calendar has that corner now, which also
+    // puts the two ways of *looking* at your work on either side of the one way of *adding* to it.
     Row(
-        Modifier.fillMaxWidth().background(y.page).navigationBarsPadding()
-            .padding(start = 40.dp, end = 40.dp, top = 8.dp, bottom = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        // No ground and no navigation-bar inset of its own: it is a row inside the dock, which
+        // carries both. It painted y.page here, which is what made the player above it read as a
+        // separate panel rather than the top of this one.
+        Modifier.fillMaxWidth()
+            // 22dp, the one page margin — CALENDAR_UI.md §1 asked for the bars to agree, and
+            // PAGE_MARGIN is the number they should agree on rather than a third one.
+            .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 8.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { HomeGlyph(active = true) }
-        // the cog — quick create
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).clickable(onClick = onCalendar), contentAlignment = Alignment.Center) {
+                YantraIcon(YantraMark.Calendar, size = YantraIcons.Large, tint = y.textSecondary, contentDescription = "Calendar")
+            }
+        }
+        // The make-something key — HOME_UI.md §3.
+        //
+        // It wore `GearMark` while opening the create sheet, and Settings lived in the top-right
+        // circle wearing sliders. That is inverted from every other app on the phone: a cog means
+        // settings, and a person reaching for one found a new-list sheet. The key is `Add` now, at
+        // 56dp and radius 17 so it is the same object as the calendar's create key in size, shape
+        // and position — the make-something key is in one place on both board screens.
         Box(
-            Modifier.size(54.dp)
-                .background(y.accentFill, RoundedCornerShape(17.dp))
-                .border(1.dp, y.accentBorder, RoundedCornerShape(17.dp))
-                .clickable(onClick = onCog),
+            Modifier.size(56.dp)
+                .background(y.accentFill, RoundedCornerShape(YantraRadius.card))
+                .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card))
+                .clickable(onClick = onCreate),
             contentAlignment = Alignment.Center,
-        ) { GearMark(Modifier.size(30.dp), tint = y.accent) }
-        Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) { StatsGlyph() }
-    }
-}
-
-@Composable
-private fun HomeGlyph(active: Boolean) {
-    val y = Yantra.colors
-    val tint = if (active) y.textPrimary else y.textDim
-    Canvas(Modifier.size(22.dp)) {
-        val w = size.width
-        val p = Path().apply {
-            moveTo(w * 0.16f, w * 0.44f); lineTo(w * 0.5f, w * 0.16f); lineTo(w * 0.84f, w * 0.44f)
-            lineTo(w * 0.84f, w * 0.84f); lineTo(w * 0.16f, w * 0.84f); close()
+        ) { YantraIcon(YantraMark.Add, size = YantraIcons.Large, tint = y.accent) }
+        Row(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(44.dp).clickable(onClick = onStats), contentAlignment = Alignment.Center) {
+                YantraIcon(YantraMark.Stats, size = YantraIcons.Large, tint = y.textSecondary, contentDescription = "Stats")
+            }
         }
-        drawPath(p, color = tint, style = Stroke(width = w * 0.08f, join = StrokeJoin.Round))
     }
 }
 
-@Composable
-private fun SettingsGlyph() {
-    val y = Yantra.colors
-    // three sliders — a settings mark distinct from the create cog
-    Canvas(Modifier.size(18.dp)) {
-        val w = size.width
-        fun line(cy: Float) = drawLine(y.textSecondary, Offset(0f, cy), Offset(w, cy), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
-        line(w * 0.22f); line(w * 0.5f); line(w * 0.78f)
-        fun knob(cx: Float, cy: Float) { drawCircle(y.page, radius = w * 0.13f, center = Offset(cx, cy)); drawCircle(y.accent, radius = w * 0.11f, center = Offset(cx, cy)) }
-        knob(w * 0.68f, w * 0.22f); knob(w * 0.34f, w * 0.5f); knob(w * 0.72f, w * 0.78f)
-    }
-}
 
-@Composable
-private fun StatsGlyph() {
-    val y = Yantra.colors
-    Canvas(Modifier.size(20.dp)) {
-        val w = 3.6f / 20f * size.width
-        val unit = size.height / 18f
-        fun bar(x: Float, h: Float, c: Color) {
-            drawRoundRect(
-                color = c,
-                topLeft = Offset(x / 20f * size.width, size.height - h * unit),
-                size = Size(w, h * unit),
-                cornerRadius = CornerRadius(1.2f * unit, 1.2f * unit),
-            )
-        }
-        bar(2f, 8f, y.textDim); bar(8.2f, 12f, y.textDim); bar(14.4f, 16f, y.accent)
-    }
-}
+
+
 
 @Composable
 private fun MoveToGroupDialog(
@@ -684,7 +1064,7 @@ private fun MoveToGroupDialog(
                     Modifier.fillMaxWidth().clickable(onClick = onNewGroup).padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(18.dp))
+                    YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("New group…", color = y.accentText, fontWeight = FontWeight.W700)
                 }
@@ -705,11 +1085,11 @@ private fun MoveRow(label: String, selected: Boolean, onClick: () -> Unit) {
         Box(
             Modifier.size(18.dp).background(
                 if (selected) y.accent else Color.Transparent,
-                RoundedCornerShape(5.dp),
-            ).border(2.dp, if (selected) y.accent else y.checkOutline, RoundedCornerShape(5.dp)),
+                RoundedCornerShape(YantraRadius.tiny),
+            ).border(2.dp, if (selected) y.accent else y.checkOutline, RoundedCornerShape(YantraRadius.tiny)),
             contentAlignment = Alignment.Center,
         ) {
-            if (selected) Icon(Icons.Default.Check, null, tint = y.onAccent, modifier = Modifier.size(12.dp))
+            if (selected) YantraIcon(YantraMark.Check, tint = y.onAccent)
         }
         Spacer(Modifier.width(12.dp))
         Text(label, color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -1,5 +1,10 @@
 package ie.shoonya.yantra.ui.ink
 
+import android.app.Activity
+import android.content.ContextWrapper
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -29,12 +34,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -42,6 +41,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.onSizeChanged
@@ -110,6 +111,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * A drawing session.
@@ -192,8 +197,7 @@ class InkViewModel(
                 if (drawnHere) return@collect
                 held.value = withContext(Dispatchers.Default) {
                     rows.mapNotNull { row ->
-                        runCatching { Held(StrokeItem(row.id, StrokeCodec.decode(row.data)), row.data) }
-                            .getOrNull()
+                        StrokeCodec.decodeOrNull(row.data)?.let { Held(StrokeItem(row.id, it), row.data) }
                     }
                 }
             }
@@ -463,8 +467,27 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
     var page by remember { mutableStateOf(1) }
     var pageCount by remember { mutableStateOf(1) }
     var stylusMode by remember { mutableStateOf(false) }
+    /**
+     * The zoom, as a percentage, and the only way back from one.
+     *
+     * A pinch is easy to do by accident and there is no gesture that undoes it — a double-tap would
+     * have to fight the pen for the same two events. So the zoom says what it is and offers to
+     * undo itself, and says nothing at all while it is 100%.
+     */
+    var zoomPercent by remember { mutableIntStateOf(100) }
     var drawing by remember { mutableStateOf(false) }
     var canvasRef by remember { mutableStateOf<InkCanvas?>(null) }
+
+    /**
+     * The themed stroke list, built once per actual change rather than once per recomposition.
+     *
+     * `AndroidView`'s update block runs on every recomposition, and this used to build a fresh list
+     * with a fresh `Stroke` per item inside it. The canvas caches a bounding box and a path per
+     * stroke keyed on that list's identity, so a new list every time meant re-walking every input
+     * point on the page — twice — for every frame of a pinch. Remembering it makes the canvas's
+     * identity check work, and the whole chain collapses to nothing when nothing has changed.
+     */
+    val display = remember(strokes, dark) { InkTheme.displayItems(strokes, dark) }
 
     val slot = slots[active]
     fun setSlot(i: Int, change: (PenSlot) -> PenSlot) {
@@ -473,11 +496,25 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
 
     var title by remember(node?.id) { mutableStateOf(node?.title.orEmpty()) }
 
+    FullBleedWhileDrawing()
+
     Column(
         Modifier
             .fillMaxSize()
             .background(y.page)
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            // The bottom inset, which this screen drew without.
+            //
+            // The app is edge-to-edge, so without it the page ran under the system's gesture bar —
+            // and so did everything standing on the page. The kit, the undo pair and the selection
+            // bar all sit against the bottom edge, which put them in the strip the system claims:
+            // pressed low enough they were a swipe home rather than a button, and the controls
+            // looked shoved into the very bottom of the screen because they were.
+            //
+            // The whole column is inset rather than each control, so the paper itself also stops
+            // above the bar. Paper you cannot draw on because the system takes the touch first is
+            // not paper, and a page that ends where the drawing area ends is the honest shape.
+            .navigationBarsPadding(),
     ) {
         // header: back · editable name · mode hint
         Row(
@@ -485,7 +522,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavCircle(
-                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = { nav.popBackStack() },
                 iconSize = 20.dp,
@@ -495,12 +532,12 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 value = title,
                 onValueChange = { title = it; vm.rename(it) },
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.W700, color = y.textPrimary),
+                textStyle = TextStyle(fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textPrimary),
                 cursorBrush = SolidColor(y.accent),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box {
-                        if (title.isEmpty()) Text(placeholder, fontSize = 17.sp, fontWeight = FontWeight.W700, color = y.textMuted.copy(alpha = 0.6f))
+                        if (title.isEmpty()) Text(placeholder, fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textMuted.copy(alpha = 0.6f))
                         inner()
                     }
                 },
@@ -515,23 +552,18 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 // sketch to reach, which is the one thing you were avoiding by drawing here.
                 Row(
                     Modifier
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(YantraRadius.card))
                         .background(y.accentFill)
-                        .border(1.dp, y.accentBorder, RoundedCornerShape(14.dp))
+                        .border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card))
                         .clickable { nav.navigate(Routes.FOCUS_CURRENT) }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.Timer,
-                        contentDescription = "Open the running session",
-                        tint = y.accent,
-                        modifier = Modifier.size(13.dp),
-                    )
+                    YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Open the running session")
                     Text(
                         "%d:%02d".format(shown / 60, shown % 60),
                         fontFamily = YantraMono,
-                        fontSize = 12.sp,
+                        fontSize = YantraType.section,
                         fontWeight = FontWeight.W700,
                         letterSpacing = 0.5.sp,
                         color = y.accentText,
@@ -541,7 +573,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             } else {
                 Text(
                     if (stylusMode) "Pen draws" else "1 finger draws",
-                    fontSize = 11.sp, color = y.textDim,
+                    fontSize = YantraType.caption, color = y.textDim,
                 )
             }
         }
@@ -561,7 +593,19 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     InkCanvas(ctx).apply {
                         onViewportChanged = { p, c -> page = p; pageCount = c }
                         onStylusModeChanged = { stylusMode = it }
-                        onDrawingChanged = { drawing = it }
+                        onDrawingChanged = { down ->
+                            drawing = down
+                            // Touching the page puts the kit away. A width slider is a thing you
+                            // set and then stop thinking about, and a column of tools standing on
+                            // the drawing is the drawing you cannot see. Both go on the first
+                            // stroke; the kit stays folded until it is asked for, rather than
+                            // springing back on every lift and moving under the hand.
+                            if (down) {
+                                panel = null
+                                kitFolded = true
+                            }
+                        }
+                        onZoomChanged = { zoomPercent = it }
                         onLassoSelection = { ids, cx, bottom ->
                             selection = ids
                             selectionAt = Offset(cx, bottom)
@@ -594,13 +638,16 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     // Recognition belongs to the freehand pen. While you are dragging a shape out
                     // on purpose there is nothing to recognise.
                     canvas.recognizeShapes = snap && mode == InkMode.DRAW
-                    canvas.eraserRadius = with(density) { eraserSize.dp.toPx() }
+                    // Pixels, not document units: the eraser is the size of the thing in your hand,
+                    // so it stays that size on screen while the page zooms beneath it. In du it
+                    // would swallow half a page once you zoomed out.
+                    canvas.eraserRadiusPx = with(density) { eraserSize.dp.toPx() }
                     val f = slot.family
                     val w = if (f == StrokeCodec.FAMILY_HIGHLIGHTER) slot.width * 3f else slot.width
                     canvas.brushProvider = { StrokeCodec.brush(f, slot.color, w) }
                     canvas.onStrokeFinished = { stroke -> vm.save(stroke, f) }
                     canvas.onErase = { id -> vm.erase(id) }
-                    canvas.setStrokeItems(InkTheme.displayItems(strokes, dark))
+                    canvas.setStrokeItems(display)
                 },
             )
 
@@ -625,7 +672,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 // Everything except undo dims while the pen is down.
                 dimmed = drawing,
                 folded = kitFolded,
-                onFold = { kitFolded = !kitFolded },
+                onFold = { kitFolded = !kitFolded; if (kitFolded) panel = null },
                 onSlot = { active = it; mode = InkMode.DRAW },
                 onMode = { mode = it },
                 onSnap = { snap = !snap },
@@ -679,6 +726,35 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         canvasRef?.clearSelection()
                     },
                 )
+            }
+
+            if (zoomPercent != 100) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(YantraRadius.panel))
+                        .background(y.cardBg)
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
+                        .clickable { canvasRef?.fitWidth() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "$zoomPercent%",
+                        fontFamily = YantraMono,
+                        fontSize = YantraType.caption,
+                        fontWeight = FontWeight.W700,
+                        color = y.textDim,
+                    )
+                    Text(
+                        "fit",
+                        fontSize = YantraType.caption,
+                        fontWeight = FontWeight.W700,
+                        color = y.accent,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
             }
 
             UndoPair(
@@ -740,8 +816,8 @@ private fun KitControls(
             // costs you the thing you opened it to fix.
             .padding(bottom = 78.dp)
             .width(232.dp)
-            .background(y.cardBg, RoundedCornerShape(22.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(22.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -750,7 +826,7 @@ private fun KitControls(
                 if (slot == null) return@Column
                 SectionLabel(slot.label)
                 WidthRow(slot.width, 1f..24f) { onSlotChange(slot.copy(width = it)) }
-                Text("Ink", fontSize = 11.sp, color = y.textMuted, modifier = Modifier.padding(top = 6.dp))
+                Text("Ink", fontSize = YantraType.caption, color = y.textMuted, modifier = Modifier.padding(top = 6.dp))
                 InkSwatches(
                     current = slot.color,
                     recents = recents,
@@ -779,7 +855,7 @@ private fun KitControls(
                 Text(
                     if (drawingShapes) "Drag to place the shape."
                     else "Draw freehand; it settles into a shape when you lift.",
-                    fontSize = 11.5.sp,
+                    fontSize = YantraType.caption,
                     color = y.textDim,
                     modifier = Modifier.padding(top = 8.dp),
                 )
@@ -801,18 +877,18 @@ private fun KitControls(
         Row(
             Modifier
                 .padding(top = 10.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable(onClick = onHanded)
                 .padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 if (leftHanded) "Kit on the left" else "Kit on the right",
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
                 color = y.textMuted,
                 modifier = Modifier.weight(1f),
             )
-            Text("Swap", fontSize = 12.5.sp, fontWeight = FontWeight.W700, color = y.accentText)
+            Text("Swap", fontSize = YantraType.meta, fontWeight = FontWeight.W700, color = y.accentText)
         }
     }
 }
@@ -872,7 +948,7 @@ private fun InkSwatches(
                 .border(1.dp, y.tileBorder, CircleShape)
                 .clickable(onClick = onCustom),
             contentAlignment = Alignment.Center,
-        ) { Text("+", fontSize = 14.sp, color = y.textMuted) }
+        ) { Text("+", fontSize = YantraType.body, color = y.textMuted) }
     }
 }
 
@@ -895,14 +971,14 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
             Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Custom color", fontSize = 16.sp, fontWeight = FontWeight.W800, color = y.textPrimary)
+            Text("Custom color", fontSize = YantraType.card, fontWeight = FontWeight.W800, color = y.textPrimary)
 
             // saturation / value square
             Box(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(1.6f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(YantraRadius.card))
                     .background(Brush.horizontalGradient(listOf(Color.White, Color.hsv(hue, 1f, 1f))))
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
                     .pointerInput(Unit) {
@@ -940,7 +1016,7 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).background(current, RoundedCornerShape(10.dp)).border(1.dp, y.tileBorder, RoundedCornerShape(10.dp)))
+                Box(Modifier.size(40.dp).background(current, RoundedCornerShape(YantraRadius.control)).border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.control)))
                 Spacer(Modifier.weight(1f))
                 YantraButton(
                     label = "Use colour",
@@ -988,8 +1064,8 @@ private fun BoxScope.SelectionBar(
                     (at.y + gap).coerceIn(0f, (bounds.height - barH).coerceAtLeast(0f)).toInt(),
                 )
             }
-            .background(y.cardBg, RoundedCornerShape(15.dp))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(15.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
             .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -997,14 +1073,14 @@ private fun BoxScope.SelectionBar(
         Text(
             "$count",
             fontFamily = YantraMono,
-            fontSize = 11.sp,
+            fontSize = YantraType.caption,
             fontWeight = FontWeight.W700,
             color = y.textDim,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         Text(
             "drag to move",
-            fontSize = 12.sp,
+            fontSize = YantraType.section,
             color = y.textMuted,
             modifier = Modifier.padding(horizontal = 6.dp),
         )
@@ -1023,14 +1099,14 @@ private fun BarAction(
     val y = Yantra.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(11.dp))
+            .clip(RoundedCornerShape(YantraRadius.control))
             .background(if (accent) y.accentFill else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 10.dp),
     ) {
         Text(
             label,
-            fontSize = 13.sp,
+            fontSize = YantraType.meta,
             fontWeight = FontWeight.W700,
             color = when {
                 accent -> y.accentText
@@ -1045,3 +1121,41 @@ private val SHAPE_NAMES = listOf(
     ShapeKind.LINE to "Line", ShapeKind.RECTANGLE to "Box",
     ShapeKind.ELLIPSE to "Oval", ShapeKind.ARROW to "Arrow",
 )
+
+/**
+ * Takes the system's navigation bar off the screen for as long as the sketch is open.
+ *
+ * A page is the one screen where the bottom of the display is worth more to the app than to the
+ * system: the drawing runs to the edge, and the strip along the bottom was both stealing the touches
+ * that landed in it and pushing the kit up out of the corner it belongs in.
+ *
+ * Transient rather than sticky — a swipe from the bottom brings the bar back for a moment without
+ * leaving the sketch or resizing anything. That matters because there is no other way out of a
+ * screen whose own Back button is at the top: hiding the bar permanently would strand anyone
+ * navigating by gesture.
+ *
+ * Put back on the way out, in [DisposableEffect]'s dispose rather than on the Back press, so it is
+ * restored however the screen is left — the header's arrow, the system gesture, or the process
+ * being sent to the background mid-sketch.
+ *
+ * The bar being hidden reports a zero inset, so the `navigationBarsPadding` on the page's column
+ * simply goes to nothing. The two are not alternatives: the padding is what keeps the controls
+ * clear on the devices and settings where the bar cannot be hidden, and during the transient
+ * reveal.
+ */
+@Composable
+private fun FullBleedWhileDrawing() {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    DisposableEffect(view) {
+        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.navigationBars())
+        onDispose { controller?.show(WindowInsetsCompat.Type.navigationBars()) }
+    }
+}

@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.remember
@@ -61,14 +59,19 @@ import ie.shoonya.yantra.ui.appContainer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import ie.shoonya.yantra.data.sync.Credentials
 import ie.shoonya.yantra.ui.Routes
 import ie.shoonya.yantra.ui.theme.Yantra
 import androidx.compose.ui.graphics.Color
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.data.label.LabelPalette
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 
 @Composable
 fun SettingsScreen(nav: NavHostController) {
@@ -91,6 +94,9 @@ fun SettingsScreen(nav: NavHostController) {
     // silently failed.
     var account by remember { mutableStateOf<String?>(null) }
     var spaces by remember { mutableStateOf<List<WorkspaceRow>>(emptyList()) }
+    /** The workspace whose colour is being chosen. */
+    var colouring by remember { mutableStateOf<WorkspaceRow?>(null) }
+
     /** The workspace being let go of, while the confirm is up. */
     var forgetting by remember { mutableStateOf<WorkspaceRow?>(null) }
     val settingsScope = rememberCoroutineScope()
@@ -108,6 +114,7 @@ fun SettingsScreen(nav: NavHostController) {
                         name = store.readManifest()?.name ?: "Workspace",
                         slug = container.slugOf(store.id),
                         readOnly = store.isReadOnly,
+                        color = container.registry.colorOf(store.id),
                     )
                 }
             }
@@ -164,7 +171,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "Each one is a repository. Today spans all of them.",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(10.dp))
             spaces.forEach { space ->
@@ -175,6 +182,27 @@ fun SettingsScreen(nav: NavHostController) {
                         // Everything still shows; nothing here may change it until the app is updated.
                         space.readOnly -> "Read-only here — update Yantra to edit"
                         else -> space.slug ?: "On this device only"
+                    },
+                    // The colour this workspace wears, and the one place it can be changed.
+                    //
+                    // It is seeded from the name — the same hash a label's colour starts from — and
+                    // then kept, which is the whole difference between a colour you can correct and
+                    // one you cannot. It is what the spine carries on the player, the widget and
+                    // the calendar, so this swatch is the legend for all three.
+                    leading = {
+                        val swatch = LabelPalette.byName(
+                            space.color ?: LabelPalette.defaultNameFor(space.name)
+                        )
+                        Box(
+                            Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    swatch?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+                                        ?: y.checkOutline
+                                )
+                                .clickable { colouring = space },
+                        )
                     },
                     // Nothing to open yet — the switcher is Phase 5. Showing where each workspace
                     // points is the part that is useful now, and a row that navigated nowhere would
@@ -189,6 +217,51 @@ fun SettingsScreen(nav: NavHostController) {
                 )
                 Spacer(Modifier.height(8.dp))
             }
+            colouring?.let { space ->
+                AlertDialog(
+                    onDismissRequest = { colouring = null },
+                    title = { Text(space.name) },
+                    text = {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // No "none" here, unlike a label or a list. This colour is the spine
+                            // everywhere the spine appears, so a workspace without one would leave
+                            // the widget with nothing to separate its rows by — which is the cue
+                            // this whole arrangement exists to keep.
+                            val current = space.color ?: LabelPalette.defaultNameFor(space.name)
+                            LabelPalette.swatches.forEach { swatch ->
+                                val on = swatch.name.equals(current, ignoreCase = true)
+                                Box(
+                                    Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            if (on) 2.dp else 0.dp,
+                                            if (on) y.textPrimary else Color.Transparent,
+                                            CircleShape,
+                                        )
+                                        .padding(if (on) 4.dp else 0.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(LabelPalette.display(swatch.light, y.isDark)))
+                                        .clickable {
+                                            container.registry.setColor(space.id, swatch.name)
+                                            spaces = spaces.map {
+                                                if (it.id == space.id) it.copy(color = swatch.name) else it
+                                            }
+                                            colouring = null
+                                        },
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { colouring = null }) { Text("Cancel") } },
+                )
+            }
+
             forgetting?.let { space ->
                 ConfirmDialog(
                     title = "Forget ${space.name}?",
@@ -213,6 +286,14 @@ fun SettingsScreen(nav: NavHostController) {
             )
 
             Spacer(Modifier.height(28.dp))
+            // A device-local choice, which is exactly what this screen is for: provider ids are
+            // local numbers, and a phone and a tablet signed into different accounts have different
+            // answers. See CALENDAR_PLAN.md §5.
+            SectionLabel("Calendars")
+            Spacer(Modifier.height(2.dp))
+            DeviceCalendarSetting()
+
+            Spacer(Modifier.height(28.dp))
             // Everything commits on its own — this is for when you want to know it has, which
             // matters more than it should on Android, where the system is free to decide your
             // background work can wait until tomorrow.
@@ -221,7 +302,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 syncStatus ?: "Every change is saved to a file and committed on its own",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             SelectChip(
@@ -239,7 +320,7 @@ fun SettingsScreen(nav: NavHostController) {
                 "Finished tasks leave your lists after a while. They stay in the repository and can " +
                     "be brought back — this is about keeping lists short, not deleting anything.",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -292,7 +373,7 @@ fun SettingsScreen(nav: NavHostController) {
             }
             said?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = y.textSecondary, fontSize = 12.5.sp)
+                Text(it, color = y.textSecondary, fontSize = YantraType.meta)
             }
 
             Spacer(Modifier.height(28.dp))
@@ -303,7 +384,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "The ink that means your effort",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -331,7 +412,7 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "Each colour means one thing, so a glance is enough",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
             InkLegendRow(y.checkOutline, "Structure", "frames, tracks, text")
@@ -349,13 +430,13 @@ fun SettingsScreen(nav: NavHostController) {
             Text(
                 "Tap to complete · swipe a task right to mark what you are on",
                 color = y.textMuted,
-                fontSize = 12.5.sp,
+                fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(14.dp))
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .background(y.cardBg, RoundedCornerShape(16.dp))
+                    .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
                     .padding(vertical = 18.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
@@ -396,11 +477,11 @@ private fun InkLegendRow(color: Color, name: String, where: String) {
         Modifier.fillMaxWidth().padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(14.dp).background(color, RoundedCornerShape(4.dp)))
+        Box(Modifier.size(14.dp).background(color, RoundedCornerShape(YantraRadius.tiny)))
         Spacer(Modifier.width(12.dp))
-        Text(name, color = y.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
+        Text(name, color = y.textPrimary, fontSize = YantraType.label, fontWeight = FontWeight.W600)
         Spacer(Modifier.width(8.dp))
-        Text(where, color = y.textMuted, fontSize = 12.sp)
+        Text(where, color = y.textMuted, fontSize = YantraType.section)
     }
 }
 
@@ -425,12 +506,20 @@ private fun GlyphSample(label: String, initial: TaskState) {
             size = 34.dp,
         )
         Spacer(Modifier.height(10.dp))
-        Text(label, color = y.textMuted, fontSize = 11.5.sp, fontWeight = FontWeight.W600)
+        Text(label, color = y.textMuted, fontSize = YantraType.caption, fontWeight = FontWeight.W600)
     }
 }
 
 /** One workspace, as the settings list needs it: what it is called and where it points. */
-private data class WorkspaceRow(val id: String, val name: String, val slug: String?, val readOnly: Boolean = false)
+private data class WorkspaceRow(
+    val id: String,
+    val name: String,
+    val slug: String?,
+    /** The colour it wears, seeded from the name until somebody changes it. */
+    val color: String?,
+    /** True when another device moved the repository past [WorkspaceStore.FORMAT_VERSION]. */
+    val readOnly: Boolean = false,
+)
 
 /**
  * A settings line with somewhere to go.
@@ -445,6 +534,8 @@ private fun SettingRow(
     subtitle: String,
     onClick: (() -> Unit)?,
     icon: Boolean = false,
+    /** Something that belongs before the title — a workspace's colour, say. */
+    leading: (@Composable () -> Unit)? = null,
     /** An action that belongs to this row rather than to opening it. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -452,26 +543,27 @@ private fun SettingRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leading?.let {
+            it()
+            Spacer(Modifier.width(12.dp))
+        }
         if (icon) {
-            Icon(Icons.Default.Add, null, tint = y.accent, modifier = Modifier.size(18.dp))
+            YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(title, color = y.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.W600)
+            Text(title, color = y.textPrimary, fontSize = YantraType.body, fontWeight = FontWeight.W600)
             Spacer(Modifier.height(2.dp))
-            Text(subtitle, color = y.textMuted, fontSize = 11.5.sp)
+            Text(subtitle, color = y.textMuted, fontSize = YantraType.caption)
         }
         trailing?.invoke()
         if (onClick != null) {
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
-                tint = y.textDim, modifier = Modifier.size(18.dp),
-            )
+            YantraIcon(YantraMark.Forward, tint = y.textDim, contentDescription = null)
         }
     }
 }

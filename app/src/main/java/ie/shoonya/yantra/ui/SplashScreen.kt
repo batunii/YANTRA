@@ -28,6 +28,7 @@ import ie.shoonya.yantra.ui.components.bhupuraPath
 import ie.shoonya.yantra.ui.components.drawPartialPath
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraDisplay
+import ie.shoonya.yantra.ui.theme.YantraType
 
 @Composable
 fun SplashScreen(nav: NavHostController) {
@@ -75,10 +76,10 @@ fun SplashScreen(nav: NavHostController) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Yantra", fontFamily = YantraDisplay, fontSize = 46.sp, fontWeight = FontWeight.W700, letterSpacing = (-0.5).sp, color = y.textPrimary)
+                Text("Yantra", fontFamily = YantraDisplay, fontSize = YantraType.wordmark, fontWeight = FontWeight.W700, letterSpacing = (-0.5).sp, color = y.textPrimary)
                 Text(
                     "Yet Another Notes, Todos & Reminder App",
-                    fontSize = 12.5.sp,
+                    fontSize = YantraType.meta,
                     fontWeight = FontWeight.W600,
                     color = y.textMuted,
                     textAlign = TextAlign.Center,

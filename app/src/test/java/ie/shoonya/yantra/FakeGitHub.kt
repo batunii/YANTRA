@@ -52,6 +52,20 @@ class FakeGitHub : AutoCloseable {
 
     fun on(path: String, status: Int, body: String): FakeGitHub = on(path) { status to body }
 
+    /**
+     * A header to send with every response.
+     *
+     * Needed because some of what GitHub says is only in the headers — `x-ratelimit-remaining` is
+     * the difference between a rate limit and a revoked token, and both arrive as a 403 with a
+     * body that reads like a refusal.
+     */
+    fun header(name: String, value: String): FakeGitHub {
+        extra[name] = value
+        return this
+    }
+
+    private val extra = mutableMapOf<String, String>()
+
     private fun serve(socket: java.net.Socket) {
         val input = socket.getInputStream()
         val head = readHead(input) ?: return
@@ -83,6 +97,7 @@ class FakeGitHub : AutoCloseable {
                 ("HTTP/1.1 $status X\r\n" +
                     "Content-Type: application/json\r\n" +
                     "Content-Length: ${bytes.size}\r\n" +
+                    extra.entries.joinToString("") { "${it.key}: ${it.value}\r\n" } +
                     "Connection: close\r\n\r\n").toByteArray()
             )
             write(bytes)

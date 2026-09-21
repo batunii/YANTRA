@@ -21,12 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -65,6 +59,8 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraMark
 
 /** Reminder offsets in minutes before the due instant (see BuiltIns docs). */
 private const val REMIND_ON_TIME = 0
@@ -125,10 +121,20 @@ fun DueSheet(
         // calendar gets the full width of the sheet and scales down as one piece if even that is
         // not enough; everything else is inset the normal amount.
         val pad = Modifier.padding(horizontal = 20.dp)
+        // **Not scrollable, and that is the fix rather than an omission.**
+        //
+        // This column had `verticalScroll` around it with M3's DatePicker inside. A vertical
+        // scrollable nested in a vertical scroll is measured with unbounded height, so the picker
+        // laid itself out at its full intrinsic size and the column became far taller than the
+        // sheet — which gave the outer scroll a range of hundreds of points where the content
+        // overflows by almost none. Dragging up then slid the whole sheet, drag handle and title
+        // included, off the top of the screen and left it there: the "gets stuck" in the recording.
+        //
+        // The calendar already manages its own height and [FitsWidth] already scales it down when
+        // the screen is narrow, so the sheet has nothing left to scroll.
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -160,7 +166,7 @@ fun DueSheet(
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Schedule, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(20.dp))
+                YantraIcon(YantraMark.Clock, tint = y.textSecondary, contentDescription = null)
                 Spacer(Modifier.width(12.dp))
                 Text("Time", color = y.textPrimary, modifier = Modifier.weight(1f))
                 Text(time?.format(timeFmt) ?: "None", color = y.textMuted)
@@ -170,7 +176,7 @@ fun DueSheet(
                         // A timed offset makes no sense on an all-day task; back to None.
                         if (reminder != null && reminder != REMIND_ON_THE_DAY) reminder = null
                     }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear time", tint = y.textMuted, modifier = Modifier.size(18.dp))
+                        YantraIcon(YantraMark.Close, tint = y.textMuted, contentDescription = "Clear time")
                     }
                 }
             }
@@ -184,7 +190,7 @@ fun DueSheet(
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Alarm, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(20.dp))
+                    YantraIcon(YantraMark.Alarm, tint = y.textSecondary, contentDescription = null)
                     Spacer(Modifier.width(12.dp))
                     Text("Reminder", color = y.textPrimary, modifier = Modifier.weight(1f))
                     Text(reminderLabel(reminder, timed = time != null), color = y.textMuted)

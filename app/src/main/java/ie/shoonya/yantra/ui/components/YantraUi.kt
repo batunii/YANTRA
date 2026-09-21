@@ -33,6 +33,12 @@ import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMotion
 import androidx.compose.ui.text.font.FontWeight
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 
 /**
  * Yantra's signature action affordance: a translucent accent fill + 1px accent border + accent
@@ -44,8 +50,9 @@ fun AccentPillButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null,
-    shape: RoundedCornerShape = RoundedCornerShape(10.dp),
+    /** The mark — ICONS.md §1. See the note on YantraButton. */
+    mark: YantraMark? = null,
+    shape: RoundedCornerShape = RoundedCornerShape(YantraRadius.control),
     horizontalPadding: Dp = 16.dp,
     verticalPadding: Dp = 9.dp,
 ) {
@@ -67,11 +74,11 @@ fun AccentPillButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = y.accent, modifier = Modifier.size(15.dp))
+        if (mark != null) {
+            YantraIcon(mark, size = YantraIcons.Small, tint = y.accent)
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = y.accentText, fontSize = 13.5.sp, fontWeight = FontWeight.W700)
+        Text(text, color = y.accentText, fontSize = YantraType.label, fontWeight = FontWeight.W700)
     }
 }
 
@@ -81,10 +88,11 @@ fun NeutralChip(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null,
+    /** The mark — ICONS.md §1. See the note on YantraButton. */
+    mark: YantraMark? = null,
 ) {
     val y = Yantra.colors
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(YantraRadius.control)
     Row(
         modifier = modifier
             .background(y.tileWarm2, shape)
@@ -93,13 +101,75 @@ fun NeutralChip(
             .padding(horizontal = 15.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = y.textSecondary, modifier = Modifier.size(15.dp))
+        if (mark != null) {
+            YantraIcon(mark, size = YantraIcons.Small, tint = y.textSecondary)
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = y.textSecondary, fontSize = 13.5.sp, fontWeight = FontWeight.W600)
+        Text(text, color = y.textSecondary, fontSize = YantraType.label, fontWeight = FontWeight.W600)
     }
 }
+
+/**
+ * The spine — a rule down a surface's leading edge.
+ *
+ * **The app's way of saying "this one".** It began as three separate hand-rolled Boxes that had all
+ * independently arrived at 3dp and all called themselves a spine in their own comments: the block
+ * on the timeline, the event line on a page, and then the now player. Three of the same idea is a
+ * design element; it just had no name and so could not be kept consistent.
+ *
+ * It is what the app uses instead of filling a surface with colour. CALENDAR_PLAN.md §16 made that
+ * call for a coloured block — *replace the spine, tint the wash, do not flood the fill* — because a
+ * flooded surface forces every word on it to a reversed colour and becomes louder than the thing it
+ * is reporting. The now player used to flood, and proved the rule by being the loudest object on
+ * Home.
+ *
+ * **It means the workspace.** One mark, one meaning, on every surface that draws one: the player,
+ * a widget row, a block on the day, an event line on a page. It is the only fact in the app with
+ * nowhere else to go — a widget row is two lines of text with no room for a word, and a block on an
+ * hour has less — while a list has a word on every surface it appears on and can wear its colour
+ * there instead.
+ *
+ * It used to carry whichever colour the surface had nearest to hand: the list here, the block's own
+ * colour there. That is what made it unreadable rather than quiet — the same green meant "the work
+ * repo" on the widget and "the Groceries list" on the player, and with five swatches seeding both
+ * there was no way to tell which question a stripe was answering. Two questions cannot share one
+ * 3dp rule. The other one got the fill, or a word.
+ *
+ * **With only one workspace open it is not drawn at all**, on any surface that has nothing else to
+ * say with it — the rule the app applies to every hue it derives, followed one step further. Frame
+ * ink was the first answer and the wrong one: neutral is #B4B2A9 on a dark ground, so a rule with
+ * nothing to say came out as the brightest thing on the player. Neutral is not quiet; it is a
+ * different loud. The exceptions are the surfaces where the edge has a second job, and the two
+ * things that are not in a repository of yours:
+ *
+ *  - **the accent** — this is live: a session running, a block you are on, with no repo to name
+ *  - **somebody else's calendar's colour** — on a device event, which is that calendar's identity
+ *
+ * And the law the whole scheme rests on: **a colour is never more than a glance from its name.**
+ * Home prints the workspace's name in its colour under every list, so the stripe is learned once
+ * and read everywhere after.
+ *
+ * It never means structure. A surface that is merely selected, or merely focused, gets a wash or a
+ * border; the spine is reserved for a thing having a state or an identity.
+ */
+fun Modifier.spine(
+    colour: Color,
+    /** How far in from the top and bottom, for a spine on a row rather than on a block. */
+    inset: Dp = 0.dp,
+): Modifier = drawBehind {
+    val top = inset.toPx()
+    val height = (size.height - top * 2).coerceAtLeast(0f)
+    val width = SPINE_WIDTH.toPx()
+    drawRoundRect(
+        color = colour,
+        topLeft = Offset(0f, top),
+        size = Size(width, height),
+        cornerRadius = CornerRadius(width / 2f),
+    )
+}
+
+/** Three points. Wide enough to read as a rule, narrow enough not to read as a panel. */
+val SPINE_WIDTH = 3.dp
 
 /**
  * The Yantra app mark: the bhupura with the bindu at its centre — the same path the launcher icon,
@@ -111,7 +181,7 @@ fun NeutralChip(
  * no longer has, and the tick is precisely the gesture the bindu was introduced to retire.
  */
 @Composable
-fun YantraMark(
+fun AppMark(
     modifier: Modifier = Modifier,
     tint: Color = Yantra.colors.checkOutline,
     checkTint: Color = Yantra.colors.accent,
@@ -123,21 +193,4 @@ fun YantraMark(
     }
 }
 
-/** Gear / cog — blunt-toothed ring with a hub. The "organize / grouping" motif from the yantra. */
-@Composable
-fun GearMark(modifier: Modifier = Modifier, tint: Color = Yantra.colors.accent) {
-    Canvas(modifier) {
-        val s = size.minDimension / 24f
-        val c = Offset(12f * s, 12f * s)
-        val ring = 6.2f * s
-        drawCircle(color = tint, radius = ring, center = c, style = Stroke(width = 2f * s))
-        for (i in 0 until 8) {
-            val a = Math.toRadians(i * 45.0)
-            val p1 = Offset(c.x + (ring * kotlin.math.cos(a)).toFloat(), c.y + (ring * kotlin.math.sin(a)).toFloat())
-            val p2 = Offset(c.x + (9f * s * kotlin.math.cos(a)).toFloat(), c.y + (9f * s * kotlin.math.sin(a)).toFloat())
-            drawLine(tint, p1, p2, strokeWidth = 2.6f * s, cap = StrokeCap.Round)
-        }
-        drawCircle(color = tint, radius = 1.9f * s, center = c)
-    }
-}
 

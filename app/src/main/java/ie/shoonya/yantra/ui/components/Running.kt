@@ -3,7 +3,9 @@ package ie.shoonya.yantra.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
@@ -12,20 +14,25 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableFloatStateOf
@@ -62,11 +69,18 @@ import ie.shoonya.yantra.domain.sessionClock
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.theme.YantraMotion
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.absoluteValue
+import ie.shoonya.yantra.ui.theme.YantraType
+import androidx.compose.ui.draw.drawBehind
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.theme.YantraText
+import androidx.compose.foundation.layout.Arrangement
+import ie.shoonya.yantra.data.label.LabelPalette
 
 /**
  * The task you are on, for the few places that draw it.
@@ -141,7 +155,7 @@ fun ElapsedSlot(nodeId: String, modifier: Modifier = Modifier) {
     Text(
         elapsedLabel(elapsed),
         fontFamily = YantraMono,
-        fontSize = 11.5.sp,
+        fontSize = YantraType.caption,
         fontWeight = FontWeight.W700,
         color = y.accent,
         maxLines = 1,
@@ -212,6 +226,22 @@ fun NowPlayer(
     val density = LocalDensity.current
 
     /**
+     * The deck holds everything you have picked up.
+     *
+     * CALENDAR_UI.md §4 proposed ranks one and two only, on the grounds that rank three onwards is
+     * a list of claims you made and never cleared. That is true of the *list* and false of the
+     * *bar*: three tasks in progress and two on the deck means the third has no representation
+     * anywhere on the screen you are looking at, and a task you cannot see is a task you will not
+     * clear. Overruled deliberately — the count is the thing worth knowing, and the swipe is
+     * cheap.
+     *
+     * `RunningTask.stack` still ranks it: the timed card, then whatever is scheduled now, then
+     * everything else newest-first. That ordering is what makes a long deck usable — the front of
+     * it is always about this moment.
+     */
+    val dealt = stack
+
+    /**
      * Which task is showing, held **by id rather than by position**.
      *
      * The list re-sorts whenever a clock starts or stops — the timed task is dealt to the front —
@@ -222,8 +252,8 @@ fun NowPlayer(
      * fallback.
      */
     var selected by remember { mutableStateOf<String?>(null) }
-    val index = stack.indexOfFirst { it.nodeId == selected }.takeIf { it >= 0 } ?: 0
-    val current = stack[index]
+    val index = dealt.indexOfFirst { it.nodeId == selected }.takeIf { it >= 0 } ?: 0
+    val current = dealt[index]
     val live = current.hasSession
 
     // Live drag offset, read only inside graphicsLayer — a draw-phase read, so swiping the player
@@ -235,15 +265,69 @@ fun NowPlayer(
     val dragState = rememberDraggableState { delta ->
         dragX = (dragX + delta).coerceIn(-commit * 1.8f, commit * 1.8f)
     }
-    val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    // Full strength, for the eyebrow. Everything else on a running bar steps back.
+    val accentInk = y.accent
+    // The spine is the workspace, here and everywhere it appears. One device, one meaning.
+    //
+    // It carried the list before, which put two questions on one 3dp rule: on a widget row the same
+    // idiom meant "which repository" and here it meant "which list", and with five swatches there
+    // is no telling those apart. The workspace wins it because there are two or three of them and
+    // dozens of lists, and because it is the one fact with no room for its word on a widget row.
+    //
+    // **Nothing at all while only one workspace is open**, rather than a neutral rule.
+    //
+    // It drew in frame ink, which is what "no colour chosen" looks like on a list mark — and on a
+    // near-black bar frame ink is #B4B2A9, so the brightest thing on the player was a stripe with
+    // nothing to say. Neutral is not quiet here; it is just a different loud.
+    //
+    // It is also the rule the spine already rests on, followed one step further: a mark that always
+    // means the same thing means nothing, so when there is no repository to name there is no mark.
+    // The bar keeps its wash, its glyph and its eyebrow, all of which are saying something.
+    val spineInk = LabelPalette.byName(current.workspaceColour)
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+    // The list is a word in the eyebrow, wearing its own colour. A hue is a glance and a word is
+    // the fact; neither has to carry the other, which is what makes a repeated hue a coincidence
+    // rather than an ambiguity.
+    // Held back to 72%. A palette swatch is mixed to one lightness across every hue so no colour
+    // out-shouts another *at full strength* — which is right for a label you are meant to find, and
+    // too much for a line that is only telling you where you already are. The hue survives the
+    // knock-down; the shout does not.
+    val listInk = (
+        LabelPalette.byName(current.listColour)
+            ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+            ?: y.textMuted
+        ).copy(alpha = 0.72f)
+    // No shape of its own: it is a row inside the dock, which is what carries the rounded top.
+    // The wash still fills the row while a session runs, so running lights this part of the dock up
+    // rather than introducing a second surface on top of it.
 
     Row(
         modifier
             .fillMaxWidth()
             .onSizeChanged { barW = it.width }
-            .background(if (live) y.accent else y.band, shape)
+            // Running is a wash and a spine, not a flood — CALENDAR_UI.md §4.
+            //
+            // The bar used to fill solid with the accent, which made every word on it a reversed
+            // colour and the whole surface the loudest thing on the screen. CALENDAR_PLAN.md §16
+            // already made the opposite call for a coloured block: replace the spine, tint the
+            // wash, do not flood the fill. A bar is a block that happens to be at the bottom.
+            .background(if (live) y.accentFill else Color.Transparent)
+            // The spine is identity; the wash is state.
+            //
+            // It used to appear only while running, which made it a fourth way of saying something
+            // the wash, the glyph's ring and the eyebrow already said. Now it says the one thing
+            // this bar could not otherwise say: which repository the task you are on came from.
+            // The list is already a word in the eyebrow, in the list's own colour, so neither fact
+            // is read out of a hue alone.
+            //
+            // Always drawn, so the mark has exactly one meaning with no case to remember. With a
+            // single workspace open it is frame ink, which is what "nothing to tell apart" looks
+            // like everywhere else in the app.
+            //
+            // Inset, because the dock above it has rounded top corners and a block does not.
+            .then(if (spineInk == null) Modifier else Modifier.spine(spineInk, inset = 10.dp))
             .then(
-                if (stack.size < 2) Modifier else Modifier.draggable(
+                if (dealt.size < 2) Modifier else Modifier.draggable(
                     state = dragState,
                     orientation = Orientation.Horizontal,
                     onDragStopped = { velocity ->
@@ -260,8 +344,8 @@ fun NowPlayer(
                                 dragX, if (fwd) -out else out, initialVelocity = velocity,
                                 animationSpec = tween(130, easing = LinearOutSlowInEasing),
                             ) { v, _ -> dragX = v }
-                            val next = ((index + if (fwd) 1 else -1) % stack.size + stack.size) % stack.size
-                            selected = stack[next].nodeId
+                            val next = ((index + if (fwd) 1 else -1) % dealt.size + dealt.size) % dealt.size
+                            selected = dealt[next].nodeId
                             dragX = if (fwd) out else -out
                             animate(
                                 dragX, 0f,
@@ -279,52 +363,282 @@ fun NowPlayer(
             .padding(start = 18.dp, end = 10.dp, top = 11.dp, bottom = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // **The card moves; the frame does not.**
+        //
+        // This whole row used to travel with the drag, which took four things with it: the glyph,
+        // the title, the eyebrow and the deck rings. Two of those are not the card. The glyph is
+        // the app's mark for "a task is up" and belongs to the bar; the rings are a position
+        // indicator, and an indicator that slides away with the thing it is indicating has stopped
+        // indicating anything — no pager moves its own dots. Only the words travel now, which is
+        // also what makes the movement legible: one object crossing a fixed frame, rather than the
+        // whole bar sliding sideways inside itself.
         Row(
-            Modifier
-                .weight(1f)
-                .graphicsLayer {
-                    translationX = dragX
-                    alpha = 1f - (dragX.absoluteValue / (commit * 2.4f)).coerceIn(0f, 0.85f)
-                }
-                .clickable(onClick = { onOpen(current) }),
+            Modifier.weight(1f).clickable(onClick = { onOpen(current) }),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Neutral frame, accent ring — always, now.
+            //
+            // These used to switch to `onAccent` while running, which is the ink meant for text
+            // *on* solid coral. That was right while the bar flooded and wrong the moment it
+            // stopped: a light ink on a dark wash left the bhupura all but invisible, which is
+            // exactly what a reader reported. RunningGlyph's own doc already said what the tints
+            // are — the frame is neutral because structure is not a hue, the ring is the accent
+            // because being on something is your own effort — and with no flood there is nothing
+            // to make an exception for.
             RunningGlyph(
-                frameTint = if (live) y.onAccent else y.checkOutline,
-                ringTint = if (live) y.onAccent else y.accent,
+                frameTint = y.checkOutline,
+                ringTint = y.accent,
                 size = 20.dp,
             )
             Spacer(Modifier.width(11.dp))
+            // What travels: the words, and only the words. The glyph is the bar's mark and the
+            // deck rings are a position indicator, so both stay where they are while a card crosses
+            // between them.
+            val travels = Modifier.graphicsLayer {
+                translationX = dragX
+                alpha = 1f - (dragX.absoluteValue / (commit * 2.4f)).coerceIn(0f, 0.85f)
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     // One line in a bar: the markers have nothing to become here either.
                     inlinePlain(current.title).ifBlank { "Untitled" },
-                    fontFamily = YantraDisplay,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.W700,
-                    color = if (live) y.onAccent else y.textPrimary,
+                    // The row-title spec — CALENDAR_UI.md §4. It was the Display face at 13.5sp:
+                    // the smallest text in the app wearing its largest voice. A bar is a row.
+                    fontFamily = YantraText,
+                    fontSize = YantraType.row,
+                    fontWeight = FontWeight.W500,
+                    color = y.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = travels,
                 )
-                Text(
-                    buildString {
-                        append(current.elapsedSecs?.let { "RUNNING · ${elapsedLabel(it)}" } ?: "ON THE GO")
-                        if (stack.size > 1) append("  ·  ${index + 1}/${stack.size}")
-                    },
-                    fontFamily = YantraMono,
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.W700,
-                    letterSpacing = 1.2.sp,
-                    color = if (live) y.onAccent.copy(alpha = 0.78f) else y.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // The eyebrow: which list, then what is happening on it.
+                //
+                // The list leads, because it is the fact the bar could not otherwise give you — a
+                // title alone does not say whether "Draft the deck" is work or the side project,
+                // and the spine beside it answers a different question (the repository). It wears
+                // its list's colour so the same hue you see on Home's marks is on the bar.
+                //
+                // **The name is quiet and the state is not.** Space Mono ships two weights, so
+                // the list name went out at the same 12sp bold as the state word — four loud things
+                // at once (size, weight, uppercase tracking, a saturated hue) under a 15sp title
+                // that is none of them. It read as a second title. It is the bottom of the scale
+                // now, at the regular weight, tracked like MonoBreadcrumb and held to 72% ink —
+                // the app's quietest voice, which is the right one for a line that tells you where
+                // you already are rather than asking you to go anywhere.
+                //
+                // The state keeps the bold, deliberately: on one line the list is the standing fact
+                // and RUNNING · 3:45 is the news, and that is a hierarchy rather than an
+                // inconsistency.
+                //
+                // **Only what the line cannot say without a word.**
+                //
+                // It said "ON THE GO" when idle and "RUNNING · 3:45" when counting, and both were
+                // labels on something already said. The first went because a deck of five rings
+                // takes a third of this line and the glyph's ring and the ▶ key both report a task
+                // taken up and not counting. And once *no word* means "not running", the word
+                // RUNNING is redundant in the same way: a clock that is ticking, in the accent,
+                // beside a ⏸, is the state. The number is the news; RUNNING was a caption on it.
+                //
+                // IT IS TIME keeps its words, because it is the one state with no numeral to carry
+                // it: the hour has come and nothing is counting. The bar says so; the file says
+                // nothing, which is the whole arrangement — see RunningTask.stack.
+                val state = when {
+                    current.elapsedSecs != null -> elapsedLabel(current.elapsedSecs)
+                    current.scheduled -> "IT IS TIME"
+                    // Only when the name is missing — a task whose list could not be resolved would
+                    // otherwise have a blank eyebrow and look broken.
+                    else -> "ON THE GO".takeIf { current.listName.isNullOrBlank() }
+                }
+                // Capped, so a wide window does not fling the rings across it.
+                //
+                // The words take the whole line to keep the rings from sliding about as a list name
+                // changes length — which is right on a phone, where the whole line is 270dp. On a
+                // tablet the dock is a thousand points wide and the same rule put the indicator an
+                // arm's length from the state it qualifies, at the other end of the bar. A measure
+                // fixes both: the rings sit a readable distance from the words at every width, and
+                // still in the same place on every card.
+                Row(
+                    modifier = Modifier.widthIn(max = EYEBROW_MEASURE),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  // **Takes the whole line, so the rings cannot move.**
+                  //
+                  // It sized to its text before, which put the rings immediately after the list
+                  // name — and a list name is a different width on every card, so the indicator
+                  // slid left and right as you swiped. Fixed to the text is not fixed: the point of
+                  // holding the rings still is that the eye can stay on them, and it cannot if they
+                  // are somewhere new each time. Filling the row pins them to its end.
+                  Row(
+                      modifier = travels.then(Modifier.weight(1f)),
+                      verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    current.listName?.takeIf { it.isNotBlank() }?.let { list ->
+                        Text(
+                            list.uppercase(),
+                            fontFamily = YantraMono,
+                            // The bottom of the scale — the size the app gives dense data, which is
+                            // what this is. It sat one step up and still read as an announcement.
+                            fontSize = YantraType.dense,
+                            fontWeight = FontWeight.W400,
+                            letterSpacing = 1.sp,
+                            color = listInk,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // Yields first. The clock and the rings are fixed-width facts; a list
+                            // name is the only thing here that can be shortened and still be read.
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (state != null) {
+                            Text(
+                                "  ·  ",
+                                fontFamily = YantraMono,
+                                fontSize = YantraType.caption,
+                                color = y.textDim,
+                            )
+                        }
+                    }
+                    if (state != null) {
+                        Text(
+                            state,
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.caption,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = 1.2.sp,
+                            color = if (live) accentInk else y.textMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                  }
+                  // Still beside the eyebrow, where the spec put it — it just no longer travels
+                  // with the card it is counting.
+                  DeckRings(dealt = dealt, index = index)
+                }
             }
         }
         Spacer(Modifier.width(8.dp))
         TransportKey(live = live, onClick = { onToggleClock(current) })
     }
 }
+
+/**
+ * The deck counter — ICONS.md §6, CALENDAR_UI.md §4.
+ *
+ * One ring per card you can reach by swiping, which is what a position indicator is for. Three
+ * readings out of one shape: rest weight is on the go and not where you are, full weight is the
+ * card you are looking at, and [YantraMark.RingLive] in the accent is the one the clock is on.
+ * Everything past the deck is counted in the eyebrow instead — a ring for a card you cannot swipe
+ * to would be a position indicator pointing at nowhere.
+ *
+ * **Beside the eyebrow, not beside the transport key.** It was on the right at first, which reads
+ * fine at two rings and has nowhere to go at four: the key is fixed to the edge and the rings would
+ * have had to grow into the title. Here they grow into a line that is already short, and they sit
+ * with the state they qualify — "ON THE GO ○ ●" is one statement.
+ *
+ * The bindu was rejected for this. A row of dots with one filled is a gauge, and the bindu is the
+ * centre and never a gauge; it is also the done state of the task glyph, so a bare filled dot among
+ * rings would read as "finished" on the one card that is running.
+ *
+ * **The rings hold still and the mark slides between them.** They used to travel with the card on a
+ * drag and then change tint on arrival — so the indicator left the screen with the thing it was
+ * indicating, and the new state appeared rather than being arrived at. Now the row is fixed, a
+ * full-ink ring rides from position to position on the spatial spring, and every tint animates:
+ * taking a card up gains the accent over a beat instead of switching to it. Colour arriving slowly
+ * is the difference between a state you watched change and one you have to notice changed.
+ */
+@Composable
+private fun DeckRings(dealt: List<RunningTask.Now>, index: Int) {
+    if (dealt.size < 2) return
+    val y = Yantra.colors
+    val live = dealt.indexOfFirst { it.hasSession }
+    Spacer(Modifier.width(8.dp))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (dealt.size <= RINGS_MAX) {
+            // One ring's width plus the gap: what the mark travels to move one place.
+            val pitch = YantraIcons.Small + 4.dp
+            val slide by animateDpAsState(
+                targetValue = pitch * index,
+                animationSpec = YantraMotion.spatial(),
+                label = "deckSlide",
+            )
+            Box {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    dealt.forEach { card ->
+                        // A card that is running but not the one you are looking at still says so.
+                        val tint by animateColorAsState(
+                            targetValue = if (card.hasSession) y.accent
+                            // Lifted rather than thinned. ICONS.md §8 flags 40% as possibly under
+                            // the 3:1 hairline rule on OLED and says to raise the alpha rather than
+                            // thicken the stroke — a heavier rest ring would stop being the mark.
+                            else y.textPrimary.copy(alpha = 0.55f),
+                            animationSpec = YantraMotion.effects(),
+                            label = "ringTint",
+                        )
+                        YantraIcon(
+                            if (card.hasSession) YantraMark.RingLive else YantraMark.Ring,
+                            size = YantraIcons.Small,
+                            tint = tint,
+                            contentDescription = null,
+                        )
+                    }
+                }
+                // Where you are, riding over the row rather than being one of it. Full ink on top
+                // of a rest ring reads as the same mark picked out, which is what selection is.
+                val hereLive = dealt[index].hasSession
+                val markTint by animateColorAsState(
+                    targetValue = if (hereLive) y.accent else y.textPrimary,
+                    animationSpec = YantraMotion.effects(),
+                    label = "deckMark",
+                )
+                YantraIcon(
+                    if (hereLive) YantraMark.RingLive else YantraMark.Ring,
+                    size = YantraIcons.Small,
+                    tint = markTint,
+                    contentDescription = null,
+                    modifier = Modifier.offset(x = slide),
+                )
+            }
+        } else {
+            // Past the point where a row of rings can be read at a glance, one ring and a numeral
+            // — ICONS.md §6. A diagram you have to count is doing a table's job, and eight rings
+            // is counting.
+            YantraIcon(
+                if (live >= 0) YantraMark.RingLive else YantraMark.Ring,
+                size = YantraIcons.Small,
+                tint = if (live >= 0) y.accent else y.textPrimary,
+                contentDescription = null,
+            )
+            Text(
+                "${index + 1}/${dealt.size}",
+                fontFamily = YantraMono,
+                fontSize = YantraType.section,
+                fontWeight = FontWeight.W700,
+                color = y.textMuted,
+            )
+        }
+    }
+}
+
+/**
+ * How far the eyebrow runs before the deck rings sit down.
+ *
+ * Wider than the line ever is on a phone, so it changes nothing there; it exists for the window
+ * that is wider than a sentence needs to be.
+ */
+private val EYEBROW_MEASURE = 300.dp
+
+/**
+ * How many rings before the deck is counted instead of drawn.
+ *
+ * Five, which is where ICONS.md §6 puts it and which comfortably clears the four a reader asked to
+ * see before a number takes over. Below this you read the row; above it you would be counting, and
+ * counting is what the numeral is for.
+ */
+private const val RINGS_MAX = 5
 
 /**
  * The one control: play, or stop.
@@ -336,39 +650,74 @@ fun NowPlayer(
 @Composable
 private fun TransportKey(live: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
-    val tint = if (live) y.onAccent else y.accent
     Box(
         Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(if (live) y.onAccent.copy(alpha = 0.16f) else y.accentFill)
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = if (live) "Stop the clock" else "Start the clock" },
+            .background(y.accentFill)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(15.dp)) {
-            if (live) {
-                drawRoundRect(tint, cornerRadius = CornerRadius(size.minDimension * 0.16f))
-            } else {
-                val w = size.width
-                val h = size.height
-                // Nudged right so the triangle looks centred rather than measuring centred.
-                drawPath(
-                    Path().apply {
-                        moveTo(w * 0.12f, 0f)
-                        lineTo(w, h / 2f)
-                        lineTo(w * 0.12f, h)
-                        close()
-                    },
-                    tint,
-                )
-            }
-        }
+        // From the set — CALENDAR_UI.md §4.
+        //
+        // The comment that used to be here justified drawing the triangle and the square by hand:
+        // Material's versions arrive with their own padding and optical centre, which would not
+        // agree with a 20dp glyph beside them. True of Material, and no longer true of anything —
+        // once every mark is one 28-unit space at one stroke, "it will not sit right next to the
+        // others" is the argument *for* using the set.
+        //
+        // Both are filled, which is the second and last fill exception; see YantraIcons' header.
+        YantraIcon(
+            if (live) YantraMark.Stop else YantraMark.Play,
+            size = YantraIcons.Medium,
+            tint = y.accent,
+            contentDescription = if (live) "Stop the clock" else "Start the clock",
+        )
     }
 }
 
 /**
- * The bottom of a screen that can capture: the field, and under it the player when something is on
+ * The dock: one surface at the foot of a screen, holding whatever that screen puts there.
+ *
+ * The player used to be its own panel — its own ground, its own rounded top — stacked above the
+ * tab bar's or the capture field's. Two surfaces, one above the other, read as two objects that
+ * happen to be adjacent, and the player looked bolted on rather than part of the furniture.
+ *
+ * One ground, one rounded top, and the contents sit inside it: on Home the player above the three
+ * keys, on a list the player above the capture field. The screen's permanent bar and the thing that
+ * is running are then the same object, and the player arriving no longer introduces a new surface —
+ * it fills a row of one that was already there.
+ */
+/**
+ * The seam between two rows of the dock.
+ *
+ * One surface holding two things needs to say they are two things. Without it the player's words
+ * and the keys beneath them float on one ground with nothing between them, which is the opposite
+ * failure to the one the dock fixed: it read as two objects, and then as none.
+ *
+ * The app's hairline, so it is the same mark that ends a run on Home — a line is a boundary here
+ * too, just a horizontal one inside a surface rather than between rows of a list.
+ */
+@Composable
+fun NowDockSeam() {
+    HorizontalDivider(color = Yantra.colors.hairline, thickness = 1.dp)
+}
+
+@Composable
+fun NowDock(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val y = Yantra.colors
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = YantraRadius.sheet, topEnd = YantraRadius.sheet))
+            .background(y.band)
+            .navigationBarsPadding(),
+        content = content,
+    )
+}
+
+/**
+ * The bottom of a screen that can capture: the field, and above it the player when something is on
  * the go.
  *
  * **Capture is always open.** It used to hide behind a key whenever anything was running, which made
@@ -376,8 +725,15 @@ private fun TransportKey(live: Boolean, onClick: () -> Unit) {
  * the highest-frequency action in the app for no reason but that something else wanted the space.
  * Writing something down should never cost a mode.
  *
- * The player sits *below* the field, at the very edge — it is the outermost thing, the reflection of
- * the header at the other end of the sheet, and the field stays where the thumb already expects it.
+ * **The player sits directly above the field**, which is the same rule Home follows with its nav
+ * strip: the player is never the outermost thing on a screen that has a permanent bar, it slots in
+ * above it. One rule, so the bottom of the app does not reshuffle itself between screens.
+ *
+ * It was the other way round, on the argument that the field should stay where the thumb expects it
+ * — and did the opposite, because a player appearing *underneath* pushes the field up by its own
+ * height. The edge padding dropped from 22dp to 10dp to soften that, which is a way of admitting the
+ * move rather than a way of stopping it. Above, the field is pinned to the screen edge and never
+ * moves at all, whatever is or is not running.
  *
  * **Both stand down while the keyboard is up.** A bar over the line you are typing is worse than no
  * bar: what is running is a thing you can check in a moment, and what you are writing is a thing you
@@ -402,17 +758,19 @@ fun BottomBar(
     // A no-op once granted, and once denied: the launcher only fires when the permission is
     // actually missing, so pressing play repeatedly does not re-ask.
     val askNotifications = rememberNotificationPermissionRequest()
-    Column(modifier.fillMaxWidth()) {
-        // The field keeps its own breathing room at the screen edge, and gives most of it back when
-        // the player is underneath to catch it.
-        capture(if (shown.isEmpty()) 22.dp else 10.dp)
+    NowDock(modifier) {
         if (shown.isNotEmpty()) {
             NowPlayer(
                 stack = shown,
                 onOpen = onOpenNow,
                 onToggleClock = { now -> askNotifications(); onToggleClock(now) },
             )
+            NowDockSeam()
         }
+        // One number, not two. The field is the outermost thing now, so its breathing room at the
+        // screen edge is the same whether or not a player is above it — which is the whole point of
+        // moving it there.
+        capture(22.dp)
     }
 }
 
@@ -448,7 +806,7 @@ fun SwitchHereDialog(
                 Text(
                     "SWITCH HERE",
                     fontFamily = YantraMono,
-                    fontSize = 12.sp,
+                    fontSize = YantraType.section,
                     fontWeight = FontWeight.W700,
                     letterSpacing = 1.4.sp,
                     color = y.accent,

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One step back. A drawn mark rather than a typed chevron: a control's mark is a vector, so it
+  keeps its weight and its cap when the type around it does not.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M14.5,6 L9,12 L14.5,18" />
+</vector>

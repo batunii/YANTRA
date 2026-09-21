@@ -76,6 +76,7 @@ class Indexer(private val db: AppDatabase) {
         val labels = db.labelDao()
         val smart = db.smartListDao()
         val ink = db.inkDao()
+        val events = db.eventDao()
 
         // Scoped: one database holds every workspace, so an unscoped wipe here would erase the
         // other repos rather than refresh this one.
@@ -94,10 +95,22 @@ class Indexer(private val db: AppDatabase) {
         val nodesChanged = was?.nodes != index.nodes
         val valuesChanged = was?.values != index.values
         val labelsChanged = was?.labels != index.labels
-        val linksChanged = was?.nodeLabels != index.nodeLabels
+        // `node_label` and `event` are the two tables that hang off `node` with ON DELETE CASCADE,
+        // so clearing nodes takes their rows with it whether or not they changed — and the skip
+        // below then never writes them back. `defer_foreign_keys` postpones the *check*; it does
+        // not cancel the *action*, which is why the other dependents survive this and these two do
+        // not.
+        //
+        // The shape of the failure, since it took a log line on a phone to see: you tap somebody's
+        // meeting, the page opens with its header, you type one word, and the header goes. Typing
+        // changes nodes and nothing else, so the event rows were cascaded away and then skipped —
+        // and because `last` had already been told they were written, every rebuild afterwards
+        // agreed they were there. Gone until the process restarted.
+        val linksChanged = nodesChanged || was?.nodeLabels != index.nodeLabels
         val defsChanged = was?.defs != index.defs
         val smartChanged = was?.smartLists != index.smartLists
         val inkChanged = !sameInk(was?.ink, index.ink)
+        val eventsChanged = nodesChanged || was?.events != index.events
         val focusChanged = was?.focus != index.focus
 
         // Everything above points at node, so its rows can only be replaced once the dependents are
@@ -106,7 +119,7 @@ class Indexer(private val db: AppDatabase) {
         // constraint is deferred to the end of the transaction, by which point the same node ids are
         // back and it holds again.
         val leavingDependents = nodesChanged &&
-            !(valuesChanged && linksChanged && inkChanged && focusChanged)
+            !(valuesChanged && linksChanged && inkChanged && focusChanged && eventsChanged)
         if (leavingDependents) {
             db.openHelper.writableDatabase.execSQL("PRAGMA defer_foreign_keys = TRUE")
         }
@@ -116,6 +129,7 @@ class Indexer(private val db: AppDatabase) {
         if (valuesChanged) props.clearValues(workspaceId)
         if (smartChanged) smart.clearSmartLists(workspaceId)
         if (inkChanged) ink.clearStrokes(workspaceId)
+        if (eventsChanged) events.clearEvents(workspaceId)
         if (focusChanged) db.focusDao().clearSessions(workspaceId)
         if (nodesChanged) nodes.clearNodes(workspaceId)
 
@@ -133,6 +147,7 @@ class Indexer(private val db: AppDatabase) {
         if (linksChanged) labels.attachAll(index.nodeLabels)
         if (smartChanged) smart.insertAll(index.smartLists)
         if (inkChanged) ink.insertAll(index.ink)
+        if (eventsChanged) events.insertAll(index.events)
         if (focusChanged) db.focusDao().insertAll(index.focus)
 
         last[workspaceId] = index

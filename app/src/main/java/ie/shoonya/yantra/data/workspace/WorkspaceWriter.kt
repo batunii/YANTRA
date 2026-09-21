@@ -2,6 +2,7 @@ package ie.shoonya.yantra.data.workspace
 
 import ie.shoonya.yantra.data.db.AppDatabase
 import ie.shoonya.yantra.data.db.NodeType
+import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.Block
 import ie.shoonya.yantra.data.format.Bullet
 import ie.shoonya.yantra.data.format.Heading
@@ -270,6 +271,37 @@ class WorkspaceWriter(
         if (id.isNotEmpty()) id else PageMapper.blockId(pageId, blocks.indexOf(block))
     }
 
+    /**
+     * Adds an event to [pageId], minting it an id.
+     *
+     * Separate from [addBlock] because an event cannot be built from a string: it has a span, and
+     * [blockOf] has nothing to make one out of. The id is minted rather than positional for the same
+     * reason a task's is — an override names its series by id, a reminder is armed against it, and a
+     * positional id changes the moment a line is inserted above.
+     */
+    suspend fun addEvent(pageId: String, event: EventRef, afterId: String? = null): String =
+        mutex.withLock {
+            val id = event.id.ifEmpty { newId() }
+            ensurePage(pageId)
+            val page = loadPage(pageId) ?: return@withLock ""
+            val block = event.copy(id = id, raw = null)
+            val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
+            val blocks = page.blocks.toMutableList()
+            if (afterId != null && at >= 0) blocks.add(at + 1, block) else blocks += block
+
+            store.writePage(page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device))
+            refreshIndex(Change.STRUCTURAL)
+            onChange(Change.STRUCTURAL)
+            id
+        }
+
+    /** [transform] applied only if the block is an event; other kinds are left alone. */
+    suspend fun editEvent(
+        nodeId: String,
+        change: Change = Change.EDIT,
+        transform: (EventRef) -> EventRef,
+    ) = editBlock(nodeId, change) { if (it is EventRef) transform(it) else it }
+
     /** Applies [transform] to whichever block on whichever page carries [nodeId]. */
     suspend fun editBlock(
         nodeId: String,
@@ -361,6 +393,52 @@ class WorkspaceWriter(
     }
 
     /** Re-homes a page: its own frontmatter moves, and so does the line that points at it. */
+    /**
+     * Takes a line off its page and hands it back — CALENDAR_PLAN.md §28.
+     *
+     * Half of [reparent], separated because a move to another workspace cannot use the whole of it:
+     * the destination page lives in a different store, and one writer only has the one. The node's
+     * own files are deliberately left where they are — the caller copies them across first and
+     * removes them afterwards, so a failure in the middle leaves two copies rather than none.
+     */
+    suspend fun takeLine(nodeId: String): Block? = mutex.withLock {
+        val home = homePageOf(nodeId) ?: return@withLock null
+        val page = loadPage(home) ?: return@withLock null
+        val line = page.blocks.firstOrNull { blockIdOf(it, page.id, page.blocks) == nodeId }
+            ?: return@withLock null
+        store.writePage(
+            page.copy(
+                blocks = page.blocks.filterNot { blockIdOf(it, page.id, page.blocks) == nodeId },
+                modifiedAt = Instant.ofEpochMilli(now()), device = device,
+            )
+        )
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+        line
+    }
+
+    /** Puts a line at the end of a page, and points the page it owns at its new home. */
+    suspend fun putLine(block: Block, parentId: String, nodeId: String) = mutex.withLock {
+        ensurePage(parentId)
+        loadPage(parentId)?.let { p ->
+            store.writePage(
+                p.copy(blocks = p.blocks + block, modifiedAt = Instant.ofEpochMilli(now()), device = device)
+            )
+        }
+        loadPage(nodeId)?.let {
+            store.writePage(it.copy(parent = parentId, modifiedAt = Instant.ofEpochMilli(now()), device = device))
+        }
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+    }
+
+    /** Removes a node's own files, after its line has been taken somewhere else. */
+    suspend fun dropFiles(nodeId: String) = mutex.withLock {
+        store.deletePage(nodeId)
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+    }
+
     suspend fun reparent(nodeId: String, newParent: String?) = mutex.withLock {
         guard()
         val old = homePageOf(nodeId)
@@ -447,6 +525,7 @@ class WorkspaceWriter(
                 is Numbered -> b.text
                 is Prose -> b.text
                 is ImageRef -> b.uri
+                is EventRef -> b.title
                 is InkRef -> ""
             }
             // A task that already has an identity keeps it: converting a task to a task is a no-op,
@@ -466,6 +545,7 @@ class WorkspaceWriter(
         is Prose -> b.copy(indent = indent)
         is InkRef -> b.copy(indent = indent)
         is ImageRef -> b.copy(indent = indent)
+        is EventRef -> b.copy(indent = indent)
     }
 
     /**
@@ -505,6 +585,48 @@ class WorkspaceWriter(
         // and that list is drawn from the index.
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
+    }
+
+    /**
+     * Removes a label from the workspace, and the tag from every line carrying it.
+     *
+     * **Both halves, or it comes back.** A label has two homes: `meta/labels.json`, which is where
+     * one created from the picker is written, and the `#tag` on each line that uses it, from which
+     * the reconciler derives any label the registry does not already know. Forgetting the registry
+     * leaves a label nothing uses; forgetting the lines leaves a label that is re-derived on the
+     * very next reindex and appears to have survived being deleted.
+     *
+     * Returns how many lines were changed, so the caller can say what it did rather than guess.
+     *
+     * Structural: a chip vanishing from tasks on screen is exactly the kind of change a deferred
+     * reindex would leave half-applied and looking broken.
+     */
+    suspend fun deleteLabel(name: String): Int = mutex.withLock {
+        val matches = { it: String -> it.equals(name, ignoreCase = true) }
+        store.writeLabels(store.readLabels().filterNot { matches(it.name) })
+
+        var stripped = 0
+        store.readPages().forEach { page ->
+            var touched = false
+            val blocks = page.blocks.map { block ->
+                if (block !is TaskRef || block.labels.none(matches)) block
+                else {
+                    touched = true
+                    stripped++
+                    // `raw = null` so the line is written from the block rather than from the bytes
+                    // it was read as — those bytes still hold the tag being removed.
+                    block.copy(labels = block.labels.filterNot(matches), raw = null)
+                }
+            }
+            if (touched) {
+                store.writePage(
+                    page.copy(blocks = blocks, modifiedAt = Instant.ofEpochMilli(now()), device = device)
+                )
+            }
+        }
+        refreshIndex(Change.STRUCTURAL)
+        onChange(Change.STRUCTURAL)
+        stripped
     }
 
     /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
@@ -710,9 +832,17 @@ class WorkspaceWriter(
         else -> Prose(text, indent)
     }
 
+    /**
+     * The id a block is known by, and it has to agree with [PageMapper.toRows] exactly.
+     *
+     * An event carries its own `^id` there, so it has to carry it here too — otherwise the index
+     * files an event under `s1` while every edit looks for it at `page~3`, and nothing that goes
+     * through [editBlock] ever finds one.
+     */
     private fun blockIdOf(b: Block, pageId: String, all: List<Block>, index: Int = -1): String =
         when (b) {
             is TaskRef -> b.id.ifEmpty { PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b)) }
+            is EventRef -> b.id.ifEmpty { PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b)) }
             is InkRef -> b.id
             else -> PageMapper.blockId(pageId, if (index >= 0) index else all.indexOf(b))
         }

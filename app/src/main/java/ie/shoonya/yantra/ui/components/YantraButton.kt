@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraText
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * How loudly a button speaks. Three, because the app already spoke in three.
@@ -55,7 +57,15 @@ fun YantraButton(
     tone: ButtonTone = ButtonTone.Solid,
     enabled: Boolean = true,
     busy: Boolean = false,
-    icon: ImageVector? = null,
+    /**
+     * The mark — ICONS.md §1.
+     *
+     * There is no ImageVector alternative. Every mark in the app is one of [YantraMark], drawn by
+     * [YantraIcon] in one 28-unit space at one stroke, and the way that is *kept* true is that this
+     * is the only thing a caller can pass. A convention that a linter enforces is a convention; a
+     * type the compiler enforces is a fact.
+     */
+    mark: YantraMark? = null,
 ) {
     val y = Yantra.colors
     val shape = RoundedCornerShape(RADIUS)
@@ -91,13 +101,14 @@ fun YantraButton(
         if (busy) {
             CircularProgressIndicator(modifier = Modifier.size(17.dp), color = ink, strokeWidth = 2.dp)
         } else {
-            if (icon != null) Icon(icon, null, tint = ink, modifier = Modifier.size(17.dp))
+            // 16dp, not 17: §2's Small. One of the nine sizes that were in use.
+            if (mark != null) YantraIcon(mark, size = YantraIcons.Small, tint = ink)
             Text(
                 label,
                 color = ink,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W700,
-                fontSize = 15.sp,
+                fontSize = YantraType.row,
                 maxLines = 1,
             )
         }

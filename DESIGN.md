@@ -173,6 +173,52 @@ A label with no chosen colour gets one **derived from its name**, not assigned i
 tag is the same colour on every device and after a reinstall, and a handful of new labels come out
 different colours instead of all landing on the first swatch.
 
+### 4.7 Three things wear a colour, and each has one place to wear it
+
+> `LabelPalette.kt` seeds all three · `AppContainer.workspaceColours()` is the only resolver for a
+> workspace · `Modifier.spine` is the mark
+
+Labels, lists and workspaces all draw from the five swatches above, and all three seed from the same
+hash of their own name. That is not a redundancy to remove — it is one palette doing one job three
+times — but it does mean **five swatches have to answer three questions**, and a hue alone cannot.
+Teal is a label, a list and a repository all at once.
+
+So the questions were separated by **place**, never by hue, and one law holds the whole thing up:
+
+> **A colour is never more than a glance from its name.**
+
+| surface | spine (the edge) | fill / mark | word |
+|---|---|---|---|
+| Home row | — | the **list**, on its mark | the **workspace**, under the title |
+| Player | the **workspace** | — | the **list**, in the eyebrow |
+| Widget row | the **workspace** | — | the **list**, on the meta line |
+| Calendar block | the **workspace** | its own `col:`, or a sitting's task's **list** | — |
+| Event line on a page | the **workspace** | its own `col:`, as a wash | — |
+| Label | — | — | always `#name`, in its hue |
+
+Read it as one sentence: **the edge is the repository, the fill is the thing, the word is the fact.**
+A label never needs a place in that table because a label is *always* written out — `#urgent` is its
+own name — which is why labels were never the crowded part of this.
+
+Every workspace hue is gated on **more than one workspace being open**. With one there is nothing to
+tell apart, and a stripe that always means the same thing is decoration; the spine falls back to
+frame ink, or to the accent where it is saying "this is live".
+
+Two designs were considered and rejected by name:
+
+- **Drop list colours.** It would leave one colour system and no ambiguity. Rejected because the
+  list mark on Home is the only colour on that screen that comes from the user's own data, and the
+  screen went grey without it — and because the player then had no way to answer "which list is
+  this?" at a glance.
+- **Let lists inherit their workspace's hue.** Rejected on a fact rather than a principle: a list
+  always has a colour of its own, seeded from its name, so the inherited case never arises. An
+  inheritance rule that never fires is a rule to remember for nothing.
+
+The workspace won the spine over the list on two counts: there are two or three repositories and
+dozens of lists, so the spine is a coarse mark asked a coarse question; and the workspace is the one
+fact with **nowhere else to go** — a widget row is two lines of text with no spare word, and an hour
+on a day has less. A list has a word on every surface it appears on.
+
 ---
 
 ## 5. Type — three voices
@@ -227,10 +273,22 @@ already is.
 the list it came from. It ellipsises from the right, so the list goes first — it is the least urgent
 thing on the line and one tap away on the task itself.
 
-**What a row does not carry.** Assignee, session count and the workspace are all real facts, and
-none of them changes what you do next in a day list. They were crowding out the tags, which do. The
-rule is the one every list app converges on: a row carries what the next decision needs — what the
-task is, and when it is due — and the rest lives one tap away.
+**What a row does not carry, and what changed.** Session count and the workspace stay off the row:
+the first changes nothing you do next, and the second is a hue at the edge with nowhere else to go.
+**The assignee came back, conditionally.** The sentence this replaces was written for Today, where
+every task is yours and the name would be the same word on every row — and it was wrong on a list
+page in a shared repository, where a task assigned to somebody else showed nothing whatsoever.
+
+So a row now asks the view. A field earns its place only when the view has not already implied it,
+and the view is a `Filter`, so the ranking is a walk of that rule rather than a recipe
+(`data/filter/Salience.kt`, `ui/components/RowContext.kt`). Your own name stays silent; somebody
+else's does not. A tag the rule pins stops printing on every row; a tag the rule branched on leads
+the line, by position alone. On Today a task that is due today leaves its date slot empty, because
+"due today" on a row in Today is a sentence that ends where it began.
+
+Three things the engine may never do, and cannot: print the workspace as a word (it resolves to
+nothing, structurally); print the word *unassigned* (`@?`, and only where the view's question **is**
+who has this); or reserve room for a value that is absent.
 
 **The workspace is a hue, not a word.** Written on every row it is the same word five times, taking
 the space the tags needed. Grouping by it is the textbook fix and it costs too much here: a view like

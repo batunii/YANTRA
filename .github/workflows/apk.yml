@@ -94,13 +94,33 @@ jobs:
         run: |
           if [ "${{ steps.key.outputs.signed }}" = "true" ]; then
             ./gradlew :app:assembleRelease --no-daemon --stacktrace
-            echo "path=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+            # The release variant is split per architecture, so there is no single
+            # `app-release.apk` any more. arm64 is the one to publish: every Android phone sold for
+            # years is arm64, and the other two exist for 32-bit hardware and for emulators.
+            echo "path=app/build/outputs/apk/release/app-arm64-v8a-release.apk" >> "$GITHUB_OUTPUT"
             echo "kind=release" >> "$GITHUB_OUTPUT"
           else
             ./gradlew :app:assembleDebug --no-daemon --stacktrace
-            echo "path=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+            # Split by architecture like the release variant, so there is no `app-debug.apk`
+            # either. This path had been left pointing at the old single-APK name, which would
+            # have failed a fork's pull request at the upload step with "no files found" — the
+            # one build that exists purely to tell a contributor their change compiles.
+            echo "path=app/build/outputs/apk/debug/app-arm64-v8a-debug.apk" >> "$GITHUB_OUTPUT"
             echo "kind=debug" >> "$GITHUB_OUTPUT"
           fi
+
+      # A tag build has one job: produce the thing people install. Falling back to an unsigned,
+      # unminified debug APK is right for a fork's pull request and wrong here — it published an
+      # 80 MB debug build as v0.4.0, which is nine times the size of the real one and the one
+      # configuration nobody had run. A missing key on a tag is a misconfigured repository, and the
+      # build should say so rather than quietly ship the wrong artifact.
+      - name: A tag must produce a signed release build
+        if: github.ref_type == 'tag' && steps.apk.outputs.kind != 'release'
+        run: |
+          echo "::error::Tag ${GITHUB_REF_NAME} built the debug variant: the signing secrets are" \
+               "not set on this repository. Set KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and" \
+               "KEY_PASSWORD, then re-push the tag."
+          exit 1
 
       # The key does not outlive the job that needed it. The runner is ephemeral, but a workspace
       # that still holds a signing key while later steps run arbitrary Gradle plugins is a wider
@@ -138,8 +158,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp "${{ steps.apk.outputs.path }}" \
-             "yantra-$GITHUB_REF_NAME-${{ steps.apk.outputs.kind }}.apk"
+             "yantra-$GITHUB_REF_NAME-arm64.apk"
+          # The 32-bit build too, for anything old enough to need it. Named by architecture rather
+          # than left as `app-armeabi-v7a-release.apk`, so whoever finds the file later can tell
+          # which one they have without unzipping it.
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk \
+             "yantra-$GITHUB_REF_NAME-armeabi-v7a.apk" || true
+          # A tag with a hyphen in it — v0.4.2-rc1 — is a build to try, not a release to
+          # install. Marking it says so on the releases page, keeps it off "Latest", and stops it
+          # being the file somebody lands on when they go looking for the current version.
+          case "$GITHUB_REF_NAME" in
+            *-*) pre=--prerelease ;;
+            *)   pre= ;;
+          esac
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            "yantra-$GITHUB_REF_NAME-${{ steps.apk.outputs.kind }}.apk"
+            $pre \
+            "yantra-$GITHUB_REF_NAME-arm64.apk" \
+            "yantra-$GITHUB_REF_NAME-armeabi-v7a.apk"

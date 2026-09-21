@@ -26,6 +26,35 @@ class RepoRefTest {
             "git@github.com:batunii/YANTRA",
             "batunii/YANTRA",                             // typed from memory
             "  batunii/YANTRA  ",                         // pasted with whitespace
+            // What the address bar actually holds on the repository's own page. github.com adds
+            // this, so it is not an unusual paste — it is the ordinary one.
+            "https://github.com/batunii/YANTRA?tab=readme-ov-file",
+            "https://github.com/batunii/YANTRA#readme",
+        ).forEach { assertEquals("failed on: $it", expected, ref(it)) }
+    }
+
+    /**
+     * A link from anywhere inside the repository names that repository.
+     *
+     * This used to be refused, on the reasoning that truncating an issue link would silently link
+     * something nobody asked for. But `/batunii/YANTRA/issues/4` cannot mean any repository other
+     * than `batunii/YANTRA` — there is no ambiguity to protect against, and the refusal simply made
+     * linking fail for anyone who copied the address while looking at the thing they wanted to
+     * link, which is where you are when you decide to link it.
+     *
+     * What protects intent is showing the `owner/name` this resolved to before acting on it, which
+     * the screen now does.
+     */
+    @Test
+    fun `a link from inside the repository still names the repository`() {
+        val expected = RepoRef("batunii", "YANTRA")
+        listOf(
+            "https://github.com/batunii/YANTRA/issues/4",
+            "https://github.com/batunii/YANTRA/pull/11",
+            "https://github.com/batunii/YANTRA/tree/main/app",
+            "https://github.com/batunii/YANTRA/blob/main/README.md#L10",
+            "https://github.com/batunii/YANTRA/releases/tag/v0.4.1",
+            "https://github.com/batunii/YANTRA/settings/access",
         ).forEach { assertEquals("failed on: $it", expected, ref(it)) }
     }
 
@@ -35,16 +64,8 @@ class RepoRefTest {
             "",
             "YANTRA",                                     // no owner
             "https://github.com/batunii",                 // a user, not a repo
-            "https://github.com/batunii/YANTRA/issues/4",  // a page inside the repo
             "not a url at all",
         ).forEach { assertNull("should not have parsed: $it", ref(it)) }
-    }
-
-    @Test
-    fun `a deep link is refused rather than truncated to its repo`() {
-        // Tempting to take the first two path segments, but then a pasted issue link would silently
-        // link the workspace and the user would never know which of the two they had asked for.
-        assertNull(ref("https://github.com/batunii/YANTRA/tree/main/app"))
     }
 
     @Test

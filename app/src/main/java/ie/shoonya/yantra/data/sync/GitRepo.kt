@@ -124,8 +124,15 @@ open class GitRepo(private val dir: File, private val branch: String) {
         val lock = File(File(dir, ".git"), "index.lock")
         if (!lock.exists()) return null
         val age = now - lock.lastModified()
-        if (age < staleAfterMs) return null
-        return if (lock.delete()) "cleared a stale git lock left by an interrupted write" else null
+        // Too young to be sure it is abandoned. Saying so is the point: the pass below will fail on
+        // this lock, and without a word here the failure looks like a git error nobody can place.
+        // With one, the report already knows to tell the reader to wait rather than to retry.
+        if (age < staleAfterMs) return "a write is still in progress — this clears itself within a minute"
+        // A delete that fails used to return null, which is the same answer as "there was no lock":
+        // the pass carried on into a failure that was already certain, and the one fact that
+        // explained it was thrown away.
+        return if (lock.delete()) "cleared a stale git lock left by an interrupted write"
+        else "a git lock could not be removed — this clears itself, try again in a minute"
     }
 
     fun continueRebase(git: Git): RebaseCommand.Operation? =

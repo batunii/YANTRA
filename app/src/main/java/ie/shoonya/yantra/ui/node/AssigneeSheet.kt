@@ -12,11 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PersonOff
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.people.Person
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Everything a screen needs in order to offer people, in one value.
@@ -132,7 +130,7 @@ fun AssigneeSheet(
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else if (onRefresh != null) {
                     TextButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        YantraIcon(YantraMark.Refresh, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
                         Text("Collaborators")
                     }
@@ -154,7 +152,7 @@ fun AssigneeSheet(
             // dismiss; and a roster that *was* fetched needs saying too, or a repository with one
             // collaborator looks exactly like a request that never happened.
             refreshNote?.let {
-                Text(it, fontSize = 12.sp, color = y.textMuted)
+                Text(it, fontSize = YantraType.section, color = y.textMuted)
             }
 
             Column {
@@ -177,14 +175,24 @@ fun AssigneeSheet(
                 }
                 if (matches.isEmpty() && !novel) {
                     Text(
-                        if (rosterKnown) {
-                            "Nobody who can push to this repo matches \u201C$query\u201D. " +
-                                "Add them on GitHub first, then press Collaborators."
-                        } else {
-                            "Nobody has been loaded for this repository yet — " +
-                                "press Collaborators, or type a login above."
+                        // Never name a control that is not on screen. `onRefresh` is null when
+                        // GitHub cannot be asked here at all — and it was also null, for a while,
+                        // when this sheet was composed outside the provider that supplies it, so
+                        // the one message a reader saw was the one telling them to press a button
+                        // the same composition had decided not to draw.
+                        when {
+                            rosterKnown && onRefresh != null ->
+                                "Nobody who can push to this repo matches \u201C$query\u201D. " +
+                                    "Add them on GitHub first, then press Collaborators."
+                            rosterKnown ->
+                                "Nobody who can push to this repo matches \u201C$query\u201D."
+                            onRefresh != null ->
+                                "Nobody has been loaded for this repository yet — " +
+                                    "press Collaborators, or type a login above."
+                            else ->
+                                "No roster for this repository — type a login above."
                         },
-                        fontSize = 13.sp,
+                        fontSize = YantraType.meta,
                         color = y.textMuted,
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
@@ -230,8 +238,7 @@ private fun PersonRow(
             Modifier.size(26.dp).background(tint.copy(alpha = 0.18f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (stranger) Icons.Default.PersonOff else Icons.Default.Person,
+            YantraIcon(if (stranger) YantraMark.PersonOff else YantraMark.Person,
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier.size(15.dp),
@@ -245,15 +252,15 @@ private fun PersonRow(
         )
         if (person.isYou) {
             Spacer(Modifier.width(8.dp))
-            Text("you", fontSize = 11.5.sp, color = y.textMuted)
+            Text("you", fontSize = YantraType.caption, color = y.textMuted)
         }
         if (stranger) {
             Spacer(Modifier.width(8.dp))
-            Text("can't see this repo", fontSize = 11.5.sp, color = y.warning)
+            Text("can't see this repo", fontSize = YantraType.caption, color = y.warning)
         }
         Spacer(Modifier.weight(1f))
         if (selected) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = y.accent, modifier = Modifier.size(18.dp))
+            YantraIcon(YantraMark.Check, tint = y.accent, contentDescription = null)
         }
     }
 }

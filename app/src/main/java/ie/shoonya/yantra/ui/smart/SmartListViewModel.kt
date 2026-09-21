@@ -37,6 +37,15 @@ import ie.shoonya.yantra.domain.TimingRequest
 /** Where a row lives, for the views that gather across lists and repositories. */
 data class Origin(
     val list: String?,
+    /**
+     * The list's own colour — the same one its mark wears on Home and its name wears on the player.
+     *
+     * It used to be the *workspace's* hue on this text, which made one list two colours: violet on
+     * Home, plum here, because Personal is plum. Two screens disagreeing about what colour a list
+     * is, is the whole failure the colour law exists to prevent. The repository moved to the spine,
+     * where it is on every other surface.
+     */
+    val listHue: Long?,
     val workspace: String?,
     /** The repository's own hue, or null when there is only one and it distinguishes nothing. */
     val workspaceHue: Long?,
@@ -59,17 +68,51 @@ class SmartListViewModel(
     /**
      * The workspaces the builder may offer as a rule's reach.
      *
-     * Registry order, filtered to what is actually open — a repo listed but not opened cannot be
-     * searched, and offering it would let someone write a rule that silently matches nothing.
+     * Registry order with the local workspace at the front, filtered to what is actually open — a
+     * repo listed but not opened cannot be searched, and offering it would let someone write a rule
+     * that silently matches nothing.
      */
-    val workspaces: List<WorkspaceEntry> =
-        container.registry.entries().filter { container.workspaces.isOpen(it.id) }
+    val workspaces: List<WorkspaceEntry> = container.openWorkspaces()
 
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val def: StateFlow<SmartListDefEntity?> =
         smartLists.observeDef(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * The view's own rule, decoded once.
+     *
+     * It was read only inside `describe()` before; the row grammar needs the same thing, and two
+     * decodes of one string is two chances to disagree about what this list is.
+     */
+    val filter: StateFlow<Filter?> =
+        def.map { d ->
+            d?.let {
+                runCatching { FilterJson.decodeFromString(Filter.serializer(), it.filterJson) }.getOrNull()
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * What a row in this view may say — see [ie.shoonya.yantra.ui.components.LocalRowContext].
+     *
+     * `hereList` has no counterpart here on purpose: a smart list is not a list, and its rows come
+     * from many of them, so where a row lives is news rather than the page it is on.
+     */
+    val rowContext: StateFlow<ie.shoonya.yantra.ui.components.RowContext> =
+        filter.map { f -> rowContextFor(f) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), rowContextFor(null))
+
+    private fun rowContextFor(f: Filter?) = ie.shoonya.yantra.ui.components.RowContext(
+        grammar = ie.shoonya.yantra.data.filter.Salience.grammar(
+            ie.shoonya.yantra.data.filter.ViewContext(f, singleWorkspace = workspaces.size <= 1)
+        ),
+        expected = ie.shoonya.yantra.ui.components.Expected(
+            logins = workspaces.associate { it.id to container.credentials.login(it.id) } +
+                (ie.shoonya.yantra.data.sync.Credentials.ACCOUNT to
+                    container.credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)),
+        ),
+    )
 
     /**
      * Workspaces this view asks about that are not on this device, by name.
@@ -81,7 +124,7 @@ class SmartListViewModel(
     val absentWorkspaces: StateFlow<List<String>> =
         def.map { d ->
             if (d == null) emptyList() else {
-                val names = container.registry.entries().associate { it.id to it.name }
+                val names = container.openWorkspaces().associate { it.id to it.name }
                 smartLists.absentWorkspaces(d).map { names[it] ?: "an unknown workspace" }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -117,27 +160,32 @@ class SmartListViewModel(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val origins: StateFlow<Map<String, Origin>> =
         tasks.map { rows ->
-            val open = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
-            val names = open.associate { it.id to it.name }
+            val names = container.openWorkspaces().associate { it.id to it.name }
             // The workspace as a hue rather than a word.
             //
-            // Grouping by it was the textbook answer and it costs too much here: this view is
-            // ordered by what is most pressing, and cutting it into per-repository runs puts a
-            // high-priority task in one below a quiet one in another. The ordering is the point of
-            // the view. So the workspace rides on the list name the row already prints — one piece
-            // of text carrying two facts and taking the width of one, which is what Reminders does
-            // with a list's colour.
+            // **Not grouped, and that stays.** Grouping by repository was the textbook answer and
+            // it costs too much here: this view is ordered by what is most pressing, and cutting it
+            // into per-repository runs puts a high-priority task in one below a quiet one in
+            // another. The ordering is the point of the view — which is exactly why an aggregated
+            // view carries its provenance *per row* instead, the way All Inboxes does.
             //
-            // Null when only one repository is open: a colour that always means the same thing
-            // means nothing, and the list name is better off neutral.
-            val hue = if (open.size < 2) null else open.associate { it.id to LabelPalette.defaultFor(it.name) }
+            // The repository is the **spine** on that row, as it is everywhere else in the app, and
+            // the list keeps its own colour on its own name. It used to be the other way round: the
+            // workspace's hue was painted onto the list's name, so one list came out violet on Home
+            // and plum here. One fact, one place, and never a hue doing two jobs.
+            //
+            // Both are null when only one repository is open: a colour that always means the same
+            // thing means nothing.
+            val hue = container.workspaceColours().mapNotNull { (id, name) ->
+                LabelPalette.byName(name)?.let { id to it.light }
+            }.toMap()
             rows.associate { task ->
+                val parent = task.parentId?.let { nodes.byId(it) }
                 task.id to Origin(
-                    list = task.parentId?.let { nodes.byId(it) }
-                        ?.let { Links.plain(it.title.orEmpty()) }
-                        ?.takeIf { it.isNotBlank() },
+                    list = parent?.let { Links.plain(it.title.orEmpty()) }?.takeIf { it.isNotBlank() },
+                    listHue = LabelPalette.byName(parent?.color)?.light,
                     workspace = names[task.workspaceId],
-                    workspaceHue = hue?.get(task.workspaceId),
+                    workspaceHue = hue[task.workspaceId],
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
@@ -340,9 +388,9 @@ class SmartListViewModel(
         if (d == null) return ""
         val defById = defs.associateBy { it.id }
         val labelById = labels.associateBy { it.id }
-        // Named from the registry, not the index: a rule may name a workspace this device has since
-        // forgotten, and "from 93c907a5-…" is worse than nothing on a one-line pill.
-        val wsById = container.registry.entries().associate { it.id to it.name }
+        // Named from the workspace list, not the index: a rule may name a workspace this device
+        // has since forgotten, and "from 93c907a5-…" is worse than nothing on a one-line pill.
+        val wsById = container.openWorkspaces().associate { it.id to it.name }
         val parts = mutableListOf<String>()
         val filter = runCatching { FilterJson.decodeFromString(Filter.serializer(), d.filterJson) }.getOrNull()
         collectParts(filter, defById, labelById, wsById, parts)

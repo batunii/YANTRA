@@ -90,7 +90,17 @@ class WorkspaceStore(
 ) {
 
     companion object {
-        /** The newest workspace format this build reads and writes. See [Manifest]. */
+        /**
+         * The newest workspace format this build reads and writes. See [Manifest].
+         *
+         * 2 since ink coordinates became document units ([ie.shoonya.yantra.data.ink.PAGE_WIDTH_DU])
+         * and strokes moved into Yantra's own envelope ([ie.shoonya.yantra.data.ink.StrokeEnvelope]).
+         *
+         * The bump is deliberately coarse — it makes an older build read-only for the whole
+         * workspace, not just for its ink — because the format version is the only per-workspace
+         * marker there is, and a build that would write pixel ink cannot be trusted with the rest of
+         * a workspace it does not fully understand either.
+         */
         const val FORMAT_VERSION = 2
 
         /** The manifest's path inside the workspace, as git names it. */
@@ -217,8 +227,72 @@ class WorkspaceStore(
         manifestFile.takeIf { it.exists() }
             ?.let { runCatching { FilterJson.decodeFromString(Manifest.serializer(), it.readText()) }.getOrNull() }
 
-    fun writeManifest(m: Manifest) =
+    /**
+     * What version of the format this workspace on disk is written in.
+     *
+     * An unreadable or absent manifest reads as the current version rather than as version zero: a
+     * workspace we cannot identify is not a workspace from the future, and treating it as one would
+     * make an unrelated parse failure look like "your app is too old".
+     */
+    val formatVersion: Int get() = cachedManifest()?.formatVersion ?: FORMAT_VERSION
+
+    /**
+     * The manifest, parsed at most once per change to it.
+     *
+     * [isAhead] is consulted on every write, and this class already caches page and ink parses
+     * because a rebuild that re-read them was measured in tens of milliseconds per keystroke. A
+     * gate that re-read and re-parsed a JSON file on that same path would have quietly put some of
+     * that back.
+     */
+    private fun cachedManifest(): Manifest? {
+        val f = manifestFile
+        if (!f.exists()) {
+            manifestCache = null
+            return null
+        }
+        val stamp = Stamp(f.lastModified(), f.length())
+        manifestCache?.takeIf { it.stamp == stamp }?.let { return it.value }
+        val parsed = readManifest() ?: return null
+        manifestCache = Cached(stamp, parsed)
+        return parsed
+    }
+
+    private var manifestCache: Cached<Manifest>? = null
+
+    /**
+     * True when the files were written by a newer build than this one, which makes them read-only.
+     *
+     * This is the gate [Manifest.formatVersion] was declared for and never given: the field existed,
+     * carried a comment saying it was "what makes an older app go read-only on a newer repo", and
+     * nothing read it. So nothing did.
+     *
+     * It matters most for ink. Coordinates changed meaning at format 2 — pixels became document
+     * units — and a build that still thinks they are pixels would not fail loudly on a du workspace,
+     * it would draw into it in the old unit, mixing both inside one drawing with nothing marking
+     * which stroke was which. That is the original bug, re-entered through the back door and worse
+     * for being invisible. A version number nobody checks does not prevent it; this does.
+     */
+    val isAhead: Boolean get() = formatVersion > FORMAT_VERSION
+
+    /**
+     * Stamps an older workspace up to the current format, and says whether it did.
+     *
+     * Called on open, beside [ensureBuiltInProperties], and for the same reason: the file is the
+     * truth and the truth has one more thing recorded in it now. This is also what arms the gate —
+     * an older build meeting a workspace this has touched sees a version above its own and declines
+     * to write, rather than writing the previous meaning of the format into it.
+     */
+    fun upgradeFormat(): Boolean {
+        val m = readManifest() ?: return false
+        if (m.formatVersion >= FORMAT_VERSION) return false
+        writeManifest(m.copy(formatVersion = FORMAT_VERSION))
+        return true
+    }
+
+    fun writeManifest(m: Manifest) {
         manifestFile.write(FilterJson.encodeToString(Manifest.serializer(), m))
+        manifestCache = null    // our own write, so evict rather than trust the timestamp
+    }
 
     /**
      * Whether this build may write here. A workspace whose manifest names a format this build does
@@ -296,6 +370,7 @@ class WorkspaceStore(
      * and there is no tombstone to carry.
      */
     fun deletePage(id: String, seen: MutableSet<String> = HashSet()) {
+        if (refuseWhenAhead("deletePage($id)")) return
         if (!seen.add(id)) return    // a malformed workspace can name a cycle; do not follow it twice
         runCatching { PageCodec.decode(pageFile(id).readText()) }.getOrNull()?.blocks?.forEach { b ->
             when (b) {
@@ -318,17 +393,77 @@ class WorkspaceStore(
         deleteSmartList(id)
     }
 
+    /**
+     * Every file the page tree under [id] owns — CALENDAR_PLAN.md §28.
+     *
+     * The same walk [deletePage] does, and deliberately so: what a move has to carry is exactly what
+     * a delete has to destroy, and the two going out of step is how a moved page comes to leave a
+     * drawing behind in the repo it left. A page, its ink sidecar, its pictures, and the same again
+     * for every page inside it — all three live in `pages/` named after the block, so a subtree is a
+     * list of files rather than a tree of directories.
+     *
+     * Missing files are simply absent from the list: most blocks own no ink and no picture, and a
+     * task that never held anything owns no page either.
+     */
+    fun subtreeFiles(id: String, seen: MutableSet<String> = HashSet()): List<File> {
+        if (!seen.add(id)) return emptyList()    // a malformed workspace can name a cycle
+        val found = ArrayList<File>()
+        listOf(pageFile(id), inkFile(id), imageFile(id)).filterTo(found) { it.exists() }
+        runCatching { PageCodec.decode(pageFile(id).readText()) }.getOrNull()?.blocks?.forEach { b ->
+            when (b) {
+                is ie.shoonya.yantra.data.format.InkRef -> {
+                    if (inkFile(b.id).exists()) found += inkFile(b.id)
+                }
+                is ie.shoonya.yantra.data.format.ImageRef ->
+                    if (imageFile(b.uri).exists()) found += imageFile(b.uri)
+                is ie.shoonya.yantra.data.format.TaskRef ->
+                    if (pageFile(b.id).exists()) found += subtreeFiles(b.id, seen)
+                is ie.shoonya.yantra.data.format.EventRef ->
+                    if (pageFile(b.id).exists()) found += subtreeFiles(b.id, seen)
+                else -> Unit
+            }
+        }
+        return found
+    }
+
+    /**
+     * Copies a page tree in from another workspace, keeping every id.
+     *
+     * Ids are unique across workspaces — they are random, not per-repo counters — so a move keeps
+     * them, and every link into the moved page goes on resolving. The caller removes the originals
+     * once this has returned; doing it the other way round is how a failed copy becomes a lost page.
+     */
+    fun adopt(from: WorkspaceStore, id: String) {
+        if (refuseWhenAhead("adopt($id)")) return
+        pagesDir.mkdirs()
+        from.subtreeFiles(id).forEach { src ->
+            val dest = File(pagesDir, src.name)
+            dest.writeBytesAtomically(src.readBytes())
+            pageCache.remove(dest.name)
+            inkCache.remove(dest.name)
+        }
+    }
+
     // ---- ink ----
 
     fun inkFile(id: String): File = File(pagesDir, "$id.ink")
 
     /**
-     * A block's strokes, cached the same way and for a sharper reason.
+     * A block's strokes, exactly as the file holds them.
      *
-     * Stroke blobs are the heaviest thing in a workspace and the least likely to change: a page of
-     * drawings is hundreds of kilobytes that a rebuild used to re-read and re-decode because someone
-     * renamed a task. The returned lists are the *same instances* while the file is unchanged, which
-     * is what lets [Indexer] notice that the ink table does not need rewriting at all.
+     * **Faithful on purpose.** Unplaceable strokes — v1 pixel coordinates, or anything from a format
+     * this build does not know — are dropped where they are *decoded*, by
+     * [ie.shoonya.yantra.data.ink.StrokeCodec.decodeOrNull], not here. Filtering at the read would
+     * make read-then-write lossy, and every write is a whole-file rewrite: a stroke this build
+     * cannot parse would be deleted from the repo by the next edit to a neighbouring stroke. The
+     * format-version gate is supposed to stop a newer file being written at all, and a second lock
+     * on the same door is worth having.
+     *
+     * Cached the same way as a page, and for a sharper reason. Stroke blobs are the heaviest thing
+     * in a workspace and the least likely to change: a page of drawings is hundreds of kilobytes
+     * that a rebuild used to re-read and re-decode because someone renamed a task. The returned
+     * lists are the *same instances* while the file is unchanged, which is what lets [Indexer]
+     * notice that the ink table does not need rewriting at all.
      */
     fun readInk(id: String): List<ByteArray> {
         val f = inkFile(id)
@@ -341,7 +476,26 @@ class WorkspaceStore(
             ?: decodeInk(f.readBytes()).also { inkCache[f.name] = Cached(stamp, it) }
     }
 
+    /**
+     * True when this workspace must not be changed, logged once at the point of refusal.
+     *
+     * For the operations that destroy or move data without writing any bytes, and so never reach
+     * [writeBytesAtomically]: deleting a page and its sidecars, archiving, restoring, dropping a
+     * smart list, appending to the focus log. A workspace from a newer build is one this build does
+     * not fully understand, and deleting someone's page out of a format we cannot read is worse than
+     * writing into it, not better.
+     */
+    private fun refuseWhenAhead(what: String): Boolean {
+        if (!isAhead) return false
+        android.util.Log.w(
+            "Yantra.workspace",
+            "refusing $what: workspace '$id' is format $formatVersion, this build reads $FORMAT_VERSION",
+        )
+        return true
+    }
+
     fun writeInk(id: String, strokes: List<ByteArray>) {
+        if (refuseWhenAhead("writeInk")) return   // an empty list deletes, and that is a change too
         if (strokes.isEmpty()) inkFile(id).delete() else inkFile(id).writeBytesAtomically(encodeInk(strokes))
         inkCache.remove(inkFile(id).name)
     }
@@ -374,6 +528,7 @@ class WorkspaceStore(
         archiveFile(pageId).takeIf { it.exists() }?.readLines()?.filter { it.isNotBlank() }.orEmpty()
 
     fun writeArchivedLines(pageId: String, lines: List<String>) {
+        if (refuseWhenAhead("writeArchivedLines($pageId)")) return
         if (lines.isEmpty()) {
             archiveFile(pageId).delete()
             return
@@ -384,6 +539,7 @@ class WorkspaceStore(
 
     /** Moves a page out of the working set, or back into it. */
     fun moveToArchive(pageId: String) {
+        if (refuseWhenAhead("moveToArchive($pageId)")) return
         val from = pageFile(pageId)
         if (!from.exists()) return
         File(archiveDir, PAGES).mkdirs()
@@ -393,6 +549,7 @@ class WorkspaceStore(
     }
 
     fun restoreFromArchive(pageId: String) {
+        if (refuseWhenAhead("restoreFromArchive($pageId)")) return
         val from = archivedPageFile(pageId)
         if (!from.exists()) return
         from.copyTo(pageFile(pageId), overwrite = true)
@@ -436,6 +593,9 @@ class WorkspaceStore(
     private val legacyFocusDir get() = File(root, LEGACY_FOCUS_DIR)
 
     fun appendFocus(line: String, month: String) {
+        // Appending is a write, and the migration it triggers moves files. Both are changes to a
+        // repository this build has declared it does not understand well enough to touch.
+        if (refuseWhenAhead("appendFocus")) return
         migrateLegacyFocusDir()
         val f = File(focusDir, "$month.log")
         f.parentFile?.mkdirs()
@@ -503,7 +663,10 @@ class WorkspaceStore(
         File(smartDir, "${def.nodeId}.json")
             .write(FilterJson.encodeToString(SmartListDef.serializer(), def))
 
-    fun deleteSmartList(nodeId: String) { File(smartDir, "$nodeId.json").delete() }
+    fun deleteSmartList(nodeId: String) {
+        if (refuseWhenAhead("deleteSmartList($nodeId)")) return
+        File(smartDir, "$nodeId.json").delete()
+    }
 
     // ---- io ----
 
@@ -522,6 +685,26 @@ class WorkspaceStore(
     private fun File.write(text: String) = writeBytesAtomically(text.toByteArray())
 
     private fun File.writeBytesAtomically(bytes: ByteArray) {
+        // The read-only gate for everything that puts bytes on disk — pages, ink, images, the
+        // manifest and the metadata alike. It is not the *only* gate: deleting and moving a file
+        // destroy data without writing any bytes and never come through here, so they carry their
+        // own [refuseWhenAhead] check. Claiming this was the single choke point, which an earlier
+        // version of this comment did, is what let archive and delete slip past it.
+        //
+        // A refusal is logged and dropped rather than thrown: this runs inside coroutines launched
+        // from view models, where an exception is a crash on the first keystroke, and crashing is a
+        // worse answer than declining. It is not a *good* answer — an edit disappears with only
+        // logcat to say why — and the fix is to stop the screen accepting the edit at all, which is
+        // a design question about what to show someone, exactly like the one [App.report] declines
+        // to answer on the spot. What is not tolerable is writing the wrong thing, and that this
+        // does prevent.
+        if (isAhead) {
+            android.util.Log.w(
+                "Yantra.workspace",
+                "refusing to write $name: workspace '$id' is format $formatVersion, this build reads $FORMAT_VERSION",
+            )
+            return
+        }
         parentFile?.mkdirs()
         val tmp = File(parentFile, "$name.tmp")
         tmp.writeBytes(bytes)

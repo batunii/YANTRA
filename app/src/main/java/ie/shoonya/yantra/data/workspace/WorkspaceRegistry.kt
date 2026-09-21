@@ -18,6 +18,23 @@ data class WorkspaceEntry(
     val id: String,
     val name: String,
     val slug: String? = null,
+    /**
+     * The colour this workspace wears, as a palette name.
+     *
+     * **Stored and editable, exactly as a label's is.** It used to be recomputed on every read from
+     * `LabelPalette.defaultFor(name)` — a hash of the name — and that was the whole of the case
+     * against it: a hue nobody picked, that collided with a colour somebody *had* picked about one
+     * time in five, and that a reader who could not tell Blue from Violet had no way to correct.
+     *
+     * None of that was a principle. A label's colour is seeded by the same hash; the only
+     * difference was that a label's is kept and a workspace's was not. So it is kept now, seeded
+     * the same way on first sight and changed in Settings.
+     *
+     * Null means it has never been seen by a build that stores it — [Workspaces] seeds it rather
+     * than leaving it to be recomputed, so a workspace keeps the colour it already appeared to
+     * have.
+     */
+    val color: String? = null,
 )
 
 /**
@@ -49,6 +66,39 @@ class WorkspaceRegistry(private val root: File) {
     fun add(entry: WorkspaceEntry) {
         write(entries().filterNot { it.id == entry.id } + entry)
     }
+
+    /**
+     * The colour a workspace wears, seeded from its name until somebody changes it.
+     *
+     * The local workspace is answered from its own file rather than from the registry, because the
+     * registry holds *linked repositories* and the local one deliberately is not in it — see the
+     * note at the top of this class. Giving it an entry to hold one colour would put a workspace
+     * with no repository into every list of repositories in the app.
+     */
+    fun colorOf(id: String): String? =
+        if (id.isEmpty()) {
+            // The file this class writes wins, then whatever a listed entry happens to carry: some
+            // builds wrote the local workspace into the registry as well, and a colour picked in
+            // Settings goes to the file.
+            localColor.takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
+                ?: entries().firstOrNull { it.id.isEmpty() }?.color
+        } else entries().firstOrNull { it.id == id }?.color
+
+    /** The colour a workspace wears, or null to take it off. Kept, so it can be corrected. */
+    fun setColor(id: String, color: String?) {
+        if (id.isEmpty()) {
+            // The one workspace that is always there, and the one that used to fall out the bottom
+            // of this function: with no entry to copy, the picker saved nothing and the row put the
+            // new colour up anyway, so it looked like it had worked until the screen was reopened.
+            root.mkdirs()
+            if (color == null) localColor.delete() else localColor.writeText(color)
+            return
+        }
+        val found = entries().firstOrNull { it.id == id } ?: return
+        add(found.copy(color = color))
+    }
+
+    private val localColor get() = File(root, "local-colour")
 
     fun remove(id: String) {
         write(entries().filterNot { it.id == id })

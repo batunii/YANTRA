@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,6 +49,9 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * What has left the working set.
@@ -110,7 +110,7 @@ fun ArchiveScreen(nav: NavHostController) {
                     "Finished tasks that left your lists. They are still in the repository — putting " +
                         "one back returns it exactly where it was.",
                     color = y.textMuted,
-                    fontSize = 12.5.sp,
+                    fontSize = YantraType.meta,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
             }
@@ -136,7 +136,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp)
-            .background(y.cardBg, RoundedCornerShape(14.dp))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -146,20 +146,20 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
                 color = y.textSecondary,
                 fontFamily = YantraText,
                 fontWeight = FontWeight.W600,
-                fontSize = 14.sp,
+                fontSize = YantraType.body,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             task.doneAt?.let {
                 Spacer(Modifier.height(2.dp))
-                Text("Finished ${finishedLabel(it)}", color = y.textDim, fontSize = 11.5.sp)
+                Text("Finished ${finishedLabel(it)}", color = y.textDim, fontSize = YantraType.caption)
             }
         }
         Spacer(Modifier.width(12.dp))
         // The way back, on the row itself. Restoring one thing should not require understanding the
         // archive as a whole, which is what a single "restore everything" would have demanded.
         NavCircle(
-            Icons.Default.Undo,
+            mark = YantraMark.Undo,
             contentDescription = "Put back",
             onClick = onRestore,
             accent = true,

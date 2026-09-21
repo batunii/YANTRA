@@ -107,12 +107,49 @@ internal fun materialScheme(y: YantraColors) = if (y.isDark) {
 
 // Yantra shape scale: pills 5, chips/buttons 10, icon tiles 12–13, cards/tiles 16–18, FAB 20.
 // extraLarge follows M3 Expressive's rounder sheets (bottom-sheet top corners app-wide).
+/**
+ * The sanctioned radii, named by the surface they belong to.
+ *
+ * Same finding as [YantraType], and the same answer. The audit counted **130 corner radii in 23
+ * distinct values, 90 of them outside AppShapes** — 7, 8 and 9 all doing "a small clipped thing",
+ * 13, 15 and 22 existing because one screen invented its own set. A radius is a family resemblance:
+ * one that is two off does not read as a distinction, it reads as a mistake.
+ *
+ * AppShapes was five Material slots and the app needed eight surfaces, so it was gone around. The
+ * names here are the surfaces that actually exist, and AppShapes is expressed in terms of them so
+ * there is one source rather than two that nearly agree.
+ *
+ * [card] is 14, not Material's 16, because 14 is what the app already used twenty-four times for a
+ * card — more than any other radius in the codebase. The convention was already there; it just had
+ * no name.
+ */
+object YantraRadius {
+    /** A capsule: a pill whose radius is half its height, whatever that turns out to be. */
+    val pill = 999.dp
+    /** The smallest mark that still has corners — a swatch, a dot with a square shoulder. */
+    val tiny = 4.dp
+    /** A block on the timeline, a row in the rail: small, clipped, many of them at once. */
+    val block = 8.dp
+    /** A button, a field, a chip. Material's `small`. */
+    val control = 10.dp
+    /** A secondary surface inside something else — a panel in the ink kit, a tool tray. */
+    val panel = 12.dp
+    /** A card on the page. The most used radius in the app. */
+    val card = 14.dp
+    /** A band, a bottom sheet, the header's rounded foot. Material's `large`. */
+    val sheet = 18.dp
+    /** The largest: a full-height surface that still wants a corner. Material's `extraLarge`. */
+    val hero = 28.dp
+}
+
 private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(5.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    // Expressed in the named scale, so Material's components and the app's own surfaces cannot
+    // drift apart. `medium` is the card radius the app actually uses rather than Material's 16.
+    extraSmall = RoundedCornerShape(YantraRadius.tiny),
+    small = RoundedCornerShape(YantraRadius.control),
+    medium = RoundedCornerShape(YantraRadius.card),
+    large = RoundedCornerShape(YantraRadius.sheet),
+    extraLarge = RoundedCornerShape(YantraRadius.hero),
 )
 
 /**
@@ -172,6 +209,69 @@ private val AppTypography = Typography().let { base ->
             fontFamily = YantraText, fontWeight = FontWeight.W600, fontSize = 11.sp, lineHeight = 14.sp,
         ),
     )
+}
+
+/**
+ * The sanctioned sizes, named by the job they do.
+ *
+ * **Why a size scale as well as [AppTypography].** The ramp gives a whole style — family, weight,
+ * tracking, line height — and that is right where a call site wants all of it. Most do not: a chip
+ * sets its own weight and colour and wants only the size, and until now it wrote a number. The
+ * audit found **232 of those across 41 files in 17 distinct sizes**, including 11, 11.5, 12 and
+ * 12.5 as four separate decisions nobody made.
+ *
+ * So every size a call site is allowed to use is named here, and each one maps to a role in the
+ * ramp. A call site that wants the whole style still takes `MaterialTheme.typography`; one that
+ * wants a number takes a name.
+ *
+ * **Two roles were missing, which is why the drift happened.** A scale that does not cover the app
+ * is a scale people go around, and both gaps were real work rather than carelessness:
+ *
+ *  - [dense] — the timeline's hour numerals, the rail's rows, a count beside a title. The ramp
+ *    bottomed out at 11sp, and a day from 07:00 to 23:00 does not fit at 11sp. This is the one
+ *    place the app is allowed to go smaller, and it is for data that is read as a column rather
+ *    than as a sentence.
+ *  - [sheetTitle] — the name at the top of a sheet. It sits between a card title (15.5) and a
+ *    screen title (22): a sheet is not a screen, and giving it the screen's size made a half-height
+ *    surface shout.
+ *
+ * An eyebrow is **not** one of the gaps. CALENDAR_UI.md §4 found one at 8.5sp carrying the only
+ * piece of state its bar reported — three and a half points under the scale's floor — and the
+ * answer there is [section] at 12sp, not a smaller token.
+ */
+object YantraType {
+    /**
+     * The wordmark, on the splash and nowhere else.
+     *
+     * A brand moment rather than a step in the scale: it appears once, for under a second, with no
+     * other text beside it to be in proportion to. It is named here anyway, because the alternative
+     * is the one number in the app with no home.
+     */
+    val wordmark = 46.sp
+    /** Page hero — `headlineMedium`. */
+    val hero = 32.sp
+    /** Screen title — `headlineSmall`. */
+    val screen = 24.sp
+    /** Smart-list and focus title — `titleLarge`. */
+    val title = 22.sp
+    /** Sheet title. Between a card and a screen; see the note above. */
+    val sheetTitle = 19.sp
+    /** Card title, block heading — `titleMedium`. */
+    val card = 15.5.sp
+    /** Row title — `bodyLarge`. */
+    val row = 15.sp
+    /** Paragraph — `bodyMedium`. */
+    val body = 14.5.sp
+    /** Button and pill text — `labelLarge`. */
+    val label = 13.5.sp
+    /** Meta and subtitle — `bodySmall`. */
+    val meta = 12.5.sp
+    /** Section label, eyebrow, chip — `titleSmall` / `labelMedium`. */
+    val section = 12.sp
+    /** Caption — `labelSmall`. */
+    val caption = 11.sp
+    /** Dense data only: timeline hours, rail rows, counts. See the note above. */
+    val dense = 10.sp
 }
 
 /** Space Mono ramp for the timer countdown and breadcrumb — set at call sites. */

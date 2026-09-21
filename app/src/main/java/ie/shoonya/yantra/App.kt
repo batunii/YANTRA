@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import ie.shoonya.yantra.data.label.LabelPalette
 
 class App : Application() {
     lateinit var container: AppContainer
@@ -60,6 +61,15 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First line of every session, so a log somebody sends is anchored to a build. It also
+        // proves the channel works: a trace that is stripped or retagged by R8 is worse than none,
+        // because it reads as "nothing happened".
+        Trace.log(
+            "app",
+            "started " + runCatching {
+                packageManager.getPackageInfo(packageName, 0).versionName
+            }.getOrNull().orEmpty(),
+        )
         // Channels first, and this is load-bearing rather than tidy. Constructing the container
         // starts the collector that revives a live focus session, which posts to a channel and now
         // also starts a foreground service that must be handed a notification on a channel that
@@ -182,6 +192,61 @@ class AppContainer(val app: Application) {
     val registry = WorkspaceRegistry(File(app.filesDir, "workspaces"))
 
     /**
+     * Every open workspace's colour, by id — the one resolver, so no surface derives its own.
+     *
+     * Stored if it has one, seeded from the name if not, and **absent entirely while only one
+     * workspace is open**, which is the rule the app already applied to the hue it used to
+     * recompute: a colour that always means the same thing means nothing. The local workspace is
+     * not in the registry and is named here so it is not the one repo without a colour.
+     *
+     * This is what the spine carries, everywhere. It is deliberately not a Flow: workspaces do not
+     * open and close while a screen is up, and every caller already recomposes when they do.
+     */
+    fun workspaceColours(): Map<String, String> =
+        distinguishable().associate { it.id to (it.color ?: LabelPalette.defaultNameFor(it.name)) }
+
+    /**
+     * Every open workspace's *name*, by id, under the same gate as [workspaceColours].
+     *
+     * The two go together by design: the law this colour system rests on is that **a colour is
+     * never more than a glance from its name**, so any surface with room for the word shows the
+     * word and lets the hue be the glance. A surface with no room — a widget row, a block on a day
+     * — shows only the spine, and the word it stands for is one screen away.
+     */
+    fun workspaceNames(): Map<String, String> = distinguishable().associate { it.id to it.name }
+
+    /**
+     * Every workspace this device has open, **including the local one**.
+     *
+     * The registry holds linked repositories and says so at the top of its own file: the local
+     * workspace is not in there. So anything reaching for `registry.entries()` is quietly asking
+     * "which repositories have I linked", and gets an answer missing the workspace most people keep
+     * most of their work in.
+     *
+     * That is not hypothetical. It is why a new list defaulted to the first *linked* repo despite a
+     * default that says it should go to the local one, why the workspace picker never appeared for
+     * someone with exactly one repo linked — one entry is not "more than one" — and why the colour
+     * chosen for Personal in Settings had nowhere to be written. One resolver, so the next thing
+     * that needs the list of workspaces cannot get a different answer.
+     */
+    fun openWorkspaces(): List<WorkspaceEntry> {
+        val listed = registry.entries()
+        // **Deduplicated by id, and the local one is not assumed absent.** The registry is supposed
+        // to hold linked repositories only, but some builds have written an entry for the local
+        // workspace too — App.kt has to filter `id.isNotEmpty()` before linking for exactly that
+        // reason. Prepending a second Personal put it in the picker twice; Home hid it only because
+        // it keys by id and a map collapses the pair.
+        val local = listed.firstOrNull { it.id.isEmpty() } ?: WorkspaceEntry(id = "", name = "Personal")
+        return (listOf(local.copy(color = registry.colorOf(""))) + listed)
+            .distinctBy { it.id }
+            .filter { workspaces.isOpen(it.id) }
+    }
+
+    /** The open workspaces, or none at all when there is only one of them to tell apart. */
+    private fun distinguishable(): List<WorkspaceEntry> =
+        openWorkspaces().takeIf { it.size >= 2 }.orEmpty()
+
+    /**
      * One indexer for the whole app, deliberately.
      *
      * It remembers what each workspace's tables already hold so a rebuild can skip the ones that did
@@ -208,6 +273,14 @@ class AppContainer(val app: Application) {
 
     /** One scheduler per workspace: each repo commits on its own rhythm. */
     private val commits = LinkedHashMap<String, CommitScheduler>()
+
+    /**
+     * What the app is saying to the network, for any screen that wants to show it.
+     *
+     * One for the whole app rather than one per workspace: the question a person is asking is "is
+     * it doing something right now", and three repos pushing at once is still one answer.
+     */
+    val network = ie.shoonya.yantra.data.sync.NetworkActivity()
 
     /** Commit and sync everything now, without waiting — app shutdown, and the Settings button. */
     fun syncNow(reason: String = "asked to sync") = commits.values.forEach { it.requestFlush(reason) }
@@ -254,7 +327,29 @@ class AppContainer(val app: Application) {
     val focus = FocusRepository(db, workspaces)
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
-    val running = RunningTask(timer, nodes, appScope)
+    val running = RunningTask(
+        timer, nodes, appScope, db.eventDao().openSittings(),
+        // Where each task lives: the list gives the bar its word and its hue, the workspace gives
+        // the spine its colour. Two facts because they are drawn two ways — a word you can read and
+        // a rule you cannot, which is what keeps five swatches from having to mean two things.
+        lists = db.nodeDao().taskOrigins()
+            // "Untitled" rather than nothing, the way Home and the widget already name a list
+            // nobody got round to naming. A blank title used to fall through every
+            // `takeIf { isNotBlank() }` downstream and leave the player's eyebrow saying ON THE GO
+            // — which reads as "this task is in no list" when it is in one, and the spine beside it
+            // is already saying which repository that list is in.
+            .map { rows ->
+                rows.associate { row ->
+                    val name = row.listName?.ifBlank { null } ?: "Untitled"
+                    row.id to (name to row.listColor)
+                }
+            },
+        workspaceColours = db.nodeDao().taskOrigins()
+            .map { rows ->
+                val hues = workspaceColours()
+                rows.associate { it.id to hues[it.workspaceId] }
+            },
+    )
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)
 
@@ -363,9 +458,12 @@ class AppContainer(val app: Application) {
                 // Resolved per pass, after renewing: a token refreshed on the last pass — or a
                 // fresh sign-in — has to be picked up without restarting the app.
                 credentials = {
-                    withContext(Dispatchers.IO) { tokenRenewal.renewIfNeeded() }
+                    network.during(ie.shoonya.yantra.data.sync.NetworkWords.RENEWING) {
+                        withContext(Dispatchers.IO) { tokenRenewal.renewIfNeeded() }
+                    }
                     credentials.providerFor(store.id)
                 },
+                activity = network,
             ),
         )
     }
@@ -388,9 +486,16 @@ class AppContainer(val app: Application) {
                 ?: RepoRef.parse(urlOrSlug)?.name
                 ?: "Workspace"
 
-            when (val result = linker.link(dir, id, label, urlOrSlug, token) { store ->
-                WorkspaceSeeder.seedLinked(store, label)
-            }) {
+            // Said out loud, because this is the long one: two API checks, a clone and a push,
+            // over somebody's mobile connection. It was the most silent thing in the app and the
+            // one most likely to leave a person wondering whether the button had worked.
+            when (
+                val result = network.during(ie.shoonya.yantra.data.sync.NetworkWords.LINKING) {
+                    linker.link(dir, id, label, urlOrSlug, token) { store ->
+                        WorkspaceSeeder.seedLinked(store, label)
+                    }
+                }
+            ) {
                 is LinkResult.Refused -> {
                     // Nothing here is worth keeping, and leaving it would make a second attempt at
                     // the same repo look like an already-linked workspace.
@@ -405,7 +510,17 @@ class AppContainer(val app: Application) {
                     AddResult.Refused("${result.ref.slug} could not be joined")
                 }
                 is LinkResult.Ok -> {
-                    credentials.store(id, token, result.login)
+                    // A reference to the account, or a token of this workspace's own — and the
+                    // difference is decided by the token that was *actually used*, not by what the
+                    // screen believed it passed down. The screen knows whether somebody typed
+                    // something; only here is it known which string reached the network, and the two
+                    // used to drift. Storing a reference is what stops the account's token being
+                    // copied anywhere it can go stale.
+                    if (token == credentials.token(Credentials.ACCOUNT)) {
+                        credentials.useAccount(id, result.login)
+                    } else {
+                        credentials.paste(id, token, result.login)
+                    }
                     // A workspace we joined already has a name, chosen by whoever started it. Taking
                     // ours over theirs would rename the same shared project on every device.
                     val store = WorkspaceStore(dir, id)
@@ -452,12 +567,21 @@ class AppContainer(val app: Application) {
             val store = workspaces.store(workspaceId)
                 ?: return@withContext AddResult.Refused("That workspace is not open")
 
-            when (val result = linker.attach(store, urlOrSlug, token, adopt)) {
+            when (
+                val result = network.during(ie.shoonya.yantra.data.sync.NetworkWords.LINKING) {
+                    linker.attach(store, urlOrSlug, token, adopt)
+                }
+            ) {
                 is LinkResult.Refused -> AddResult.Refused(result.reason)
                 is LinkResult.HasTasks ->
                     AddResult.HasTasks(result.ref.slug, db.nodeDao().countNodes(workspaceId))
                 is LinkResult.Ok -> {
-                    credentials.store(workspaceId, token, result.login)
+                    // Same rule as addWorkspace: the account's token is referenced, never copied.
+                    if (token == credentials.token(Credentials.ACCOUNT)) {
+                        credentials.useAccount(workspaceId, result.login)
+                    } else {
+                        credentials.paste(workspaceId, token, result.login)
+                    }
                     // Adopting replaced every file under this workspace, so the index is describing
                     // a tree that is gone. Rebuilt before anything reads a name off it.
                     if (result.adopted) workspaces.reindexAll()

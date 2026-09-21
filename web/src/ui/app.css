@@ -1,0 +1,166 @@
+/* Layout. The colour language is in theme.css; this file only arranges things. */
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ---- chrome ---- */
+.chrome {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--page); z-index: 2;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.chrome-sep { color: var(--text-muted); }
+.repo-picker { display: flex; gap: 6px; align-items: center; }
+.repo {
+  padding: 4px 11px; border-radius: 999px; color: var(--text-dim);
+  border: 1px solid transparent; font-size: 13px;
+}
+.repo:hover { color: var(--text); }
+.repo.on { color: var(--accent); background: var(--accent-fill); border-color: var(--accent-border); }
+.repo.add { color: var(--text-muted); }
+.ghost { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; }
+.ghost:hover { color: var(--text); }
+.avatar { border-radius: 50%; }
+
+/* ---- two panes ---- */
+.workspace { display: grid; grid-template-columns: 240px 1fr; flex: 1; min-height: 0; }
+.lists { border-right: 1px solid var(--line); padding: 16px 10px; }
+.lists-head { padding: 0 10px 10px; }
+.list {
+  display: flex; width: 100%; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 9px 10px; border-radius: 10px; text-align: left; color: var(--text-dim);
+}
+.list:hover { background: var(--surface); color: var(--text); }
+.list.on { background: var(--surface-2); color: var(--text); }
+.list-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-count { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ---- the page ---- */
+.page { padding: 28px 32px 80px; overflow-y: auto; max-width: 760px; }
+.page-head h1 { font-size: 34px; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.02em; }
+.page-head { margin-bottom: 22px; }
+.blocks { display: flex; flex-direction: column; gap: 2px; }
+
+.row {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 7px 8px 7px 26px; border-radius: 10px; min-height: 38px;
+}
+.row:hover { background: var(--surface); }
+.tick {
+  display: flex; align-items: center; align-self: flex-start;
+  padding: 0; margin-top: 1px; flex: none;
+}
+.tick:disabled { opacity: 0.5; cursor: progress; }
+.title { flex: 1; line-height: 1.45; }
+.title.struck { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--accent-border); }
+.tokens { display: flex; gap: 6px; flex: none; }
+.tok {
+  font-family: var(--mono); font-size: 11px; font-style: normal;
+  color: var(--text-muted); padding: 2px 6px; border-radius: 6px; background: var(--surface-2);
+}
+.tok.pri { color: var(--danger); }
+.tok.due { color: var(--accent); }
+.into { color: var(--text-muted); font-size: 20px; line-height: 1; padding: 0 4px; }
+.into:hover { color: var(--accent); }
+
+.blocks h2 { font-size: 19px; margin: 18px 0 6px; }
+.prose { margin: 6px 0; color: var(--text-dim); line-height: 1.6; }
+.bullet { margin: 3px 0 3px 16px; color: var(--text-dim); position: relative; }
+.bullet::before { content: '·'; position: absolute; left: -14px; color: var(--text-muted); }
+.placeholder { margin: 10px 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
+
+/* ---- sign in ---- */
+.signin { max-width: 420px; margin: 0 auto; padding: 12vh 24px 40px; }
+.signin-mark { color: var(--accent); margin-bottom: 18px; }
+.signin h1 { font-size: 40px; margin: 0 0 8px; letter-spacing: -0.02em; }
+.lede { color: var(--text-dim); line-height: 1.6; margin: 0 0 26px; }
+.signin form { display: flex; flex-direction: column; gap: 8px; }
+.signin label { margin-bottom: 2px; }
+.signin input {
+  padding: 12px 14px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line); color: var(--text);
+}
+.signin input:focus { outline: none; border-color: var(--accent-border); }
+
+.primary {
+  padding: 12px 16px; border-radius: var(--radius); margin-top: 6px;
+  background: var(--accent-fill); border: 1px solid var(--accent-border); color: var(--accent);
+  font-weight: 600;
+}
+.primary:disabled { opacity: 0.45; cursor: default; }
+.primary:not(:disabled):hover { background: rgba(232, 134, 95, 0.22); }
+
+.note { margin-top: 28px; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+.note summary { cursor: pointer; color: var(--text-dim); }
+.note p { margin: 10px 0; }
+.note code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+
+/* ---- states ---- */
+.empty { max-width: 520px; margin: 0 auto; padding: 14vh 24px; }
+.empty h1 { font-size: 26px; margin: 0 0 10px; }
+.empty p { color: var(--text-dim); line-height: 1.6; }
+.error { color: var(--danger); line-height: 1.6; }
+.error.banner {
+  background: rgba(226, 75, 74, 0.1); border: 1px solid rgba(226, 75, 74, 0.35);
+  padding: 10px 14px; border-radius: 10px; margin: 0 0 18px; font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .workspace { grid-template-columns: 1fr; }
+  .lists { border-right: none; border-bottom: 1px solid var(--line); display: flex; overflow-x: auto; }
+  .lists-head { display: none; }
+  .list { width: auto; white-space: nowrap; }
+  .page { padding: 20px 16px 60px; }
+}
+
+/* ---- capture ---- */
+.capture {
+  display: flex; gap: 8px; align-items: center; margin-top: 26px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); padding: 4px 4px 4px 14px;
+}
+.capture:focus-within { border-color: var(--accent-border); }
+.capture input {
+  flex: 1; background: none; border: none; color: var(--text); padding: 11px 0; outline: none;
+}
+.capture input::placeholder { color: var(--text-muted); }
+.capture button {
+  padding: 8px 14px; border-radius: 10px; color: var(--accent);
+  background: var(--accent-fill); border: 1px solid var(--accent-border);
+}
+.capture button:disabled { opacity: 0.35; border-color: var(--line); color: var(--text-muted); background: none; }
+
+/* ---- editable titles ---- */
+.title[role='button'] { cursor: text; border-radius: 6px; }
+.title[role='button']:hover { box-shadow: inset 0 -1px 0 var(--line); }
+.title.editing {
+  background: var(--surface-2); border: 1px solid var(--accent-border);
+  border-radius: 8px; padding: 3px 8px; margin: -4px 0; color: var(--text); outline: none;
+  font: inherit; width: 100%;
+}
+.untitled { color: var(--text-muted); }
+.code {
+  font-family: var(--mono); font-size: 0.9em;
+  background: var(--surface-2); padding: 1px 5px; border-radius: 5px;
+}
+
+.warn.banner {
+  background: rgba(232, 134, 95, 0.08); border: 1px solid var(--accent-border);
+  color: var(--accent); padding: 10px 14px; border-radius: 10px; margin: 0 0 18px;
+  font-size: 14px; line-height: 1.55;
+}
+.tok.where { cursor: pointer; color: var(--text-dim); }
+.tok.where:hover { color: var(--accent); }
+
+/* ---- reordering ---- */
+.grip {
+  flex: none; width: 16px; color: transparent; cursor: grab; user-select: none;
+  font-size: 13px; line-height: 1; align-self: center; margin-left: -18px;
+  border-radius: 4px; text-align: center;
+}
+.row:hover .grip { color: var(--text-muted); }
+.grip:focus-visible { color: var(--accent); outline: 1px solid var(--accent-border); outline-offset: 2px; }
+.block-row.is-dragging { opacity: 0.4; }
+/* Drawn on the hovered row rather than reflowing the list, so the drop target stops moving. */
+.block-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+.block-row.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }

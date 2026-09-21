@@ -20,10 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,12 +56,18 @@ import ie.shoonya.yantra.ui.components.startedTaskIds
 import ie.shoonya.yantra.ui.components.NavCircle
 import ie.shoonya.yantra.ui.node.TextualBlockRow
 import ie.shoonya.yantra.ui.container
+import androidx.compose.ui.graphics.Color
+import ie.shoonya.yantra.ui.components.spine
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraText
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.CompositionLocalProvider
 import ie.shoonya.yantra.ui.components.LocalLinkOpener
 import ie.shoonya.yantra.ui.components.LocalLinkResolver
+import ie.shoonya.yantra.ui.components.YantraMark
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraRadius
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -76,6 +78,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val origins by vm.origins.collectAsStateWithLifecycle()
+    val rowContext by vm.rowContext.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     val completed by vm.completed.collectAsStateWithLifecycle()
@@ -112,7 +115,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 NavCircle(
-                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    mark = YantraMark.Back,
                     contentDescription = "Back",
                     onClick = { nav.popBackStack() },
                     iconSize = 20.dp,
@@ -123,7 +126,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 // change a view is to delete it and build another one from scratch.
                 Box {
                     NavCircle(
-                        Icons.Default.MoreVert,
+                        mark = YantraMark.More,
                         contentDescription = "Options",
                         onClick = { menu = true },
                         iconSize = 18.dp,
@@ -150,12 +153,12 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 Modifier.padding(top = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = y.accent, modifier = Modifier.size(13.dp))
+                YantraIcon(YantraMark.SmartList, tint = y.accent, contentDescription = null)
                 Spacer(Modifier.width(7.dp))
                 Text(
                     "SMART VIEW",
                     fontFamily = YantraText,
-                    fontSize = 11.sp,
+                    fontSize = YantraType.caption,
                     fontWeight = FontWeight.W600,
                     letterSpacing = 1.5.sp,
                     color = y.textMuted,
@@ -173,8 +176,8 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 Row(
                     Modifier
                         .padding(top = 12.dp)
-                        .background(y.page, RoundedCornerShape(99.dp))
-                        .border(1.dp, y.tileBorder, RoundedCornerShape(99.dp))
+                        .background(y.page, RoundedCornerShape(YantraRadius.pill))
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.pill))
                         .padding(horizontal = 11.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -183,7 +186,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                     Text(
                         description,
                         fontFamily = YantraText,
-                        fontSize = 11.5.sp,
+                        fontSize = YantraType.caption,
                         fontWeight = FontWeight.W600,
                         color = y.textSecondary,
                         maxLines = 1,
@@ -219,13 +222,29 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
 
         @Composable
         fun SmartTaskRow(task: NodeEntity) {
+            // The repository, as the spine — the same mark it is on the player, a widget row and a
+            // block on the day. This view gathers tasks from every open repo and is ordered by what
+            // is most pressing rather than by where things live, so it cannot group by repository;
+            // an aggregated view carries its provenance on each row instead. Absent while a single
+            // repository is open, when there is nothing to tell apart.
+            // Two gates, asked in one place: `spineHue` reads whether the rule leaves the
+            // repository varying *and* whether there is a hue to paint at all. Reading the hue
+            // alone is how this surface and the list widget each grew their own answer.
+            val spineInk = ie.shoonya.yantra.ui.components
+                .spineHue(rowContext.grammar, origins[task.id])
+                ?.let { Color(ie.shoonya.yantra.data.label.LabelPalette.display(it, y.isDark)) }
             ListGroupRow(started = task.inProgress) {
                 // A row here cannot be typed into, so a link in a title is collapsed and tappable —
                 // and tapping it goes where it points rather than opening the task it sits on.
-                Box(Modifier.padding(horizontal = 14.dp)) {
+                Box(
+                    Modifier
+                        .then(if (spineInk == null) Modifier else Modifier.spine(spineInk, inset = 7.dp))
+                        .padding(horizontal = 14.dp)
+                ) {
                 CompositionLocalProvider(
                     LocalLinkOpener provides { id: String -> nav.navigate(Routes.node(id)) },
                     LocalLinkResolver provides resolveLink,
+                    ie.shoonya.yantra.ui.components.LocalRowContext provides rowContext,
                 ) {
                     TextualBlockRow(
                         child = task,
@@ -393,12 +412,12 @@ private fun AbsentWorkspaces(names: List<String>) {
     }
     Text(
         "$what — tasks from ${if (names.size == 1) "it" else "them"} aren't shown here.",
-        fontSize = 12.sp,
+        fontSize = YantraType.section,
         color = y.textSecondary,
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
-            .background(y.warningChipBg, RoundedCornerShape(10.dp))
+            .background(y.warningChipBg, RoundedCornerShape(YantraRadius.control))
             .padding(horizontal = 12.dp, vertical = 9.dp),
     )
 }

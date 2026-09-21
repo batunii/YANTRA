@@ -142,10 +142,24 @@ data class WidgetRow(
      * spare text to carry it and the edge is width nothing else wants.
      */
     val workspaceHue: Long? = null,
+    /**
+     * The colour of the list this row came from, as a stored palette value.
+     *
+     * The list gets a *word* and the repository gets the *edge*, which is the whole of how a widget
+     * row carries two facts on two lines of text. Hue alone could not: five swatches seed both, so
+     * the same green can be a list here and a repository there, and a reader with one stripe and
+     * one tinted word can still tell which is which by where it sits.
+     */
+    val listColor: Long? = null,
 )
 
 /** One label on a widget row: what it says and the ink it says it in. */
-data class WidgetLabel(val name: String, val color: Long?)
+data class WidgetLabel(
+    val name: String,
+    val color: Long?,
+    /** The label's own id, so the view's rule can pin it — see [buildRows]. Last, and defaulted. */
+    val id: String = "",
+)
 
 sealed interface WidgetItem {
     /** [urgent] headers are drawn in the overdue red — the section label is the alarm. */
@@ -218,6 +232,13 @@ internal fun buildRows(
     hideTodayDue: Boolean = false,
     labels: Map<String, List<WidgetLabel>> = emptyMap(),
     workspaceHues: Map<String, Long> = emptyMap(),
+    /** Source list id → the colour that list wears, on the widgets that name a source list. */
+    parentColors: Map<String, Long> = emptyMap(),
+    /** What the view has already said — see [ie.shoonya.yantra.data.filter.Salience]. */
+    grammar: ie.shoonya.yantra.data.filter.RowGrammar =
+        ie.shoonya.yantra.data.filter.Salience.grammar(
+            ie.shoonya.yantra.data.filter.ViewContext(null, singleWorkspace = false)
+        ),
 ): List<WidgetRow> {
     val byNode = values.groupBy { it.nodeId }
     val todayStart = todayMidnight()
@@ -240,8 +261,11 @@ internal fun buildRows(
             deadlinePast = deadlineRow?.vDate?.let { it < todayStart } == true,
             priorityColor = prio?.let { priorityColors[it] },
             listName = n.parentId?.let { parentTitles[it] },
-            labels = labels[n.id].orEmpty(),
+            // A tag the rule pins is on every row here, so printing it is printing it twice.
+            labels = labels[n.id].orEmpty()
+                .filterNot { ie.shoonya.yantra.data.filter.Field.Label(it.id) in grammar.pinned },
             workspaceHue = workspaceHues[n.workspaceId],
+            listColor = n.parentId?.let { parentColors[it] },
         )
     }
 }
@@ -344,12 +368,16 @@ open class YantraListWidget : GlanceAppWidget() {
             ?: emptyMap()
 
         // The repository as a colour, resolved once: workspaces do not open and close while a
-        // widget is on screen, and the widget re-renders from scratch when they do. Null for a
-        // single open repository, by the same rule the smart list screen follows.
-        val openWs = container.registry.entries().filter { container.workspaces.isOpen(it.id) }
-        val workspaceHues: Map<String, Long> =
-            if (openWs.size < 2) emptyMap()
-            else openWs.associate { it.id to LabelPalette.defaultFor(it.name) }
+        // widget is on screen, and the widget re-renders from scratch when they do.
+        //
+        // Asked of the container, which is the only thing that knows the local workspace exists and
+        // the only thing that reads the colour somebody actually chose. Counted from the registry
+        // before, so a device with Personal and one linked repo counted *one* workspace and drew no
+        // spine at all — on the surface that has nothing but the spine to say which repo a row came
+        // from.
+        val workspaceHues: Map<String, Long> = container.workspaceColours()
+            .mapNotNull { (id, name) -> LabelPalette.byName(name)?.let { id to it.light } }
+            .toMap()
 
         // Two flows folded into one so the combine below stays inside its five-argument overload.
         val labelFlow = combine(
@@ -357,7 +385,7 @@ open class YantraListWidget : GlanceAppWidget() {
             container.db.labelDao().allNodeLabels(),
         ) { defs, links ->
             val byId = defs.associateBy { it.id }
-            links.mapNotNull { link -> byId[link.labelId]?.let { link.nodeId to WidgetLabel(it.name, it.color) } }
+            links.mapNotNull { link -> byId[link.labelId]?.let { link.nodeId to WidgetLabel(it.name, it.color, it.id) } }
                 .groupBy({ it.first }, { it.second })
         }
 
@@ -370,10 +398,22 @@ open class YantraListWidget : GlanceAppWidget() {
         // What you finished today is the other half of "today", and it is the half that makes a
         // list widget feel like it is reporting rather than nagging. The same rules, asked the
         // opposite question — see [completedVariant].
+        // The view's own rule, decoded once for everything that needs it. It used to be read only
+        // inside the done-section branch, which meant the widget could not ask what its own view
+        // had already said.
+        val viewFilter = smartDef?.let {
+            runCatching { FilterJson.decodeFromString(Filter.serializer(), it.filterJson) }.getOrNull()
+        }
+        // What a row here may say. The widget is the second surface that had hand-rolled this;
+        // now both ask the same function — ROW_SALIENCE.md.
+        val grammar = ie.shoonya.yantra.data.filter.Salience.grammar(
+            ie.shoonya.yantra.data.filter.ViewContext(
+                filter = viewFilter,
+                singleWorkspace = workspaceHues.isEmpty(),
+            )
+        )
         val doneFlow: Flow<List<NodeEntity>> = if (forceToday && showDone && smartDef != null) {
-            val filter = runCatching {
-                FilterJson.decodeFromString(Filter.serializer(), smartDef.filterJson)
-            }.getOrNull()
+            val filter = viewFilter
             filter?.let { completedVariant(it) }
                 ?.let { flipped ->
                     val json = FilterJson.encodeToString(Filter.serializer(), flipped)
@@ -414,17 +454,37 @@ open class YantraListWidget : GlanceAppWidget() {
                     val parentTitles = if (isSmart) {
                         lists.associate { it.id to (it.title?.ifBlank { "Untitled" } ?: "Untitled") }
                     } else emptyMap()
+                    // A name, resolved to a value here so the row model stays Glance-free and the
+                    // widget can swap it for its dark twin against whatever theme it is drawn in.
+                    val parentColors = if (!isSmart) emptyMap() else lists.mapNotNull { l ->
+                        LabelPalette.byName(l.color)?.let { l.id to it.light }
+                    }.toMap()
                     val rows = buildRows(
                         tasks, values, defIds.due, defIds.deadline, defIds.priority,
-                        priorityColors, parentTitles, hideTodayDue = forceToday,
-                        labels = labels, workspaceHues = workspaceHues,
+                        priorityColors, parentTitles,
+                        // Filter-driven rather than keyed off which widget class you are: a
+                        // hand-made list of today's tasks hid nothing, and the Today widget was
+                        // hiding it for the wrong reason.
+                        hideTodayDue = forceToday ||
+                            defIds.due?.let {
+                                ie.shoonya.yantra.data.filter.Field.Prop(it) in grammar.pinned
+                            } == true,
+                        labels = labels,
+                        // One gate, at the call site, so the row's own `workspaceHue != null`
+                        // check and the engine's opinion cannot disagree.
+                        workspaceHues = if (grammar.spine == null) emptyMap() else workspaceHues,
+                        parentColors = parentColors,
+                        grammar = grammar,
                     )
                     // Capped: the completed section is a record of the day, not an archive, and
                     // it must never push the open work off the widget.
                     val doneRows = buildRows(
                         doneTasks.take(DONE_LIMIT), emptyList(), defIds.due, defIds.deadline,
                         defIds.priority, priorityColors, parentTitles, hideTodayDue = true,
-                        labels = labels, workspaceHues = workspaceHues,
+                        labels = labels,
+                        workspaceHues = if (grammar.spine == null) emptyMap() else workspaceHues,
+                        parentColors = parentColors,
+                        grammar = grammar,
                     )
                     WidgetData(
                         title = Links.plain(node?.title.orEmpty()).ifBlank { if (forceToday) "Today" else "List" },
@@ -741,7 +801,9 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
                     textDecoration = if (row.done) TextDecoration.LineThrough else TextDecoration.None,
                 ),
             )
-            if (metaParts.isNotEmpty() && !row.done) {
+            // The reminder counts as meta. A row whose only metadata was a bell drew nothing at
+            // all, which is the one case where the mark is the whole message.
+            if ((metaParts.isNotEmpty() || row.hasReminder) && !row.done) {
                 Spacer(GlanceModifier.size(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (row.hasReminder) {
@@ -789,18 +851,34 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
                             ),
                         )
                     }
-                    val rest = listOfNotNull(
-                        row.deadlineLabel.takeIf { row.dueLabel != null },
-                        row.listName,
-                    )
-                    if (rest.isNotEmpty()) {
+                    val second = row.deadlineLabel.takeIf { row.dueLabel != null }
+                    var written = dated != null || row.labels.isNotEmpty()
+                    if (second != null) {
                         Text(
-                            (if (dated != null || row.labels.isNotEmpty()) " · " else "") +
-                                rest.joinToString(" · "),
+                            (if (written) " · " else "") + second,
                             maxLines = 1,
                             style = TextStyle(
                                 fontSize = m.meta,
                                 color = GlanceTheme.colors.onSurfaceVariant,
+                            ),
+                        )
+                        written = true
+                    }
+                    // The list, in the list's own colour — its own Text for that reason alone.
+                    // It is the last thing on the line because the line carries what the task *is*
+                    // before where it lives, and it is coloured because the same row already wears
+                    // its repository as a rule down the edge: two facts, a word and an edge, so
+                    // neither has to be read out of a hue.
+                    if (row.listName != null) {
+                        Text(
+                            (if (written) " · " else "") + row.listName,
+                            maxLines = 1,
+                            style = TextStyle(
+                                fontSize = m.meta,
+                                fontWeight = if (row.listColor != null) FontWeight.Medium else FontWeight.Normal,
+                                color = row.listColor
+                                    ?.let { ColorProvider(Color(LabelPalette.display(it, status.isDark))) }
+                                    ?: GlanceTheme.colors.onSurfaceVariant,
                             ),
                         )
                     }

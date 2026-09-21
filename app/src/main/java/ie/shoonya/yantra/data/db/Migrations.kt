@@ -412,3 +412,114 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `idx_focus_node` ON `focus_session` (`node_id`, `started_at`)")
     }
 }
+
+/**
+ * Events get a table of their own — CALENDAR_PLAN.md §7 phase 1.
+ *
+ * Creating rather than backfilling: the index is rebuilt from files on the next open, and every
+ * event that exists is a line in a page waiting to be read. There is nothing in the old database to
+ * carry forward, because until now there was nothing that could hold one.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `event` (" +
+                "`node_id` TEXT NOT NULL, `workspace_id` TEXT NOT NULL, " +
+                "`start_local` TEXT NOT NULL, `end_local` TEXT NOT NULL, " +
+                "`zone` TEXT, `all_day` INTEGER NOT NULL, " +
+                "`start_utc` INTEGER NOT NULL, `end_utc` INTEGER NOT NULL, " +
+                "`rrule` TEXT, `series_id` TEXT, `series_original` TEXT, " +
+                "`cancelled` INTEGER NOT NULL, `location` TEXT, `reminder_min` INTEGER, " +
+                "PRIMARY KEY(`node_id`), " +
+                "FOREIGN KEY(`node_id`) REFERENCES `node`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_start` ON `event` (`workspace_id`, `start_utc`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_series` ON `event` (`series_id`)")
+    }
+}
+
+/**
+ * A due date can now last a while — CALENDAR_PLAN.md §10.
+ *
+ * Nullable and unbackfilled: every task that exists is a moment until somebody blocks out time for
+ * it, and a default of zero would be a claim nobody made.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `property_value` ADD COLUMN `v_duration_min` INTEGER")
+    }
+}
+
+/**
+ * Sittings: an event can say which task it is time for — CALENDAR_PLAN.md §11.
+ *
+ * Nullable, unbackfilled, and unconstrained. Nothing existing is a sitting, and a reference to a
+ * task that has gone should leave a plain block behind rather than delete it.
+ */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `for_node_id` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_for` ON `event` (`for_node_id`)")
+    }
+}
+
+/**
+ * An event can wear a colour — CALENDAR_PLAN.md §16.
+ *
+ * Nullable and unbackfilled, because null is not "no colour" here: it means *the workspace's*, which
+ * is a live answer that changes when the workspace does. Writing a value into every existing row
+ * would sever that inheritance for everything that already exists.
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `color` TEXT")
+    }
+}
+
+/**
+ * A line can be a note about somebody else's meeting — CALENDAR_PLAN.md §19.
+ *
+ * Nullable and unbackfilled: nothing that exists is a note about anything, and the column is the
+ * *sync source's* identity for an event rather than this device's row id — so it is a value that
+ * means the same thing on another phone, which is the whole reason it is allowed in a file at all.
+ */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `ext_uid` TEXT")
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `ext_start` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_event_ext` ON `event` (`ext_uid`)")
+    }
+}
+
+/**
+ * The link to somebody else's meeting moves to the **node** — CALENDAR_PLAN.md §22.
+ *
+ * It was on `event`, which forced a task about a meeting to be two rows: the task, and an event line
+ * to carry the link. One meeting, two things in your Inbox. On the node it is a fact about a line of
+ * any kind, and the task is the only node there is.
+ *
+ * `event.ext_uid` is left in place, unwritten. Recreating a table to drop a column that costs
+ * nothing is a real risk taken for tidiness, and anything already written through the old shape
+ * still reads.
+ */
+/**
+ * A list can wear a colour of its own.
+ *
+ * A name rather than a value, like every other colour this app stores — see [NodeEntity.color] and
+ * the same argument on `EventRef.color`. A hex would be a value chosen against one theme, and the
+ * light and dark twins of a swatch are not the same number.
+ */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `color` TEXT")
+    }
+}
+
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `ext_uid` TEXT")
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `ext_start` TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `idx_node_ext` ON `node` (`ext_uid`)")
+    }
+}
+

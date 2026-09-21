@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -46,11 +47,53 @@ class NodePageViewModel(
     /** Picking a task up and putting it down; see [RunningTask]. */
     private val running = container.running
 
+    /**
+     * What a row on this page may say — see [ie.shoonya.yantra.ui.components.LocalRowContext].
+     *
+     * A constant for the life of the view model, and correctly so: a page has no rule, so its
+     * grammar cannot change, and neither the open repositories nor the stored logins move under a
+     * page that is already on screen.
+     */
+    val rowContext: ie.shoonya.yantra.ui.components.RowContext =
+        ie.shoonya.yantra.ui.components.RowContext(
+            // A page's rule is "children of this page", which pins the list it *is*.
+            grammar = ie.shoonya.yantra.data.filter.Salience.grammar(
+                ie.shoonya.yantra.data.filter.ViewContext(
+                    filter = null,
+                    singleWorkspace = container.openWorkspaces().size <= 1,
+                )
+            ),
+            expected = ie.shoonya.yantra.ui.components.Expected(
+                logins = container.openWorkspaces()
+                    .associate { it.id to container.credentials.login(it.id) } +
+                    (ie.shoonya.yantra.data.sync.Credentials.ACCOUNT to
+                        container.credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)),
+            ),
+        )
+
     /** The player's play/stop, and the consent it needs when the clock is elsewhere. */
     val timing = TimingRequest(container.running)
 
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * Whether the answer has arrived yet — CALENDAR_PLAN.md §25.
+     *
+     * `node` is null for two entirely different reasons: the query has not come back, and there is
+     * no such node. They drew identically — an **empty page titled "Untitled"** — so a page that was
+     * merely a few milliseconds behind looked exactly like a page that was not there, and a report
+     * of "it opens an empty page" could not be told from "it opens the wrong thing". Tracing it was
+     * how that came out: the page logged *no such node* and then, sixty milliseconds later, the
+     * node.
+     *
+     * Kept deliberately separate rather than folded into a sealed state, because every caller of
+     * `node` wants the node and exactly one caller — the header — needs to know the difference.
+     */
+    val nodeLoaded: StateFlow<Boolean> =
+        nodes.observe(nodeId)
+            .map { true }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // ---- people ----
 
@@ -136,7 +179,7 @@ class NodePageViewModel(
     val workspaceName: StateFlow<String> =
         node.map { current ->
             val id = current?.workspaceId ?: return@map "Workspace"
-            container.registry.entries().firstOrNull { it.id == id }?.name ?: "Workspace"
+            container.openWorkspaces().firstOrNull { it.id == id }?.name ?: "Workspace"
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Workspace")
 
     /** Titles of this page's ancestors, root → parent, for the header breadcrumb. */
@@ -174,6 +217,77 @@ class NodePageViewModel(
      */
     val blocks: StateFlow<List<NodeEntity>> =
         nodes.children(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * This page's own event, when the page *is* one.
+     *
+     * A document with a title and no date is a note that used to be a meeting — CALENDAR_PLAN.md
+     * §18. The when lives in the `event` table, not on the node, so the band has to ask for it.
+     */
+    val ownEvent: StateFlow<ie.shoonya.yantra.data.db.EventWithTitle?> =
+        container.db.eventDao().observeById(nodeId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * The meeting this page is about, read live from the calendar that owns it — §22.
+     *
+     * Never stored. The place, the guests and the description stay in the calendar and are fetched
+     * on the way past, so the page answers "what is this" and "what did I write" without holding a
+     * second copy of either. Null without the permission, and the page is an ordinary page.
+     */
+    val meeting: StateFlow<ie.shoonya.yantra.data.device.DeviceEventDetails?> =
+        combine(node, ownEvent) { n, e -> Triple(n?.extUid, e?.event?.startUtc, e?.event?.endUtc) }
+            .distinctUntilChanged()
+            .map { (uid, begin, end) ->
+                if (uid == null) null else withContext(Dispatchers.IO) {
+                    ie.shoonya.yantra.data.device.DeviceCalendarSource(container.app)
+                        // The cached hours are enough to hand the other app: they are what this line
+                        // was written from, and a provider that has since moved the meeting will
+                        // open on it regardless — the event id is what it matches on.
+                        .detailsFor(uid, begin ?: 0L, end ?: 0L)
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Every list the app has, for the move picker — CALENDAR_PLAN.md §28. */
+    suspend fun listsToMoveInto(): List<ie.shoonya.yantra.data.db.NodeEntity> =
+        container.db.nodeDao().allListsOnce().filterNot { it.id == nodeId }
+
+    /**
+     * Files this page onto another list.
+     *
+     * Any list in any workspace: a node made by tapping a meeting lands in Inbox because something
+     * has to catch it, not because that is where it belongs.
+     */
+    fun moveToList(listId: String) {
+        viewModelScope.launch { container.nodes.moveToList(nodeId, listId) }
+    }
+
+    /**
+     * This page's own event, as the block it is written as — CALENDAR_PLAN.md §28.
+     *
+     * For the sheet to open on. [ownEvent] is the indexed row, which is what a header draws from;
+     * the sheet edits the line, and the line is the thing the file actually holds.
+     */
+    suspend fun eventRef(): ie.shoonya.yantra.data.format.EventRef? =
+        container.nodes.eventRefFor(nodeId)
+
+    /** Writes the sheet's answer back to this page's own event line. */
+    fun saveEvent(event: ie.shoonya.yantra.data.format.EventRef) {
+        viewModelScope.launch { container.nodes.saveEvent(nodeId, event) }
+    }
+
+    /**
+     * The times behind any event lines on this page, by node id.
+     *
+     * A node row holds what every line has — a title, a rank, an indent — and an event's *when* is
+     * not that. It lives in the `event` table beside it, so a page that wants to draw an event as an
+     * event has to ask for it. See CALENDAR_PLAN.md §18.
+     */
+    val events: StateFlow<Map<String, ie.shoonya.yantra.data.db.EventWithTitle>> =
+        container.db.eventDao().eventsUnder(nodeId)
+            .map { rows -> rows.associateBy { it.event.nodeId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     // ---- links ----
 
@@ -280,7 +394,7 @@ class NodePageViewModel(
         ink.strokesUnder(nodeId)
             .map { rows ->
                 rows.groupBy { it.nodeId }.mapValues { (_, list) ->
-                    list.mapNotNull { row -> runCatching { StrokeCodec.decode(row.data) }.getOrNull() }
+                    list.mapNotNull { row -> StrokeCodec.decodeOrNull(row.data) }
                 }
             }
             .flowOn(Dispatchers.Default)
@@ -548,5 +662,13 @@ class NodePageViewModel(
     /** Recolour a label wherever it appears. Null clears it back to the neutral chip. */
     fun setLabelColor(labelId: String, color: Long?) {
         viewModelScope.launch { labels.setColor(labelId, color) }
+    }
+
+    /** How many tasks carry a label, asked before offering to delete it. */
+    suspend fun labelUsage(labelId: String): Int = labels.usageCount(labelId)
+
+    /** Deletes a label from the workspace and takes its tag off every task that had it. */
+    fun deleteLabel(labelId: String) {
+        viewModelScope.launch { labels.deleteLabel(labelId) }
     }
 }
