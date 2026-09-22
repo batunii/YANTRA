@@ -172,6 +172,14 @@ object PageCodec {
      * not, because the scan hits `pencils` and stops, leaving `#2` where it belongs — in the title.
      * A left-to-right scan would have to guess, and would guess wrong on anything containing a hash
      * or an at-sign, which is most of how people write.
+     *
+     * **`^id` ends the scan.** The renderer writes the id straight after the title, before every
+     * other token, so on a line this app wrote everything left of it is title by construction. The
+     * scan used to consume the id and carry on into the title, which meant a title *ending* in
+     * something token-shaped was re-read as metadata the next time the file was indexed: typing
+     * `test #hi` into a row on a page saved `- [ ] test #hi ^id`, and came back as `test` wearing a
+     * label — once per keystroke, so the task collected `h`, `hi`, `hij`. A line with no id (written
+     * by hand, or imported) still scans all the way, because there is no boundary to trust.
      */
     private fun parseTask(body: String, status: TaskStatus, indent: Int, raw: String): TaskRef {
         val words = body.trim().split(" ").toMutableList()
@@ -193,7 +201,7 @@ object PageCodec {
                 // `2|^abc]]` — taking half the link out of the title on the way. The right-to-left
                 // rule is about trailing *tokens*, and nothing that closes a link is one.
                 w.contains(Links.CLOSE) -> false
-                w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); true }
+                w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); words.removeAt(words.size - 1); break }
                 w.startsWith("due:") -> parseDue(w.removePrefix("due:"))?.also { due = it } != null
                 w.startsWith("deadline:") ->
                     parseDate(w.removePrefix("deadline:"))?.also { deadline = it } != null
@@ -263,7 +271,8 @@ object PageCodec {
             val w = words.last()
             val consumed = when {
                 w.contains(Links.CLOSE) -> false
-                w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); true }
+                // The id is the boundary here too — see parseTask.
+                w.startsWith("^") && id.isEmpty() -> { id = w.drop(1); words.removeAt(words.size - 1); break }
                 w.startsWith("rrule:") -> { rrule = w.removePrefix("rrule:").takeIf { it.isNotEmpty() }; rrule != null }
                 w.startsWith("for:") -> { forTask = w.removePrefix("for:").takeIf { it.isNotEmpty() }; forTask != null }
                 w.startsWith("series:") -> parseSeries(w.removePrefix("series:"))?.also { series = it } != null

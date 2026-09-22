@@ -214,6 +214,51 @@ class PageCodecTest {
         assertNull(t.due)
     }
 
+    // ---- the id is the edge of the title ----
+
+    @Test
+    fun `a title that ends in a hash word keeps it once the id is written`() {
+        // Typed into a row on a page, saved verbatim, read back on the next index pass. This used
+        // to come back as "test" with a label "hi" -- once per keystroke.
+        val t = one("- [ ] test #hi ^a1")
+        assertEquals("test #hi", t.title)
+        assertTrue(t.labels.isEmpty())
+    }
+
+    @Test
+    fun `a title that ends in a priority or an at-word is not read as one`() {
+        assertEquals("ping @sam", one("- [ ] ping @sam ^a1").title)
+        assertNull(one("- [ ] ping @sam ^a1").assignee)
+        assertEquals("do it !now", one("- [ ] do it !now ^a1").title)
+        assertNull(one("- [ ] do it !now ^a1").priority)
+    }
+
+    @Test
+    fun `tokens after the id are still tokens`() {
+        val t = one("- [ ] test #hi ^a1 !high #shop @me")
+        assertEquals("test #hi", t.title)
+        assertEquals("high", t.priority)
+        assertEquals(listOf("shop"), t.labels)
+        assertEquals("me", t.assignee)
+    }
+
+    @Test
+    fun `a token-shaped title survives a round trip`() {
+        val written = TaskRef("a1", "test #hi", priority = "high", labels = listOf("shop"))
+        val back = one(render(written))
+        assertEquals(written.title, back.title)
+        assertEquals(written.labels, back.labels)
+        assertEquals(written.priority, back.priority)
+    }
+
+    @Test
+    fun `without an id the trailing tokens are still read`() {
+        // A line written by hand has no boundary to trust, so the old rule stands.
+        val t = one("- [ ] buy milk #groceries")
+        assertEquals("buy milk", t.title)
+        assertEquals(listOf("groceries"), t.labels)
+    }
+
     // ---- forgiveness ----
 
     @Test
