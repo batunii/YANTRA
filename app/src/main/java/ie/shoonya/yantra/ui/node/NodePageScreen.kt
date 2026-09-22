@@ -136,8 +136,10 @@ import ie.shoonya.yantra.ui.components.ConfirmDialog
 import ie.shoonya.yantra.ui.components.InlineStyle
 import ie.shoonya.yantra.ui.components.inlinePlain
 import ie.shoonya.yantra.ui.components.InlineTransformation
+import ie.shoonya.yantra.data.capture.CaptureParse
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.data.label.LabelPalette
+import ie.shoonya.yantra.ui.components.LabelSuggestions
 import ie.shoonya.yantra.ui.components.LinkSuggestions
 import ie.shoonya.yantra.ui.components.followLinks
 import ie.shoonya.yantra.ui.components.LocalLinkOpener
@@ -229,6 +231,9 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // The other direction: a link picked from the strip, on its way back into that field.
     var linkInsert by remember { mutableStateOf<Pair<String, TextFieldValue>?>(null) }
     var linkResults by remember { mutableStateOf<List<NodeEntity>>(emptyList()) }
+    // The draft before this one, so the `#` strip can tell a space that *finished* a label from a
+    // caret that merely arrived next to an old one. See CaptureParse.labelClosedBy.
+    var lastDraft by remember { mutableStateOf<Pair<String, TextFieldValue>?>(null) }
 
     var propertySheetFor by remember { mutableStateOf<String?>(null) }
     var deletingPage by remember { mutableStateOf(false) }
@@ -1079,6 +1084,54 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 // all three holds the keyboard inset once. Two siblings claiming it reserve the
                 // keyboard's height twice, which squeezes the page itself to nothing and pushes
                 // the bottom bar off the screen — see the note on that column.
+            )
+
+            // `#label` in a task row. A task's title carries labels the way the capture bar's line
+            // does, but a row has no submit to parse on, so the label is made at the moment the
+            // word is finished — a chip tapped here, or the space typed after it — and the word
+            // leaves the title as the label lands on the task. Tasks only: a heading or a bullet
+            // has nowhere to put a label, so `#` in one is just a hash.
+            val labelTyping = typing?.takeIf { (id, _) ->
+                blocks.firstOrNull { it.id == id }?.type == NodeType.TASK
+            }
+            val labelQuery = labelTyping
+                ?.takeIf { linkQuery == null }
+                ?.let { (_, v) -> CaptureParse.labelDraft(v.text, v.selection.end)?.second }
+            val labelNames = remember(allLabels) { allLabels.map { it.name } }
+            /** Takes the token at [span] out of [value], attaches [name], and writes the row back. */
+            fun settleLabel(blockId: String, value: TextFieldValue, span: IntRange, name: String) {
+                val (next, caret) = CaptureParse.withoutToken(value.text, span)
+                linkInsert = blockId to TextFieldValue(next, TextRange(caret))
+                vm.createAndAttachLabel(blockId, name)
+            }
+            LaunchedEffect(linkDraft) {
+                val now = linkDraft
+                val was = lastDraft
+                lastDraft = now
+                if (now == null || was == null || now.first != was.first) return@LaunchedEffect
+                if (labelTyping == null) return@LaunchedEffect
+                val (blockId, value) = now
+                val closed = CaptureParse.labelClosedBy(
+                    was.second.text, was.second.selection.end,
+                    value.text, value.selection.end,
+                ) ?: return@LaunchedEffect
+                // On Enter the row has already been split at the newline and this field truncated
+                // to what came before it, so the rewrite is of that half only; the token sits
+                // inside it by construction, since the newline was typed right after the word.
+                val text = value.text
+                val newline = text.indexOf('\n')
+                val kept = if (newline >= 0) text.substring(0, newline) else text
+                settleLabel(blockId, TextFieldValue(kept, TextRange(kept.length)), closed.first, closed.second)
+            }
+            LabelSuggestions(
+                draft = labelQuery,
+                labels = labelNames,
+                onPick = { name ->
+                    val (blockId, value) = labelTyping ?: return@LabelSuggestions
+                    val span = CaptureParse.labelDraft(value.text, value.selection.end)?.first
+                        ?: return@LabelSuggestions
+                    settleLabel(blockId, value, span, name)
+                },
             )
             BlockTypeBar(
                 // Nothing to pick between on a list: every block on it is a task.

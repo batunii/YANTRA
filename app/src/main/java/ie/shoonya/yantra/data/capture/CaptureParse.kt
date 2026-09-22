@@ -416,6 +416,74 @@ object CaptureParse {
     }
 
     /**
+     * The `#…` currently being typed, for a field that wants to offer the labels it could mean.
+     *
+     * Same shape as [assigneeDraft] and for the same reason: a label has no spaces, so the token
+     * ends at the next one and the caret says whether it is still being written. Live only while
+     * the caret is inside the word — once you have typed past it, the decision is made and
+     * [labelClosedBy] is the one that acts on it.
+     */
+    fun labelDraft(input: String, caret: Int): Pair<IntRange, String>? {
+        val at = caret.coerceIn(0, input.length)
+        val mark = input.lastIndexOf('#', (at - 1).coerceAtLeast(0))
+        if (mark < 0 || mark >= at) return null
+        if (mark > 0 && !input[mark - 1].isWhitespace()) return null
+        val typed = input.substring(mark + 1, at)
+        if (typed.any { it.isWhitespace() }) return null
+        if (typed.isNotEmpty() && !LABEL_WORD.matches(typed)) return null
+        return (mark until at) to typed
+    }
+
+    /**
+     * Whether a keystroke just finished a label, and which.
+     *
+     * A row on a page saves as it is typed, so there is no submit to parse on — the moment a label
+     * becomes real has to be found in the typing itself. That moment is the space (or Enter) typed
+     * straight after `#word`: [before] held a label draft under its caret, [after] is the same
+     * text with exactly one whitespace character inserted there. Anything else — a caret moved
+     * next to an old `#word`, a paste, a deletion — is not a decision and returns null. Returns the
+     * span of the token in [before] and the name, or null.
+     */
+    fun labelClosedBy(before: String, beforeCaret: Int, after: String, afterCaret: Int): Pair<IntRange, String>? {
+        val (span, name) = labelDraft(before, beforeCaret) ?: return null
+        if (name.isEmpty()) return null
+        if (after.length != before.length + 1 || afterCaret != beforeCaret + 1) return null
+        if (!after[beforeCaret].isWhitespace()) return null
+        if (after.substring(0, beforeCaret) != before.substring(0, beforeCaret)) return null
+        if (after.substring(beforeCaret + 1) != before.substring(beforeCaret)) return null
+        return span to name
+    }
+
+    /**
+     * [text] with the token at [span] taken out, and the space it was riding on with it, so
+     * "buy milk #home" becomes "buy milk" and not "buy milk ". Returns the text and where the
+     * caret should land.
+     */
+    fun withoutToken(text: String, span: IntRange): Pair<String, Int> {
+        var from = span.first
+        var to = span.last + 1
+        // Prefer eating the space before the token; failing that, the one after it. Never both.
+        if (from > 0 && text[from - 1] == ' ') from--
+        else if (to < text.length && text[to] == ' ') to++
+        return text.removeRange(from, to) to from
+    }
+
+    /**
+     * The labels worth offering for a partial name, best first, or every label when nothing is
+     * typed. Starts-with before contains, like [listSuggestions]; case-insensitive, like the
+     * registry, so `#Sync` and `#sync` are offered once.
+     */
+    fun labelSuggestions(draft: String, labels: List<String>): List<String> {
+        val d = draft.lowercase(Locale.ROOT)
+        if (d.isEmpty()) return labels
+        val starts = labels.filter { it.lowercase(Locale.ROOT).startsWith(d) }
+        return starts + labels.filter { it.lowercase(Locale.ROOT).contains(d) && it !in starts }
+    }
+
+    /** What a label may be called — the same alphabet [LABEL] accepts on a captured line. */
+    private val LABEL_WORD = Regex("""[\p{L}\p{N}_-]{1,40}""")
+
+    /**
      * The people worth offering for a partial login, best first — the same shape as
      * [listSuggestions] and for the same reason: what the strip offers and what the line resolves
      * to must be decided by one rule.

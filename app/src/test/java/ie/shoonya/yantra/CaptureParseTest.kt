@@ -586,4 +586,47 @@ class CaptureParseTest {
         assertEquals(listOf("batunii"), CaptureParse.peopleSuggestions("bat", people))
         assertEquals(people, CaptureParse.peopleSuggestions("", people))
     }
+
+    // ---- #labels typed into a row ----
+
+    @Test
+    fun `a hash under the caret is a label draft`() {
+        assertEquals((5..7) to "hi", CaptureParse.labelDraft("test #hi", 8))
+        assertEquals((5..5) to "", CaptureParse.labelDraft("test #", 6))
+    }
+
+    @Test
+    fun `a hash is not a draft once the caret has left it or it is glued to a word`() {
+        assertNull(CaptureParse.labelDraft("test #hi now", 12))
+        assertNull(CaptureParse.labelDraft("issue#42", 8))
+        assertNull(CaptureParse.labelDraft("test #hi", 4))
+    }
+
+    @Test
+    fun `the space typed after the word closes the label`() {
+        assertEquals((5..7) to "hi", CaptureParse.labelClosedBy("test #hi", 8, "test #hi ", 9))
+        assertEquals((5..7) to "hi", CaptureParse.labelClosedBy("test #hi", 8, "test #hi\n", 9))
+    }
+
+    @Test
+    fun `a bare hash, a caret that merely arrived, or any other edit does not close one`() {
+        assertNull(CaptureParse.labelClosedBy("test #", 6, "test # ", 7))
+        assertNull(CaptureParse.labelClosedBy("test #hi x", 10, "test #hi x", 9))
+        assertNull(CaptureParse.labelClosedBy("test #hi", 8, "test #hin", 9))
+        assertNull(CaptureParse.labelClosedBy("test #hi", 8, "tost #hi ", 9))
+    }
+
+    @Test
+    fun `removing the token takes its space with it`() {
+        assertEquals("test" to 4, CaptureParse.withoutToken("test #hi", 5..7))
+        assertEquals("test now" to 4, CaptureParse.withoutToken("test #hi now", 5..7))
+        assertEquals("" to 0, CaptureParse.withoutToken("#hi", 0..2))
+    }
+
+    @Test
+    fun `labels are offered prefix-first and case-blind`() {
+        val labels = listOf("Sync", "home", "homework")
+        assertEquals(listOf("home", "homework"), CaptureParse.labelSuggestions("HO", labels))
+        assertEquals(labels, CaptureParse.labelSuggestions("", labels))
+    }
 }
