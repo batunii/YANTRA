@@ -30,7 +30,7 @@ struct DueSheet: View {
             }
             DatePicker("", selection: $date, displayedComponents: hasTime ? [.date, .hourAndMinute] : [.date])
                 .datePickerStyle(.graphical).tint(y.accent).labelsHidden()
-            Toggle(isOn: $hasTime) { Label("Time", systemImage: "clock").font(Face.text(14, .medium)).foregroundStyle(y.ink) }.tint(y.accent)
+            Toggle(isOn: $hasTime) { Label { Text("Time") } icon: { YantraIcon(mark: .clock, size: YantraIcons.small, tint: y.secondary) }.font(Face.text(14, .medium)).foregroundStyle(y.ink) }.tint(y.accent)
                 .onChange(of: hasTime) { _, on in
                     // The offsets that make sense change with the shape of the due date: "30 min
                     // before" needs a time to be before, and "on the day at nine" only means
@@ -48,7 +48,7 @@ struct DueSheet: View {
             // cannot show what it is set to. Each one toggles; what is on is what is lit.
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Label("Reminders", systemImage: "bell").font(Face.text(14, .medium)).foregroundStyle(y.ink)
+                    Label { Text("Reminders") } icon: { YantraIcon(mark: .alarm, size: YantraIcons.small, tint: y.secondary) }.font(Face.text(14, .medium)).foregroundStyle(y.ink)
                     Spacer()
                     Text(remindersLabel).font(Face.text(12)).foregroundStyle(y.muted)
                 }

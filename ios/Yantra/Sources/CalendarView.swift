@@ -35,6 +35,26 @@ final class CalendarModel: ObservableObject {
         didSet { CalendarModel.saveHourHeight(hourHeight) }
     }
 
+    // MARK: a task being carried onto the day
+
+    /// The task currently being dragged out of the rail, and where the finger is.
+    ///
+    /// Held here rather than in either view because the rail and the day are siblings: the gesture
+    /// starts in one and lands in the other, and the only thing they share is this model and a
+    /// named coordinate space.
+    @Published var carrying: CarriedTask?
+    /// Where the finger is, in the calendar's own coordinate space.
+    @Published var carryPoint: CGPoint = .zero
+
+    struct CarriedTask: Equatable {
+        var id: String
+        var title: String
+    }
+
+    /// The name both surfaces measure against. A drag that begins in the rail and ends over the day
+    /// has to be read in one space or the drop lands at an offset nobody can see.
+    static let space = "calendar.surface"
+
     static let defaultHourHeight: CGFloat = 60
     /// Small enough that a working day fits a phone without scrolling. Below this the words stop
     /// fitting and it becomes a chart.
@@ -77,6 +97,8 @@ final class CalendarModel: ObservableObject {
             ? DeviceCalendars.shared.events(from: readFrom.startOfDay(), to: readTo.startOfDay(), calendarIds: CalendarChoice.chosen)
             : []
         var listTints: [String: String] = [:]
+        // Keyed by task, valued by the colour of the list it lives on — the caller walks the
+        // ancestors, so what goes in here is the task's own id.
         for n in index.nodes.values where n.type == NodeType.task {
             if let c = listColor(n.id) { listTints[n.id] = c }
         }

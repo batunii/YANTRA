@@ -31,6 +31,29 @@ public enum TimelineLayout {
 
     public static let minutesInDay = 24 * 60
 
+    /// The minute a task dropped at `offset` points down a column lands on.
+    ///
+    /// To the quarter hour: a sitting placed to the minute is a false precision nobody wants to read
+    /// back, and every other time in the app snaps the same way. Clamped so a drop near the bottom
+    /// gives a sitting that fits inside the day rather than one that runs off the end of it.
+    ///
+    /// Shared by the preview the finger drags and the block that is written when it lets go — two
+    /// copies of this would be two answers, and the gap between them is a block landing somewhere
+    /// other than where it was shown.
+    public static func dropMinute(offset: Double, hourHeight: Double,
+                                  length: Int = defaultSittingMinutes) -> Int {
+        guard hourHeight > 0 else { return 0 }
+        let minute = offset / (hourHeight / 60)
+        let snapped = Int((minute / 15).rounded(.down)) * 15
+        return max(0, min(snapped, minutesInDay - length))
+    }
+
+    /// How long a sitting is when it is placed rather than described.
+    ///
+    /// An hour, because a block you drag onto a day is a claim about attention and an hour is the
+    /// unit people think in. It is a starting length, not a verdict — the edge drags like any other.
+    public static let defaultSittingMinutes = 60
+
     /// Nothing shorter than this gets drawn thinner — a five-minute block still needs to be tappable.
     public static let minBlockMinutes = 20
 
@@ -190,5 +213,38 @@ public func railShelves(_ tasks: [Node], today: LocalDate = .today(), zone: Time
             if ka != kb { return ka < kb }
             return (a.title ?? "").lowercased() < (b.title ?? "").lowercased()
         }
+    }
+}
+
+/// Where a day's ruler opens.
+///
+/// It opened at seven whatever the time was. A calendar checked at four in the afternoon began with
+/// nine hours of morning, and the answer had scrolled off the bottom — so every single look at today
+/// started by scrolling to where you already were.
+public enum OpeningHour {
+
+    /// Where the day starts when it has no "now" to show. Midnight is seven hours of nothing before
+    /// the first thing anybody has on, so the ruler starts at the top of the working day and you
+    /// scroll *up* for the small hours.
+    public static let defaultHour: Double = 7
+
+    /// How far before now to open, in hours.
+    ///
+    /// An hour rather than none, because landing with the line at the top hides the thing you are
+    /// most likely looking for — the meeting you are twenty minutes into, the block you started
+    /// before lunch — and answers "what is happening" with only "what is next".
+    public static let lead: Double = 1
+
+    /// The hour to scroll to, as a fraction so half past two opens at half past one and the line
+    /// lands in the same place whatever the minute.
+    ///
+    /// **Any** of the days on screen being today is what counts, not the first: three days share one
+    /// scroll, so asking only about the first would open at seven for two days out of three —
+    /// including the one where now actually is.
+    public static func forDays(_ days: [LocalDate], now: LocalDateTime) -> Double {
+        guard days.contains(now.date) else { return defaultHour }
+        let exact = Double(now.hour) + Double(now.minute) / 60
+        // Never past the end, and never before the top: early morning still shows midnight.
+        return min(max(exact - lead, 0), 23)
     }
 }

@@ -86,7 +86,12 @@ struct FocusView: View {
             Button { s.isRunning ? model.timer.pause() : model.timer.resume() } label: {
                 YantraIcon(mark: s.isRunning ? .pause : .play, size: 28, tint: y.accent)
                     .frame(width: 76, height: 76).background(Circle().fill(y.accentFill)).overlay(Circle().stroke(y.accentBorder, lineWidth: 1))
-            }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
+            // The screen had no identifiers at all, which makes the one control that matters
+            // unreachable to anyone not looking at it — and unnameable to a test.
+            .accessibilityIdentifier("focus.playpause")
+            .accessibilityLabel(s.isRunning ? "Pause" : "Resume")
             HStack(spacing: 10) {
                 YantraButton(label: "Finish", tone: .soft, mark: .focus) { stopping(s) { model.timer.finish() } }
                 YantraButton(label: "Drop", tone: .quiet) { stopping(s) { model.timer.abandon() } }

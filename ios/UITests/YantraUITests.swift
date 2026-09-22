@@ -57,6 +57,8 @@ class YantraUITestCase: XCTestCase {
     // Fixture names, mirrored from `UITestFixture.Names`.
     enum Fixture {
         static let list = "Groceries"
+        static let listId = "fixture-groceries"
+        static let plainTaskId = "fixture-plain"
         static let secondList = "Work"
         static let smartList = "Today"
         static let overdueTask = "Overdue thing"

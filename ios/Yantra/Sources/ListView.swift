@@ -131,7 +131,8 @@ struct TaskRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            YantraCheckbox(state: state, size: 23, frameTint: node.done ? nil : y.priority(node.priority)) { model.toggleDone(node) }
+            YantraCheckbox(state: state, size: 23, frameTint: node.done ? nil : y.priority(node.priority),
+                           swipeProgress: swipe) { model.toggleDone(node) }
                 .padding(.top, 1)
                 .accessibilityIdentifier("task.check.\(inlinePlain(node.title ?? ""))")
                 .accessibilityLabel(node.done ? "Mark not done" : "Mark done")
@@ -158,17 +159,9 @@ struct TaskRow: View {
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 16).fill(node.inProgress ? y.accentFill.opacity(0.5) : y.cardBg))
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 24, coordinateSpace: .local)
-                .onChanged { v in if v.translation.width > 0 { swipe = min(v.translation.width, 90) } }
-                .onEnded { v in
-                    if v.translation.width >= 72, !node.done {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
-                        model.toggleInProgress(node)
-                    }
-                    swipe = 0
-                }
-        )
+        // The drag used to track a distance nothing drew, so a swipe looked like nothing at all
+        // until it committed — and a task already finished still ran the gesture to no effect.
+        .swipeToProgress($swipe, enabled: !node.done) { model.toggleInProgress(node) }
     }
 
     private var meta: some View {

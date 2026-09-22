@@ -97,7 +97,12 @@ struct RootView: View {
         .sheet(isPresented: $quickAdd) { CreateSheet(path: $path) }
         .onChange(of: phase) { _, p in
             if p == .active { model.wake(); model.syncInBackground("opened") }
-            if p == .background { model.syncInBackground("leaving app") }
+            if p == .background {
+                // Leaving is the one moment "in a moment" may never come, so the coalesced work is
+                // run now rather than left on a timer this process may not live to fire.
+                model.flushFollowUp()
+                model.syncInBackground("leaving app")
+            }
         }
         .task {
             // `-route open:<id>` / `-route focus` / `-route home` — a launch argument for UI tests and

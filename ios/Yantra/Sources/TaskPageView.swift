@@ -349,12 +349,21 @@ struct PropertyPills: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
     let node: Node
-    @State private var dueSheet = false
-    @State private var labelSheet = false
+    /// One sheet, chosen by what was tapped.
+    ///
+    /// Two `.sheet` modifiers on one view is not two sheets: SwiftUI honours one and silently drops
+    /// the rest, so "+ Label" opened nothing while Due worked, and the pill looked broken rather
+    /// than unimplemented. One presentation, one modifier, and adding a third kind cannot
+    /// reintroduce it.
+    private enum PillSheet: Identifiable {
+        case due, label
+        var id: Int { self == .due ? 0 : 1 }
+    }
+    @State private var presented: PillSheet?
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminders.isEmpty ? "" : (due.reminders.count == 1 ? " · 🔔" : " · 🔔\(due.reminders.count)")), color: isOverdue(node) ? y.overdue : y.due, ghost: false, id: "task.due") { dueSheet = true } }
+                if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminders.isEmpty ? "" : (due.reminders.count == 1 ? " · 🔔" : " · 🔔\(due.reminders.count)")), color: isOverdue(node) ? y.overdue : y.due, ghost: false, id: "task.due") { presented = .due } }
                 if let p = node.priority { pill("Priority · " + p, color: y.priority(p) ?? y.secondary, ghost: false) { cyclePriority() } }
                 ForEach(node.labels, id: \.self) { l in
                     // Tap detaches, as on Android.
@@ -362,13 +371,17 @@ struct PropertyPills: View {
                         model.write { try model.writer.editTask(node.id) { t in var x = t; x.labels.removeAll { $0 == l }; return x } }
                     }
                 }
-                if node.due == nil { pill("+ Due", color: y.muted, ghost: true) { dueSheet = true } }
+                if node.due == nil { pill("+ Due", color: y.muted, ghost: true) { presented = .due } }
                 if node.priority == nil { pill("+ Priority", color: y.muted, ghost: true) { cyclePriority() } }
-                pill("+ Label", color: y.muted, ghost: true) { labelSheet = true }
+                pill("+ Label", color: y.muted, ghost: true) { presented = .label }
             }
         }
-        .sheet(isPresented: $dueSheet) { DueSheet(node: node) }
-        .sheet(isPresented: $labelSheet) { LabelPicker(node: node) }
+        .sheet(item: $presented) { which in
+            switch which {
+            case .due: DueSheet(node: node)
+            case .label: LabelPicker(node: node)
+            }
+        }
     }
     private func cyclePriority() {
         let order: [String?] = ["High", "Medium", "Low", nil]

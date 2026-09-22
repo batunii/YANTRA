@@ -47,11 +47,27 @@ public enum DayItem: Identifiable, Equatable, Sendable {
         public var repeating: Bool
         /// The task this block is time for, when it is a sitting rather than an appointment.
         public var forTaskId: String?
+        /// The task's words, carried down beside the block so `displayTitle` needs nothing else.
+        public var forTitle: String?
         /// The colour the **block** wears, as a palette name. Nil paints it in the accent.
         public var tint: String?
         /// The repository this block came from — the **spine**. Nil while only one is open.
         public var workspaceTint: String?
         public var sortKey: Int
+
+        /// What to *show*.
+        ///
+        /// A sitting is time set aside for a task. It has no title of its own, by design — its words
+        /// **are** the task's, which is why the line stores no name and there is only one place to
+        /// rename from. A caller that reads `title` on a sitting gets the empty string it genuinely
+        /// has, and a day fills with blocks labelled "Event".
+        ///
+        /// So the rule lives here rather than in each screen, and `title` is deliberately the
+        /// block's *own* words — the thing a sitting does not have.
+        public var displayTitle: String {
+            if forTaskId != nil, let t = forTitle, !t.isEmpty { return t }
+            return title
+        }
     }
 
     /// Somebody else's event. A separate kind rather than an `EventItem` with a flag, because the
@@ -95,8 +111,11 @@ public enum DayItem: Identifiable, Equatable, Sendable {
         switch self { case let .event(e): return e.nodeId; case let .device(d): return d.nodeId; case let .task(t): return t.nodeId }
     }
     public var id: String { nodeId }
+    /// What to show. For a sitting that is the task's words, not the block's own — see
+    /// `EventItem.displayTitle`. Every screen reads this one, so the rule cannot be reached past by
+    /// a caller that simply took the obvious-looking field.
     public var title: String {
-        switch self { case let .event(e): return e.title; case let .device(d): return d.title; case let .task(t): return t.title }
+        switch self { case let .event(e): return e.displayTitle; case let .device(d): return d.title; case let .task(t): return t.title }
     }
     /// Where it sorts within the day. All-day things come first, then by time.
     public var sortKey: Int {
@@ -188,6 +207,12 @@ public enum CalendarBucketer {
         var out: CalendarDays = [:]
 
         let events = nodes.filter { $0.event != nil }
+        // A sitting draws with its task's words, so the titles have to be to hand while the blocks
+        // are built. Built once rather than looked up per block.
+        var taskTitles: [String: String] = [:]
+        for n in nodes where n.type == NodeType.task {
+            if let t = n.title, !t.isEmpty { taskTitles[n.id] = t }
+        }
         let tasks = nodes.filter { $0.type == NodeType.task && $0.dueDate != nil }
 
         // Lines of ours about somebody else's meetings.
@@ -251,10 +276,13 @@ public enum CalendarBucketer {
             if annotated.contains(n.id) { continue }
             emit(.event(DayItem.EventItem(
                 nodeId: n.id,
-                title: (n.title?.isEmpty == false ? n.title! : "Event"),
+                // "Event" only for a block that truly has no name and is not standing in for a
+                // task; a sitting's words come from `forTitle` through `displayTitle`.
+                title: (n.title?.isEmpty == false ? n.title! : (e.forTaskId == nil ? "Event" : "")),
                 start: e.time.start, end: e.time.end, allDay: e.time.allDay, location: e.location,
                 repeating: e.rrule != nil,
                 forTaskId: e.forTaskId,
+                forTitle: e.forTaskId.flatMap { taskTitles[$0] },
                 tint: e.color ?? e.forTaskId.flatMap { listTints[$0] },
                 workspaceTint: workspaceTints[n.workspaceId],
                 // All-day first, then by clock. A day reads top to bottom as it happens.

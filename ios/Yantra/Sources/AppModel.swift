@@ -13,10 +13,19 @@ final class AppModel: ObservableObject {
     @Published private(set) var index = WorkspaceIndex()
     @Published private(set) var sessions: [FocusSession] = []
     let timer: FocusTimer
+    private var bag = Set<AnyCancellable>()
 
     init() {
         (store, writer) = AppGroup.openWorkspace()
         timer = FocusTimer()
+        // The clock ticks on `timer`, and every screen observes `model`. A nested ObservableObject
+        // publishes on *itself*, so the second hand moved and nothing redrew — the focus screen and
+        // the player bar sat on the number they were built with and only caught up when some other
+        // write happened to refresh the model. Forwarding its changes is what makes a running clock
+        // look like one.
+        timer.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &bag)
         writer.onChange = { [weak self] _ in Task { @MainActor in self?.reindex() } }
         Notifications.shared.install()
         Notifications.shared.onMarkDone = { [weak self] id in self?.write { try self?.writer.setDone(id, true) } }
@@ -27,10 +36,40 @@ final class AppModel: ObservableObject {
     }
 
     func reindex() {
+        // What the screen needs, straight away.
         index = WorkspaceIndex.read(store)
         sessions = FocusLedger.read(store)
-        Notifications.shared.syncReminders(index)
         rebuildRunning()
+        // What nothing on screen is waiting for, once the writing stops.
+        scheduleFollowUp()
+    }
+
+    /// Notifications and the widget timelines, coalesced.
+    ///
+    /// Both were run on **every** write. Rescheduling every reminder and reloading every widget is
+    /// cross-process work measured in tens of milliseconds, and it sat between the tap and the
+    /// redraw — so ticking a checkbox paid for a notification sweep and a trip to the widget host
+    /// before the tick appeared. Neither is urgent: nobody is looking at a widget while typing into
+    /// the app, and a reminder that settles a moment after the last edit is indistinguishable from
+    /// one that settles during it.
+    private var followUp: Timer?
+    private func scheduleFollowUp() {
+        followUp?.invalidate()
+        followUp = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                Notifications.shared.syncReminders(self.index)
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+        }
+    }
+
+    /// Runs the follow-up now rather than on the timer — for leaving the app, where "in a moment"
+    /// may never arrive.
+    func flushFollowUp() {
+        followUp?.invalidate()
+        followUp = nil
+        Notifications.shared.syncReminders(index)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -92,8 +131,11 @@ final class AppModel: ObservableObject {
     /// The colour a list wears, as a palette name — its own if somebody chose one, else the one its
     /// name seeds to. Seeding rather than leaving it blank is what makes a colour correctable: there
     /// is always one to change.
-    func listColor(_ pageId: String) -> String? {
-        guard let page = store.readPage(pageId) else { return nil }
+    func listColor(_ pageId: String?) -> String? {
+        // From the index, not the disk. This is called once per task while the calendar rebuilds,
+        // and a `readPage` here meant one file read per task on a screen that redraws whenever the
+        // month, the selection or any node changes — which is what made every tap feel slow.
+        guard let pageId, let page = index.nodes[pageId] else { return nil }
         return page.color ?? page.title.map { LabelPalette.defaultNameFor($0) }
     }
 
@@ -182,6 +224,19 @@ final class AppModel: ObservableObject {
     func stopTiming() {
         if timingId != nil { timer.finish() }
         rebuildRunning()
+    }
+
+    /// Sets time aside for a task — a **sitting**.
+    ///
+    /// The block carries no title of its own: its words *are* the task's, which is why there is only
+    /// ever one place to rename from. It lives on the page the task's own line lives on, so the
+    /// claim and the thing claimed stay together in one file.
+    func schedule(taskId: String, from: LocalDateTime, to: LocalDateTime) {
+        guard let page = index.nodes[taskId]?.homePageId else { return }
+        write {
+            _ = try writer.addEvent(to: page, title: "", time: EventTime(start: from, end: to),
+                                    forTaskId: taskId)
+        }
     }
 
     /// The sittings covering this moment, read through the same bucketer the calendar uses so a

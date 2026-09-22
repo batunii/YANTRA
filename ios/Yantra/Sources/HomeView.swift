@@ -21,9 +21,16 @@ struct HomeView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
     @Binding var path: NavigationPath
-    @State private var creating = false
+    /// The one sheet this screen can show. Two `.sheet` modifiers on a view is not two sheets —
+    /// SwiftUI honours one and drops the rest without a word, which is how a working control ends
+    /// up looking broken.
+    enum Presented: Identifiable {
+        case create
+        case look(Node)
+        var id: String { if case let .look(n) = self { return "look:\(n.id)" }; return "create" }
+    }
+    @State private var presented: Presented?
     /// The list whose appearance is being chosen, if any.
-    @State private var look: Node?
 
     private var lists: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.list } }
     private var smart: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.smartList } }
@@ -60,14 +67,14 @@ struct HomeView: View {
 
                     if !smart.isEmpty {
                         SectionLabel(text: "Pinned").padding(.bottom, 6)
-                        ForEach(smart) { n in HomeRow(node: n, isSmart: true, open: { path.append(Route.smart(n.id)) }, look: $look) }
+                        ForEach(smart) { n in HomeRow(node: n, isSmart: true, open: { path.append(Route.smart(n.id)) }, onLook: { presented = .look($0) }) }
                         Spacer().frame(height: 18)
                     }
                     SectionLabel(text: "Lists").padding(.bottom, 6)
                     if lists.isEmpty {
-                        ComposedEmpty(line: "Nothing here yet", action: "Make a list") { creating = true }
+                        ComposedEmpty(line: "Nothing here yet", action: "Make a list") { presented = .create }
                     }
-                    ForEach(lists) { n in HomeRow(node: n, isSmart: false, open: { path.append(Route.node(n.id)) }, look: $look) }
+                    ForEach(lists) { n in HomeRow(node: n, isSmart: false, open: { path.append(Route.node(n.id)) }, onLook: { presented = .look($0) }) }
                     Spacer().frame(height: 120)
                 }
                 .padding(.horizontal, Layout.pageMargin)
@@ -76,14 +83,19 @@ struct HomeView: View {
             // above the nav strip, so the bottom of the app does not reshuffle between screens.
             BottomBar(onOpenNow: { path.append(Route.focus($0.nodeId)) }) {
                 HomeTabBar(onCalendar: { path.append(Route.calendar(nil)) },
-                           onCreate: { creating = true },
+                           onCreate: { presented = .create },
                            onStats: { path.append(Route.stats) })
             }
         }
         .background(y.page.ignoresSafeArea())
-        .sheet(isPresented: $creating) { CreateSheet(path: $path) }
-        .sheet(item: $look) { n in
-            ListLookSheet(nodeId: n.id, title: inlinePlain(n.title ?? ""), smart: n.type == NodeType.smartList)
+        // One modifier: a second `.sheet` on the same view is silently dropped, which is how the
+        // create key and "How it looks" ended up fighting over which one opened.
+        .sheet(item: $presented) { what in
+            switch what {
+            case .create: CreateSheet(path: $path)
+            case let .look(n):
+                ListLookSheet(nodeId: n.id, title: inlinePlain(n.title ?? ""), smart: n.type == NodeType.smartList)
+            }
         }
     }
 }
@@ -94,7 +106,7 @@ struct HomeRow: View {
     let node: Node
     let isSmart: Bool
     let open: () -> Void
-    @Binding var look: Node?
+    var onLook: (Node) -> Void
 
     private var counts: (done: Int, total: Int) {
         let kids = isSmart ? model.smartListRows(node) + model.completedRows(node) : model.index.children(of: node.id).filter { $0.type == NodeType.task }
@@ -114,6 +126,11 @@ struct HomeRow: View {
                 if c.total > 0 { Compass(fraction: Double(c.done) / Double(c.total)) }
             }
             .padding(.vertical, 12)
+            // Deliberately no `contentShape` here. It looks like the right thing — the row's
+            // *accessibility* frame is only as tall as the text — but a Button is already tappable
+            // across its whole area, and adding one makes the row a single hit target that swallows
+            // the long press the context menu needs. Tried, and it broke "How it looks" on every
+            // row; `ListLookUITests` is what caught it.
         }
         .buttonStyle(.plain)
         // Identifier only. A Button already reads as one control with its children folded into the
@@ -123,7 +140,11 @@ struct HomeRow: View {
         // How a list looks is a second thing you can do to a row, so it is the second gesture
         // rather than a control that would sit on every row for the once anybody uses it.
         .contextMenu {
-            Button { look = node } label: { Label("How it looks", systemImage: "paintpalette") }
+            // The words alone. A menu item's label takes an `Image`, and a drawn mark in the icon
+            // slot makes the whole menu fail to build — the row then long-presses to nothing, which
+            // is exactly what putting one here did. The app draws its own marks everywhere it can;
+            // a system menu is somewhere it cannot.
+            Button("How it looks") { onLook(node) }
         }
         .overlay(alignment: .bottom) { Rectangle().fill(y.hairline).frame(height: 1) }
     }
