@@ -104,15 +104,26 @@ class SmartListViewModel(
      * from many of them, so where a row lives is news rather than the page it is on.
      */
     val rowContext: StateFlow<ie.shoonya.yantra.ui.components.RowContext> =
-        filter.map { f -> rowContextFor(f) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), rowContextFor(null))
+        combine(filter, workspaces) { f, ws -> rowContextFor(f, ws) }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                rowContextFor(null, workspaces.value),
+            )
 
-    private fun rowContextFor(f: Filter?) = ie.shoonya.yantra.ui.components.RowContext(
+    /**
+     * Takes the open workspaces rather than reading them, because [workspaces] is now a flow and
+     * `singleWorkspace` is exactly the "more than one workspace" gate that has to follow the live
+     * set — see [ie.shoonya.yantra.AppContainer.openWorkspacesFlow]. Reading `.value` here would
+     * compile and then freeze the grammar at whatever was open when the row context was first
+     * built, which is the snapshot bug this branch exists to remove.
+     */
+    private fun rowContextFor(f: Filter?, ws: List<WorkspaceEntry>) = ie.shoonya.yantra.ui.components.RowContext(
         grammar = ie.shoonya.yantra.data.filter.Salience.grammar(
-            ie.shoonya.yantra.data.filter.ViewContext(f, singleWorkspace = workspaces.size <= 1)
+            ie.shoonya.yantra.data.filter.ViewContext(f, singleWorkspace = ws.size <= 1)
         ),
         expected = ie.shoonya.yantra.ui.components.Expected(
-            logins = workspaces.associate { it.id to container.credentials.login(it.id) } +
+            logins = ws.associate { it.id to container.credentials.login(it.id) } +
                 (ie.shoonya.yantra.data.sync.Credentials.ACCOUNT to
                     container.credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)),
         ),
