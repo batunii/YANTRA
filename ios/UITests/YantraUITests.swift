@@ -71,6 +71,8 @@ class YantraUITestCase: XCTestCase {
         static let warnedTask = "Warned thing"
         static let startedTask = "Started thing"
         static let sittingTask = "Sitting thing"
+        static let group = "Projects"
+        static let groupedList = "Kitchen"
         static let event = "Standup"
         static let allDayEvent = "Conference day"
     }

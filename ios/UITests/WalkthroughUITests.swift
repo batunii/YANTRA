@@ -122,3 +122,37 @@ final class TimerUITests: YantraUITestCase {
                       "the session did not end")
     }
 }
+
+/// Groups on Home.
+///
+/// A group was creatable and never drawn — and a grouped list is a *child* of its group, so every
+/// list filed into one disappeared along with it. Three lists in "Work" meant four things gone.
+final class GroupUITests: YantraUITestCase {
+
+    func testAGroupAndTheListsInsideItAreOnHome() {
+        launch(route: "home")
+        assertExists(shelf(Fixture.group), "the group is not drawn on Home at all")
+        assertExists(shelf(Fixture.groupedList), "the list inside the group vanished with it")
+    }
+
+    func testAGroupFolds() {
+        launch(route: "home")
+        // The button itself: `el` takes the first descendant carrying the identifier, which can be
+        // a wrapper that exists but takes no taps.
+        let banner = app.buttons["home.group.\(Fixture.group)"]
+        assertExists(banner, "no group banner to fold")
+        XCTAssertEqual(banner.value as? String, "open", "a group should start open")
+        banner.tap()
+        XCTAssertEqual(banner.value as? String, "folded", "tapping the banner did not fold it")
+        XCTAssertFalse(shelf(Fixture.groupedList).waitForExistence(timeout: 2),
+                       "folding the group left its lists on screen")
+        banner.tap()
+        assertExists(shelf(Fixture.groupedList), "unfolding did not bring the lists back")
+    }
+
+    func testAGroupedListStillOpens() {
+        launch(route: "home")
+        shelf(Fixture.groupedList).tap()
+        assertExists(shelf("Descale the kettle"), "the grouped list did not open")
+    }
+}

@@ -12,6 +12,14 @@ public enum GitHubAuth {
         let base = "https://github.com/apps/\(appSlug)/installations"
         return URL(string: targetId.map { "\(base)/new/permissions?suggested_target_id=\($0)" } ?? "\(base)/new")!
     }
+    /// Where a person withdraws Yantra's access to their account.
+    ///
+    /// The app creates no account of its own — GitHub owns the identity and this page owns the
+    /// permission — so this, not a row in a settings screen, is what "delete my account" means here.
+    public static var revokeURL: URL {
+        URL(string: "https://github.com/settings/connections/applications/\(clientId)")!
+    }
+
     public static func newRepoURL(name: String) -> URL {
         var c = URLComponents(string: "https://github.com/new")!
         c.queryItems = [.init(name: "name", value: name), .init(name: "visibility", value: "private"), .init(name: "description", value: "Yantra tasks")]

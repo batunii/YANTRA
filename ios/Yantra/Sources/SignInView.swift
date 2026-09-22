@@ -124,8 +124,32 @@ struct SignInView: View {
             Text("Opens GitHub with the name and Private already filled in — press one button, then come back and tap Use this repository.").font(Face.text(12)).foregroundStyle(y.dim)
         }
         if let (text, bad) = note { Note(text: text, bad: bad) }
-        YantraButton(label: "Sign out", tone: .quiet) { Keychain.accountToken = nil; SyncSettings.login = nil; self.login = nil }.padding(.top, 10)
-        Text("Your workspace keeps its files. Remove Yantra's access on GitHub to stop it syncing.").font(Face.text(12)).foregroundStyle(y.dim)
+        YantraButton(label: "Sign out", tone: .quiet) { deleteAccountCredential() }.padding(.top, 10)
+        Text("Signing out deletes the token from this device. Your workspace keeps its files.")
+            .font(Face.text(12)).foregroundStyle(y.dim)
+        // Yantra has no account of its own to delete — GitHub holds the authorisation, and this is
+        // where it is withdrawn. Reachable from inside the app rather than described in a sentence,
+        // because "go and find it on the website" is not a way to revoke anything.
+        YantraButton(label: "Revoke access on GitHub", tone: .quiet, mark: .openOut) {
+            deleteAccountCredential()
+            openURL(GitHubAuth.revokeURL)
+        }.padding(.top, 8)
+        Text("Removes Yantra's permission on your account, for every device. Sign in again to undo it.")
+            .font(Face.text(12)).foregroundStyle(y.dim)
+    }
+
+    /// Deletes the credential this device holds — the only thing Yantra stores about you.
+    ///
+    /// This is Yantra's account deletion, in the sense Guideline 5.1.1(v) asks about. The app
+    /// creates no account: there is no sign-up, no server and no record of anybody. It signs in
+    /// *with* GitHub and keeps one user token so it can push to a repository you already own, so
+    /// deleting everything it holds is deleting that token. `GitHubAuth.revokeURL`, offered beside
+    /// this, withdraws the authorisation itself at GitHub for every device — the half that is not
+    /// ours to delete. See `docs/APP_STORE_SUBMISSION.md`.
+    private func deleteAccountCredential() {
+        Keychain.accountToken = nil
+        SyncSettings.login = nil
+        login = nil
     }
 
     private func connect() async {

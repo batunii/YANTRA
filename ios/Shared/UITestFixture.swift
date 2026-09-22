@@ -26,6 +26,8 @@ enum UITestFixture {
         static let focusedTask = "Focused thing"
     static let startedTask = "Started thing"
     static let sittingTask = "Sitting thing"
+    static let group = "Projects"
+    static let groupedList = "Kitchen"
         static let archivedTask = "Archived thing"
         static let warnedTask = "Warned thing"
         static let event = "Standup"
@@ -45,6 +47,8 @@ enum UITestFixture {
         static let ink = "fixture-ink"
         static let warnedTask = "fixture-warned"
         static let image = "fixture-image"
+    static let group = "fixture-group"
+    static let groupedList = "fixture-grouped"
     static let startedTask = "fixture-started"
     static let sittingTask = "fixture-sitting"
     }
@@ -104,6 +108,12 @@ enum UITestFixture {
                             time: EventTime(start: LocalDateTime(date: today),
                                             end: LocalDateTime(date: today).adding(days: 1), allDay: true))),
         ], color: "Teal"))
+        store.writePage(PageDoc(id: Ids.group, type: NodeType.group, parent: nil, title: Names.group,
+                                modifiedAt: now, device: "uitest", blocks: []))
+        store.writePage(PageDoc(id: Ids.groupedList, type: NodeType.list, parent: Ids.group, title: Names.groupedList,
+                                modifiedAt: now, device: "uitest", blocks: [
+            .task(TaskRef(id: id(), title: "Descale the kettle")),
+        ]))
         store.writePage(PageDoc(id: parented, type: NodeType.task, parent: groceries, title: nil,
                                 modifiedAt: now, device: "uitest", blocks: [
             .prose("Some notes on this task."),

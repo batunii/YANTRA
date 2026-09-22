@@ -12,6 +12,9 @@ struct TaskPageView: View {
     @State private var editing: Int? = nil
     @State private var draft = ""
     @State private var titleDraft = ""
+    /// Deleting takes the page and everything inside it, and none of it comes back. The title is
+    /// read back in the question because that is the one thing that stops the wrong page going.
+    @State private var confirmingDelete = false
     @FocusState private var focus: Int?
 
     private var node: Node? { model.index.nodes[nodeId] }
@@ -30,6 +33,13 @@ struct TaskPageView: View {
         }
         .background(y.page.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .alert("Delete \u{201C}\(inlinePlain(node?.title ?? "Untitled"))\u{201D}?",
+               isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive) { delete() }
+            Button("Keep it", role: .cancel) {}
+        } message: {
+            Text("This page and everything inside it will be deleted.")
+        }
         .onAppear { titleDraft = node?.title ?? "" }
     }
 
@@ -73,7 +83,7 @@ struct TaskPageView: View {
                         NavCircle(mark: .focus, accent: true) { path.append(Route.focus(n.id)) }
                     }
                 }
-                Menu { Button("Delete", role: .destructive) { delete() } } label: {
+                Menu { Button("Delete…", role: .destructive) { confirmingDelete = true } } label: {
                     YantraIcon(mark: .more, size: YantraIcons.medium, tint: y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
                 }
             }

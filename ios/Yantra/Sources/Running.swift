@@ -320,7 +320,11 @@ private struct TransportKey: View {
 /// failure to the one the dock fixed: it read as two objects, and then as none.
 struct NowDockSeam: View {
     @Environment(\.y) private var y
-    var body: some View { Rectangle().fill(y.hairline).frame(height: 1) }
+    var body: some View {
+        // Inset from the edges. A full-bleed rule runs straight into the dock's rounded top corners
+        // and reads as a line that has been cut off rather than one that ends.
+        Rectangle().fill(y.hairline).frame(height: 1).padding(.horizontal, 14)
+    }
 }
 
 /// The dock: one surface at the foot of a screen, holding whatever that screen puts there.
@@ -338,9 +342,20 @@ struct NowDock<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) { content }
             .frame(maxWidth: .infinity)
-            .background(y.band)
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: Layout.sheetRadius,
-                                              topTrailingRadius: Layout.sheetRadius))
+            // The surface reaches the screen edge; the content stops above the home indicator.
+            //
+            // Clipping the whole thing left the band ending where the content ended, so the page
+            // showed through underneath and the dock floated a few points off the bottom — and the
+            // fixed padding that was there to cover it stacked on top of the safe-area inset, which
+            // is the dead space under the field. Letting the background run under the inset and
+            // paying only the inset for the content leaves one surface, snug at the edge, on a
+            // phone with a home indicator and on one without.
+            .background {
+                UnevenRoundedRectangle(topLeadingRadius: Layout.sheetRadius,
+                                       topTrailingRadius: Layout.sheetRadius)
+                    .fill(y.band)
+                    .ignoresSafeArea(edges: .bottom)
+            }
     }
 }
 

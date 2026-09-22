@@ -200,8 +200,8 @@ struct QuickAddBar: View {
         .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: Layout.barRadius).fill(y.cardBg))
         .overlay(RoundedRectangle(cornerRadius: Layout.barRadius).stroke(y.tileBorder, lineWidth: 1))
-        // One number, not two: the field's breathing room at the screen edge is the same whether
-        // or not a player is above it, which is the point of it being the outermost row.
-        .padding(.horizontal, Layout.pageMargin).padding(.bottom, 22).padding(.top, 10)
+        // The safe area supplies the rest of the gap below, so this is the breathing room and not a
+        // guess at the home indicator's height on top of it.
+        .padding(.horizontal, Layout.pageMargin).padding(.bottom, 10).padding(.top, 10)
     }
 }

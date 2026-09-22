@@ -154,3 +154,19 @@ test over every route.
 Not covered: drawing *into* the ink canvas (PencilKit has no useful accessibility surface), the
 share extension (it needs a second host app to invoke it), and sync against a live GitHub — the
 sign-in screen is exercised, the network path is not.
+
+## Guideline 5.1.1(v) — account deletion
+
+Yantra creates no account. There is nothing to sign up for, no server, and no record of you
+anywhere: the app signs in **with** GitHub and stores one user token in the Keychain so it can push
+to a repository you already own.
+
+So the two things 5.1.1(v) asks for are both in the app, on the GitHub screen:
+
+- **Sign out** deletes the token from this device. It is the only thing Yantra stores about you.
+- **Revoke access on GitHub** opens the authorisation itself and withdraws it for every device.
+  This is the real "delete", because GitHub holds the permission — an in-app row that claimed to
+  delete an account would be claiming to delete something Yantra does not have.
+
+Your workspace files are yours and stay where they are, on the device and in your own repository.
+Neither action touches them, which the screen says in as many words.

@@ -30,9 +30,19 @@ struct HomeView: View {
         var id: String { if case let .look(n) = self { return "look:\(n.id)" }; return "create" }
     }
     @State private var presented: Presented?
+    @State private var folded: Set<String> = FoldedGroups.load()
     /// The list whose appearance is being chosen, if any.
 
     private var lists: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.list } }
+    /// Groups, and the lists inside each.
+    ///
+    /// A group was creatable and never drawn — and because a grouped list is a *child* of the
+    /// group, every list inside one disappeared with it. You could file three lists into "Work" and
+    /// watch all four vanish from Home.
+    private var groups: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.group } }
+    private func listsIn(_ group: Node) -> [Node] {
+        model.index.children(of: group.id).filter { $0.type == NodeType.list }
+    }
     private var smart: [Node] { model.index.children(of: nil).filter { $0.type == NodeType.smartList } }
 
     private var greeting: String {
@@ -75,6 +85,23 @@ struct HomeView: View {
                         ComposedEmpty(line: "Nothing here yet", action: "Make a list") { presented = .create }
                     }
                     ForEach(lists) { n in HomeRow(node: n, isSmart: false, open: { path.append(Route.node(n.id)) }, onLook: { presented = .look($0) }) }
+
+                    ForEach(groups) { g in
+                        GroupBanner(group: g, count: listsIn(g).count, folded: folded.contains(g.id)) {
+                            // Device-local, not in the file: the format has no `collapsed` and
+                            // inventing one would be a change both apps have to agree on. Folding is
+                            // a thing about this screen on this phone, which is where it is kept.
+                            if folded.contains(g.id) { folded.remove(g.id) } else { folded.insert(g.id) }
+                            FoldedGroups.save(folded)
+                        }
+                        if !folded.contains(g.id) {
+                            ForEach(listsIn(g)) { n in
+                                HomeRow(node: n, isSmart: false, open: { path.append(Route.node(n.id)) },
+                                        onLook: { presented = .look($0) })
+                                    .padding(.leading, 14)
+                            }
+                        }
+                    }
                     Spacer().frame(height: 120)
                 }
                 .padding(.horizontal, Layout.pageMargin)
@@ -279,5 +306,50 @@ struct CreateSheet: View {
             model.write { _ = try model.writer.createTopLevel(type: NodeType.group, title: t) }
         }
         dismiss()
+    }
+}
+
+/// A group on Home: its name, how many lists are filed under it, and whether it is folded.
+///
+/// Drawn as a band rather than a row, because a group is not a thing you open — it is a heading with
+/// a lid. Tapping it folds; the lists underneath are indented so the nesting is read from the shape
+/// rather than from a line.
+struct GroupBanner: View {
+    let group: Node
+    let count: Int
+    let folded: Bool
+    var onFold: () -> Void
+    @Environment(\.y) private var y
+
+    var body: some View {
+        Button(action: onFold) {
+            HStack(spacing: 10) {
+                YantraIcon(mark: folded ? .forward : .down, size: YantraIcons.small, tint: y.muted)
+                Text(inlinePlain(group.title ?? "").isEmpty ? "Untitled" : inlinePlain(group.title ?? ""))
+                    .font(Face.text(12.5, .bold)).tracking(1).textCase(.uppercase)
+                    .foregroundStyle(y.muted)
+                Spacer()
+                Text("\(count)").font(Face.mono(12)).foregroundStyle(y.dim)
+            }
+            .padding(.vertical, 10)
+            // The label is a glyph, a word and a count with a Spacer between them, so most of the
+            // band is empty and a tap in the middle of it hits nothing. Safe here, unlike on a list
+            // row: nothing on this band wants a long press, which is what a shape like this eats.
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home.group.\(inlinePlain(group.title ?? ""))")
+        .accessibilityValue(folded ? "folded" : "open")
+    }
+}
+
+/// Which groups are folded, on this device.
+enum FoldedGroups {
+    private static let key = "home_folded_groups"
+    static func load() -> Set<String> {
+        Set(AppGroup.defaults.stringArray(forKey: key) ?? [])
+    }
+    static func save(_ ids: Set<String>) {
+        AppGroup.defaults.set(Array(ids), forKey: key)
     }
 }
