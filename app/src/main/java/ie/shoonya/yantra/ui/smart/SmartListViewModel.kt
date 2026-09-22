@@ -71,8 +71,12 @@ class SmartListViewModel(
      * Registry order with the local workspace at the front, filtered to what is actually open — a
      * repo listed but not opened cannot be searched, and offering it would let someone write a rule
      * that silently matches nothing.
+     *
+     * Live rather than a snapshot, for the same reason as [ie.shoonya.yantra.ui.home.HomeViewModel.workspaces].
      */
-    val workspaces: List<WorkspaceEntry> = container.openWorkspaces()
+    val workspaces: StateFlow<List<WorkspaceEntry>> =
+        container.openWorkspacesFlow()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), container.openWorkspaces())
 
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)

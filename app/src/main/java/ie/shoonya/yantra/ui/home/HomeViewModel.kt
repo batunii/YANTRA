@@ -58,8 +58,16 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
      * never offered Personal, never appeared at all for anyone with exactly one repo linked, and
      * [defaultWorkspaceId] fell through its own first branch to the first *linked* repo. A group
      * made on Home landed in a repository nobody had chosen. See [AppContainer.openWorkspaces].
+     *
+     * Live, not a snapshot. It was a `val` filled once at construction, and Home is constructed
+     * before seeding has opened the linked repositories whenever a widget or reminder tap skips
+     * the splash — so the picker saw one workspace, hid itself, and stayed hidden until the process
+     * died. Linking a repository from Settings had the same effect. See
+     * [AppContainer.openWorkspacesFlow].
      */
-    val workspaces: List<WorkspaceEntry> = container.openWorkspaces()
+    val workspaces: StateFlow<List<WorkspaceEntry>> =
+        container.openWorkspacesFlow()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), container.openWorkspaces())
 
     val topLevel: StateFlow<List<NodeEntity>> =
         nodes.topLevel().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -210,7 +218,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
      * changed.
      */
     val defaultWorkspaceId: String
-        get() = workspaces.firstOrNull { it.id.isEmpty() }?.id ?: workspaces.firstOrNull()?.id ?: ""
+        get() = workspaces.value.let { ws -> ws.firstOrNull { it.id.isEmpty() }?.id ?: ws.firstOrNull()?.id ?: "" }
 
     /** The colour a list wears, or null to take it off — the colour law, as remade. */
     fun setListColor(listId: String, color: String?) {

@@ -134,6 +134,7 @@ private enum class CreateType(
 fun HomeScreen(nav: NavHostController) {
     val vm: HomeViewModel = viewModel { HomeViewModel(container()) }
     val allLists by vm.allLists.collectAsStateWithLifecycle()
+    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val nodes by vm.topLevel.collectAsStateWithLifecycle()
     val counts by vm.counts.collectAsStateWithLifecycle()
     val timer by vm.timerState.collectAsStateWithLifecycle()
@@ -172,9 +173,14 @@ fun HomeScreen(nav: NavHostController) {
     // Which repository each list came from, as a word and a hue — the one resolver in AppContainer,
     // so Home does not derive a colour of its own. Both maps are empty while a single workspace is
     // open, and then the row says nothing about a distinction there is nothing to distinguish.
+    //
+    // Keyed on the live workspace list, not remembered once: both resolvers answer from what is
+    // open *now*, and Home can be composed before seeding has opened the linked repositories, or
+    // outlive a repository being linked or forgotten. A snapshot then headed nothing by repository
+    // for the rest of the process.
     val app = ie.shoonya.yantra.ui.appContainer()
-    val spaceNames = remember { app.workspaceNames() }
-    val spaceHues = remember { app.workspaceColours() }
+    val spaceNames = remember(workspaces) { app.workspaceNames() }
+    val spaceHues = remember(workspaces) { app.workspaceColours() }
     // One section per open repository, in registry order (the local one first), or a single
     // untitled-by-repo section when there is only one and the split would say nothing. A null id
     // means "everything", which is also the safety net for a list whose repository has since been
@@ -388,7 +394,7 @@ fun HomeScreen(nav: NavHostController) {
             CreatePanel(
                 allLabels = labels,
                 listNames = allRegularLists.mapNotNull { it.title },
-                workspaces = vm.workspaces,
+                workspaces = workspaces,
                 defaultWorkspaceId = vm.defaultWorkspaceId,
                 people = assignable,
                 findTasks = { q -> vm.linkTargets(q) },
@@ -414,7 +420,7 @@ fun HomeScreen(nav: NavHostController) {
             defs = defs,
             labels = labels,
             lists = allRegularLists,
-            workspaces = vm.workspaces,
+            workspaces = workspaces,
             onCreateLabel = vm::createLabel,
             onDismiss = { customSmartName = null },
             onCreate = { name, filter, sort, homeId ->

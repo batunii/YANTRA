@@ -74,6 +74,7 @@ import ie.shoonya.yantra.ui.theme.YantraRadius
 fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val vm: SmartListViewModel = viewModel(key = "smart-$nodeId") { SmartListViewModel(container(), nodeId) }
     val node by vm.node.collectAsStateWithLifecycle()
+    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val def by vm.def.collectAsStateWithLifecycle()
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
@@ -371,7 +372,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 defs = defs,
                 labels = labels,
                 lists = lists,
-                workspaces = vm.workspaces,
+                workspaces = workspaces,
                 onCreateLabel = vm::createLabel,
                 onDismiss = { editingRule = false },
                 onCreate = { newName, filter, sort, homeId ->

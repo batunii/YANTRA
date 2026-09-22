@@ -41,6 +41,7 @@ import ie.shoonya.yantra.widget.FocusFinalizeWorker
 import ie.shoonya.yantra.widget.FocusWidget
 import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
@@ -241,6 +242,18 @@ class AppContainer(val app: Application) {
             .distinctBy { it.id }
             .filter { workspaces.isOpen(it.id) }
     }
+
+    /**
+     * [openWorkspaces], re-answered every time a workspace opens or closes.
+     *
+     * The list version is a snapshot, and a screen that stores a snapshot at construction is wrong
+     * the moment the set changes — before seeding finishes on a cold start that skipped the splash,
+     * or after a repository is linked or forgotten while the screen is alive. Home's picker did
+     * exactly that and lost its "List lives in" chips. Anything that gates on "more than one
+     * workspace" should collect this instead.
+     */
+    fun openWorkspacesFlow(): Flow<List<WorkspaceEntry>> =
+        workspaces.openIds.map { openWorkspaces() }.distinctUntilChanged()
 
     /** The open workspaces, or none at all when there is only one of them to tell apart. */
     private fun distinguishable(): List<WorkspaceEntry> =

@@ -2,6 +2,9 @@ package ie.shoonya.yantra.data.workspace
 
 import ie.shoonya.yantra.data.db.AppDatabase
 import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Every workspace the app has open, and the writer for each.
@@ -23,6 +26,20 @@ class Workspaces(
     private val stores = LinkedHashMap<String, WorkspaceStore>()
     private val writers = LinkedHashMap<String, WorkspaceWriter>()
 
+    /**
+     * The ids of the workspaces open right now, as something a screen can watch.
+     *
+     * [isOpen] answers for the moment it is asked, and a screen that asked once kept the answer:
+     * Home built its "List lives in" picker from `openWorkspaces()` at construction, and that list
+     * is filtered by [isOpen]. Anything that reached Home before seeding had opened the linked
+     * repositories — a cold start from a widget or a reminder skips the splash that waits for it —
+     * saw only Personal, decided there was nothing to choose between, and never looked again. The
+     * same for a repository linked while Home was already alive. Publishing the set lets the
+     * picker follow the truth instead of a snapshot of it.
+     */
+    private val _openIds = MutableStateFlow<Set<String>>(emptySet())
+    val openIds: StateFlow<Set<String>> = _openIds.asStateFlow()
+
     /** Adds a workspace, scaffolding it if the directory is new. Returns true if it was scaffolded. */
     fun open(id: String, root: File, name: String): Boolean {
         val store = WorkspaceStore(root, id)
@@ -37,6 +54,7 @@ class Workspaces(
         }
         stores[id] = store
         writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
+        _openIds.value = stores.keys.toSet()
         return fresh
     }
 
@@ -44,6 +62,7 @@ class Workspaces(
     fun close(id: String) {
         stores.remove(id)
         writers.remove(id)
+        _openIds.value = stores.keys.toSet()
     }
 
     val all: Collection<WorkspaceStore> get() = stores.values
