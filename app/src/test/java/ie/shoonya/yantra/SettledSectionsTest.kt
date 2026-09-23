@@ -17,7 +17,7 @@ class SettledSectionsTest {
     private data class Row(val id: String, val done: Boolean)
 
     private fun sections(settled: Set<String>, live: List<Row>) =
-        settleSections(settled, live) { it.id }
+        settleSections(settled, live, { it.id }, { it.done })
 
     /** What the list looked like when it was drawn: a, b open; c finished. */
     private val settled = setOf("c")
@@ -40,10 +40,21 @@ class SettledSectionsTest {
     }
 
     @Test
-    fun `un-ticking a finished row is symmetric`() {
+    fun `un-ticking a finished row returns it to to-do at once`() {
+        // Not symmetric with ticking, on purpose: you have just said this is still to do, and
+        // leaving it under a heading reading DONE states the opposite. Nothing is lost under a
+        // finger either — you do not work down the finished half.
         val live = listOf(Row("a", false), Row("b", false), Row("c", false))
         val s = sections(settled, live)
-        assertEquals("c stays under DONE until the list is built again", listOf("c"), s.done.map { it.id })
+        assertEquals(listOf("a", "b", "c"), s.todo.map { it.id })
+        assertEquals(emptyList<String>(), s.done.map { it.id })
+    }
+
+    @Test
+    fun `a row settled as done that is still done stays there`() {
+        val live = listOf(Row("a", false), Row("b", false), Row("c", true))
+        val s = sections(settled, live)
+        assertEquals(listOf("c"), s.done.map { it.id })
     }
 
     @Test

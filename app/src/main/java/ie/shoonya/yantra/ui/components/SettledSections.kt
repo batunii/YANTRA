@@ -19,33 +19,36 @@ import ie.shoonya.yantra.ui.theme.Yantra
 data class Sections<T>(val todo: List<T>, val done: List<T>)
 
 /**
- * Splits rows into to-do and done by a membership decided *earlier*, not now.
+ * Splits rows into to-do and done, holding a *completion* still but letting an *undo* go.
  *
- * **Why this is not `partition { it.done }`.** Ticking a box changed which half a row belonged to,
- * so the row left from under the finger that had just tapped it: on a smart list it jumped out of
- * where you were reading and reappeared under DONE, and the completion animation — a strike drawn
- * through the title — played somewhere you were no longer looking. The gesture said "this one is
- * finished"; the list answered by moving it, which is a different statement and a worse one,
- * because the row you were about to tick next moved too.
+ * **Ticking must not move the row.** It used to: on a smart list `tasks` and `completed` are two
+ * queries, so the write landed and the row left from under the finger that had just tapped it —
+ * down into DONE, where the strike animation then played somewhere you were no longer looking. The
+ * gesture says "this one is finished"; answering by moving it is a different statement and a worse
+ * one, because the row you were about to tick next moves as well. So [settledDone] — the answer
+ * from when the list was built — decides who *may* be in the finished half, and a row ticked now
+ * strikes through where it stands and joins DONE the next time the list is built.
  *
- * So [settledDone] is the answer from when the list was built, and it is the only thing that
- * decides sections. A row ticked now strikes through where it stands and joins DONE the next time
- * the list is built — reopened, or navigated back to. Undoing is symmetric: a finished row
- * un-ticked stays under DONE, lit but in place, until the same moment.
+ * **Un-ticking is not symmetric, deliberately.** A row you un-tick is one you have just said is
+ * still to do, and leaving it sitting under a heading that reads DONE states the opposite. Nothing
+ * is disturbed by letting it go either: you are not working down the finished half the way you work
+ * down the to-do half, so there is no place under your finger to lose. Hence [isDone] as well as
+ * [settledDone] — the finished half is rows that were settled there *and* are still finished.
  *
- * **Only membership is settled, never order.** Within a half the rows stay in the order the caller
- * supplied, so a drag still previews where it is dropped and a smart list's own sorting still
- * applies. Freezing the order here as well would have quietly overruled both.
+ * **Only membership is decided here, never order.** Within a half the rows keep the order the
+ * caller supplied, so a drag still previews where it will land and a smart list still floats what
+ * is running to the top. Freezing order here would have quietly overruled both.
  */
 fun <T> settleSections(
     settledDone: Set<String>,
     live: List<T>,
     idOf: (T) -> String,
+    isDone: (T) -> Boolean,
 ): Sections<T> {
     if (settledDone.isEmpty()) return Sections(live, emptyList())
     val todo = ArrayList<T>(live.size)
     val done = ArrayList<T>()
-    live.forEach { if (idOf(it) in settledDone) done += it else todo += it }
+    live.forEach { if (idOf(it) in settledDone && isDone(it)) done += it else todo += it }
     return Sections(todo, done)
 }
 
@@ -69,7 +72,7 @@ fun <T> rememberSettledSections(
     if (holder.doneIds == null && live.isNotEmpty()) {
         holder.doneIds = live.filter(isDone).mapTo(HashSet(), idOf)
     }
-    return settleSections(holder.doneIds.orEmpty(), live, idOf)
+    return settleSections(holder.doneIds.orEmpty(), live, idOf, isDone)
 }
 
 private class SettleHolder {
