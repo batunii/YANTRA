@@ -164,6 +164,63 @@ class SettledSectionsTest {
         assertEquals(listOf("c"), done)
     }
 
+    /**
+     * A row whose answer has not arrived is left unsettled rather than settled wrongly.
+     *
+     * An event's end time comes from a different query than its row, so for a frame a finished
+     * meeting is indistinguishable from an unfinished one — the same race that put finished tasks
+     * in the to-do half, one layer down.
+     */
+    private fun seenWhenJudgeable(
+        vararg emissions: Pair<List<Row>, Set<String>>,
+    ): Pair<List<String>, List<String>> {
+        val seen = HashSet<String>()
+        val settled = HashSet<String>()
+        var last: List<Row> = emptyList()
+        emissions.forEach { (live, judgeable) ->
+            live.forEach { r ->
+                if (r.id !in judgeable) return@forEach
+                if (seen.add(r.id) && r.done) settled += r.id
+            }
+            last = live
+        }
+        val s = sections(settled, last)
+        return s.todo.map { it.id } to s.done.map { it.id }
+    }
+
+    @Test
+    fun `a finished meeting whose times arrive late still reaches DONE`() {
+        val (todo, done) = seenWhenJudgeable(
+            // The row is there; its end time is not, so nothing is decided about it yet.
+            listOf(Row("a", false), Row("meeting", true)) to setOf("a"),
+            // Times arrive, and only now is it filed.
+            listOf(Row("a", false), Row("meeting", true)) to setOf("a", "meeting"),
+        )
+        assertEquals(listOf("a"), todo)
+        assertEquals(listOf("meeting"), done)
+    }
+
+    @Test
+    fun `a meeting still to come stays in to-do once its times are known`() {
+        val (todo, done) = seenWhenJudgeable(
+            listOf(Row("a", false), Row("meeting", false)) to setOf("a"),
+            listOf(Row("a", false), Row("meeting", false)) to setOf("a", "meeting"),
+        )
+        assertEquals(listOf("a", "meeting"), todo)
+        assertEquals(emptyList<String>(), done)
+    }
+
+    @Test
+    fun `a meeting that ends while you are looking does not move`() {
+        // The clock is not allowed to pull a row out from under you when your own finger is not.
+        val (todo, done) = seenWhenJudgeable(
+            listOf(Row("meeting", false)) to setOf("meeting"),   // still running when first seen
+            listOf(Row("meeting", true)) to setOf("meeting"),    // ends a moment later
+        )
+        assertEquals("it joins DONE the next time the list is built", listOf("meeting"), todo)
+        assertEquals(emptyList<String>(), done)
+    }
+
     @Test
     fun `nothing settled yet means everything is to-do`() {
         val live = listOf(Row("a", false), Row("c", true))

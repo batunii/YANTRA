@@ -65,6 +65,17 @@ fun <T> rememberSettledSections(
     live: List<T>,
     idOf: (T) -> String,
     isDone: (T) -> Boolean,
+    /**
+     * Whether this row can be judged yet.
+     *
+     * A row whose answer has not arrived is left unsettled rather than settled wrongly. An event's
+     * end time comes from a different query than the row itself, so for one frame a finished
+     * meeting looks exactly like an unfinished one — and settling on that frame would file it under
+     * the wrong heading for the rest of the visit. This is the same race that put finished tasks in
+     * the to-do half, one layer down, and the same answer: do not decide until there is something
+     * to decide with.
+     */
+    canJudge: (T) -> Boolean = { true },
 ): Sections<T> {
     // A plain holder rather than a MutableState: it is written during composition, read in the same
     // composition, and nothing should recompose *because* of it.
@@ -82,6 +93,7 @@ fun <T> rememberSettledSections(
     // Per row there is no race to lose: a task seen for the first time as finished belongs under
     // DONE whenever it turns up, and one seen first as open stays where it is when you tick it.
     live.forEach { row ->
+        if (!canJudge(row)) return@forEach
         val id = idOf(row)
         if (holder.seen.add(id) && isDone(row)) holder.doneIds += id
     }

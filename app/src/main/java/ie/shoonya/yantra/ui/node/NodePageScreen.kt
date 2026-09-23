@@ -908,11 +908,29 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
 
         // A list settles into two halves; a document keeps its own order and is never split —
         // prose and sketches are not "to do", and a task's page is a document.
+        // A meeting that has finished is finished. It is not a task and nobody ticks it, but it is
+        // just as done as one, and leaving yesterday's standup at the top of a list among things
+        // still to do makes the list wrong in the way a list is not allowed to be wrong.
+        //
+        // Read once per row, when that row first appears, like everything else here — so a meeting
+        // that ends while you are looking at the list stays where it is and joins DONE the next
+        // time you open it. That is the same promise ticking a task makes, and it would be strange
+        // for the clock to be allowed to move a row out from under you when your own finger is not.
+        val endedBy = System.currentTimeMillis()
         val sections = rememberSettledSections(
             key = nodeId,
             live = shown,
             idOf = { it.id },
-            isDone = { it.type == NodeType.TASK && it.done },
+            isDone = { node ->
+                when (node.type) {
+                    NodeType.TASK -> node.done
+                    NodeType.EVENT -> pageEvents[node.id]?.event?.let { it.endUtc <= endedBy } == true
+                    else -> false
+                }
+            },
+            // An event's times arrive from a different query than its row, so for a frame a
+            // finished meeting is indistinguishable from an unfinished one. Wait rather than guess.
+            canJudge = { node -> node.type != NodeType.EVENT || pageEvents.containsKey(node.id) },
         )
         val todoRows = if (isDocument) shown else sections.todo
         val doneRows = if (isDocument) emptyList() else sections.done
