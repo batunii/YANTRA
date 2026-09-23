@@ -251,6 +251,23 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * [Change.STRUCTURAL] for the same reason as the colour: every row drawing this list is drawn
      * from the index, and a glyph that appeared a beat after the tap would read as a missed tap.
      */
+    /**
+     * Whether a list sits at the top of Home.
+     *
+     * Written explicitly either way — `pinned: true` *and* `pinned: false* both go in the file —
+     * because absence is not "no", it is "never asked", and that still means the old rule of every
+     * ungrouped smart list. Unpinning Today has to be recorded as a decision or the next reindex
+     * would put it straight back.
+     *
+     * [Change.STRUCTURAL] like the colour and the glyph: Home is drawn from the index, and a row
+     * that moved a beat after the tap would read as the tap having missed.
+     */
+    suspend fun setPinned(listId: String, pinned: Boolean) {
+        ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            it.copy(pinned = pinned)
+        }
+    }
+
     suspend fun setListIcon(listId: String, icon: String?) {
         val cleaned = ie.shoonya.yantra.data.format.ListIcon.clean(icon)
         ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {

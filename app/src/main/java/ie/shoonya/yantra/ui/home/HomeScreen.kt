@@ -151,7 +151,12 @@ fun HomeScreen(nav: NavHostController) {
 
     val groups = nodes.filter { it.type == NodeType.GROUP }
     val ungrouped = allLists.filter { it.parentId == null }
-    val ungroupedSmart = ungrouped.filter { it.type == NodeType.SMART_LIST }
+    // Pinned is a choice now, not a type. It was "every ungrouped smart list", which meant the
+    // section held exactly the two lists the app scaffolds and nothing you put there — and the one
+    // thing you could not do to a pinned list was unpin it. A pinned list keeps its place in its
+    // repository too: Home shows it twice on purpose, once because you put it on top and once
+    // because that is where it lives, the way a pinned message is still in the thread.
+    val pinned = allLists.filter { it.pinned }
     val ungroupedLists = ungrouped.filter { it.type == NodeType.LIST }
     val byGroup = allLists.filter { it.parentId != null }.groupBy { it.parentId!! }
     val allRegularLists = allLists.filter { it.type == NodeType.LIST }
@@ -201,7 +206,9 @@ fun HomeScreen(nav: NavHostController) {
             fraction = if (c == null || c.total == 0) 0f else c.doneCount.toFloat() / c.total,
             showCompass = (c?.total ?: 0) > 0,
             grouped = node.parentId != null,
+            pinned = node.pinned,
             onClick = { nav.navigate(if (smart) Routes.smart(node.id) else Routes.node(node.id)) },
+            onTogglePin = { vm.setPinned(node.id, !node.pinned) },
             onRename = { renaming = node },
             onDelete = { deleting = node },
             onMove = { movingNode = node },
@@ -290,7 +297,7 @@ fun HomeScreen(nav: NavHostController) {
 
                 // The app has an empty state, with its own mark and an action, and until now used it
                 // on one screen out of five — not this one, which is the first screen anyone sees.
-                if (ungroupedSmart.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty()) {
+                if (pinned.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty(
                             "Nothing here yet",
@@ -299,10 +306,10 @@ fun HomeScreen(nav: NavHostController) {
                         )
                     }
                 }
-                if (ungroupedSmart.isNotEmpty()) {
+                if (pinned.isNotEmpty()) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
-                    items(ungroupedSmart, key = { it.id }) { node ->
-                        renderRow(node, node.id == ungroupedSmart.last().id)
+                    items(pinned, key = { "pinned-" + it.id }) { node ->
+                        renderRow(node, node.id == pinned.last().id)
                     }
                 }
                 // Lists under the repository they belong to, and groups nested inside it.
@@ -330,8 +337,22 @@ fun HomeScreen(nav: NavHostController) {
                     // place was thrown away on the way to the screen. A group is a sibling of a
                     // top-level list: `topLevel()` already returns both in rank order, and the only
                     // thing that had to change is not taking them apart again.
+                    // Smart lists are in here now, which they were not before.
+                    //
+                    // They used to live only under Pinned, and Pinned used to be "every ungrouped
+                    // smart list" — so the two were the same set and nothing was lost. Now that
+                    // pinning is a choice, an unpinned smart list needs somewhere to be or the act
+                    // of unpinning would delete it from the screen. It sits under the repository it
+                    // was made in, which is the one its `workspace_id` names.
+                    //
+                    // The old note here said a smart list has no repository to sit under, because
+                    // its rule may span all of them. True of what it *matches*, and not of where it
+                    // *is*: the page is a file in one repo, it syncs with that repo, and it goes
+                    // when that repo is forgotten. Pinned stays ungrouped on top, which is the part
+                    // of that argument that was about the reach of a rule.
                     val entries = nodes.filter {
-                        (it.type == NodeType.LIST || it.type == NodeType.GROUP) &&
+                        (it.type == NodeType.LIST || it.type == NodeType.GROUP ||
+                            it.type == NodeType.SMART_LIST) &&
                             (id == null || it.workspaceId == id)
                     }
                     if (entries.isEmpty()) return@forEach
@@ -813,7 +834,10 @@ private fun HomeRow(
     fraction: Float,
     showCompass: Boolean,
     grouped: Boolean,
+    /** Whether this list currently sits at the top of Home, so the menu can offer the other one. */
+    pinned: Boolean,
     onClick: () -> Unit,
+    onTogglePin: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onMove: () -> Unit,
@@ -896,6 +920,10 @@ private fun HomeRow(
             // but no ring while its neighbours carried both.
             Box {
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (pinned) "Unpin from top" else "Pin to top") },
+                        onClick = { menu = false; onTogglePin() },
+                    )
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(
                         text = { Text("Icon & colour…") },

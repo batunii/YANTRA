@@ -135,6 +135,13 @@ data class NodeEntity(
     @ColumnInfo(name = "canvas_h") val canvasH: Double? = null,
     @ColumnInfo(name = "system_key") val systemKey: String? = null,  // see [SystemKey]
     /**
+     * Sits at the top of Home, above the repositories.
+     *
+     * Resolved rather than stored raw: a page that has never said anything about pinning falls back
+     * to the rule the section used to be — an ungrouped smart list. See [ie.shoonya.yantra.data.format.PageDoc.pinned].
+     */
+    @ColumnInfo(name = "pinned", defaultValue = "0") val pinned: Boolean = false,
+    /**
      * The meeting in somebody else's calendar this line is about — CALENDAR_PLAN.md §22.
      *
      * On **node** rather than on `event`, because it is a fact about a line of any kind: a task
