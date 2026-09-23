@@ -100,6 +100,70 @@ class SettledSectionsTest {
         assertEquals(listOf("b", "a"), s.todo.map { it.id })
     }
 
+    /**
+     * The half a row belongs to is decided when *that row* first appears, not when the list first
+     * has anything in it. A smart list reads its open tasks and its finished ones from two separate
+     * queries which arrive independently, so "settle the whole list once it is non-empty" settled
+     * DONE as empty whenever the open half won the race — and the finished tasks then drew as
+     * things still to do, with no DONE heading. It depended on which query answered first, so it
+     * happened intermittently.
+     *
+     * These walk that sequence the way the composable does: fold each emission in, then split.
+     */
+    private fun seenInOrder(vararg emissions: List<Row>): Pair<List<String>, List<String>> {
+        val seen = HashSet<String>()
+        val settled = HashSet<String>()
+        var last: List<Row> = emptyList()
+        emissions.forEach { live ->
+            live.forEach { r -> if (seen.add(r.id) && r.done) settled += r.id }
+            last = live
+        }
+        val s = sections(settled, last)
+        return s.todo.map { it.id } to s.done.map { it.id }
+    }
+
+    @Test
+    fun `finished tasks arriving after the open ones still land under DONE`() {
+        val (todo, done) = seenInOrder(
+            emptyList(),                                          // nothing yet
+            listOf(Row("a", false), Row("b", false)),             // the open query answers first
+            listOf(Row("a", false), Row("b", false), Row("c", true)),  // the finished one follows
+        )
+        assertEquals(listOf("a", "b"), todo)
+        assertEquals("c belongs under DONE whenever it turns up", listOf("c"), done)
+    }
+
+    @Test
+    fun `finished tasks arriving first are equally fine`() {
+        val (todo, done) = seenInOrder(
+            listOf(Row("c", true)),
+            listOf(Row("a", false), Row("b", false), Row("c", true)),
+        )
+        assertEquals(listOf("a", "b"), todo)
+        assertEquals(listOf("c"), done)
+    }
+
+    @Test
+    fun `a task ticked after it was first seen open stays where it is`() {
+        // The whole point of settling, and it has to survive the per-row rule.
+        val (todo, done) = seenInOrder(
+            listOf(Row("a", false), Row("b", false)),
+            listOf(Row("a", false), Row("b", true)),
+        )
+        assertEquals(listOf("a", "b"), todo)
+        assertEquals(emptyList<String>(), done)
+    }
+
+    @Test
+    fun `a task created while the list is open is to-do even if it arrives done`() {
+        val (todo, done) = seenInOrder(
+            listOf(Row("a", false), Row("c", true)),
+            listOf(Row("a", false), Row("c", true), Row("new", false)),
+        )
+        assertEquals(listOf("a", "new"), todo)
+        assertEquals(listOf("c"), done)
+    }
+
     @Test
     fun `nothing settled yet means everything is to-do`() {
         val live = listOf(Row("a", false), Row("c", true))

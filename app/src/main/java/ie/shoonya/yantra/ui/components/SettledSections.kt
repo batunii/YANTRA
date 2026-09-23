@@ -66,17 +66,34 @@ fun <T> rememberSettledSections(
     idOf: (T) -> String,
     isDone: (T) -> Boolean,
 ): Sections<T> {
-    // A plain holder rather than a MutableState: it is written once per key, read in the same
-    // composition that writes it, and nothing should recompose *because* of it.
+    // A plain holder rather than a MutableState: it is written during composition, read in the same
+    // composition, and nothing should recompose *because* of it.
     val holder = androidx.compose.runtime.remember(key) { SettleHolder() }
-    if (holder.doneIds == null && live.isNotEmpty()) {
-        holder.doneIds = live.filter(isDone).mapTo(HashSet(), idOf)
+    // **Each row settles the first time it is seen, not all of them at once.**
+    //
+    // Settling the whole list on the first non-empty composition looked equivalent and was not. A
+    // smart list reads its open tasks and its finished ones from two different queries, which
+    // arrive separately: when the open half landed first, the list was non-empty, nothing in it was
+    // done, and DONE was settled as empty — permanently, because the settling had happened. The
+    // finished tasks then arrived and were drawn as things still to do, with no DONE heading at
+    // all. It depended on which query answered first, so it happened *sometimes*, which is the
+    // worst way for it to happen.
+    //
+    // Per row there is no race to lose: a task seen for the first time as finished belongs under
+    // DONE whenever it turns up, and one seen first as open stays where it is when you tick it.
+    live.forEach { row ->
+        val id = idOf(row)
+        if (holder.seen.add(id) && isDone(row)) holder.doneIds += id
     }
-    return settleSections(holder.doneIds.orEmpty(), live, idOf, isDone)
+    return settleSections(holder.doneIds, live, idOf, isDone)
 }
 
 private class SettleHolder {
-    var doneIds: Set<String>? = null
+    /** Rows whose half has been decided. Membership is decided once, on first sight. */
+    val seen = HashSet<String>()
+
+    /** Of those, the ones that were already finished when they first appeared. */
+    val doneIds = HashSet<String>()
 }
 
 /**
