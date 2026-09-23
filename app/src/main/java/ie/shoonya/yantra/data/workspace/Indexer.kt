@@ -128,8 +128,21 @@ class Indexer(private val db: AppDatabase) {
         // node is emptied beneath them, which SQLite rejects the moment it happens — unless the
         // constraint is deferred to the end of the transaction, by which point the same node ids are
         // back and it holds again.
+        //
+        // **Every** table with a foreign key onto `node` belongs in this list, not only the ones
+        // that cascade. `smart_list_def` was missing from it, and it is the one dependent an
+        // ordinary day leaves alone: you edit tasks, so nodes, values, ink and focus all move,
+        // while the smart lists themselves sit still. With every other dependent rewritten this
+        // expression came out `false`, no deferral was asked for, and `clearNodes()` then deleted
+        // rows that `smart_list_def` still pointed at — FOREIGN KEY constraint failed (787), raised
+        // inside the transaction, which loses the whole rebuild and with it the sync that asked for
+        // one. The rule is the edge, not the table: a key onto `node` with no `ON DELETE` action is
+        // precisely the kind that refuses rather than cascades, so it must either be rewritten in
+        // the same pass or have its check deferred. Guarded by
+        // [ie.shoonya.yantra.ReindexSurvivesUnchangedSmartListsTest].
         val leavingDependents = nodesChanged &&
-            !(valuesChanged && linksChanged && inkChanged && focusChanged && eventsChanged)
+            !(valuesChanged && linksChanged && inkChanged && focusChanged && eventsChanged &&
+                smartChanged)
         if (leavingDependents) {
             db.openHelper.writableDatabase.execSQL("PRAGMA defer_foreign_keys = TRUE")
         }
