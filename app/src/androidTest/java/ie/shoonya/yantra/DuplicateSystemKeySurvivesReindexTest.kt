@@ -6,7 +6,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import ie.shoonya.yantra.data.db.AppDatabase
 import ie.shoonya.yantra.data.workspace.Indexer
 import ie.shoonya.yantra.data.workspace.SmartListDef
+import ie.shoonya.yantra.data.db.NodeType
 import ie.shoonya.yantra.data.workspace.WorkspaceStore
+import ie.shoonya.yantra.data.workspace.WorkspaceWriter
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -112,6 +114,54 @@ class DuplicateSystemKeySurvivesReindexTest {
         // The indexer memoises what it wrote, so surviving once is not evidence the next one does.
         repeat(3) { indexer.rebuild(store) }
         assertEquals("still one `today`", 1, countWhere("node", "system_key = 'today'"))
+    }
+
+    /**
+     * Drawing on a page in such a workspace does not take the app down — the crash as it was
+     * actually met.
+     *
+     * Found on a tablet, where it read as "ink crashes the app": a stroke is a write, a write
+     * rebuilds the index, and the rebuild was the thing that died. Ink had nothing to do with it
+     * beyond being the gesture that happened to be in hand — ticking a task did it too — but the
+     * report arrived as an ink bug, and a test named for the rebuild alone would not have answered
+     * it. This one goes through [WorkspaceWriter], so the path is the one a pen takes: write the
+     * strokes, refresh the index, and on a build without the dedupe throw
+     * `FOREIGN KEY constraint failed (787)` out of `writeInk` before it ever returns.
+     */
+    @Test
+    fun drawingOnAPageInSuchAWorkspaceDoesNotCrash() = runBlocking {
+        bothTodayPages()
+        val writer = WorkspaceWriter(store, db, indexer, device = "test-device")
+        writer.reindex()
+
+        val page = writer.createTopLevel(NodeType.LIST, "Sketches")
+        val block = writer.addBlock(page, NodeType.INK, null)
+        // Two strokes, because `writeInk` takes the whole set rather than appending, and a single
+        // one would not show that the set is what is stored.
+        writer.writeInk(block, listOf(byteArrayOf(1, 2, 3), byteArrayOf(4, 5, 6)))
+
+        assertEquals("both strokes are indexed", 2, countWhere("ink_stroke", "node_id = '$block'"))
+        assertEquals("and the workspace still has one `today`", 1, countWhere("node", "system_key = 'today'"))
+    }
+
+    /**
+     * And the stroke is still there after the next rebuild.
+     *
+     * The indexer memoises what it wrote, so surviving the write is not evidence of surviving the
+     * rebuild that follows the next unrelated edit.
+     */
+    @Test
+    fun theStrokesSurviveLaterRebuilds() = runBlocking {
+        bothTodayPages()
+        val writer = WorkspaceWriter(store, db, indexer, device = "test-device")
+        writer.reindex()
+
+        val page = writer.createTopLevel(NodeType.LIST, "Sketches")
+        val block = writer.addBlock(page, NodeType.INK, null)
+        writer.writeInk(block, listOf(byteArrayOf(1, 2, 3)))
+
+        repeat(3) { writer.addBlock(page, NodeType.TASK, "unrelated $it") }
+        assertEquals("the drawing outlives edits elsewhere on the page", 1, countWhere("ink_stroke", "node_id = '$block'"))
     }
 
     private fun countWhere(table: String, where: String): Int =
