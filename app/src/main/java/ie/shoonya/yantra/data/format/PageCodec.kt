@@ -254,6 +254,7 @@ object PageCodec {
         var location: String? = null
         var color: String? = null
         var external: ExternalRef? = null
+        var author: String? = null
         var reminder: Int? = null
         var priority: String? = null
         val labels = ArrayList<String>()
@@ -272,6 +273,7 @@ object PageCodec {
                     { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }?.let(::decodeValue); location != null }
                 w.startsWith("col:") -> { color = w.removePrefix("col:").takeIf { it.isNotEmpty() }; color != null }
                 w.startsWith("ext:") -> parseExternal(w.removePrefix("ext:"))?.also { external = it } != null
+                w.startsWith("by:") -> { author = w.removePrefix("by:").takeIf { it.isNotEmpty() }; author != null }
                 w.startsWith("remind:") -> { reminder = w.removePrefix("remind:").toIntOrNull(); reminder != null }
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { attendees += w.drop(1); true }
@@ -293,6 +295,7 @@ object PageCodec {
             location = location,
             color = color,
             external = external,
+            author = author,
             reminderMin = reminder,
             labels = labels.reversed(),      // scanned right to left
             attendees = attendees.reversed(),
@@ -609,6 +612,9 @@ object PageCodec {
             // instance, and writing its start twice would be two places for two devices to disagree.
             x.occurrence?.let { append('@').append(renderLocal(it)) }
         }
+        // Whose calendar this came off. Beside `ext:` because the two are the same fact from two
+        // sides: that one names the meeting in somebody's calendar, this one names the somebody.
+        e.author?.let { append(" by:").append(encodeValue(it)) }
         e.reminderMin?.let { append(" remind:").append(it) }
         e.priority?.let { append(" !").append(it) }
         e.labels.forEach { append(" #").append(it) }

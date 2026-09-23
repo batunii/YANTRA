@@ -13,7 +13,15 @@ import ie.shoonya.yantra.data.db.AppDatabase
  *
  * It runs in a single transaction, so a reader never sees the moment where the tables are empty.
  */
-class Indexer(private val db: AppDatabase) {
+class Indexer(
+    private val db: AppDatabase,
+    /**
+     * The logins this device can claim, asked fresh on every rebuild because signing in or out
+     * changes the answer and the index has to follow. Empty hides nothing — see
+     * [WorkspaceReconciler.read].
+     */
+    private val mine: () -> Set<String> = { emptySet() },
+) {
 
     /**
      * What each workspace's tables were last filled with.
@@ -65,6 +73,7 @@ class Indexer(private val db: AppDatabase) {
         val index = WorkspaceReconciler.read(
             store, now,
             mapCache = mapped.getOrPut(store.id) { HashMap() },
+            mine = mine(),
         )
         apply(index, store.id)
         return index.problems

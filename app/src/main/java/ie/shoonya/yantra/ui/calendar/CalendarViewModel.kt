@@ -305,6 +305,14 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                         allDay = item.allDay,
                     ),
                     location = item.location,
+                    // Stamped with whoever this device is signed in as, because this meeting is a
+                    // fact about *their* calendar. Somebody else pulling the repository has no such
+                    // entry: the line would be a meeting they cannot see, cannot open, and did not
+                    // put there. The file still syncs — it should follow you to your own tablet —
+                    // and the workspace simply does not index the ones it cannot claim.
+                    author = container.credentials.login(
+                        ie.shoonya.yantra.data.sync.Credentials.ACCOUNT,
+                    ),
                     external = ie.shoonya.yantra.data.format.ExternalRef(
                         uid = uid,
                         // Named only when the meeting repeats, so a page about this Monday does not
