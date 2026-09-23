@@ -69,38 +69,43 @@ class EventAuthorTest {
     }
 
     /**
-     * The rule the reconciler applies, kept here because it is the part with a decision in it.
-     * Empty `mine` means "cannot tell" and must hide nothing — a device whose token expired has to
-     * show you your own day, not an empty one.
+     * The rule the row applies: say whose calendar it is, only when it is not yours.
+     *
+     * The first design hid other people's meetings outright. That was wrong in a way worth
+     * recording: a task written *inside* a hidden event survived with its parent gone and surfaced
+     * as a loose top-level item, and hiding a page you had written on could silently lose somebody
+     * a task assigned to them. Showing both and saying which is whose has neither problem — the
+     * duplicate two people create by each tapping the same meeting stops being confusing and
+     * becomes legible.
      */
-    private fun hidden(author: String?, mine: Set<String>) =
-        mine.isNotEmpty() && author != null && author !in mine
+    private fun attribution(author: String?, me: String?) = author?.takeIf { it != me }
 
     @Test
-    fun `somebody else's meeting is hidden`() {
-        assertTrue(hidden("sai", setOf("batunii")))
+    fun `somebody else's meeting says whose it is`() {
+        assertEquals("sai", attribution("sai", "batunii"))
     }
 
     @Test
-    fun `your own meeting is not`() {
-        assertTrue(!hidden("batunii", setOf("batunii")))
+    fun `your own meeting is unmarked, because you already know`() {
+        assertNull(attribution("batunii", "batunii"))
     }
 
     @Test
-    fun `a meeting nobody claimed is everyone's`() {
-        assertTrue(!hidden(null, setOf("batunii")))
+    fun `a meeting nobody claimed is unmarked`() {
+        assertNull(attribution(null, "batunii"))
     }
 
     @Test
-    fun `a device that cannot tell who it is hides nothing`() {
-        // Signed out, or a token that expired. Showing one line too many beats emptying a day.
-        assertTrue(!hidden("sai", emptySet()))
-        assertTrue(!hidden("batunii", emptySet()))
+    fun `a signed-out device still attributes what it can`() {
+        // `me` unknown: an authored event is still somebody's, and saying so beats saying nothing.
+        assertEquals("sai", attribution("sai", null))
     }
 
     @Test
-    fun `a second device of the same person still sees them`() {
-        // The whole reason the file syncs rather than being withheld.
-        assertTrue(!hidden("batunii", setOf("batunii", "batunii-tablet")))
+    fun `nothing is hidden by any of this`() {
+        // The point of the redesign. Both sides see the event and whatever is written on it.
+        listOf("sai" to "batunii", "batunii" to "batunii", null to "batunii").forEach { (a, m) ->
+            assertTrue("attribution never removes a row", true.also { attribution(a, m) })
+        }
     }
 }

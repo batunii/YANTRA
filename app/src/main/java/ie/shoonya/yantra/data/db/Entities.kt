@@ -422,6 +422,14 @@ data class EventEntity(
      */
     @ColumnInfo(name = "ext_uid") val extUid: String? = null,
     @ColumnInfo(name = "ext_start") val extStart: String? = null,
+    /**
+     * Whose calendar this meeting came off — see [ie.shoonya.yantra.data.format.EventRef.author].
+     *
+     * Indexed rather than only written to the file, because the row is what a list draws from and
+     * the attribution has to be visible there: two people who each tapped the same meeting have two
+     * entries, and without this they are indistinguishable.
+     */
+    @ColumnInfo(name = "author") val author: String? = null,
     @ColumnInfo(name = "series_id") val seriesId: String? = null,
     @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
     val cancelled: Boolean = false,

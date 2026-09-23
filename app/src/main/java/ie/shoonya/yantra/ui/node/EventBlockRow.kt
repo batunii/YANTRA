@@ -66,6 +66,8 @@ internal fun EventBlockRow(
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
     val workspaceInk = LabelPalette.byName(ie.shoonya.yantra.ui.appContainer().workspaceColours()[e.workspaceId])
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+    val me = ie.shoonya.yantra.ui.appContainer().credentials
+        .login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)
 
     Row(
         Modifier
@@ -96,11 +98,19 @@ internal fun EventBlockRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
+            // Whose calendar it came off, said only when it is not yours.
+            //
+            // Two people who each tapped the same meeting have two entries, and without this they
+            // are the same row twice with no way to tell which is which — the one you can open in
+            // your calendar and the one you cannot. Your own are unmarked because you already know:
+            // marking every row would put the same word down the whole page and say nothing.
+            val from = e.author?.takeIf { it != me }
             Text(
-                whenWords(start, end, e.allDay, sitting),
+                whenWords(start, end, e.allDay, sitting) +
+                    if (from != null) "  ·  from $from's calendar" else "",
                 fontFamily = YantraMono,
                 fontSize = YantraType.dense,
-                color = y.textMuted,
+                color = if (from != null) y.textDim else y.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

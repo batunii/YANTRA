@@ -558,3 +558,14 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
+/**
+ * An event remembers whose calendar it came off.
+ *
+ * The column only has to exist: it is filled from the workspace files on the next rebuild, which is
+ * where the answer actually lives.
+ */
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `author` TEXT")
+    }
+}

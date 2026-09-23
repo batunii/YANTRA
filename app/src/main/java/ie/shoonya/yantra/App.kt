@@ -253,17 +253,7 @@ class AppContainer(val app: Application) {
      * not change. A second instance would start with that memory empty and rewrite everything on its
      * first pass — which, since the sync engine used to have its own, is what every sync did.
      */
-    /**
-     * Every login this device can claim: the account it is signed in as, and whatever each open
-     * workspace was authorised with. Asked fresh on every rebuild, because signing in or out
-     * changes which events are yours and the index has to follow.
-     */
-    private fun myLogins(): Set<String> = buildSet {
-        credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)?.let { add(it) }
-        workspaces.all.forEach { store -> credentials.login(store.id)?.let { add(it) } }
-    }
-
-    private val indexer = Indexer(db) { myLogins() }
+    private val indexer = Indexer(db)
 
     val workspaces = Workspaces(db, indexer, device, appScope) { id, change ->
         commits[id]?.record(change)

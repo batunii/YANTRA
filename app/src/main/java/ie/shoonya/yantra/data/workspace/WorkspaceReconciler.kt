@@ -65,14 +65,6 @@ object WorkspaceReconciler {
         now: Long,
         zone: ZoneId = ZoneId.systemDefault(),
         mapCache: MutableMap<String, Pair<PageDoc, MappedPage>>? = null,
-        /**
-         * The logins this device can claim — see [ie.shoonya.yantra.data.format.EventRef.author].
-         *
-         * Empty means "cannot tell", and then nothing is hidden: a device that is not signed in
-         * must show you your own events rather than none of them, and silently emptying somebody's
-         * day because a token expired would be far worse than showing one line too many.
-         */
-        mine: Set<String> = emptySet(),
     ): WorkspaceIndex {
         val pages = store.readPages()
         val problems = ArrayList<String>()
@@ -159,22 +151,7 @@ object WorkspaceReconciler {
         // The newer page wins because it is the one the device has been writing to. The loser is
         // reported rather than deleted — its file is untouched on disk, and the reconciler's job is
         // to say what it could not use, not to throw it away.
-        // Somebody else's meetings, left in the file and kept out of the index.
-        //
-        // An event node stamped with a login this device cannot claim is a fact about *their*
-        // calendar: they tapped a meeting their phone had, and the times and title are read live
-        // from the calendar that owns it. Here it would be a line nobody can open, about a meeting
-        // nobody can see. The file syncs anyway — it follows its author to their own second device,
-        // and nothing has to be recovered the day it should be shared — it simply is not indexed.
-        val theirEvents: Set<String> = if (mine.isEmpty()) emptySet() else
-            pages.flatMapTo(HashSet()) { page ->
-                page.blocks
-                    .filterIsInstance<ie.shoonya.yantra.data.format.EventRef>()
-                    .filter { e -> e.author != null && e.author !in mine && e.id.isNotEmpty() }
-                    .map { e -> e.id }
-            }
-
-        val superseded = HashSet<String>(theirEvents)
+        val superseded = HashSet<String>()
         val bySystemKey = HashMap<String, NodeEntity>()
         nodes.forEach { n ->
             val key = n.systemKey ?: return@forEach
