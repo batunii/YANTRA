@@ -154,11 +154,12 @@ fun HomeScreen(nav: NavHostController) {
     // Pinned is a choice now, not a type. It was "every ungrouped smart list", which meant the
     // section held exactly the two lists the app scaffolds and nothing you put there — and the one
     // thing you could not do to a pinned list was unpin it. A pinned list keeps its place in its
-    // repository too: Home shows it twice on purpose, once because you put it on top and once
-    // because that is where it lives, the way a pinned message is still in the thread.
+    // repository: pinning moves a list to the top, it does not put a copy there.
     val pinned = allLists.filter { it.pinned }
     val ungroupedLists = ungrouped.filter { it.type == NodeType.LIST }
-    val byGroup = allLists.filter { it.parentId != null }.groupBy { it.parentId!! }
+    // Pinned excluded here too, for the same reason it is excluded from the repository sections:
+    // a pinned list is at the top, and showing it again inside its group is the same list twice.
+    val byGroup = allLists.filter { it.parentId != null && !it.pinned }.groupBy { it.parentId!! }
     val allRegularLists = allLists.filter { it.type == NodeType.LIST }
     val y = Yantra.colors
 
@@ -350,9 +351,16 @@ fun HomeScreen(nav: NavHostController) {
                     // *is*: the page is a file in one repo, it syncs with that repo, and it goes
                     // when that repo is forgotten. Pinned stays ungrouped on top, which is the part
                     // of that argument that was about the reach of a rule.
+                    // **Pinned lists are not repeated here.** They were, briefly, on the reasoning
+                    // that a pinned message is still in its thread — so Today and High Priority
+                    // appeared under PINNED and again under PERSONAL, two rows apart, identical
+                    // down to the count. On a screen this short that does not read as "also filed
+                    // here", it reads as the app showing you the same list twice. Pinning moves a
+                    // list to the top; it does not clone it.
                     val entries = nodes.filter {
                         (it.type == NodeType.LIST || it.type == NodeType.GROUP ||
                             it.type == NodeType.SMART_LIST) &&
+                            !it.pinned &&
                             (id == null || it.workspaceId == id)
                     }
                     if (entries.isEmpty()) return@forEach
