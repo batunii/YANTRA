@@ -1,0 +1,1 @@
+[{"id":"builtin-priority","kind":"select","name":"Priority","config":"{\"options\":[{\"name\":\"High\",\"color\":4294986271},{\"name\":\"Medium\",\"color\":4294946848},{\"name\":\"Low\",\"color\":4283076825}]}"},{"id":"builtin-due","kind":"date","name":"Due"},{"kind":"date","name":"Deadline","id":"builtin-deadline"},{"kind":"text","name":"Assignee","id":"builtin-assignee"}]
