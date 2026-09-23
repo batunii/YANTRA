@@ -71,8 +71,7 @@ struct CalendarWidgetProvider: AppIntentTimelineProvider {
         case .systemMedium: shape = .threeDay; rowLimit = 4
         default: shape = .month; rowLimit = 4
         }
-        let (store, _) = AppGroup.openWorkspace()
-        let index = WorkspaceIndex.read(store)
+        let index = AppGroup.readIndex()
         let today = LocalDate.today()
         let device: [DeviceEvent] = (intent.showDeviceEvents && CalendarChoice.enabled)
             ? DeviceEvents.read(from: today.adding(days: -7).startOfDay(),

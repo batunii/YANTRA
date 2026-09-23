@@ -89,7 +89,7 @@ struct EventSheet: View {
 
                     if let id = editingId {
                         Button(role: .destructive) {
-                            model.write { try model.writer.deleteEvent(id) }
+                            model.write { try model.writerFor(id).deleteEvent(id) }
                             onDone(); dismiss()
                         } label: {
                             Text("Delete event").font(Face.text(14, .bold)).foregroundStyle(y.crimson)
@@ -174,7 +174,7 @@ struct EventSheet: View {
         let loc = location.trimmingCharacters(in: .whitespaces)
         model.write {
             if let id = editingId {
-                try model.writer.editEvent(id) { old in
+                try model.writerFor(id).editEvent(id) { old in
                     var x = old
                     x.title = t; x.time = time
                     x.location = loc.isEmpty ? nil : loc
@@ -186,7 +186,7 @@ struct EventSheet: View {
                 // home goes, which is the same answer capture gives.
                 guard let home = model.index.node(systemKey: SystemKey.inbox)?.id
                         ?? model.index.children(of: nil).first(where: { $0.type == NodeType.list })?.id else { return }
-                _ = try model.writer.addEvent(to: home, title: t, time: time,
+                _ = try model.writerFor(home).addEvent(to: home, title: t, time: time,
                                               location: loc.isEmpty ? nil : loc,
                                               color: color, reminderMin: reminder)
             }

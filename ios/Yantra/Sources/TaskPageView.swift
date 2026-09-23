@@ -15,10 +15,13 @@ struct TaskPageView: View {
     /// Deleting takes the page and everything inside it, and none of it comes back. The title is
     /// read back in the question because that is the one thing that stops the wrong page going.
     @State private var confirmingDelete = false
+    @State private var movingIt = false
+    /// The time editor, for an event of your own.
+    @State private var editingTime = false
     @FocusState private var focus: Int?
 
     private var node: Node? { model.index.nodes[nodeId] }
-    private var page: PageDoc? { model.store.readPage(nodeId) }
+    private var page: PageDoc? { model.storeFor(nodeId).readPage(nodeId) }
     private var crumbs: [Node] { model.index.ancestors(of: nodeId) }
 
     var body: some View {
@@ -39,6 +42,10 @@ struct TaskPageView: View {
             Button("Keep it", role: .cancel) {}
         } message: {
             Text("This page and everything inside it will be deleted.")
+        }
+        .sheet(isPresented: $movingIt) { MoveToListSheet(nodeId: nodeId) }
+        .sheet(isPresented: $editingTime) {
+            if let n = node, n.event != nil { EventSheet(target: .editing(n.id), cal: CalendarModel()) {} }
         }
         .onAppear { titleDraft = node?.title ?? "" }
     }
@@ -70,7 +77,7 @@ struct TaskPageView: View {
     private var band: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                NavCircle(mark: .back) { path.removeLast() }
+                NavCircle(mark: .back) { path.removeLast() }.accessibilityIdentifier("nav.back")
                 Spacer()
                 if let n = node, n.type == NodeType.task {
                     if let s = model.timer.state, s.nodeId == n.id, !s.isFinished {
@@ -81,9 +88,13 @@ struct TaskPageView: View {
                         }.buttonStyle(.plain)
                     } else {
                         NavCircle(mark: .focus, accent: true) { path.append(Route.focus(n.id)) }
+                            .accessibilityIdentifier("page.focus")
                     }
                 }
-                Menu { Button("Delete…", role: .destructive) { confirmingDelete = true } } label: {
+                Menu {
+                    Button("Move to…") { movingIt = true }
+                    Button("Delete…", role: .destructive) { confirmingDelete = true }
+                } label: {
                     YantraIcon(mark: .more, size: YantraIcons.medium, tint: y.secondary).frame(width: 38, height: 38).background(Circle().fill(y.ink.opacity(0.05)))
                 }
             }
@@ -100,6 +111,12 @@ struct TaskPageView: View {
                     .onChange(of: titleDraft) { _, v in if v.contains("\n") { titleDraft = v.replacingOccurrences(of: "\n", with: ""); commitTitle() } }
             }
             if let n = node, n.type == NodeType.task { PropertyPills(node: n) }
+            // An event is a node like any other, and what makes it an event — when it is, where it
+            // is, whose calendar it came from — belongs at the top of its page rather than in a card
+            // you have to dismiss before you can write anything under it.
+            if let n = node, n.type == NodeType.event {
+                MeetingHeader(node: n, onEdit: { editingTime = true })
+            }
         }
         .padding(.horizontal, Layout.pageMargin).padding(.top, 8).padding(.bottom, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,15 +151,15 @@ struct TaskPageView: View {
                 if let i = editing {
                     Rectangle().fill(y.hairline).frame(width: 1, height: 22)
                     SelectChip(label: "Outdent", selected: false, mark: .indentOut) {
-                        model.write { try model.writer.indentBlock(pageId: nodeId, index: i, by: -1) }
+                        model.write { try model.writerFor(nodeId).indentBlock(pageId: nodeId, index: i, by: -1) }
                     }
                     SelectChip(label: "Indent", selected: false, mark: .indentIn) {
-                        model.write { try model.writer.indentBlock(pageId: nodeId, index: i, by: 1) }
+                        model.write { try model.writerFor(nodeId).indentBlock(pageId: nodeId, index: i, by: 1) }
                     }
                 }
                 if let i = editing {
                     Rectangle().fill(y.hairline).frame(width: 1, height: 22)
-                    Button { model.write { try model.writer.removeBlock(pageId: nodeId, index: i) }; editing = nil } label: {
+                    Button { model.write { try model.writerFor(nodeId).removeBlock(pageId: nodeId, index: i) }; editing = nil } label: {
                         Text("Delete").font(Face.text(13, .bold)).foregroundStyle(y.overdue).padding(.horizontal, 14).padding(.vertical, 9)
                             .background(RoundedRectangle(cornerRadius: Layout.chipRadius).fill(y.overdue.opacity(0.14)))
                     }.buttonStyle(.plain)
@@ -168,14 +185,14 @@ struct TaskPageView: View {
 
     private func commit(_ i: Int) {
         guard editing == i else { return }
-        model.write { try model.writer.editBlockText(pageId: nodeId, index: i, text: draft) }
+        model.write { try model.writerFor(nodeId).editBlockText(pageId: nodeId, index: i, text: draft) }
         editing = nil; focus = nil
     }
 
     private func commitTitle() {
         guard let n = node else { return }
         let t = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if n.type == NodeType.task { model.write { try model.writer.setTitle(n.id, t) } } else { model.write { try model.writer.renamePage(n.id, t) } }
+        if n.type == NodeType.task { model.write { try model.writerFor(n.id).setTitle(n.id, t) } } else { model.write { try model.writerFor(n.id).renamePage(n.id, t) } }
     }
 
     /// The Image key. A `PhotosPicker` rather than a button opening one, so what appears is the
@@ -208,8 +225,8 @@ struct TaskPageView: View {
         if let e = editing { commit(e) }
         let name = UUID().uuidString.lowercased() + ".jpg"
         model.write {
-            model.store.writeImage(String(name.dropLast(4)), bytes)
-            _ = try model.writer.addBlock(to: nodeId, type: NodeType.image, text: name, afterIndex: editing)
+            model.storeFor(nodeId).writeImage(String(name.dropLast(4)), bytes)
+            _ = try model.writerFor(nodeId).addBlock(to: nodeId, type: NodeType.image, text: name, afterIndex: editing)
         }
     }
 
@@ -217,11 +234,11 @@ struct TaskPageView: View {
         if let e = editing { commit(e) }
         var newIndex = (page?.blocks.count ?? 0)
         model.write {
-            _ = try model.writer.addBlock(to: nodeId, type: type, text: "", afterIndex: editing)
+            _ = try model.writerFor(nodeId).addBlock(to: nodeId, type: type, text: "", afterIndex: editing)
             newIndex = editing.map { $0 + 1 } ?? newIndex
         }
         if type == NodeType.ink {
-            if let inkId = model.store.readPage(nodeId)?.blocks[safe: newIndex], case let .ink(id, _, _) = inkId { path.append(Route.ink(id)) }
+            if let inkId = model.storeFor(nodeId).readPage(nodeId)?.blocks[safe: newIndex], case let .ink(id, _, _) = inkId { path.append(Route.ink(id)) }
         } else {
             editing = newIndex; draft = ""; focus = newIndex
         }
@@ -230,7 +247,7 @@ struct TaskPageView: View {
     private func convert(_ i: Int, to type: String) {
         let text = draft
         model.write {
-            try model.writer.editPage(nodeId, change: .structural) { page in
+            try model.writerFor(nodeId).editPage(nodeId, change: .structural) { page in
                 var p = page
                 guard i < p.blocks.count else { return p }
                 let indent = p.blocks[i].indent
@@ -249,7 +266,8 @@ struct TaskPageView: View {
     private func delete() {
         guard let n = node else { return }
         model.write {
-            if let (home, i) = model.writer.locate(taskId: n.id) { try model.writer.removeBlock(pageId: home, index: i) } else { try model.writer.deletePage(n.id) }
+            let w = model.writerFor(n.id)
+            if let (home, i) = w.locate(taskId: n.id) { try w.removeBlock(pageId: home, index: i) } else { try w.deletePage(n.id) }
         }
         path.removeLast()
     }
@@ -344,12 +362,24 @@ struct BlockRow: View {
                 .padding(.vertical, padding)
         } else {
             let text = block.text ?? ""
-            Button(action: onBegin) {
-                Text(text.isEmpty ? placeholder : inlinePlain(text)).font(font).foregroundStyle(text.isEmpty ? y.dim : color)
-                    .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
-                    .overlay(alignment: .leading) { if case let .task(t) = block, t.status == .done { InkStrike(seed: t.id.hashValue).frame(height: 20).allowsHitTesting(false) } }
+            // A line carrying links is drawn by `LinkedText`, which makes each one tappable and
+            // renders it as the target's *current* title. A line without them stays a plain Text
+            // inside a Button — the ordinary case, and the one where a tap anywhere should start
+            // editing rather than navigate.
+            if Links.hasLink(text) {
+                LinkedText(text: text, font: font, color: color, open: onOpen)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, padding)
-            }.buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onBegin)
+            } else {
+                Button(action: onBegin) {
+                    Text(text.isEmpty ? placeholder : inlinePlain(text)).font(font).foregroundStyle(text.isEmpty ? y.dim : color)
+                        .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+                        .overlay(alignment: .leading) { if case let .task(t) = block, t.status == .done { InkStrike(seed: t.id.hashValue).frame(height: 20).allowsHitTesting(false) } }
+                        .padding(.vertical, padding)
+                }.buttonStyle(.plain)
+            }
         }
     }
 }
@@ -366,8 +396,10 @@ struct PropertyPills: View {
     /// than unimplemented. One presentation, one modifier, and adding a third kind cannot
     /// reintroduce it.
     private enum PillSheet: Identifiable {
-        case due, label
-        var id: Int { self == .due ? 0 : 1 }
+        case due, label, assignee
+        var id: Int {
+            switch self { case .due: return 0; case .label: return 1; case .assignee: return 2 }
+        }
     }
     @State private var presented: PillSheet?
     var body: some View {
@@ -378,25 +410,30 @@ struct PropertyPills: View {
                 ForEach(node.labels, id: \.self) { l in
                     // Tap detaches, as on Android.
                     pill("#\(l)", color: LabelPalette.color(l, registry: model.index.labels, dark: y.dark), ghost: false) {
-                        model.write { try model.writer.editTask(node.id) { t in var x = t; x.labels.removeAll { $0 == l }; return x } }
+                        model.write { try model.writerFor(node.id).editTask(node.id) { t in var x = t; x.labels.removeAll { $0 == l }; return x } }
                     }
+                }
+                if let who = node.assignee {
+                    pill("@\(who)", color: y.accentText, ghost: false, id: "task.assignee") { presented = .assignee }
                 }
                 if node.due == nil { pill("+ Due", color: y.muted, ghost: true) { presented = .due } }
                 if node.priority == nil { pill("+ Priority", color: y.muted, ghost: true) { cyclePriority() } }
                 pill("+ Label", color: y.muted, ghost: true) { presented = .label }
+                if node.assignee == nil { pill("+ Who", color: y.muted, ghost: true, id: "task.assign") { presented = .assignee } }
             }
         }
         .sheet(item: $presented) { which in
             switch which {
             case .due: DueSheet(node: node)
             case .label: LabelPicker(node: node)
+            case .assignee: AssigneeSheet(node: node)
             }
         }
     }
     private func cyclePriority() {
         let order: [String?] = ["High", "Medium", "Low", nil]
         let i = order.firstIndex(of: node.priority) ?? 3
-        model.write { try model.writer.setPriority(node.id, order[(i + 1) % order.count]) }
+        model.write { try model.writerFor(node.id).setPriority(node.id, order[(i + 1) % order.count]) }
     }
     private func pill(_ text: String, color: Color, ghost: Bool, id: String? = nil,
                       action: @escaping () -> Void) -> some View {
@@ -417,7 +454,7 @@ struct InkBlockPreview: View {
     @Environment(\.y) private var y
     let inkId: String
     var body: some View {
-        let strokes = model.store.readInk(inkId).compactMap { try? StrokeEnvelope.decode($0) }
+        let strokes = model.storeFor(inkId).readInk(inkId).compactMap { try? StrokeEnvelope.decode($0) }
         if strokes.isEmpty {
             HStack(spacing: 8) { YantraIcon(mark: .ink, size: YantraIcons.medium, tint: y.dim); Text("Tap to sketch").font(Face.text(13)) }.foregroundStyle(y.dim).padding(20)
         } else {
@@ -509,7 +546,12 @@ struct ImageBlock: View {
     private var image: UIImage? {
         // The line names a file; the bytes sit next to the page under the same stem.
         let stem = uri.hasSuffix(".jpg") ? String(uri.dropLast(4)) : uri
-        return (try? Data(contentsOf: model.store.imageFile(stem))).flatMap(UIImage.init(data:))
+        // The block knows its file's name and not which workspace it is in, so the workspaces are
+        // asked in turn. The stem is a uuid, so the first one holding it is the one that wrote it.
+        return model.allStores.lazy
+            .compactMap { try? Data(contentsOf: $0.imageFile(stem)) }
+            .first
+            .flatMap(UIImage.init(data:))
     }
 
     var body: some View {

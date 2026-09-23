@@ -42,6 +42,8 @@ enum UITestFixture {
         static let secondList = "fixture-work"
         static let smartList = "fixture-today"
         static let plainTask = "fixture-plain"
+        /// Stable, because a link in the fixture has to point at something a test can name.
+        static let overdueTask = "fixture-overdue"
         static let focusedTask = "fixture-focused"
         static let archivedTask = "fixture-archived"
         static let ink = "fixture-ink"
@@ -83,7 +85,7 @@ enum UITestFixture {
         store.writePage(PageDoc(id: groceries, type: NodeType.list, parent: nil, title: Names.list,
                                 modifiedAt: now, device: "uitest", blocks: [
             .task(TaskRef(id: parented, title: Names.plainTask)),
-            .task(TaskRef(id: id(), title: Names.overdueTask,
+            .task(TaskRef(id: Ids.overdueTask, title: Names.overdueTask,
                           due: DueSpec(.allDay(today.adding(days: -3))), priority: "High")),
             .task(TaskRef(id: id(), title: Names.todayTask,
                           due: DueSpec(.at(LocalDateTime(date: today, hour: 14).instant()), duration: .minutes(90)))),
@@ -117,6 +119,10 @@ enum UITestFixture {
         store.writePage(PageDoc(id: parented, type: NodeType.task, parent: groceries, title: nil,
                                 modifiedAt: now, device: "uitest", blocks: [
             .prose("Some notes on this task."),
+            // A line that points at another task, so the link rendering has something real to draw.
+            // Links are tappable in a page's blocks and plain in a list row — the same split
+            // Android has, because a row's whole job is to open the task it is a row for.
+            .prose("Follow \(Links.encode(label: Names.overdueTask, targetId: Ids.overdueTask)) first."),
             .task(TaskRef(id: id(), title: Names.subtask)),
             .ink(id: Ids.ink),
             .image(uri: "\(Ids.image).jpg"),

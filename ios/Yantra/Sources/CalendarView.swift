@@ -4,11 +4,9 @@ import YantraCore
 /// What the calendar screen can put in front of you. One sheet, so one value.
 enum CalendarPresentation: Identifiable, Equatable {
     case event(EventSheetTarget)
-    /// The task rail, on a window too narrow to give it a column.
-    case rail
 
     var id: String {
-        switch self { case let .event(t): return t.id; case .rail: return "rail" }
+        switch self { case let .event(t): return t.id }
     }
     static func == (l: CalendarPresentation, r: CalendarPresentation) -> Bool { l.id == r.id }
 }
@@ -26,7 +24,10 @@ enum CalendarMode: String, CaseIterable { case month = "M", week = "W", day = "D
 final class CalendarModel: ObservableObject {
     @Published var month: LocalDate = { let t = LocalDate.today(); return LocalDate(year: t.year, month: t.month, day: 1) }()
     @Published var selected: LocalDate = .today()
-    @Published var mode: CalendarMode = .month
+    /// The day, because that is what a calendar is opened to *do*: see the hours you have left and
+    /// put something in one. A month is where you go to find a date, which is the rarer errand, and
+    /// it is one tap away.
+    @Published var mode: CalendarMode = .day
     @Published var daysAcross: Int = 3
     @Published private(set) var days: CalendarDays = [:]
     /// How tall an hour is. Remembered on this device — re-pinching on every visit would be worse
@@ -37,14 +38,23 @@ final class CalendarModel: ObservableObject {
 
     // MARK: a task being carried onto the day
 
-    /// The task currently being dragged out of the rail, and where the finger is.
+    /// What a task looks like while it is in hand, for the two ways of putting one on a day.
+    /// A task picked up from the rail and waiting to be put down — the phone's answer to carrying.
     ///
-    /// Held here rather than in either view because the rail and the day are siblings: the gesture
-    /// starts in one and lands in the other, and the only thing they share is this model and a
-    /// named coordinate space.
-    @Published var carrying: CarriedTask?
-    /// Where the finger is, in the calendar's own coordinate space.
-    @Published var carryPoint: CGPoint = .zero
+    /// On an iPad the rail is a column beside the days, so a task is dragged straight across and
+    /// `carrying` is the whole mechanism. On a phone the rail is a **sheet**, and a drag cannot
+    /// leave a sheet's presentation: the finger reaches the edge of the card and the calendar it is
+    /// aiming for is not even on screen. Every drag out of the rail on a phone therefore did
+    /// nothing at all, which is exactly what it looked like.
+    ///
+    /// So the phone splits the gesture in two, which is what a phone does everywhere else: tap to
+    /// pick up, and the sheet gets out of the way; tap a time to put down.
+    /// Logged on every change, because "I picked it up and nothing happened" is a sentence with
+    /// three possible causes — it was never picked up, the tap never landed, or the write was
+    /// refused — and the log is the only thing that tells them apart after the fact.
+    @Published var placing: CarriedTask? {
+        didSet { Diagnostics.log("calendar.held", ["was": oldValue?.id ?? "-", "now": placing?.id ?? "-"]) }
+    }
 
     struct CarriedTask: Equatable {
         var id: String
@@ -163,6 +173,9 @@ struct CalendarView: View {
     @State private var railDefaulted = false
     /// The last measured width class, so the sheet modifiers outside the GeometryReader can read it.
     @State private var isWide = false
+    /// How tall the drawer is. About a third of a phone: enough for four or five tasks, and little
+    /// enough that the hours being aimed at are still on screen above it.
+    private let railHeight: CGFloat = 250
     @Environment(\.scenePhase) private var phase
 
     /// How wide the calendar gets before it stops growing. A month is a fixed amount of information
@@ -188,8 +201,28 @@ struct CalendarView: View {
                 }
                 .frame(maxWidth: cal.mode == .month && !twoPaneMonth ? contentMaxWidth : .infinity)
                 .frame(maxWidth: .infinity)
+                // The rail on a phone: a drawer under the day, **not** a sheet.
+                //
+                // It was a sheet, and that is why a task could never be dragged onto the calendar
+                // here. A drag cannot leave a sheet's presentation — the finger reaches the edge of
+                // the card and the day it is aiming for is not even on screen — so the carry that
+                // works perfectly on an iPad did nothing whatsoever on a phone.
+                //
+                // A drawer is in the same view, and so in the same coordinate space: the day stays
+                // visible above it and a task is dragged straight up onto the hour it belongs to,
+                // which is the gesture this screen was always meant to have.
+                if railOpen, !wide {
+                    Divider().frame(height: 0.5).overlay(y.hairline)
+                    CalendarTaskRail(cal: cal, onClose: { railOpen = false })
+                        .frame(height: railHeight)
+                        .transition(.move(edge: .bottom))
+                }
                 CalendarBar(cal: cal, railOpen: $railOpen, onAdd: { presented = .event(.creating(cal.selected, nil)) })
             }
+            // One space over the day and the drawer both, so a drag that begins in one and ends in
+            // the other is measured against the same origin.
+            .coordinateSpace(name: CalendarModel.space)
+            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: railOpen)
             .onAppear {
                 isWide = wide
                 cal.daysAcross = wide ? 7 : 3
@@ -198,18 +231,45 @@ struct CalendarView: View {
             .onChange(of: wide) { _, w in
                 isWide = w
                 cal.daysAcross = w ? 7 : 3
-                // Growing into a column retires the sheet; shrinking out of one brings it back.
-                if w, presented == .rail { presented = nil }
-                if !w, railOpen, presented == nil { presented = .rail }
+                // The rail is a column when there is room and a drawer when there is not; neither
+                // is a sheet any more, so a width change is only a change of shape.
             }
         }
         .background(y.page.ignoresSafeArea())
+        // What is in your hand, and how to put it down again.
+        //
+        // A mode with nothing on screen saying so is a trap: the next tap on an empty hour would
+        // schedule something the person had forgotten they were holding. So it says what it is
+        // waiting for, and offers the way out beside it.
+        .overlay(alignment: .bottom) {
+            if let held = cal.placing {
+                HStack(spacing: 10) {
+                    YantraIcon(mark: .clock, size: YantraIcons.small, tint: y.accentText)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Tap a time to place it").font(Face.text(13, .semibold)).foregroundStyle(y.ink)
+                        Text(held.title).font(Face.text(11.5)).foregroundStyle(y.muted).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Cancel") { cal.placing = nil }
+                        .font(Face.text(12, .bold)).foregroundStyle(y.accentText)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(Capsule().fill(y.surfaceHigh))
+                .overlay(Capsule().stroke(y.accentBorder, lineWidth: 1))
+                .padding(.horizontal, Layout.pageMargin).padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: cal.placing)
         .navigationBarBackButtonHidden(true)
         .task {
             if let iso = startOn, let d = LocalDate(iso) { cal.select(d) }
             // `-calmode week|day` — the same launch-argument scaffolding `-route` uses, so a view
             // that needs a tap to reach can still be driven for screenshots and UI tests.
             let args = CommandLine.arguments
+            // `-calrail` opens the rail on launch, so the drawer and a carry out of it can be
+            // driven for a test or a screenshot without a tap that has to find the key first.
+            if args.contains("-calrail") { railDefaulted = true; railOpen = true }
             if let i = args.firstIndex(of: "-calmode"), i + 1 < args.count,
                let m = CalendarMode.allCases.first(where: { $0.rawValue.lowercased() == String(args[i + 1].prefix(1)) }) {
                 cal.mode = m
@@ -233,21 +293,35 @@ struct CalendarView: View {
             switch what {
             case let .event(target):
                 EventSheet(target: target, cal: cal) { refresh() }
-            case .rail:
-                CalendarTaskRail(cal: cal)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-                    .environment(\.y, y)
             }
         }
-        .onChange(of: railOpen) { _, open in
-            if open, !isWide { presented = .rail }
-            if !open, presented == .rail { presented = nil }
+
+    }
+
+    /// One of your own events.
+    ///
+    /// A **sitting** — time set aside for a task — opens the sheet, because it has no page of its
+    /// own to work on: its words are the task's, and the only things to say about it are when and
+    /// how long. Any other event is a node like any other and opens as a page.
+    private func openEvent(_ nodeId: String) {
+        let isSitting = model.index.nodes[nodeId]?.event?.forTaskId != nil
+        if isSitting { presented = .event(.editing(nodeId)) } else { path.append(Route.node(nodeId)) }
+    }
+
+    /// Their meeting, opened as a page of yours — see `AppModel.openMeetingLocally`.
+    ///
+    /// A page rather than a sheet, because a meeting is a thing you *work on*: notes under it,
+    /// subtasks in it, a focus session against it. Android settled this — an event is a node like
+    /// any other, and the details of whose meeting it is belong at the top of that page rather than
+    /// in a card you have to dismiss to write anything.
+    private func openMeeting(_ item: DayItem.DeviceItem) {
+        guard let id = model.openMeetingLocally(item) else {
+            // The one outcome a tap must never have: nothing, with no reason given.
+            model.refusal = "There is no Inbox to put this meeting in"
+            return
         }
-        .onChange(of: presented) { _, what in
-            // Dragging the rail away is the same as turning it off.
-            if what == nil, railOpen, !isWide { railOpen = false }
-        }
+        refresh()
+        path.append(Route.node(id))
     }
 
     private func refresh() {
@@ -281,7 +355,8 @@ struct CalendarView: View {
                     // The grid keeps its metric; the day list takes the rest of the width and the
                     // whole height, because a day with twenty things on it is what the space is for.
                     MonthGrid(cal: cal).frame(maxWidth: 460)
-                    DayList(cal: cal, path: $path, onOpenEvent: { presented = .event(.editing($0)) })
+                    DayList(cal: cal, path: $path, onOpenEvent: { openEvent($0) },
+                                onOpenMeeting: { openMeeting($0) })
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -289,14 +364,16 @@ struct CalendarView: View {
             } else {
                 VStack(spacing: 0) {
                     MonthGrid(cal: cal)
-                    DayList(cal: cal, path: $path, onOpenEvent: { presented = .event(.editing($0)) })
+                    DayList(cal: cal, path: $path, onOpenEvent: { openEvent($0) },
+                                onOpenMeeting: { openMeeting($0) })
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.horizontal, Layout.pageMargin)
             }
         case .week, .day:
             DayTimeline(cal: cal, path: $path, railOpen: railOpen, wide: wide,
-                         onOpenEvent: { presented = .event(.editing($0)) },
+                         onOpenEvent: { openEvent($0) },
+                         onOpenMeeting: { openMeeting($0) },
                          onMark: { day, from, to in presented = .event(.creating(day, (from, to))) })
         }
     }
@@ -377,7 +454,25 @@ struct MonthBar: View {
 /// jump by a row as you page through the year.
 struct MonthGrid: View {
     @ObservedObject var cal: CalendarModel
+    @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
+
+    /// Putting a carried task down on a month, which has days but no hours.
+    ///
+    /// Nine in the morning, and then the day opens so the time can be dragged if it is wrong —
+    /// better than refusing the tap, which would make the month the one place the banner lies about
+    /// what a tap does.
+    private func place(on day: LocalDate, taskId: String? = nil) {
+        guard let id = taskId ?? cal.placing?.id else { return }
+        let start = LocalDateTime(date: day, hour: 9)
+        let total = 9 * 60 + TimelineLayout.defaultSittingMinutes
+        model.schedule(taskId: id, from: start,
+                       to: LocalDateTime(date: day, hour: min(total / 60, 23), minute: total % 60))
+        cal.placing = nil
+        cal.selected = day
+        cal.mode = .day
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
 
     private let cellHeight: CGFloat = 52
     private let weekdays = ["M", "T", "W", "T", "F", "S", "S"]
@@ -401,7 +496,14 @@ struct MonthGrid: View {
                                 items: cal.items(day))
                             .frame(maxWidth: .infinity, minHeight: cellHeight)
                             .contentShape(Rectangle())
-                            .onTapGesture { cal.selected = day }
+                            .onTapGesture { cal.placing == nil ? (cal.selected = day) : place(on: day) }
+                            // A month cell is a day with no hours in it, so a drop here means the
+                            // day rather than a time — the same answer the tap gives.
+                            .dropDestination(for: CarriedTaskRef.self) { items, _ in
+                                guard let item = items.first else { return false }
+                                place(on: day, taskId: item.id)
+                                return true
+                            }
                             .accessibilityElement(children: .combine)
                             .accessibilityAddTraits(.isButton)
                             .accessibilityIdentifier("calendar.cell.\(day)")
@@ -475,6 +577,7 @@ struct DayList: View {
     @Environment(\.y) private var y
     @Binding var path: NavigationPath
     let onOpenEvent: (String) -> Void
+    let onOpenMeeting: (DayItem.DeviceItem) -> Void
 
     var body: some View {
         let items = cal.items(cal.selected)
@@ -489,7 +592,8 @@ struct DayList: View {
                         .font(Face.text(13.5)).foregroundStyle(y.dim).padding(.vertical, 18)
                 }
                 ForEach(items) { item in
-                    DayItemRow(item: item, onOpenEvent: onOpenEvent, onOpenNode: { path.append(Route.node($0)) })
+                    DayItemRow(item: item, onOpenEvent: onOpenEvent, onOpenNode: { path.append(Route.node($0)) },
+                                   onOpenMeeting: onOpenMeeting)
                 }
                 Spacer().frame(height: 100)
             }
@@ -501,6 +605,7 @@ struct DayItemRow: View {
     let item: DayItem
     let onOpenEvent: (String) -> Void
     let onOpenNode: (String) -> Void
+    let onOpenMeeting: (DayItem.DeviceItem) -> Void
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
 

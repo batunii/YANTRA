@@ -35,18 +35,53 @@ public enum Keychain {
 
 /// Which repository the local workspace pushes to, and the last sync's outcome — device-local state.
 public enum SyncSettings {
-    public static var repo: RepoRef? {
-        get { AppGroup.defaults.string(forKey: "sync_repo").flatMap(RepoRef.parse) }
-        set { AppGroup.defaults.set(newValue?.slug, forKey: "sync_repo") }
+    /// The repository a given workspace pushes to.
+    ///
+    /// Keyed by workspace id, with the local workspace keeping the bare `sync_repo` key it has
+    /// always had — an upgrade must not silently disconnect the one workspace everybody already
+    /// has, and a key that changes shape between builds is exactly how that happens.
+    public static func repo(for workspaceId: String) -> RepoRef? {
+        AppGroup.defaults.string(forKey: repoKey(workspaceId)).flatMap(RepoRef.parse)
     }
+    public static func setRepo(_ ref: RepoRef?, for workspaceId: String) {
+        AppGroup.defaults.set(ref?.slug, forKey: repoKey(workspaceId))
+    }
+    private static func repoKey(_ id: String) -> String { id.isEmpty ? "sync_repo" : "sync_repo:\(id)" }
+
+    /// The local workspace's repository — what the GitHub screen and every one-workspace caller mean.
+    public static var repo: RepoRef? {
+        get { repo(for: "") }
+        set { setRepo(newValue, for: "") }
+    }
+    /// Which registration the stored credential came from.
+    ///
+    /// Kept beside the token because everything downstream depends on it: which client id renews
+    /// it, whether it can create a repository, whether it needs installing somewhere before it can
+    /// see anything, and which application page revokes it. A token whose method is forgotten is a
+    /// token the app has to guess about, and both guesses are wrong half the time.
+    public static var method: GitHubAuth.Method {
+        get {
+            AppGroup.defaults.string(forKey: GitHubAuth.methodKey)
+                .flatMap(GitHubAuth.Method.init(rawValue:)) ?? .full
+        }
+        set { AppGroup.defaults.set(newValue.rawValue, forKey: GitHubAuth.methodKey) }
+    }
+
     public static var login: String? {
         get { AppGroup.defaults.string(forKey: "github_login") }
         set { AppGroup.defaults.set(newValue, forKey: "github_login") }
     }
     public static var lastStatus: String? {
-        get { AppGroup.defaults.string(forKey: "sync_last_status") }
-        set { AppGroup.defaults.set(newValue, forKey: "sync_last_status") }
+        get { status(for: "") }
+        set { setStatus(newValue, for: "") }
     }
+    public static func status(for workspaceId: String) -> String? {
+        AppGroup.defaults.string(forKey: statusKey(workspaceId))
+    }
+    public static func setStatus(_ s: String?, for workspaceId: String) {
+        AppGroup.defaults.set(s, forKey: statusKey(workspaceId))
+    }
+    private static func statusKey(_ id: String) -> String { id.isEmpty ? "sync_last_status" : "sync_last_status:\(id)" }
 
     /// A token good for the next call, or why there is not one.
     ///
@@ -69,8 +104,9 @@ public enum SyncSettings {
         guard var t = Keychain.accountToken else { return .needsSignIn("Sign in to sync") }
         guard t.needsRenewal else { return .ok(t.accessToken) }
 
-        switch await GitHubAuth.refresh(t) {
+        switch await GitHubAuth.refresh(t, method) {
         case let .renewed(fresh):
+            Diagnostics.log("token.renewed")
             // GitHub rotates the refresh token, so what came back replaces what was sent.
             t = fresh
             Keychain.accountToken = t
@@ -78,6 +114,7 @@ public enum SyncSettings {
         case .nothingToDo:
             return .ok(t.accessToken)
         case .couldNotAsk:
+            Diagnostics.log("token.couldNotAsk")
             // Nothing was said, so nothing is changed. The pass carries on with the token it has; if
             // that one still works, this was never needed. A tunnel must not sign anybody out.
             return .ok(t.accessToken)
@@ -87,6 +124,7 @@ public enum SyncSettings {
             // signed in.
             Keychain.accountToken = nil
             login = nil
+            Diagnostics.log("token.refused", ["why": why])
             return .needsSignIn(why)
         }
     }
@@ -120,7 +158,7 @@ public enum SyncSettings {
         case .adopt:
             do {
                 var r = try await engine.adoptRemote()
-                lastStatus = r.error.map { "Not synced: \($0)" } ?? "Joined the repository's tasks"
+                setStatus(r.error.map { "Not synced: \($0)" } ?? "Joined the repository's tasks", for: store.id)
                 // Anything this device had beyond the starter set is gone by design; a normal pass
                 // now has a common ancestor and behaves like any other.
                 if r.error == nil { r.pulled = true }
@@ -137,37 +175,56 @@ public enum SyncSettings {
         guard let engine = await engine(for: store) else { return SyncResult(error: SyncError.noRemote.description) }
         do {
             let r = try await engine.adoptRemote()
-            lastStatus = r.error.map { "Not synced: \($0)" } ?? "Joined the repository's tasks"
+            setStatus(r.error.map { "Not synced: \($0)" } ?? "Joined the repository's tasks", for: store.id)
             return r
         } catch { return SyncResult(error: "\(error)") }
     }
 
     /// The engine for the connected repository, with a token good for the next call.
     private static func engine(for store: WorkspaceStore) async -> SyncEngine? {
-        guard let repo else { return nil }
+        guard let repo = repo(for: store.id) else { return nil }
         guard case let .ok(token) = await credential() else { return nil }
-        return SyncEngine(store: store, transport: GitHubTransport(repo: repo, token: token),
-                          device: login ?? AppGroup.device,
-                          stateDir: AppGroup.container.appendingPathComponent("sync/local", isDirectory: true))
+        return engine(store: store, repo: repo, token: token)
+    }
+
+    /// The base snapshot a workspace merges against lives beside the workspace, one directory per
+    /// workspace. Sharing one would have a second repository's tree treated as the first one's
+    /// common ancestor, which is every file in both looking like a conflict.
+    private static func engine(store: WorkspaceStore, repo: RepoRef, token: String) -> SyncEngine {
+        SyncEngine(store: store, transport: GitHubTransport(repo: repo, token: token),
+                   device: login ?? AppGroup.device,
+                   stateDir: AppGroup.container.appendingPathComponent(
+                       "sync/\(store.id.isEmpty ? "local" : store.id)", isDirectory: true))
     }
 
     /// One sync pass against the connected repository, if any.
     public static func syncNow(store: WorkspaceStore, message: String = "sync") async -> SyncResult {
-        guard let repo else { return SyncResult(error: SyncError.noRemote.description) }
+        guard let repo = repo(for: store.id) else { return SyncResult(error: SyncError.noRemote.description) }
         let token: String
         switch await credential() {
         case let .ok(t): token = t
         // Said in the words GitHub used, because "sign in again" with no reason is the failure this
         // whole path exists to stop repeating.
         case let .needsSignIn(why):
-            lastStatus = "Not synced: \(why)"
+            setStatus("Not synced: \(why)", for: store.id)
+            Diagnostics.log("sync.needsSignIn", ["why": why])
             return SyncResult(error: "\(why) — sign in again")
         }
-        let engine = SyncEngine(store: store, transport: GitHubTransport(repo: repo, token: token), device: login ?? AppGroup.device,
-                                stateDir: AppGroup.container.appendingPathComponent("sync/local", isDirectory: true))
-        let result = await engine.sync(message: message)
-        lastStatus = result.error.map { "Not synced: \($0)" } ?? (result.conflicts.isEmpty ? (result.pushed || result.pulled ? "Synced" : "Nothing to sync")
-                                                                    : "Synced · \(result.conflicts.count) conflict\(result.conflicts.count == 1 ? "" : "s") resolved")
+        let began = Date()
+        let result = await engine(store: store, repo: repo, token: token).sync(message: message)
+        // The single most useful line in a week of logs: what a pass did, and what it cost. A sync
+        // that silently stopped happening on Thursday is invisible without it.
+        Diagnostics.log("sync.pass", [
+            "workspace": store.id.isEmpty ? "local" : store.id,
+            "reason": message,
+            "seconds": Int(Date().timeIntervalSince(began) * 1000) / 1000,
+            "pushed": result.pushed, "pulled": result.pulled,
+            "conflicts": result.conflicts.count,
+            "error": result.error ?? "",
+        ])
+        setStatus(result.error.map { "Not synced: \($0)" } ?? (result.conflicts.isEmpty ? (result.pushed || result.pulled ? "Synced" : "Nothing to sync")
+                                                                    : "Synced · \(result.conflicts.count) conflict\(result.conflicts.count == 1 ? "" : "s") resolved"),
+                  for: store.id)
         return result
     }
 }

@@ -340,7 +340,11 @@ struct NowDock<Content: View>: View {
     @Environment(\.y) private var y
 
     var body: some View {
+        // The surface spans the glass; what is *in* it keeps the same measure as the rows above, so
+        // a wide window does not put the task's name at one edge and its play key a thousand points
+        // away at the other.
         VStack(spacing: 0) { content }
+            .readableColumn()
             .frame(maxWidth: .infinity)
             // The surface reaches the screen edge; the content stops above the home indicator.
             //

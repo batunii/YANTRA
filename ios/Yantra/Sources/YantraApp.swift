@@ -6,6 +6,15 @@ struct YantraApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var theme = ThemeController()
 
+    /// Registered here rather than in a task or an `onAppear`, because iOS requires every background
+    /// task handler to be installed **before launching finishes**. One registered later is never
+    /// called and says nothing about it.
+    init() {
+        BackgroundSync.register()
+        Diagnostics.logLaunch()
+        Diagnostics.watchForTheEnd()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -37,7 +46,14 @@ struct RootView: View {
         let y = theme.colors(systemDark: scheme == .dark)
         NavigationStack(path: $path) {
             HomeView(path: $path)
+                // Inside the stack, not around it: the enabler has to be hosted by a view
+                // controller the navigation controller actually owns to be able to find it.
+                .backSwipe()
                 .navigationDestination(for: Route.self) { r in
+                    // Where the week was actually spent. `Diagnostics.screen` keeps only a change,
+                    // so the rebuilds SwiftUI does whenever anything on the screen changes do not
+                    // turn one visit into fifty lines.
+                    let _ = Diagnostics.screen(r.slug)
                     switch r {
                     case let .node(id):
                         if model.index.nodes[id]?.type == NodeType.list || model.index.nodes[id]?.type == NodeType.group {
@@ -49,10 +65,11 @@ struct RootView: View {
                     case let .focus(id): FocusView(path: $path, requestedNodeId: id)
                     case .stats: StatsView(path: $path)
                     case .settings: SettingsView(path: $path)
-                    case .conformance: ConformanceView()
                     case let .ink(id): InkView(path: $path, inkId: id)
                     case .github: SignInView(path: $path)
                     case .archive: ArchiveView(path: $path)
+                    case .addWorkspace: AddWorkspaceView(path: $path)
+                    case let .workspace(id): WorkspaceView(path: $path, workspaceId: id)
                     case let .calendar(day): CalendarView(path: $path, startOn: day)
                     case .marks: MarkSheetView()
                     }
@@ -61,6 +78,11 @@ struct RootView: View {
         .environment(\.y, y)
         .tint(y.accent)
         .preferredColorScheme(theme.mode == .light ? .light : theme.mode == .system ? nil : .dark)
+        // The pulse rides the chrome of every screen, because every screen can be the one you are on
+        // when a push happens. Top trailing, out of the way of a title and of the thumb.
+        .overlay(alignment: .topTrailing) {
+            NetworkPulse().padding(.trailing, Layout.pageMargin).padding(.top, 2)
+        }
         .overlay(alignment: .bottom) {
             if let r = model.refusal {
                 Text(r).font(Face.text(13, .semibold)).foregroundStyle(y.ink).padding(.horizontal, 16).padding(.vertical, 12)
@@ -96,12 +118,23 @@ struct RootView: View {
         }
         .sheet(isPresented: $quickAdd) { CreateSheet(path: $path) }
         .onChange(of: phase) { _, p in
-            if p == .active { model.wake(); model.syncInBackground("opened") }
+            if p == .active {
+                Diagnostics.log("foreground")
+                // On the way in as well as out: a session iOS kills while suspended never reaches
+                // `.background` again, so flushing only on the way out loses its last counts.
+                Diagnostics.flushCounts()
+                model.wake(); model.syncInBackground("opened")
+            }
             if p == .background {
+                Diagnostics.flushCountsNow()
                 // Leaving is the one moment "in a moment" may never come, so the coalesced work is
                 // run now rather than left on a timer this process may not live to fire.
+                Diagnostics.log("background")
                 model.flushFollowUp()
                 model.syncInBackground("leaving app")
+                // And ask to be woken to do it again, which is the only way somebody else's work
+                // arrives without this app being opened.
+                BackgroundSync.schedule()
             }
         }
         .task {
@@ -124,6 +157,8 @@ struct RootView: View {
                 if r == "calendar" { path.append(Route.calendar(nil)); return }
                 if r.hasPrefix("calendar:") { path.append(Route.calendar(String(r.dropFirst(9)))); return }
                 if r == "github" { path.append(Route.github); return }
+                if r == "addworkspace" { path.append(Route.settings); path.append(Route.addWorkspace); return }
+                if r.hasPrefix("workspace:") { path.append(Route.settings); path.append(Route.workspace(String(r.dropFirst(10)))); return }
                 if r == "archive" { path.append(Route.archive); return }
                 if r.hasPrefix("ink:") { path.append(Route.ink(String(r.dropFirst(4)))); return }
                 // `rules:<id>` opens a smart list with its builder already up — the sheet is not
@@ -136,8 +171,12 @@ struct RootView: View {
                 if r == "stats" { path.append(Route.stats); return }
                 if r.hasPrefix("open:") { openNode(String(r.dropFirst(5))); return }
             }
-            // Open on Today, as Android's splash does, when it still exists.
-            if path.isEmpty, let today = model.index.node(systemKey: SystemKey.today) { path.append(Route.smart(today.id)) }
+            // Nothing pushed: the app opens on Home.
+            //
+            // It used to land on Today, which is a fine screen and the wrong one to be *put* on:
+            // Home is where every list is, including Today, and an app that opens one screen deep
+            // starts every session with a back gesture. One tap to Today costs less than one tap
+            // out of it, every time.
         }
     }
 }

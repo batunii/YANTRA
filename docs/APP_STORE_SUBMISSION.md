@@ -133,6 +133,42 @@ xcodebuild -project Yantra.xcodeproj -scheme Yantra \
   -destination 'name=iPad Pro 13-inch (M5)' test
 ```
 
+Two things about that third one.
+
+**Grant the runner the calendar, not the app.** `MeetingUITests` writes a real event into the
+simulator's calendar database from the test process — the runner is in the simulator, so its
+EventKit is the app's EventKit — and without permission it calls `XCTSkipUnless`, which is a green
+run that tested nothing. It skipped on every run here for some time before anyone noticed. The
+grant goes to the runner's bundle id:
+
+```sh
+xcrun simctl boot <device>            # the device must be booted to be granted
+xcrun simctl privacy <device> grant calendar ie.shoonya.yantra.uitests
+xcrun simctl privacy <device> grant calendar ie.shoonya.yantra   # for -uitest-calendars
+```
+
+**Never run two destinations at once.** Two `xcodebuild test` invocations against one simulator
+produce failures that move around between runs — three unrelated screens in one case — and if both
+redirect to the same log with `>` the two runs interleave and the failure cannot even be read back.
+Run the phone, then the iPad.
+
+A fourth, optional, runs against the real GitHub. It needs a token and a repository it may write
+to, and is skipped without them:
+
+```sh
+cd ios
+YANTRA_LIVE_TOKEN=$(gh auth token) swift test --package-path YantraCore --filter LiveRepoTests
+YANTRA_LIVE_REPO=owner/name YANTRA_LIVE_TOKEN=$(gh auth token) \
+  swift test --package-path YantraCore --filter LiveSyncTests
+```
+
+`LiveRepoTests` covers the two endpoints a fake cannot: listing the repositories a sign-in can see,
+and `POST /user/repos`. It never creates anything — the create test asks for a name that is already
+taken **on the token's own account** and expects the refusal. That last clause is load-bearing: an
+earlier version borrowed the name of any repository the token could push to, which can be an
+organisation's, and the name being free on the personal account meant the call it expected to be
+refused made a repository instead.
+
 The UI tests reset and re-seed the workspace on every launch (`-uitest-reset -uitest`), so a run
 never depends on what the run before it left behind. The fixture is `UITestFixture` rather than the
 welcome content — otherwise every test that named a row would be a test of the welcome copy — and it

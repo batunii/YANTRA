@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately empty. A free Apple ID team cannot hold an App Group, and the team
+	     provisioning profiles it issues carry `application-groups` as an empty array — so an
+	     entitlements file that asks for `group.ie.shoonya.yantra` is refused outright with
+	     "doesn't match the entitlements file's value". This is the device twin of the real
+	     entitlements: same file, no group.
+
+	     What that costs, and why it is survivable: the widgets and the share extension cannot see
+	     the workspace on a device build, and `Diagnostics` writes to the app's own Documents
+	     directory rather than the shared container for exactly this reason. On the simulator the
+	     real entitlements are used and both work. -->
+	<key>com.apple.security.application-groups</key>
+	<array/>
+</dict>
+</plist>

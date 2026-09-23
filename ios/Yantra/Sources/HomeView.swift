@@ -7,14 +7,36 @@ enum Route: Hashable {
     case focus(String?)
     case stats
     case settings
-    case conformance
     case ink(String)
     case github
     case archive
+    /// Joining a repository, or starting one. `AddWorkspaceScreen` on Android.
+    case addWorkspace
+    /// One linked workspace: where it points, and how to remove it.
+    case workspace(String)
     /// The calendar, optionally landing on a day — how the widget points at one.
     case calendar(String?)
     /// Every mark at once, for checking the drawings. `-route marks`.
     case marks
+
+    /// What to call this screen in the diagnostics log. The kind only — never the id, because a
+    /// node id names one of the person's own pages and this log is meant to be shareable.
+    var slug: String {
+        switch self {
+        case .node: return "page"
+        case .smart: return "smartList"
+        case .focus: return "focus"
+        case .stats: return "stats"
+        case .settings: return "settings"
+        case .ink: return "ink"
+        case .github: return "signIn"
+        case .archive: return "archive"
+        case .addWorkspace: return "addWorkspace"
+        case .workspace: return "workspace"
+        case .calendar: return "calendar"
+        case .marks: return "marks"
+        }
+    }
 }
 
 struct HomeView: View {
@@ -105,6 +127,7 @@ struct HomeView: View {
                     Spacer().frame(height: 120)
                 }
                 .padding(.horizontal, Layout.pageMargin)
+                .readableColumn()
             }
             // The player is never the outermost thing on a screen with a permanent bar: it slots in
             // above the nav strip, so the bottom of the app does not reshuffle between screens.
@@ -114,6 +137,13 @@ struct HomeView: View {
                            onStats: { path.append(Route.stats) })
             }
         }
+        // Pull the list down to sync. The one deliberate, waited-for sync in the app: everything
+        // else happens on its own and says so quietly in the chrome. This one is asked for, so it
+        // holds the spinner until the pass is done and then says what the pass came to.
+        // Scrolling the list away is how a person says they are done typing, so the keyboard goes
+        // with the gesture rather than needing a second one aimed at a Done key.
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await model.syncNowAndWait() }
         .background(y.page.ignoresSafeArea())
         // One modifier: a second `.sheet` on the same view is silently dropped, which is how the
         // create key and "How it looks" ended up fighting over which one opened.
@@ -147,7 +177,18 @@ struct HomeRow: View {
                 ListGlyph(icon: node.icon, color: node.color, smart: isSmart)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(inlinePlain(node.title ?? "").isEmpty ? "Untitled" : inlinePlain(node.title ?? "")).font(Face.display(15.5, .medium)).foregroundStyle(y.ink).lineLimit(1)
-                    Text(c.total == 0 ? "Empty" : "\(c.done) of \(c.total) done").font(Face.text(12.5)).foregroundStyle(y.muted)
+                    HStack(spacing: 6) {
+                        Text(c.total == 0 ? "Empty" : "\(c.done) of \(c.total) done").font(Face.text(12.5)).foregroundStyle(y.muted)
+                        // Which repository this list is in, but only once there is more than one to
+                        // confuse it with. Two lists called Inbox from two repositories are
+                        // otherwise the same row twice.
+                        if model.allStores.count > 1 {
+                            Text("·").font(Face.text(12.5)).foregroundStyle(y.dim)
+                            Circle().fill(LabelPalette.swatchColor(model.workspaceColorName(node.workspaceId), dark: y.dark) ?? y.dim)
+                                .frame(width: 7, height: 7)
+                            Text(model.workspaceName(node.workspaceId)).font(Face.text(12)).foregroundStyle(y.dim).lineLimit(1)
+                        }
+                    }
                 }
                 Spacer()
                 if c.total > 0 { Compass(fraction: Double(c.done) / Double(c.total)) }
@@ -261,6 +302,10 @@ struct CreateSheet: View {
     @State private var kind = 0
     @State private var smart = false
     @State private var builder = false
+    /// Which workspace a new list or group is made in. Only asked when there is more than one, and
+    /// only for the kinds that belong to a repository — a smart list is a view over all of them and
+    /// always lives locally.
+    @State private var workspace = ""
     @FocusState private var focused: Bool
     private let kinds = ["Task", "List", "Group"]
 
@@ -270,6 +315,17 @@ struct CreateSheet: View {
                 .font(Face.display(24)).foregroundStyle(y.ink).focused($focused).submitLabel(.done).onSubmit(create)
             HStack(spacing: 8) {
                 ForEach(0..<3, id: \.self) { i in SelectChip(label: kinds[i], selected: kind == i, stretch: true) { kind = i } }
+            }
+            if kind != 0, !smart, model.allStores.count > 1 {
+                // A list made in the wrong repository is a list the people it was meant for cannot
+                // see, and moving it afterwards is not something this app offers yet. So it is
+                // asked once, here, while it still costs a tap.
+                SectionLabel(text: "In")
+                HStack(spacing: 8) {
+                    ForEach(model.allStores, id: \.id) { store in
+                        SelectChip(label: model.workspaceName(store.id), selected: workspace == store.id, stretch: true) { workspace = store.id }
+                    }
+                }
             }
             if kind == 1 {
                 Toggle(isOn: $smart) {
@@ -300,10 +356,10 @@ struct CreateSheet: View {
             if let inbox = model.index.node(systemKey: SystemKey.inbox) { path.append(Route.node(inbox.id)) }
         case 1:
             var id = ""
-            model.write { id = try model.writer.createTopLevel(type: NodeType.list, title: t) }
+            model.write { id = try model.writerIn(workspace).createTopLevel(type: NodeType.list, title: t) }
             if !id.isEmpty { path.append(Route.node(id)) }
         default:
-            model.write { _ = try model.writer.createTopLevel(type: NodeType.group, title: t) }
+            model.write { _ = try model.writerIn(workspace).createTopLevel(type: NodeType.group, title: t) }
         }
         dismiss()
     }

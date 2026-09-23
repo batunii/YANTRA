@@ -19,8 +19,7 @@ struct ListQuery: EntityStringQuery {
     func entities(matching string: String) async throws -> [ListEntity] { all().filter { $0.title.localizedCaseInsensitiveContains(string) } }
     func suggestedEntities() async throws -> [ListEntity] { all().filter { $0.kind != NodeType.task } }
     func all() -> [ListEntity] {
-        let (store, _) = AppGroup.openWorkspace()
-        let ix = WorkspaceIndex.read(store)
+        let ix = AppGroup.readIndex()
         return ix.nodes.values
             .filter { [NodeType.list, NodeType.smartList].contains($0.type) && $0.parentId == nil || $0.type == NodeType.task }
             .sorted { ($0.type == NodeType.task ? 1 : 0, $0.title ?? "") < ($1.type == NodeType.task ? 1 : 0, $1.title ?? "") }
@@ -51,8 +50,7 @@ struct ListSnapshot {
 
 enum WidgetData {
     static func snapshot(targetId: String?, forceToday: Bool, hideTodayDue: Bool) -> ListSnapshot {
-        let (store, _) = AppGroup.openWorkspace()
-        let ix = WorkspaceIndex.read(store)
+        let ix = AppGroup.readIndex()
         let node: Node? = forceToday ? ix.node(systemKey: SystemKey.today) : targetId.flatMap { ix.nodes[$0] }
         guard let n = node else { return ListSnapshot(title: forceToday ? "Today" : "Yantra list", summary: "", sections: [], targetId: nil, isSmart: forceToday) }
         let isSmart = n.type == NodeType.smartList

@@ -123,9 +123,10 @@ struct BhupuraMark: View {
 /// worse — a task marked by accident could then only be cleared by completing it and un-completing
 /// it, which is two writes that are both wrong on the way past.
 ///
-/// **The row stays where it is.** What moves is the engagement ring inside the glyph, traced by your
-/// finger. The gesture is filling in the mark, not shoving the row aside, and the feedback belongs
-/// where the meaning is.
+/// What the gesture fills in is the engagement ring inside the glyph, traced by your finger — it is
+/// marking the task, not shoving the row aside, so the feedback belongs where the meaning is. The
+/// row comes along at half the finger's pace, far enough to say the swipe is being read and not so
+/// far that it reads as a row about to be deleted.
 ///
 /// Rightward only. Left is deliberately left free rather than given a second meaning nobody asked
 /// for. The gesture yields to a vertical drag, so the list still scrolls and the row's own tap and
@@ -140,17 +141,41 @@ struct SwipeToProgress: ViewModifier {
     /// A little past the commit, so pushing further has somewhere to go without running away.
     private var ceiling: CGFloat { commitAt * 1.25 }
     @State private var armed = false
+    /// How far the row itself has moved. The ring closing was the only feedback there was, which
+    /// made a swipe that had not yet committed look like a swipe that was not being read at all.
+    @State private var dx: CGFloat = 0
+    /// Which way this particular drag turned out to be going, decided once and then kept.
+    ///
+    /// It used to be re-decided on every single change, comparing the *total* translation's width
+    /// against its height — so a swipe that began with the slightest downward drift, or wandered
+    /// while crossing, silently stopped tracking half way and the row froze under the finger. A
+    /// gesture is claimed once, by whoever gets there first, and stays claimed: that is what makes
+    /// a list scroll cleanly and a row swipe reliably instead of the two fighting for every frame.
+    @State private var claim: Claim = .undecided
+    private enum Claim { case undecided, mine, theirs }
 
     func body(content: Content) -> some View {
-        content.gesture(enabled ? gesture : nil)
+        content
+            .offset(x: dx)
+            // Simultaneous, not exclusive: the row's own button must still take a tap, and a
+            // `.gesture` attached over one competes with it for every touch that turns out not to
+            // be a drag.
+            .simultaneousGesture(enabled ? gesture : nil)
+            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: dx)
     }
 
     private var gesture: some Gesture {
-        DragGesture(minimumDistance: 14)
+        // Small enough to feel immediate, large enough that a tap with a shaky thumb is still a tap.
+        DragGesture(minimumDistance: 8)
             .onChanged { g in
-                // Only once it is clearly sideways: a mostly-vertical drag is the list scrolling,
-                // and claiming it would make a long list feel stuck.
-                guard abs(g.translation.width) > abs(g.translation.height) else { return }
+                if claim == .undecided {
+                    // The first movement worth reading decides it. A mostly-vertical one belongs to
+                    // the list, and is handed over for the rest of this drag rather than contested.
+                    let w = g.translation.width, h = g.translation.height
+                    guard max(abs(w), abs(h)) > 6 else { return }
+                    claim = abs(w) > abs(h) * 1.2 && w > 0 ? .mine : .theirs
+                }
+                guard claim == .mine else { return }
                 let next = min(max(g.translation.width, 0), ceiling)
                 if !armed, next >= commitAt {
                     armed = true
@@ -158,11 +183,16 @@ struct SwipeToProgress: ViewModifier {
                 } else if armed, next < commitAt {
                     armed = false
                 }
+                // The row trails the finger rather than matching it, so the gesture reads as pulling
+                // against something instead of sliding the row off the screen.
+                dx = next * 0.5
                 progress = next / commitAt
             }
             .onEnded { _ in
-                let commit = armed
+                let commit = armed && claim == .mine
                 armed = false
+                claim = .undecided
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) { dx = 0 }
                 guard commit else {
                     // Nothing was claimed, so the mark is taken back.
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { progress = 0 }

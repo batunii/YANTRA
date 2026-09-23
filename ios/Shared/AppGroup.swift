@@ -20,10 +20,20 @@ public enum AppGroup {
         defaults.string(forKey: "github_login") ?? "iphone"
     }
 
+    /// Where the list of linked workspaces lives, beside their directories.
+    public static var registry: WorkspaceRegistry {
+        WorkspaceRegistry(root: container.appendingPathComponent("workspaces", isDirectory: true))
+    }
+
     /// A store + writer over the shared workspace, scaffolded and seeded on first use.
+    ///
+    /// This is the **local** workspace — the empty id, the one that existed before any repository
+    /// was linked and the one that is always there. Extensions (the share sheet, widget intents)
+    /// want exactly this one and nothing else: they capture into the inbox, which lives here.
     public static func openWorkspace() -> (WorkspaceStore, WorkspaceWriter) {
         resetIfAsked()
         connectIfAsked()
+        calendarsIfAsked()
         let store = WorkspaceStore(root: workspaceRoot, id: "")
         if !store.exists {
             store.scaffold(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000))
@@ -31,6 +41,43 @@ public enum AppGroup {
             else { WorkspaceSeeder.seed(store) }
         }
         return (store, WorkspaceWriter(store: store, device: device))
+    }
+
+    /// Every workspace this device has, local first — `Workspaces.open` on Android.
+    ///
+    /// A registered workspace whose directory has gone is skipped rather than scaffolded. It is
+    /// somebody's repository, and making an empty workspace where their tasks used to be would push
+    /// that emptiness up to it on the next pass.
+    public static func openWorkspaces() -> [(WorkspaceStore, WorkspaceWriter)] {
+        var out = [openWorkspace()]
+        let registry = registry
+        for entry in registry.entries() where !entry.id.isEmpty {
+            let store = WorkspaceStore(root: registry.dir(for: entry.id), id: entry.id)
+            guard store.exists else { continue }
+            out.append((store, WorkspaceWriter(store: store, device: device)))
+        }
+        return out
+    }
+
+    /// Every workspace's files, read as one index — what a widget, an intent or the share sheet
+    /// should see.
+    ///
+    /// A task in a shared workspace is still a task. A widget that read only the local workspace
+    /// would leave half of Today off the home screen, and a Live Activity button would refuse to
+    /// tick a task that is plainly on the screen above it.
+    public static func readIndex() -> WorkspaceIndex {
+        WorkspaceIndex.read(openWorkspaces().map(\.0))
+    }
+
+    /// The store and writer that own a node, for the processes that have no `AppModel` to ask.
+    ///
+    /// Falls back to the local workspace for an id that names nothing, which is what a write to a
+    /// task that has since been deleted should do: land somewhere harmless rather than nowhere.
+    public static func owning(_ nodeId: String?) -> (WorkspaceStore, WorkspaceWriter) {
+        let all = openWorkspaces()
+        guard let nodeId else { return all[0] }
+        let workspaceId = WorkspaceIndex.read(all.map(\.0)).nodes[nodeId]?.workspaceId
+        return all.first { $0.0.id == workspaceId } ?? all[0]
     }
 
     /// `-uitest-connect <owner/name> <token>` signs a simulator in without the device flow.
@@ -56,6 +103,20 @@ public enum AppGroup {
         let named = i + 3 < args.count && !args[i + 3].hasPrefix("-") ? args[i + 3] : "tester"
         SyncSettings.login = named
         #endif
+    }
+
+    /// `-uitest-calendars` turns the device-calendar area on before anything reads the preference.
+    ///
+    /// Needed because `-uitest-reset` wipes every preference, including this one, on **every**
+    /// launch — so a test that turns the switch on in Settings and then relaunches to look at the
+    /// calendar finds it off again. Turning it on is a thing a person does once; a test has to be
+    /// able to say it in the launch.
+    ///
+    /// Only the preference. The permission itself is the system's, and is granted to the simulator
+    /// with `simctl privacy grant calendar`.
+    private static func calendarsIfAsked() {
+        guard CommandLine.arguments.contains("-uitest-calendars") else { return }
+        CalendarChoice.enabled = true
     }
 
     /// `-uitest-reset` empties the workspace and the preferences before anything reads them.
@@ -118,7 +179,9 @@ public struct LiveSession: Codable, Equatable {
 /// focus screen do exactly the same thing to the ledger.
 public enum SessionCommands {
     public static func start(nodeId: String, title: String, plannedSecs: Int) {
-        let (_, writer) = AppGroup.openWorkspace()
+        // The ledger row belongs beside the task it is about, so a session on a shared task syncs
+        // to the repository that task lives in rather than to this device's own workspace.
+        let (_, writer) = AppGroup.owning(nodeId)
         if let live = LiveSession.load() { end(live, outcome: FocusOutcome.interrupted, writer: writer) }
         let now = Date()
         let row = FocusSession(id: UUID().uuidString.lowercased(), nodeId: nodeId, startedAt: Int64(now.timeIntervalSince1970 * 1000), plannedSecs: plannedSecs)
@@ -137,7 +200,7 @@ public enum SessionCommands {
     /// Stop: the session ends `stopped` (or `ran_out` if its promise was already met); the task stays as it was.
     public static func stop() {
         guard let s = LiveSession.load() else { return }
-        let (_, writer) = AppGroup.openWorkspace()
+        let (_, writer) = AppGroup.owning(s.nodeId)
         end(s, outcome: s.isSpent ? FocusOutcome.ranOut : FocusOutcome.stopped, writer: writer)
     }
 
@@ -145,13 +208,13 @@ public enum SessionCommands {
     public static func done() {
         let node = LiveSession.load()?.nodeId
         stop()
-        if let node { let (_, writer) = AppGroup.openWorkspace(); try? writer.setDone(node, true) }
+        if let node { let (_, writer) = AppGroup.owning(node); try? writer.setDone(node, true) }
     }
 
     /// Closes a session that reached its end while nobody was running — the lazy `ran_out`.
     public static func settleIfSpent() -> Bool {
         guard let s = LiveSession.load(), s.isSpent else { return false }
-        let (_, writer) = AppGroup.openWorkspace()
+        let (_, writer) = AppGroup.owning(s.nodeId)
         end(s, outcome: FocusOutcome.ranOut, writer: writer)
         return true
     }

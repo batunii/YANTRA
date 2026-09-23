@@ -126,7 +126,7 @@ struct ListLookSheet: View {
         .task {
             guard !loaded else { return }
             loaded = true
-            let page = model.store.readPage(nodeId)
+            let page = model.storeFor(nodeId).readPage(nodeId)
             icon = page?.icon
             color = page?.color
             typed = page?.icon ?? ""
@@ -155,8 +155,8 @@ struct ListLookSheet: View {
 
     private func save() {
         model.write {
-            try model.writer.setPageIcon(nodeId, icon)
-            try model.writer.setPageColor(nodeId, color)
+            try model.writerFor(nodeId).setPageIcon(nodeId, icon)
+            try model.writerFor(nodeId).setPageColor(nodeId, color)
         }
         dismiss()
     }

@@ -51,6 +51,69 @@ enum DeviceEvents {
         }
     }
 
+    /// Everything a meeting page needs that the timeline does not: who called it, who is coming,
+    /// what it says, and which calendar it is in.
+    ///
+    /// Asked for one event at a time, when a person opens one. Reading the guest list of every
+    /// meeting in a month to draw a timeline would be a great deal of work for a line of text
+    /// nobody is looking at.
+    struct Details: Equatable, Sendable {
+        var calendarName: String?
+        var organiser: String?
+        var guests: [String] = []
+        var notes: String?
+        var location: String?
+        var url: String?
+        var start: Date?
+        var end: Date?
+    }
+
+    /// The details for one event, or nil when it cannot be read.
+    ///
+    /// Nil is an ordinary answer, not a failure: the permission may be off, the meeting may have
+    /// been cancelled since the timeline was drawn, and a repeating occurrence may no longer exist.
+    /// The sheet is built from the line it already has and enriched by this, so it is never empty —
+    /// the mistake Android records making, where a failed lookup left a title and nothing else.
+    static func details(eventId: String, store: EKEventStore) -> Details? {
+        guard authorized, let event = store.event(withIdentifier: eventId) else { return nil }
+        // A name is what a person recognises; an address is what the framework has when nobody set
+        // one. Both beaten by neither, which is what an empty row would be.
+        func name(_ p: EKParticipant?) -> String? {
+            guard let p else { return nil }
+            if let n = p.name, !n.isEmpty { return n }
+            let address = p.url.absoluteString
+            return address.hasPrefix("mailto:") ? String(address.dropFirst(7)) : address
+        }
+        return Details(
+            calendarName: event.calendar?.title,
+            organiser: name(event.organizer),
+            // The organiser is already named above, and a list that repeats them reads as a
+            // stranger who happens to share their name.
+            guests: (event.attendees ?? []).compactMap(name).filter { $0 != name(event.organizer) },
+            notes: event.notes,
+            location: event.location?.isEmpty == false ? event.location : nil,
+            url: event.url?.absoluteString,
+            start: event.startDate, end: event.endDate)
+    }
+
+    /// The same, found by the identity a Yantra event line carries in `ext:`.
+    ///
+    /// A page about a meeting stores the **sync source's** uid, not this device's row id, because
+    /// the row id is a number this phone made up and is different on the next one. So the lookup
+    /// goes back the same way: by external identifier, with the `local:` fallback for providers
+    /// that offer no uid at all.
+    static func details(externalUid uid: String, store: EKEventStore) -> Details? {
+        guard authorized else { return nil }
+        if uid.hasPrefix("local:") {
+            return details(eventId: String(uid.dropFirst(6)), store: store)
+        }
+        // One rule can answer with fifty-two occurrences; any of them carries the details a page
+        // shows, so the first is as good as the last.
+        guard let item = store.calendarItems(withExternalIdentifier: uid).first as? EKEvent,
+              let id = item.eventIdentifier else { return nil }
+        return details(eventId: id, store: store)
+    }
+
     static func argb(_ c: CGColor) -> Int64 {
         let comps = c.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)?.components ?? [0, 0, 0, 1]
         func byte(_ i: Int) -> Int64 { Int64((min(max(comps.count > i ? comps[i] : 0, 0), 1) * 255).rounded()) }

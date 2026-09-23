@@ -28,7 +28,7 @@ struct ArchiveView: View {
                             }
                             Spacer()
                             NavCircle(mark: .undo, accent: true) {
-                                model.write { _ = try model.writer.restoreArchived(pageId: g.pageId, taskIds: [t.id]) }
+                                model.write { _ = try model.writerFor(g.pageId).restoreArchived(pageId: g.pageId, taskIds: [t.id]) }
                                 load()
                             }.frame(width: 34, height: 34)
                         }
@@ -38,18 +38,24 @@ struct ArchiveView: View {
                     Spacer().frame(height: 12)
                 }
                 Spacer().frame(height: 40)
-            }.padding(.horizontal, Layout.pageMargin).padding(.top, 8)
+            }.padding(.horizontal, Layout.pageMargin).padding(.top, 8).readableColumn()
         }
         .background(y.page.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .onAppear(perform: load)
     }
 
+    /// Every workspace's archive, not only this device's own.
+    ///
+    /// A task archived out of a shared list was archived from a repository, and looking for it in
+    /// the one place it cannot be is how somebody concludes it is gone.
     private func load() {
-        groups = model.store.archivedPageIds().compactMap { pageId in
-            let tasks = model.store.readArchivedLines(pageId).compactMap { line -> TaskRef? in if case let .task(t) = PageCodec.decodeBlock(line) { return t }; return nil }
-            if tasks.isEmpty { return nil }
-            return (pageId, inlinePlain(model.index.nodes[pageId]?.title ?? "Untitled list"), tasks)
+        groups = model.allStores.flatMap { store in
+            store.archivedPageIds().compactMap { pageId -> (String, String, [TaskRef])? in
+                let tasks = store.readArchivedLines(pageId).compactMap { line -> TaskRef? in if case let .task(t) = PageCodec.decodeBlock(line) { return t }; return nil }
+                if tasks.isEmpty { return nil }
+                return (pageId, inlinePlain(model.index.nodes[pageId]?.title ?? "Untitled list"), tasks)
+            }
         }
     }
 

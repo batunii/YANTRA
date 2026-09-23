@@ -100,7 +100,7 @@ xcrun simctl io <UDID> screenshot /tmp/x.png
 
 ---
 
-## 3. Two traps that produced real bugs this session
+## 3. Traps that produced real bugs in this codebase
 
 **`.accessibilityIdentifier` on a bare stack creates nothing.** SwiftUI only makes an accessibility
 element where one is declared. The now-playing bar was on screen, visibly correct in a screenshot,
@@ -112,6 +112,39 @@ can see, this is the first thing to check.
 accent colour. Added `.accessibilityAddTraits(selected ? [.isSelected] : [])`.
 
 Both were fixed **in the app, not worked around in the test** — that is the expectation here.
+
+### Three more, all at the SwiftUI/UIKit seam
+
+These cost most of a day between them, and all three look like the test being wrong.
+
+**A SwiftUI `.gesture` on a view that contains a `UIViewRepresentable` never fires.** The day
+column's tap-to-place was `.gesture(SpatialTapGesture())` on the `ZStack` that holds
+`RangeMarkSurface`. The touch lands on a real `UIView`, and the recogniser SwiftUI would have used
+for the ancestor does not get it back — not once, not ever. Nothing in the log, no warning, and the
+banner disappeared for an unrelated reason so even the test looked half-right. Fix: put the tap on
+the same recogniser chain as the rest, in the representable. **If a representable is in the stack,
+the gesture belongs in it.**
+
+**SwiftUI accessibility modifiers on a representable are applied once and never refreshed.**
+`.accessibilityValue("Page \(page) of \(pageCount)")` on `PencilCanvas` went on saying "Page 1 of
+2" for the life of a drawing that had grown to four — the app was computing the right answer and
+reporting it, and the accessibility tree kept the first one. Fix: set `accessibilityIdentifier`,
+`accessibilityLabel` and `accessibilityValue` **on the UIView**, in `makeUIView`/the coordinator.
+
+**SwiftUI state written from `updateUIView` is discarded.** "Fit" set the zoom back to 1 and the
+readout went on saying 267%, because the assignment that would have hidden it happened during a
+view update, which is the one moment SwiftUI ignores. Fix: `DispatchQueue.main.async` around the
+callback — next turn of the loop, not this one.
+
+### And one that is not SwiftUI's fault
+
+**A coordinate picked as a fraction of the window is a test of what time it is.** The calendar opens
+on the current hour, so which hours are on screen moves through the day. `dy: 0.45` was the middle
+of the fixture's "Timed thing" at half past nine in the morning: the tap opened that task, the
+calendar went away, and the test's "the banner disappeared" assertion passed meaning the opposite of
+what it was written to mean. Anchor on real geometry — `PlaceOnCalendarUITests.emptyPointOnTheDay`
+asks the timeline where it is and finds a gap between the blocks — and assert you are still on the
+screen you think you are on.
 
 ---
 
@@ -201,7 +234,11 @@ now-playing bar; App Store compliance (scanner critical 1 → 0).
    `LinkSuggestions` (~330).
    *Note:* Android's `setValue` only persists the four built-ins (priority, assignee, deadline, due)
    and silently drops custom property kinds. Do not build storage iOS alone has — match Android.
-3. **Ink** — lasso selection/move and viewport pan/zoom are still missing.
+3. **Ink** — viewport pan/zoom is **done**: the document is a stack of A4-proportioned pages,
+   `PKCanvasView` is a `UIScrollView` so the pan, the clamp and the pinch-about-a-focal-point are
+   already correct, and only the policy is ported (`YantraCore/InkPages` — 0.4×–8×, pages from the
+   ink plus one to grow into, the per-cent readout). The fold and its number are drawn outside the
+   zoom by `InkPageFurniture`, as `InkCanvas.onDraw` does. **Lasso selection/move is still missing.**
 4. **Sync depth** — the joining-device bug is **fixed**; see `YantraCore/…/WorkspaceLink.swift`.
    A device now decides *before* its first merge whether to **adopt** the repository's workspace,
    **push** its own, or **ask**. "Pristine" is decided by the `device:` stamp, which is exact rather

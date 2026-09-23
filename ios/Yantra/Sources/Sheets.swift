@@ -64,10 +64,10 @@ struct DueSheet: View {
             }
             HStack(spacing: 10) {
                 YantraButton(label: "Cancel", tone: .quiet) { dismiss() }
-                if node.due != nil { YantraButton(label: "Clear", tone: .quiet) { model.write { try model.writer.setDue(node.id, nil) }; dismiss() } }
+                if node.due != nil { YantraButton(label: "Clear", tone: .quiet) { model.write { try model.writerFor(node.id).setDue(node.id, nil) }; dismiss() } }
                 YantraButton(label: "Set", tone: .soft) {
                     let value: DueValue = hasTime ? .at(date) : .allDay(.of(date))
-                    model.write { try model.writer.setDue(node.id, DueSpec(value, reminders: reminders)) }
+                    model.write { try model.writerFor(node.id).setDue(node.id, DueSpec(value, reminders: reminders)) }
                     if !reminders.isEmpty { Task { _ = await Notifications.shared.requestPermission() } }
                     dismiss()
                 }
@@ -149,8 +149,8 @@ struct LabelPicker: View {
 
     private func attach(_ name: String) {
         model.write {
-            try model.writer.editTask(node.id) { t in var x = t; if !x.labels.contains(name) { x.labels.append(name) }; return x }
-            try model.writer.upsertLabel(name)
+            try model.writerFor(node.id).editTask(node.id) { t in var x = t; if !x.labels.contains(name) { x.labels.append(name) }; return x }
+            try model.writerFor(node.id).upsertLabel(name)
         }
         dismiss()
     }

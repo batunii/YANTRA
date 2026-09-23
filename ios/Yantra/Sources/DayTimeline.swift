@@ -13,13 +13,27 @@ struct DayTimeline: View {
     /// True once the window is wide enough for the rail to be a column beside the day.
     let wide: Bool
     let onOpenEvent: (String) -> Void
+    /// Somebody else's meeting, opened as theirs — it has no node of ours to navigate to.
+    let onOpenMeeting: (DayItem.DeviceItem) -> Void
     /// A range marked on an empty day, waiting to be told what goes in it.
     let onMark: (LocalDate, LocalDateTime, LocalDateTime) -> Void
 
+    /// Puts down the task the rail picked up — the same sitting a drag would have made on an iPad.
+    private func place(at start: LocalDateTime, taskId: String? = nil) {
+        guard let id = taskId ?? cal.placing?.id else {
+            Diagnostics.log("calendar.placeWithNothingInHand")
+            return
+        }
+        Diagnostics.log("calendar.place", ["task": id, "at": "\(start)", "dropped": taskId != nil])
+        let total = start.hour * 60 + start.minute + TimelineLayout.defaultSittingMinutes
+        let end = LocalDateTime(date: start.date, hour: min(total / 60, 23), minute: total % 60)
+        model.schedule(taskId: id, from: start, to: end)
+        cal.placing = nil
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
     /// The width of the hour column. Wide enough for "00:00" and no wider.
     private let gutter: CGFloat = 44
-    /// Where each day column sits, for a task carried out of the rail.
-    @State private var dayFrames: [LocalDate: CGRect] = [:]
 
     private var days: [LocalDate] {
         cal.mode == .day ? [cal.selected] : TimelineLayout.span(cal.selected, cal.daysAcross)
@@ -44,15 +58,10 @@ struct DayTimeline: View {
                             ForEach(days, id: \.self) { day in
                                 DayColumn(day: day, cal: cal, items: cal.items(day), hourHeight: cal.hourHeight,
                                           onOpenEvent: onOpenEvent,
+                                          onOpenMeeting: onOpenMeeting,
                                           onOpenNode: { path.append(Route.node($0)) },
-                                          onMark: { from, to in onMark(day, from, to) })
-                                    // Each column reports where it is, in the space the rail's drag
-                                    // is measured in. Without one shared space the drop lands at an
-                                    // offset nobody can see and the task appears at the wrong hour.
-                                    .background(GeometryReader { g in
-                                        Color.clear.preference(key: DayFrames.self,
-                                                               value: [day: g.frame(in: .named(CalendarModel.space))])
-                                    })
+                                          onMark: { from, to in onMark(day, from, to) },
+                                          onPlace: { at, id in place(at: at, taskId: id) })
                                 if day != days.last { Divider().frame(width: 0.5).overlay(y.hairline) }
                             }
                         }
@@ -71,6 +80,10 @@ struct DayTimeline: View {
                     // matters — what you are in the middle of stays on screen — and half an hour of
                     // extra context above it costs nothing.
                     .onAppear { proxy.scrollTo("h\(Int(openingHour))", anchor: .top) }
+                    // Named, so a test can ask where the hours actually are rather than guess at a
+                    // fraction of the window: the day opens on the current hour, so which part of
+                    // it is on screen depends on what time the suite runs.
+                    .accessibilityIdentifier("calendar.timeline")
                 }
             }
             // Yield the width the rail needs rather than pushing it off the edge: a vertical
@@ -78,18 +91,27 @@ struct DayTimeline: View {
             .frame(maxWidth: .infinity)
             // Pinch to zoom the hour. Clamped, so a pinch can be enthusiastic without producing a
             // timeline nobody can read.
-            .gesture(MagnifyGesture().onChanged { g in
+            //
+            // **Simultaneous, or it eats the scroll.** `.gesture` attached to a view that *contains*
+            // a ScrollView takes priority over the scrolling inside it — with one finger as much as
+            // two — so this one line is what stopped the day being scrollable at all, everywhere
+            // except the hour gutter. A pinch and a scroll are not in competition: nobody pinches by
+            // accident while dragging, and the two can be recognised together.
+            .simultaneousGesture(MagnifyGesture().onChanged { g in
                 let next = CalendarModel.loadHourHeight() * g.magnification
                 cal.hourHeight = min(max(next, CalendarModel.minHourHeight), CalendarModel.maxHourHeight)
             })
+            // Swipe the pane itself to the day before or the day after, as Android does. The band
+            // at the top had the only swipe on this screen, which meant the commonest thing anybody
+            // does on a calendar was reachable from the one strip most people never drag. UIKit
+            // rather than `.gesture` — see `PageSwipe`.
+            .pageOnSwipe { step in withAnimation(.snappy) { cal.step(step) } }
 
             if railOpen, wide {
                 Divider().frame(width: 0.5).overlay(y.hairline)
-                CalendarTaskRail(cal: cal, dayFrames: dayFrames).frame(width: 248)
+                CalendarTaskRail(cal: cal).frame(width: 248)
             }
         }
-        .coordinateSpace(name: CalendarModel.space)
-        .onPreferenceChange(DayFrames.self) { dayFrames = $0 }
     }
 
     /// Which day each column is. A week with no dates on it is a grid of identical columns, and the
@@ -140,6 +162,7 @@ struct DayTimeline: View {
                                 .background(RoundedRectangle(cornerRadius: 7).fill(y.surfaceHigh))
                                 .onTapGesture {
                                     if case let .event(e) = item { onOpenEvent(e.nodeId) }
+                                    if case let .device(d) = item { onOpenMeeting(d) }
                                     if case let .task(t) = item { path.append(Route.node(t.nodeId)) }
                                 }
                         }
@@ -177,30 +200,54 @@ struct DayColumn: View {
     let items: [DayItem]
     let hourHeight: CGFloat
     let onOpenEvent: (String) -> Void
+    let onOpenMeeting: (DayItem.DeviceItem) -> Void
     let onOpenNode: (String) -> Void
     let onMark: (LocalDateTime, LocalDateTime) -> Void
+    /// Where a task is being put down, and which one — a drop names its own task, while a tap
+    /// places whatever the rail picked up.
+    var onPlace: (LocalDateTime, String?) -> Void = { _, _ in }
 
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
     @State private var markFrom: Int?
     @State private var markTo: Int?
-
-    /// The minute a carried task would land on in *this* column, or nil when the finger is
-    /// somewhere else — over another day, over the rail it came from, or nowhere at all.
-    private func carryMinute(in geo: GeometryProxy) -> Int? {
-        guard cal.carrying != nil else { return nil }
-        let frame = geo.frame(in: .named(CalendarModel.space))
-        let p = cal.carryPoint
-        guard frame.contains(p) else { return nil }
-        return TimelineLayout.dropMinute(offset: p.y - frame.minY, hourHeight: hourHeight)
-    }
+    /// Whether a drag is over this column right now.
+    @State private var hovering = false
 
     private var minuteHeight: CGFloat { hourHeight / 60 }
+
+    /// A point on the column as a minute of the day, to the quarter hour.
+    private func snap(_ y: CGFloat) -> Int {
+        max(0, min(Int((y / minuteHeight) / 15) * 15, TimelineLayout.minutesInDay))
+    }
 
     var body: some View {
         let layout = TimelineLayout.forDay(items, day: day)
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
+                // Behind everything: the surface you hold to mark out a range. Behind, so a tap on a
+                // block is still that block's, and so the day can be *scrolled* by the hours — see
+                // `RangeMarkSurface` for why this is not a SwiftUI gesture.
+                RangeMarkSurface(
+                    onBegan: { y in markFrom = snap(y); markTo = snap(y) },
+                    onChanged: { y in markTo = snap(y) },
+                    onEnded: { committed in
+                        defer { markFrom = nil; markTo = nil }
+                        guard committed, let a = markFrom, let b = markTo, a != b else { return }
+                        let lo = min(a, b), hi = max(a, b)
+                        onMark(LocalDateTime(date: day, hour: lo / 60, minute: lo % 60),
+                               LocalDateTime(date: day, hour: hi / 60, minute: hi % 60))
+                    },
+                    // Putting down what the rail picked up. A tap, not a drag, so it costs nothing
+                    // to aim and nothing to change your mind — and it only means anything while
+                    // something is in hand, so an ordinary tap on an empty hour still means nothing,
+                    // as it always did.
+                    onTap: { y in
+                        guard cal.placing != nil else { return }
+                        let minute = TimelineLayout.dropMinute(offset: y, hourHeight: hourHeight)
+                        onPlace(LocalDateTime(date: day, hour: minute / 60, minute: minute % 60), nil)
+                    })
+                    .frame(height: CGFloat(24) * hourHeight)
                 // The ruler, laid out rather than offset. Twenty-four rules positioned by hand at
                 // half-point heights land on different sub-pixels as the hour grows and some of
                 // them stop being drawn at all; a stack gives every hour the same treatment.
@@ -227,43 +274,37 @@ struct DayColumn: View {
                 }
                 ForEach(layout.blocks) { block in
                     let width = (geo.size.width - 6) / CGFloat(block.columns)
-                    TimelineBlock(block: block, onOpenEvent: onOpenEvent, onOpenNode: onOpenNode)
+                    TimelineBlock(block: block, onOpenEvent: onOpenEvent, onOpenMeeting: onOpenMeeting, onOpenNode: onOpenNode)
                         .frame(width: max(width - 3, 24),
                                height: max(CGFloat(block.endMinute - block.startMinute) * minuteHeight - 2, 16))
                         .offset(x: 3 + CGFloat(block.column) * width, y: CGFloat(block.startMinute) * minuteHeight)
                 }
             }
             .frame(height: CGFloat(24) * hourHeight)
-            // Where a task carried out of the rail would land. Drawn at the quarter hour it would
-            // snap to, so the drop is aimed rather than guessed — and only on the column the finger
-            // is actually over, which is what makes three days across legible.
-            .overlay(alignment: .top) {
-                if let minute = carryMinute(in: geo) {
-                    let h = CGFloat(TimelineLayout.defaultSittingMinutes) * minuteHeight
-                    RoundedRectangle(cornerRadius: 6)
+            .contentShape(Rectangle())
+            // Where a task dropped out of the rail lands.
+            //
+            // The location comes in this view's own coordinates, which is the whole reason a drop
+            // beats a carried gesture here: no shared coordinate space to arrange, no frames to
+            // report upwards, and it works the same whether the rail is a column beside the day or a
+            // drawer under it.
+            .dropDestination(for: CarriedTaskRef.self) { items, location in
+                guard let item = items.first else { return false }
+                let minute = TimelineLayout.dropMinute(offset: location.y, hourHeight: hourHeight)
+                onPlace(LocalDateTime(date: day, hour: minute / 60, minute: minute % 60), item.id)
+                return true
+            } isTargeted: { over in
+                // What the day says back while something is over it. Without it a drop is a leap of
+                // faith: you let go and hope it was the right column.
+                hovering = over
+            }
+            .overlay {
+                if hovering {
+                    RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(y.accent, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .background(RoundedRectangle(cornerRadius: 6).fill(y.accentFill.opacity(0.5)))
-                        .frame(height: h)
-                        .offset(y: CGFloat(minute) * minuteHeight)
                         .allowsHitTesting(false)
                 }
             }
-            .contentShape(Rectangle())
-            // Mark a range, then say what goes in it. The gesture only makes sense on empty space,
-            // so a block swallows the tap before this sees it.
-            .gesture(DragGesture(minimumDistance: 12)
-                .onChanged { g in
-                    let snap = { (p: CGFloat) in max(0, min(Int((p / minuteHeight) / 15) * 15, TimelineLayout.minutesInDay)) }
-                    if markFrom == nil { markFrom = snap(g.startLocation.y) }
-                    markTo = snap(g.location.y)
-                }
-                .onEnded { _ in
-                    defer { markFrom = nil; markTo = nil }
-                    guard let a = markFrom, let b = markTo, a != b else { return }
-                    let lo = min(a, b), hi = max(a, b)
-                    onMark(LocalDateTime(date: day, hour: lo / 60, minute: lo % 60),
-                           LocalDateTime(date: day, hour: hi / 60, minute: hi % 60))
-                })
         }
         .frame(height: CGFloat(24) * hourHeight)
         .frame(maxWidth: .infinity)
@@ -273,6 +314,7 @@ struct DayColumn: View {
 struct TimelineBlock: View {
     let block: TimedBlock
     let onOpenEvent: (String) -> Void
+    let onOpenMeeting: (DayItem.DeviceItem) -> Void
     let onOpenNode: (String) -> Void
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
@@ -282,7 +324,9 @@ struct TimelineBlock: View {
         Button {
             switch block.item {
             case let .event(e): onOpenEvent(e.nodeId)
-            case let .device(d): if let t = d.taskId { onOpenNode(t) }
+            // Their meeting opens as their meeting. It used to do nothing whatsoever unless a task
+            // of yours happened to be attached to it — a block you can see and cannot touch.
+            case let .device(d): onOpenMeeting(d)
             case let .task(t): onOpenNode(t.nodeId)
             }
         } label: {
@@ -333,8 +377,8 @@ struct TimelineBlock: View {
 /// not answer that.
 struct CalendarTaskRail: View {
     @ObservedObject var cal: CalendarModel
-    /// The days on screen and their frames, so a dropped task lands on the one under the finger.
-    var dayFrames: [LocalDate: CGRect] = [:]
+    /// Folds the drawer away. Only a drawer has one — a column does not go anywhere.
+    var onClose: (() -> Void)?
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
     @State private var shelf: RailBucket = .today
@@ -372,7 +416,10 @@ struct CalendarTaskRail: View {
                             .font(Face.text(12)).foregroundStyle(y.dim).padding(12)
                     }
                     ForEach(list) { t in
-                        Button { give(t) } label: {
+                        // Tap to pick up, hold to carry. Two ways to the same place, because a
+                        // drag is quick when you know it is there and invisible when you do not —
+                        // and because a hold-and-drag is hard work for anyone whose hands are not.
+                        Button { pickUp(t) } label: {
                             HStack(spacing: 8) {
                                 Circle().stroke(y.dim, lineWidth: 1).frame(width: 9, height: 9)
                                 Text(inlinePlain(t.title ?? "") { model.index.title(of: $0) })
@@ -384,29 +431,15 @@ struct CalendarTaskRail: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .opacity(cal.carrying?.id == t.id ? 0.35 : 1)
-                        // Hold, then carry it onto the day. A plain drag would fight the rail's own
-                        // scrolling, and a task is picked up deliberately — the hold is what says
-                        // "this one", the same way it does everywhere else a thing is moved.
-                        .gesture(
-                            LongPressGesture(minimumDuration: 0.25)
-                                .sequenced(before: DragGesture(coordinateSpace: .named(CalendarModel.space)))
-                                .onChanged { value in
-                                    guard case let .second(_, drag?) = value else { return }
-                                    if cal.carrying == nil {
-                                        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.6)
-                                        cal.carrying = .init(id: t.id, title: inlinePlain(t.title ?? ""))
-                                    }
-                                    cal.carryPoint = drag.location
-                                }
-                                .onEnded { _ in
-                                    // Where it lands is the day's business, not the rail's: the day
-                                    // that was under the finger claims it, and if none was, the
-                                    // carry simply ends.
-                                    onDrop()
-                                    cal.carrying = nil
-                                }
-                        )
+                        // The system's own drag, not a gesture of ours — see `CarriedTaskRef`. The
+                        // preview is the row, so what lifts is the thing you touched.
+                        .draggable(CarriedTaskRef(id: t.id, title: inlinePlain(t.title ?? "") { model.index.title(of: $0) })) {
+                            Text(inlinePlain(t.title ?? "") { model.index.title(of: $0) })
+                                .font(Face.text(12.5, .semibold)).foregroundStyle(y.ink).lineLimit(1)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(y.accentFill))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(y.accentBorder, lineWidth: 1))
+                        }
                     }
                     Spacer().frame(height: 60)
                 }
@@ -415,21 +448,16 @@ struct CalendarTaskRail: View {
         .background(y.surface)
     }
 
-    /// Lets go of a carried task over whichever day it is above.
+    /// Picks a task up so a tap on the day can put it down.
     ///
-    /// A **sitting**, not a due date: dropping a task on two o'clock says "I will do this then",
-    /// which is a claim about attention. A due date is a claim about a deadline, and the two are
-    /// different sentences — that is why the tap still sets one and the carry sets the other.
-    private func onDrop() {
-        guard let carried = cal.carrying else { return }
-        let p = cal.carryPoint
-        guard let (day, frame) = dayFrames.first(where: { $0.value.contains(p) }) else { return }
-        let minute = TimelineLayout.dropMinute(offset: p.y - frame.minY, hourHeight: cal.hourHeight)
-        let start = LocalDateTime(date: day, hour: minute / 60, minute: minute % 60)
-        let end = LocalDateTime(date: day, hour: (minute + TimelineLayout.defaultSittingMinutes) / 60,
-                                minute: (minute + TimelineLayout.defaultSittingMinutes) % 60)
-        model.schedule(taskId: carried.id, from: start, to: end)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    /// The sheet closes in the same breath: leaving it up would hide the thing being aimed at, and
+    /// a calendar you cannot see is not a calendar you can drop onto.
+    private func pickUp(_ task: Node) {
+        cal.placing = .init(id: task.id, title: inlinePlain(task.title ?? "") { model.index.title(of: $0) })
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.6)
+        // The drawer folds away so the hours it was covering can be tapped. A column stays: it
+        // covers nothing.
+        onClose?()
     }
 
     /// Gives a task the day on screen. The rail's whole job in one tap: a task with no date is
@@ -439,19 +467,8 @@ struct CalendarTaskRail: View {
             // Nine in the morning on the selected day, which is where a day starts for most people,
             // and a time you can then drag rather than a date you have to open a sheet to set.
             let at = LocalDateTime(date: cal.selected, hour: 9)
-            try model.writer.setDue(task.id, DueSpec(.at(at.instant()), duration: .hours(1)))
+            try model.writerFor(task.id).setDue(task.id, DueSpec(.at(at.instant()), duration: .hours(1)))
         }
     }
 }
 
-/// Where each day column is, gathered from the columns themselves.
-///
-/// A preference rather than a binding written during layout: the columns are built inside the
-/// scroll view and the rail is outside it, so the only way one can know where the other ended up is
-/// to have it reported upwards.
-struct DayFrames: PreferenceKey {
-    static var defaultValue: [LocalDate: CGRect] { [:] }
-    static func reduce(value: inout [LocalDate: CGRect], nextValue: () -> [LocalDate: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}

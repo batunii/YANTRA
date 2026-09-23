@@ -15,7 +15,18 @@ final class SyncLiveTests: XCTestCase {
     /// while it waits.
     private func say(_ s: String) { print("YANTRA-SYNC: \(s)") }
 
-    func testSignInWithGitHub() {
+    func testSignInWithGitHub() throws {
+        // Skipped unless asked for by name, because this one **needs a person**: it prints a device
+        // code and then waits up to fifteen minutes for somebody to approve it at github.com. Left
+        // ungated it did not fail the suite so much as stall it — `-only-testing:YantraUITests`,
+        // which is what the submission doc tells you to run, sat here for a quarter of an hour and
+        // then reported a failure that meant nothing except that nobody was watching.
+        //
+        //     YANTRA_LIVE_SIGNIN=1 xcodebuild ... \
+        //       -only-testing:YantraUITests/SyncLiveTests/testSignInWithGitHub
+        guard ProcessInfo.processInfo.environment["YANTRA_LIVE_SIGNIN"] == "1" else {
+            throw XCTSkip("set YANTRA_LIVE_SIGNIN=1 to run the live sign-in — it needs you to approve a code on github.com")
+        }
         let app = XCUIApplication()
         // No `-uitest`: this runs against the real workspace and the real keychain, which is the
         // point — a fixture workspace signed into a real account would prove nothing about either.

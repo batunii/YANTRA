@@ -72,6 +72,18 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra
+        # Device builds only, keyed on the SDK so a simulator build keeps the ad-hoc identity and
+        # the real entitlements above, where the App Group does work. A free Apple ID team cannot
+        # hold an App Group: the profile it issues carries an empty `application-groups`, and an
+        # entitlements file asking for the group is refused outright. Hence a device twin of each
+        # entitlements file. Automatic, but without `-allowProvisioningUpdates`: the team's
+        # profiles are already cached on this machine, and asking to update them needs an Apple ID
+        # in Xcode's accounts, which there is not (`error: No Accounts`). Naming them under manual
+        # signing does not work either — they are Xcode-managed, and Xcode refuses.
+        CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]: Signing/Yantra-device.entitlements
+        CODE_SIGN_STYLE[sdk=iphoneos*]: Automatic
+        CODE_SIGN_IDENTITY[sdk=iphoneos*]: Apple Development
+        DEVELOPMENT_TEAM[sdk=iphoneos*]: 4WXM6V82MV
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-Jade AppIcon-Azure AppIcon-Indigo AppIcon-Orchid
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
@@ -109,6 +121,18 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra.widgets
+        # Device builds only, keyed on the SDK so a simulator build keeps the ad-hoc identity and
+        # the real entitlements above, where the App Group does work. A free Apple ID team cannot
+        # hold an App Group: the profile it issues carries an empty `application-groups`, and an
+        # entitlements file asking for the group is refused outright. Hence a device twin of each
+        # entitlements file. Automatic, but without `-allowProvisioningUpdates`: the team's
+        # profiles are already cached on this machine, and asking to update them needs an Apple ID
+        # in Xcode's accounts, which there is not (`error: No Accounts`). Naming them under manual
+        # signing does not work either — they are Xcode-managed, and Xcode refuses.
+        CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]: Signing/Widgets-device.entitlements
+        CODE_SIGN_STYLE[sdk=iphoneos*]: Automatic
+        CODE_SIGN_IDENTITY[sdk=iphoneos*]: Apple Development
+        DEVELOPMENT_TEAM[sdk=iphoneos*]: 4WXM6V82MV
         SKIP_INSTALL: YES
 
   YantraShare:
@@ -143,6 +167,18 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ie.shoonya.yantra.share
+        # Device builds only, keyed on the SDK so a simulator build keeps the ad-hoc identity and
+        # the real entitlements above, where the App Group does work. A free Apple ID team cannot
+        # hold an App Group: the profile it issues carries an empty `application-groups`, and an
+        # entitlements file asking for the group is refused outright. Hence a device twin of each
+        # entitlements file. Automatic, but without `-allowProvisioningUpdates`: the team's
+        # profiles are already cached on this machine, and asking to update them needs an Apple ID
+        # in Xcode's accounts, which there is not (`error: No Accounts`). Naming them under manual
+        # signing does not work either — they are Xcode-managed, and Xcode refuses.
+        CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]: Signing/Share-device.entitlements
+        CODE_SIGN_STYLE[sdk=iphoneos*]: Automatic
+        CODE_SIGN_IDENTITY[sdk=iphoneos*]: Apple Development
+        DEVELOPMENT_TEAM[sdk=iphoneos*]: 4WXM6V82MV
         SKIP_INSTALL: YES
 
   YantraUITests:

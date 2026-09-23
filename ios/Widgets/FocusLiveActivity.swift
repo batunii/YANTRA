@@ -18,13 +18,25 @@ struct FocusLiveActivity: Widget {
             let p = SharedPalette()
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    SessionMark(size: 34, running: !ctx.state.paused, accent: p.accent, outline: p.secondary).padding(.leading, 4)
+                    SessionMark(size: 30, running: !ctx.state.paused, accent: p.accent, outline: p.secondary)
+                        .padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Clock(state: ctx.state, size: 24).foregroundStyle(p.ink).padding(.trailing, 4)
+                    // The clock, and under it what the clock means. A number alone leaves you
+                    // working out whether it is counting up or down.
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Clock(state: ctx.state, size: 22).foregroundStyle(p.ink)
+                        Text(ctx.state.paused ? "Paused" : ctx.state.isOpen ? "Stopwatch" : "Left")
+                            .font(SharedFace.text(10)).foregroundStyle(p.secondary)
+                    }.padding(.trailing, 6)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(ctx.state.title).font(SharedFace.text(14, bold: true)).foregroundStyle(p.ink).lineLimit(1)
+                    // Two lines, because a task called anything real does not fit on one at this
+                    // width, and the expanded island is the one place there is room to say it.
+                    Text(ctx.state.title)
+                        .font(SharedFace.text(13, bold: true)).foregroundStyle(p.ink)
+                        .lineLimit(2).multilineTextAlignment(.center)
+                        .padding(.horizontal, 2)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
@@ -36,15 +48,54 @@ struct FocusLiveActivity: Widget {
                     }.padding(.top, 4)
                 }
             } compactLeading: {
-                SessionMark(size: 18, running: !ctx.state.paused, accent: p.accent, outline: p.secondary)
+                SessionMark(size: 17, running: !ctx.state.paused, accent: p.accent, outline: p.secondary)
+                    .padding(.leading, 1)
             } compactTrailing: {
-                Clock(state: ctx.state, size: 13).foregroundStyle(p.ink).frame(minWidth: 40)
+                // **Narrow on purpose.** The compact island grows outwards from the middle, so every
+                // point the trailing side takes is a point taken off the status bar on *both* sides
+                // — and the first casualty is the clock, which ends up half covered by a timer
+                // saying roughly the same thing. This used to force `minWidth: 40` and then let a
+                // stopwatch run past an hour into `1:02:03`, which is about as wide as this side can
+                // be before the time disappears.
+                CompactClock(state: ctx.state).foregroundStyle(p.accent)
             } minimal: {
                 SessionMark(size: 16, running: !ctx.state.paused, accent: p.accent, outline: p.secondary)
             }
             .keylineTint(p.accent)
             .widgetURL(URL(string: "yantra://focus"))
         }
+    }
+}
+
+/// The clock as the compact island can afford it.
+///
+/// Everything here is about width. A countdown is left as `Text(timerInterval:)`, which renders
+/// `mm:ss` and is the common case; a **stopwatch** is not, because `style: .timer` grows a third
+/// field after an hour and the island grows with it. Past the hour it says `1h04` instead, which is
+/// the same fact in four characters, and a session that has been running for over an hour is not one
+/// anybody is reading to the second.
+struct CompactClock: View {
+    let state: FocusAttributes.ContentState
+    var body: some View {
+        Group {
+            if state.finished {
+                Image(systemName: "checkmark").font(.system(size: 12, weight: .bold))
+            } else if state.paused {
+                Image(systemName: "pause.fill").font(.system(size: 11, weight: .bold))
+            } else if state.isOpen {
+                Text(state.startedAt, style: .timer)
+            } else if let end = state.endAt {
+                Text(timerInterval: state.startedAt...end, countsDown: true)
+            }
+        }
+        .font(SharedFace.mono(13, bold: true))
+        .monospacedDigit()
+        .lineLimit(1)
+        .multilineTextAlignment(.trailing)
+        // Room for `59:59` and no more. A longer reading is scaled rather than allowed to push the
+        // island out over the status bar.
+        .frame(maxWidth: 46)
+        .minimumScaleFactor(0.75)
     }
 }
 

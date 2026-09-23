@@ -40,6 +40,9 @@ struct YantraColors {
     let dark: Bool
     let page, surface, surfaceHigh, rail, band, cardBg: Color
     let ink, secondary, muted, dim, hairline, tileBorder: Color
+    /// The fold between two pages of a drawing — `inkPageSep`. A shade stronger than a hairline,
+    /// because it is the edge of a sheet rather than a rule inside one.
+    let inkPageSep: Color
     let accent, accentText, accentFill, accentBorder, onAccent: Color
     let crimson, amber, overdue, due, warning: Color
 
@@ -59,6 +62,7 @@ struct YantraColors {
         muted = light ? oklch(0.545, 0.010, H) : oklch(0.638, 0.009, H)
         dim = light ? oklch(0.655, 0.009, H) : oklch(0.510, 0.010, H)
         hairline = ink.opacity(0.08)
+        inkPageSep = ink.opacity(0.095)
         tileBorder = ink.opacity(0.10)
         let a = accent.ink(dark: !light)
         self.accent = a
@@ -181,6 +185,23 @@ extension View {
 
 enum Layout {
     static let pageMargin: CGFloat = 22
+
+    /// The measure a column of rows or prose is allowed — `PAGE_MEASURE` on Android.
+    ///
+    /// **The column stays a column.** A task row drawn across the full width of a tablet is a title
+    /// at one edge and a compass at the other with an ocean between them, and a paragraph set that
+    /// wide is one nobody finishes — the eye loses the line on the way back. So content is centred
+    /// at this width and the rest of the glass is margin, which looks like waste and is the entire
+    /// reason the page is readable.
+    ///
+    /// A phone is narrower than this, so on a phone it does nothing at all.
+    static let measure: CGFloat = 720
+
+    /// Where a window stops being a phone and starts having room for a rail beside a page.
+    ///
+    /// Deliberately a width test, not a device test: a tablet in split screen is a phone-shaped
+    /// window, and the layout has to follow the glass it actually has.
+    static let wideAt: CGFloat = 840
     static let buttonRadius: CGFloat = 13, cardRadius: CGFloat = 14, barRadius: CGFloat = 18, chipRadius: CGFloat = 10
 
     // The named scale, matching `YantraRadius` on Android so a surface is the same shape on both.
@@ -336,5 +357,16 @@ struct NavCircle: View {
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(accent ? y.accentFill : y.ink.opacity(0.05)))
         }.buttonStyle(.plain)
+    }
+}
+
+extension View {
+    /// Keeps a column of rows or prose to a readable measure, centred, with the glass either side
+    /// left as margin. See `Layout.measure` for why that is not waste.
+    ///
+    /// Applied to the *content* inside a scroll view rather than to the scroll view itself, so the
+    /// bar still scrolls under the full width of the screen and only what is read is narrowed.
+    func readableColumn() -> some View {
+        frame(maxWidth: Layout.measure).frame(maxWidth: .infinity)
     }
 }

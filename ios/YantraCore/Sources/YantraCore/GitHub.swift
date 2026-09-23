@@ -5,7 +5,80 @@ import Foundation
 
 /// Same GitHub App as Android: the device flow needs no redirect, so one registration serves both.
 public enum GitHubAuth {
-    public static let clientId = "Iv23lijaR2qLqzo9ALWw"
+
+    /// The two ways in, and the bargain each one is — the same pair Android offers.
+    ///
+    /// **Both are the device flow.** The difference is not the protocol but the *registration*: one
+    /// is a GitHub App, the other an OAuth app, and GitHub treats them very differently. The web
+    /// OAuth flow — the one that would redirect back with a code — needs a client secret, and a
+    /// secret inside a downloadable binary is not a secret; the device flow needs none, for either
+    /// registration, which is why both go through it.
+    public enum Method: String, CaseIterable, Codable, Sendable {
+        /// The OAuth app, with the `repo` scope.
+        case full
+        /// The GitHub App, installed on chosen repositories.
+        case restricted
+
+        /// Public, and different per method: these are two separate registrations on GitHub.
+        public var clientId: String {
+            switch self {
+            case .full: return "Ov23liWz2CApMbchpQOg"
+            case .restricted: return "Iv23lijaR2qLqzo9ALWw"
+            }
+        }
+
+        /// What the token may do, sent with the device-code request.
+        ///
+        /// Empty for `restricted`: a GitHub App's permissions are fixed at registration and chosen
+        /// again at each installation, so there is nothing to ask for. `repo` for `full` is the only
+        /// scope that can create a repository, and it appears in the limit GitHub enforces — ten
+        /// tokens per user, per application, *per scope*. Changing the string starts a fresh set of
+        /// ten and strands every token already issued under the old one.
+        public var scope: String {
+            switch self { case .full: return "repo"; case .restricted: return "" }
+        }
+
+        /// False when this half was never registered, in which case it is not offered at all.
+        public var configured: Bool { !clientId.isEmpty }
+
+        /// Whether a fresh token can see anything yet.
+        ///
+        /// A GitHub App reaches nothing until it is installed somewhere, and a user token with no
+        /// installation is not broken — it authenticates perfectly and can see nothing at all,
+        /// which is the most confusing state to leave somebody in. An OAuth token has no such step.
+        public var needsInstall: Bool { self == .restricted }
+
+        /// Only `repo` can `POST /user/repos`. The other has to send the person to GitHub's form.
+        public var makesRepos: Bool { self == .full }
+
+        /// The name of the bargain, for the place where it is chosen.
+        public var title: String {
+            switch self {
+            case .full: return "All my repositories"
+            case .restricted: return "Only the ones I pick"
+            }
+        }
+
+        /// The rest of the bargain, in the two sentences that actually decide it.
+        public var summary: String {
+            switch self {
+            case .full:
+                return "Works on as many devices as you like, and makes repositories without leaving the app. Yantra can read and write every repository you own."
+            case .restricted:
+                return "Yantra sees only the repositories you install it on. Two devices at most — signing in on a third ends the oldest — and new repositories are made on GitHub."
+            }
+        }
+    }
+
+    /// What the sign-in button uses when nobody has said otherwise.
+    public static let defaultMethod = Method.full
+
+    /// The methods this build can actually offer.
+    public static func offered() -> [Method] { Method.allCases.filter(\.configured) }
+
+    /// The method a stored credential was obtained with, so the app knows what that token can do.
+    public static let methodKey = "github_method"
+
     public static let appSlug = "yantra-tasks"
 
     public static func installURL(targetId: Int64? = nil) -> URL {
@@ -16,8 +89,8 @@ public enum GitHubAuth {
     ///
     /// The app creates no account of its own — GitHub owns the identity and this page owns the
     /// permission — so this, not a row in a settings screen, is what "delete my account" means here.
-    public static var revokeURL: URL {
-        URL(string: "https://github.com/settings/connections/applications/\(clientId)")!
+    public static func revokeURL(_ method: Method = defaultMethod) -> URL {
+        URL(string: "https://github.com/settings/connections/applications/\(method.clientId)")!
     }
 
     public static func newRepoURL(name: String) -> URL {
@@ -56,15 +129,19 @@ public enum GitHubAuth {
 
     public enum Poll: Equatable { case pending, slowDown(Int), token(Token), expired, denied, failed(String), offline }
 
-    public static func requestCode() async throws -> DeviceCode {
-        let data = try await form("https://github.com/login/device/code", ["client_id": clientId])
+    public static func requestCode(_ method: Method = defaultMethod) async throws -> DeviceCode {
+        var fields = ["client_id": method.clientId]
+        // Sent only when there is one: an empty `scope` on a GitHub App request is a parameter
+        // GitHub has no use for, and the App's permissions are not this app's to ask for anyway.
+        if !method.scope.isEmpty { fields["scope"] = method.scope }
+        let data = try await form("https://github.com/login/device/code", fields)
         return try JSONDecoder().decode(DeviceCode.self, from: data)
     }
 
-    public static func poll(_ code: DeviceCode) async -> Poll {
+    public static func poll(_ code: DeviceCode, _ method: Method = defaultMethod) async -> Poll {
         do {
             let data = try await form("https://github.com/login/oauth/access_token", [
-                "client_id": clientId, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"])
+                "client_id": method.clientId, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"])
             if let t = try? JSONDecoder().decode(Token.self, from: data) { return .token(t) }
             let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
             switch obj["error"] as? String {
@@ -101,10 +178,13 @@ public enum GitHubAuth {
     /// GitHub **rotates the refresh token on every use**, so the one that comes back has to be
     /// stored in place of the one that was sent: keeping the old one makes the next refresh fail in
     /// exactly the way this exists to prevent.
-    public static func refresh(_ token: Token) async -> Renewal {
+    public static func refresh(_ token: Token, _ method: Method = defaultMethod) async -> Renewal {
         guard let r = token.refreshToken else { return .nothingToDo }
+        // The registration that issued the token has to be the one that renews it: a refresh sent
+        // with the other client id is refused, and refused means "sign in again" to everything
+        // downstream — which would sign somebody out for using the other half of their own app.
         guard let data = try? await form("https://github.com/login/oauth/access_token", [
-            "client_id": clientId, "grant_type": "refresh_token", "refresh_token": r]) else {
+            "client_id": method.clientId, "grant_type": "refresh_token", "refresh_token": r]) else {
             return .couldNotAsk
         }
         if let t = try? JSONDecoder().decode(Token.self, from: data) { return .renewed(t) }
@@ -335,4 +415,232 @@ public func gitBlobSha(_ data: Data) -> String {
     h.update(data: Data("blob \(data.count)\u{0}".utf8))
     h.update(data: data)
     return h.finalize().map { String(format: "%02x", $0) }.joined()
+}
+
+// MARK: - making a repository, and finding one
+
+public extension GitHubAuth {
+    /// The repository's own access page, where people are invited. Inviting needs Administration
+    /// rights this App has no reason to hold, so it happens on GitHub rather than here.
+    static func accessSettingsURL(_ slug: String) -> URL {
+        URL(string: "https://github.com/\(slug)/settings/access")!
+    }
+    /// Where a repository is deleted. Yantra never deletes one: "delete" here means forgetting a
+    /// workspace, and destroying somebody's repository is not a thing a task app should be able to
+    /// do — see `AppModel.forgetWorkspace` and Android's `forgetWorkspace`.
+    static func repoSettingsURL(_ slug: String) -> URL {
+        URL(string: "https://github.com/\(slug)/settings")!
+    }
+}
+
+public extension GitHubTransport {
+    /// What `POST /user/repos` came to — `RepoCreate` on Android.
+    enum RepoCreate: Equatable {
+        case ok(RepoRef)
+        /// A repository by that name is already on the account. Joining it is the answer, not a
+        /// second attempt.
+        case exists
+        /// The credential is not allowed to make repositories. A fine-grained token or a GitHub App
+        /// installation can be perfectly able to sync and unable to create, which is not a sign-in
+        /// problem and must not be reported as one.
+        case unauthorized
+        case failed(String)
+    }
+
+    /// Makes a **private** repository for tasks, and says where it actually landed.
+    ///
+    /// Private without asking: a task list is the most personal thing this app holds, and a public
+    /// repository cannot be made private again by anyone who is not an admin of it — so the default
+    /// is the one that can be widened later rather than the one that cannot be narrowed.
+    ///
+    /// The name is sent as typed and the answer is read back rather than assembled from it. GitHub
+    /// normalises names (spaces become dashes, and it does not say so anywhere a person looks), and
+    /// a workspace pointed at the name somebody typed would push to a repository that is not there.
+    static func createRepo(name: String, token: String, host: String = "github.com",
+                           description: String = "Tasks, kept by Yantra") async -> RepoCreate {
+        let api = host == "github.com" ? "https://api.github.com" : "https://\(host)/api/v3"
+        var req = URLRequest(url: URL(string: api + "/user/repos")!)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 30
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "name": name, "description": description, "private": true, "auto_init": false,
+        ])
+        guard let (data, resp) = try? await URLSession.shared.data(for: req) else {
+            return .failed("could not reach GitHub")
+        }
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        switch code {
+        case 201:
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let full = obj["full_name"] as? String, let ref = RepoRef.parse(full) else {
+                return .failed("GitHub made it but would not say where")
+            }
+            return .ok(RepoRef(host: host, owner: ref.owner, name: ref.name))
+        case 401, 403: return .unauthorized
+        // 422 is every kind of "no" this endpoint gives — a name already taken, a name made only of
+        // punctuation, a plan limit. Only the first is worth its own answer, and GitHub names it in
+        // the body rather than in the status.
+        case 422:
+            let why = String(data: data, encoding: .utf8) ?? ""
+            return why.localizedCaseInsensitiveContains("already exists") ? .exists
+                : .failed("GitHub would not make that one")
+        default: return .failed("GitHub returned \(code)")
+        }
+    }
+
+    /// One repository in a picker: where it is, and whether tasks could be pushed to it.
+    struct Listed: Identifiable, Equatable, Sendable {
+        public let slug: String, isPrivate: Bool, canPush: Bool, updatedAt: String
+        public var id: String { slug }
+        public var ref: RepoRef? { RepoRef.parse(slug) }
+    }
+
+    /// The repositories this credential can actually see, newest first.
+    ///
+    /// Typing `owner/name` from memory is how a connection gets pointed at a repository that does
+    /// not exist, and the failure arrives a screen later as a 404. A list is also the only honest
+    /// answer for a GitHub App installation, where "what can this token see" is a question only
+    /// GitHub can answer — an installation given three repositories cannot reach a fourth, however
+    /// correctly its name is spelled.
+    ///
+    /// One page. Somebody with more than a hundred repositories has a search field for it.
+    static func repositories(token: String, host: String = "github.com") async -> [Listed] {
+        let api = host == "github.com" ? "https://api.github.com" : "https://\(host)/api/v3"
+        var req = URLRequest(url: URL(string: api + "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member")!)
+        req.timeoutInterval = 30
+        req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return rows.compactMap { r in
+            guard let slug = r["full_name"] as? String else { return nil }
+            let perms = (r["permissions"] as? [String: Bool]) ?? [:]
+            return Listed(slug: slug, isPrivate: (r["private"] as? Bool) ?? false,
+                          canPush: (perms["push"] ?? false) || (perms["admin"] ?? false),
+                          updatedAt: (r["updated_at"] as? String) ?? "")
+        }
+    }
+}
+
+// MARK: - who can be assigned
+
+public extension GitHubTransport {
+    /// Who can push to a repository — the people a task in it can be given to.
+    ///
+    /// A GET like everything else here, and for the same reason: inviting somebody needs a
+    /// permission far heavier than this app asks for, and happens on GitHub's own pages. This only
+    /// reads the answer.
+    ///
+    /// Typed rather than a nullable list, and that is the point of it. This endpoint has more ways
+    /// to say no than any other call in this file, and they need different things said: a token that
+    /// has lapsed is a sign-in, a token that is fine but not allowed to see the roster is a
+    /// permission on GitHub, and a dead network is neither. Collapsing them into nil produces "could
+    /// not reach GitHub" while the phone is online and GitHub has answered perfectly promptly with a
+    /// refusal.
+    enum Collaborators: Equatable {
+        case ok([String])
+        case unauthorized
+        /// 403 and 404 are the same answer wearing different clothes: GitHub hides what you may not
+        /// see rather than admitting it exists, so a token without this endpoint's permission gets a
+        /// 404 for a repository it can otherwise read and push to. Which one it was is kept, because
+        /// it says *why*.
+        case notPermitted(Int)
+        case failed(String)
+    }
+
+    /// One page. A hundred collaborators on a task repository is not the case worth paginating for,
+    /// and the picker searches what it has rather than scrolling it.
+    func collaborators() async -> Collaborators {
+        do {
+            let (code, data) = try await request("GET", "/repos/\(repo.slug)/collaborators?per_page=100")
+            switch code {
+            case 200:
+                let rows = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+                let logins = rows.compactMap { $0["login"] as? String }.filter { !$0.isEmpty }
+                var seen = Set<String>()
+                return .ok(logins.filter { seen.insert($0.lowercased()).inserted })
+            case 401: return .unauthorized
+            case 403, 404: return .notPermitted(code)
+            default: return .failed("GitHub returned \(code)")
+            }
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+}
+
+// MARK: - inviting somebody to the repository
+
+public extension GitHubTransport {
+    /// What asking GitHub to add somebody came to.
+    enum Invite: Equatable {
+        /// An invitation is on its way. They are **not** a collaborator until they accept it, which
+        /// is why this is not the same as `already`: the roster will not include them yet, and a
+        /// task assigned to them in the meantime is a name on a line rather than a mistake.
+        case invited(String)
+        /// They could already push here. Nothing was sent and nothing needed to be.
+        case already(String)
+        /// GitHub has no such account.
+        case noSuchPerson(String)
+        /// This sign-in cannot add people to this repository — it is not an admin of it, or the
+        /// registration was never allowed to be. The way through is GitHub's own access page.
+        case notAllowed
+        case failed(String)
+    }
+
+    /// Adds somebody to the repository, at push level.
+    ///
+    /// **Push, not admin.** What a collaborator needs here is to read and write task files; handing
+    /// out administration because the app happened to have it would be the app making a decision
+    /// about somebody's repository that nobody asked it to make.
+    ///
+    /// Only the OAuth sign-in can do this, and only on a repository the account administers: the
+    /// `repo` scope carries admin on your own repositories, while a GitHub App's permissions are
+    /// fixed at registration and do not include adding people. `canAdminister` is how a screen knows
+    /// which of those it is looking at before it offers anything.
+    func invite(_ login: String, as permission: String = "push") async -> Invite {
+        let name = login.trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+        guard !name.isEmpty else { return .failed("no login given") }
+        do {
+            let (code, data) = try await request("PUT", "/repos/\(repo.slug)/collaborators/\(name)",
+                                                 body: ["permission": permission])
+            switch code {
+            case 201:
+                // The invitation's own id is not worth carrying: what a person needs to know is that
+                // it was sent and to whom.
+                _ = data
+                return .invited(name)
+            case 204: return .already(name)
+            case 403: return .notAllowed
+            // 404 is both "no such user" and "you may not do this here" — GitHub hides what you may
+            // not see. The account is the likelier of the two from a screen where somebody has just
+            // typed a name, and the other is already ruled out by `canAdminister` before offering.
+            case 404: return .noSuchPerson(name)
+            case 422: return .failed("GitHub would not add \(name) — check the login, and that it is not your own")
+            default: return .failed("GitHub returned \(code)")
+            }
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// Whether this sign-in may add people to this repository.
+    ///
+    /// Asked before anything is offered, because a button that produces "you are not allowed" is
+    /// worse than no button: the person has already decided to invite somebody by the time they
+    /// press it.
+    func canAdminister() async -> Bool {
+        guard let (code, data) = try? await request("GET", "/repos/\(repo.slug)"), code == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let perms = obj["permissions"] as? [String: Bool] else { return false }
+        return perms["admin"] ?? false
+    }
 }

@@ -120,7 +120,7 @@ public final class WorkspaceWriter {
     }
 
     public func editEvent(_ eventId: String, _ transform: (EventRef) -> EventRef) throws {
-        guard let (home, _) = locate(eventId: eventId) else { return }
+        guard let (home, _) = locate(eventId: eventId) else { throw NotHere(what: "event", id: eventId) }
         try editPage(home) { page in
             var p = page
             p.blocks = p.blocks.map { b in
@@ -142,7 +142,7 @@ public final class WorkspaceWriter {
     /// Removes an event line. A sitting is only ever time set aside, so deleting it leaves the task
     /// it was for exactly where it was — there is no page of its own to take with it.
     public func deleteEvent(_ eventId: String) throws {
-        guard let (home, i) = locate(eventId: eventId) else { return }
+        guard let (home, i) = locate(eventId: eventId) else { throw NotHere(what: "event", id: eventId) }
         try editPage(home, change: .structural) { page in
             var p = page
             guard i < p.blocks.count else { return p }
@@ -213,7 +213,7 @@ public final class WorkspaceWriter {
     }
 
     public func editTask(_ taskId: String, _ transform: (TaskRef) -> TaskRef) throws {
-        guard let (home, _) = locate(taskId: taskId) else { return }
+        guard let (home, _) = locate(taskId: taskId) else { throw NotHere(what: "task", id: taskId) }
         try editPage(home) { page in
             var p = page
             p.blocks = p.blocks.map { b in
@@ -292,12 +292,40 @@ public final class WorkspaceWriter {
             p.blocks.remove(at: index)
             return p
         }
-        if let t = removedTask, !t.isEmpty { store.deletePage(t) }
+        if let t = removedTask, !t.isEmpty {
+            store.deletePage(t)
+            try dropSittings(for: t)
+        }
+    }
+
+    /// Removes the time set aside for a task that no longer exists.
+    ///
+    /// A **sitting** is an event line whose whole meaning is `for:<task>` — it carries no title of
+    /// its own and draws with the task's words, because storing the name twice would give two places
+    /// to rename from. So when the task goes, the sitting is not merely stale: it cannot even say
+    /// what it is. It stayed on the calendar as a block with no words in it, which is exactly what
+    /// "I deleted the task and it is still on my calendar" looks like.
+    ///
+    /// Every page, not just the task's own: a sitting lives beside the task's line, and a task that
+    /// has been moved leaves its sittings on the page it came from.
+    func dropSittings(for taskId: String) throws {
+        for page in store.readPages() {
+            guard page.blocks.contains(where: { if case let .event(e) = $0 { return e.forTaskId == taskId }; return false })
+            else { continue }
+            try editPage(page.id, change: .structural) { doc in
+                var p = doc
+                p.blocks.removeAll { if case let .event(e) = $0 { return e.forTaskId == taskId }; return false }
+                return p
+            }
+        }
     }
 
     public func deletePage(_ id: String) throws {
         try guardWritable()
         store.deletePage(id)
+        // The other half of the same rule as `removeBlock`: whatever time was set aside for this
+        // goes with it, or the calendar keeps drawing a block for something that is not there.
+        try dropSittings(for: id)
         onChange(.structural)
     }
 
@@ -324,7 +352,34 @@ public final class WorkspaceWriter {
     }
 
     /// Re-homes a task line onto another list's page (its own page, if any, moves parent too).
+    ///
+    /// **One workspace.** A writer owns one store, so a destination that lives in another
+    /// repository is refused rather than attempted: `editPage` on a page this store does not have
+    /// would invent one here and leave the task in neither place a person can reach. Moving between
+    /// workspaces is a copy-then-delete across two stores — Android's `Workspaces.moveAcross` — and
+    /// nothing offers it here yet.
+    /// A write aimed at something this workspace does not hold.
+    ///
+    /// It used to be a silent `return`, and that is how an edit disappears: the picker offered a
+    /// name, the line carried it, the write ran against the wrong store, found nothing, and said
+    /// nothing — leaving a task with an empty assignee and no error anywhere to explain it. A write
+    /// that cannot find its target is a bug in the caller, and the only way that becomes visible is
+    /// if it is loud.
+    public struct NotHere: Error, CustomStringConvertible {
+        public let what: String, id: String
+        public var description: String { "no \(what) with id \(id) in this workspace" }
+    }
+
+    /// A move whose destination is not in this writer's workspace.
+    public struct MoveRefused: Error, CustomStringConvertible {
+        public let reason: String
+        public var description: String { reason }
+    }
+
     public func moveTask(_ taskId: String, toList listId: String) throws {
+        guard store.readPage(listId) != nil else {
+            throw MoveRefused(reason: "that list is in another workspace")
+        }
         guard let (home, i) = locate(taskId: taskId), home != listId else { return }
         var line: Block?
         try editPage(home, change: .structural) { page in

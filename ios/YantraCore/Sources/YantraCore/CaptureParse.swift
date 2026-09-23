@@ -179,6 +179,25 @@ public enum CaptureParse {
         }
     }
 
+    /// An `@` being typed, and the login so far — the assignee's answer to `listDraft`.
+    ///
+    /// Only at the caret, and only while the word is still being written: an `@` earlier in the line
+    /// that already names somebody is a finished assignment, not a question. Returns the range of
+    /// `@name` so a pick can replace the whole thing.
+    public static func assigneeDraft(_ input: String, caret: Int) -> (NSRange, String)? {
+        let ns = input as NSString
+        let at = max(0, min(caret, ns.length))
+        guard at > 0 else { return nil }
+        let chars = Array(ns.substring(to: at).utf16)
+        guard let mark = chars.lastIndex(of: UInt16(UInt8(ascii: "@"))) else { return nil }
+        // Only where a word can start, or `email me@work` would offer a picker mid-address.
+        if mark > 0, !isWS(chars[mark - 1]) { return nil }
+        let typed = Array(chars[(mark + 1)...])
+        // A space ends it: the login is one word, and by then the parser has already decided.
+        if typed.contains(where: { isWS($0) }) { return nil }
+        return (NSRange(location: mark, length: at - mark), String(utf16CodeUnits: typed, count: typed.count))
+    }
+
     public static func listDraft(_ input: String) -> (NSRange, String)? {
         let chars = Array(input.utf16); let tilde = listMark.utf16.first!
         var found: (NSRange, String)? = nil

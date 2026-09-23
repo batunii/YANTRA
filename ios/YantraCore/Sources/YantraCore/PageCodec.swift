@@ -821,6 +821,32 @@ public enum Links {
         return ns as String
     }
 
+    /// Every task a piece of text points at.
+    public static func targets(_ text: String) -> [String] {
+        var seen = Set<String>()
+        return links(text).map(\.targetId).filter { seen.insert($0).inserted }
+    }
+
+    /// A `[[` being typed, and what has been typed since — `Links.draft` on Android.
+    ///
+    /// Returns the range of the draft (the `[[` included) and the text after it, or nil when the
+    /// caret is not inside one. This is what turns typing into a picker: the caller looks the typed
+    /// text up and replaces the range with a real link.
+    public static func draft(_ text: String, caret: Int) -> (NSRange, String)? {
+        let ns = text as NSString
+        let at = max(0, min(caret, ns.length))
+        guard at > 0 else { return nil }
+        let before = ns.substring(to: at)
+        guard let openRange = before.range(of: open, options: .backwards) else { return nil }
+        let openAt = before.distance(from: before.startIndex, to: openRange.lowerBound)
+        guard openAt + open.count <= at else { return nil }
+        let typed = ns.substring(with: NSRange(location: openAt + open.count, length: at - openAt - open.count))
+        // Anything that ends the token ends the draft. A newline or a bracket means the `[[` was
+        // never the start of a link; a `]]` means it was one and is finished.
+        if typed.contains(close) || typed.contains(where: { $0 == "\n" || $0 == "[" || $0 == "]" }) { return nil }
+        return (NSRange(location: openAt, length: at - openAt), typed)
+    }
+
     public static func encode(label: String, targetId: String) -> String {
         var safe = String(label.map { "[]|\n".contains($0) ? " " : $0 })
         safe = safe.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)

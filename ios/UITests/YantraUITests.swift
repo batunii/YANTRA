@@ -39,9 +39,11 @@ class YantraUITestCase: XCTestCase {
     /// Launches on a given route. `-route` is the app's own scaffolding, already used for
     /// screenshots, so a screen that needs three taps to reach can be the subject of a test rather
     /// than the prelude to one.
+    /// `reset: false` leaves the workspace as the last launch left it, for the handful of tests
+    /// whose subject is what survived being written down.
     @discardableResult
-    func launch(route: String? = nil, extra: [String] = []) -> XCUIApplication {
-        app.launchArguments = ["-uitest-reset", "-uitest"] + extra
+    func launch(route: String? = nil, extra: [String] = [], reset: Bool = true) -> XCUIApplication {
+        app.launchArguments = (reset ? ["-uitest-reset"] : []) + ["-uitest"] + extra
         if let route { app.launchArguments += ["-route", route] }
         // Tests run back to back in one process, and a launch on top of an instance that is still
         // shutting down comes up in a half-state where the first screen never arrives. Terminating
@@ -133,6 +135,13 @@ class YantraUITestCase: XCTestCase {
         XCTAssertTrue(shelf("Undated").waitForExistence(timeout: 6), "the rail did not open")
     }
 
+    /// The capture bar's field.
+    ///
+    /// A `UITextView`, not a `UITextField`: it tints what the parser understands as you type, and
+    /// SwiftUI's `TextField` draws one colour only — see `CaptureField`. Named here so the tests do
+    /// not each carry that fact.
+    var captureField: XCUIElement { app.textViews.firstMatch }
+
     func waitFor(_ element: XCUIElement, _ seconds: TimeInterval = 8, _ message: String = "") -> Bool {
         element.waitForExistence(timeout: seconds)
     }
@@ -198,15 +207,29 @@ final class TaskUITests: YantraUITestCase {
         XCTAssertEqual(check.label, "Mark done", "the task should start open")
         check.tap()
 
-        // Finishing it takes it out of the open list — a list is for what is left to do — and the
-        // Done count goes up. Both are the app saying the write landed.
-        expectEventually("the task was ticked and stayed in the open list") {
-            !el("task.row.\(Fixture.plainTask)").exists
+        // Finishing it strikes it through **where it is**. It used to leave the open list the same
+        // instant, which took the feedback with it and jumped every row below up a line — you could
+        // not see what you had just done, and if it was the wrong row you could not see that either.
+        // The list tidies itself the next time you come to it; see `PlaceOnCalendarUITests` for the
+        // other half of this behaviour.
+        let row = el("task.row.\(Fixture.plainTask)")
+        XCTAssertTrue(row.exists, "the task left the list the moment it was ticked")
+        expectEventually("the tick did not land") {
+            el("task.check.\(Fixture.plainTask)").label == "Mark not done"
         }
-        assertExists(app.staticTexts["DONE · 2"], "the finished count did not go up")
 
         // And it is still finished once the screen has been rebuilt from the files, which is what
         // would catch a change that only ever lived in memory.
+        tap("nav.back", "no way back to Home")
+        // The row's title, not the row: an identifier on a Button resolves to a wrapper that
+        // swallows the tap. See `openRail` and the note in ListLookUITests.
+        let listRow = app.staticTexts[Fixture.list]
+        XCTAssertTrue(listRow.waitForExistence(timeout: 8), "Home did not come back")
+        listRow.tap()
+        expectEventually("the finished task is still in the open list after reopening it") {
+            !el("task.row.\(Fixture.plainTask)").exists
+        }
+        assertExists(app.staticTexts["DONE · 2"], "the finished count did not go up")
         app.buttons["Show"].tap()
         let again = el("task.check.\(Fixture.plainTask)")
         assertExists(again, "Show did not reveal the task that was just finished")
@@ -243,8 +266,10 @@ final class TaskUITests: YantraUITestCase {
 
 final class CalendarUITests: YantraUITestCase {
 
+    /// The calendar opens on the **day** — that is what it is opened to do. A test about the month
+    /// therefore asks for the month, rather than relying on where the app happens to land.
     func testMonthOpensOnThisMonthAndTodayIsSelectable() {
-        let app = launch(route: "calendar")
+        let app = launch(route: "calendar", extra: ["-calmode", "month"])
         assertExists(app.staticTexts["calendar.heading"], "the calendar never appeared")
         let f = DateFormatter(); f.dateFormat = "MMM yyyy"
         XCTAssertEqual(app.staticTexts["calendar.heading"].label, f.string(from: Date()),
@@ -252,8 +277,9 @@ final class CalendarUITests: YantraUITestCase {
         assertExists(el("calendar.cell.\(Self.isoToday())"), "today's cell is missing from the grid")
     }
 
+    /// The day list is the pane under the month grid, so this asks for the month.
     func testTheDayListShowsTodaysEventsAndTasks() {
-        let app = launch(route: "calendar")
+        let app = launch(route: "calendar", extra: ["-calmode", "month"])
         // The fixture puts a timed event, an all-day event and a timed task on today.
         assertExists(el("calendar.item.\(Fixture.event)"), "the standup is missing from the day list")
         assertExists(el("calendar.item.\(Fixture.allDayEvent)"), "the all-day event is missing")
@@ -261,7 +287,7 @@ final class CalendarUITests: YantraUITestCase {
     }
 
     func testSwitchingModesChangesWhatTheHeadingSays() {
-        let app = launch(route: "calendar")
+        let app = launch(route: "calendar", extra: ["-calmode", "month"])
         let heading = app.staticTexts["calendar.heading"]
         assertExists(heading, "no heading")
         let month = heading.label
@@ -275,7 +301,7 @@ final class CalendarUITests: YantraUITestCase {
     }
 
     func testTodayKeyAppearsOnlyWhenTodayIsOffScreen() {
-        let app = launch(route: "calendar")
+        let app = launch(route: "calendar", extra: ["-calmode", "month"])
         // It opens on this month, so today is already on screen and the key has nothing to offer.
         XCTAssertFalse(el("calendar.today").exists,
                        "the Today key should not be drawn while today is already on screen")
@@ -295,8 +321,10 @@ final class CalendarUITests: YantraUITestCase {
         expectGone(app.navigationBars["New event"], "Cancel did not close the sheet")
     }
 
+    /// `calendar.item.…` is a row in the month's day list, so this asks for the month. On the day
+    /// timeline the same event is a block, which `TimelineBlock` draws and names differently.
     func testCreatingAnEventPutsItOnTheDay() {
-        let app = launch(route: "calendar")
+        let app = launch(route: "calendar", extra: ["-calmode", "month"])
         tap("calendar.add")
         assertExists(app.navigationBars["New event"], "no event sheet")
 
@@ -467,6 +495,20 @@ final class FocusUITests: YantraUITestCase {
             .matching(NSPredicate(format: "label CONTAINS[c] 'Nothing in focus'")).firstMatch
     }
 
+    /// A session is time given to one thing, and the thing is a task.
+    ///
+    /// The list page used to offer the same control the task page does, so a list could be focused
+    /// on — a clock started against a container, which the stats screen would then have to report
+    /// as work done on nothing in particular. Android gates it on the node being a task.
+    func testOnlyATaskOffersToBeFocusedOn() {
+        launch(route: "open:\(Fixture.plainTaskId)")
+        assertExists(el("page.focus"), "a task page did not offer to start a session")
+
+        launch(route: "open:\(Fixture.listId)")
+        assertExists(el("nav.back"), "the list page did not come up")
+        XCTAssertFalse(el("page.focus").exists, "a list offered to be focused on")
+    }
+
     func testFocusOpensOnItsEmptyStateWithNothingRunning() {
         launch(route: "focus")
         assertExists(emptyLine(), "the focus screen did not come up empty")
@@ -551,6 +593,97 @@ final class InkUITests: YantraUITestCase {
         assertExists(el("ink.slot.0"), "the ink canvas came up with no pen")
         assertExists(el("ink.undo"), "the ink canvas came up with no undo")
     }
+
+    /// The document is a stack of pages, not a screenful.
+    ///
+    /// The fold and the number beside it are drawn for the eye, so the only thing a test — or a
+    /// screen reader — can ask is the canvas itself. An empty sketch is one page with one blank
+    /// page to grow into, which is what stops a drawing ending exactly where you stopped drawing.
+    func testAnEmptySketchIsOnePageWithOneToGrowInto() {
+        _ = launch(route: "ink:fixture-ink")
+        let canvas = el("ink.canvas")
+        assertExists(canvas, "the ink canvas came up with no drawing surface")
+        XCTAssertEqual(canvas.value as? String, "Page 1 of 2")
+    }
+
+    /// Pinching in says how far in you are and offers the way back out; at one page across there is
+    /// nothing to say, so nothing is said.
+    func testTheCanvasZoomsAndOffersTheWayBackToOnePageAcross() {
+        let app = launch(route: "ink:fixture-ink")
+        let canvas = el("ink.canvas")
+        assertExists(canvas, "the ink canvas came up with no drawing surface")
+        let fit = app.buttons["ink.zoom"]
+        XCTAssertFalse(fit.exists, "a page already one across was offering to fit itself")
+
+        canvas.pinch(withScale: 3, velocity: 3)
+        XCTAssertTrue(fit.waitForExistence(timeout: 5),
+                      "the page did not zoom, or did not say how far in it is")
+
+        fit.tap()
+        XCTAssertTrue(fit.waitForNonExistence(timeout: 5),
+                      "fit did not put the page back to one page across")
+    }
+
+    /// A stroke that runs past the fold is on the next page, and is still on the next page when the
+    /// drawing is opened again.
+    ///
+    /// This is the only end-to-end check there is that ink is stored as a position on the page
+    /// rather than a point on this screen: the page count is computed from where the strokes are,
+    /// so a stroke that came back at the wrong scale would come back on the wrong page.
+    func testInkRunningOntoTheSecondPageIsStillThereOnTheSecondPage() {
+        let app = launch(route: "ink:fixture-ink")
+        let canvas = el("ink.canvas")
+        assertExists(canvas, "the ink canvas came up with no drawing surface")
+        let empty = pageTotal(canvas)
+        XCTAssertGreaterThan(empty, 0, "the canvas does not say what page it is on")
+
+        // Zoom out before drawing. A page is taller than the screen by a different amount on every
+        // device — about 1900du of a 1414du page are in view on a phone and only about 1320du on an
+        // iPad — so a drag measured as a fraction of the screen crosses the first fold on one and
+        // stops short of it on the other. Asserting a fixed page count after that drag is a test of
+        // the window's shape, which is how this passed on a phone and failed on an iPad. Pinched
+        // out, one drag reaches past the fold on both.
+        canvas.pinch(withScale: 0.5, velocity: -3)
+
+        let top = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
+        let bottom = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97))
+        top.press(forDuration: 0.1, thenDragTo: bottom)
+
+        // How far one drag reaches still depends on the screen, so the number is not fixed — but it
+        // has to be more than the one page and one to grow into an empty sketch has, or the stroke
+        // never crossed a fold and what follows would prove nothing.
+        let grown = waitForPageTotal(canvas, above: empty,
+                                     "the stroke never reached past the first fold")
+
+        // Away and back, so what is measured is the file rather than what is still in memory.
+        app.buttons["nav.back"].tap()
+        let reopened = launch(route: "ink:fixture-ink", reset: false)
+        let again = reopened.descendants(matching: .any)["ink.canvas"]
+        assertExists(again, "the ink canvas did not come back")
+        _ = waitForPageTotal(again, above: empty, "the stroke did not come back at all")
+        XCTAssertEqual(pageTotal(again), grown,
+                       "the stroke came back on a different page from the one it was drawn on")
+    }
+
+    /// The `N` in the canvas's "Page n of N", which is how many pages the ink occupies plus the one
+    /// blank one to grow into. 0 when the canvas has not said yet.
+    private func pageTotal(_ canvas: XCUIElement) -> Int {
+        guard let value = canvas.value as? String,
+              let last = value.split(separator: " ").last else { return 0 }
+        return Int(last) ?? 0
+    }
+
+    @discardableResult
+    private func waitForPageTotal(_ canvas: XCUIElement, above: Int, _ message: String) -> Int {
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            let n = pageTotal(canvas)
+            if n > above { return n }
+            usleep(150_000)
+        }
+        XCTFail("\(message) — it still says \(String(describing: canvas.value))")
+        return 0
+    }
 }
 
 // MARK: - the custom scheme, which anyone can open
@@ -615,7 +748,21 @@ final class ListLookUITests: YantraUITestCase {
         expectGone(look, "the sheet did not close after saving")
 
         // Reopening shows the choice, which is the half that proves it reached the file.
-        app.staticTexts[Fixture.list].press(forDuration: 1.2)
+        //
+        // `expectGone` returns the instant the sheet's bar stops being in the tree, which is the
+        // *start* of the dismissal, not the end of it — so long-pressing straight afterwards drives
+        // the row while the sheet above it is still animating away, and the second presentation is
+        // occasionally dropped. That only ever failed on a loaded machine, which is the signature
+        // of a race in the test rather than in the app: nobody long-presses twenty milliseconds
+        // after a sheet begins to close. Waiting for the row to be hittable again is the wait a
+        // finger already performs.
+        let row = app.staticTexts[Fixture.list]
+        let ready = NSPredicate(format: "isHittable == true")
+        expectation(for: ready, evaluatedWith: row)
+        waitForExpectations(timeout: 6) { error in
+            XCTAssertNil(error, "the row never came back after the sheet closed")
+        }
+        row.press(forDuration: 1.2)
         XCTAssertTrue(app.buttons["How it looks"].waitForExistence(timeout: 6), "no menu on reopen")
         app.buttons["How it looks"].tap()
         XCTAssertTrue(look.waitForExistence(timeout: 6), "the sheet did not reopen")
@@ -798,7 +945,7 @@ final class NowPlayerUITests: YantraUITestCase {
     func testTheCaptureFieldStaysReachableWhileSomethingIsRunning() {
         launch(route: "open:fixture-groceries")
         assertExists(el("now.player"), "the list screen shows no player")
-        XCTAssertTrue(app.textFields["Add a task…"].exists,
+        XCTAssertTrue(captureField.exists,
                       "capture went behind a mode because something was running")
     }
 }

@@ -26,12 +26,31 @@ struct SettingsView: View {
 
                 SectionLabel(text: "Workspaces").padding(.top, 28)
                 Text("Each one is a repository. Today spans all of them.").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
-                row(title: model.store.readManifest()?.name ?? "Workspace",
-                    subtitle: model.store.isReadOnly ? "Read-only here — update Yantra to edit" : (SyncSettings.repo?.slug ?? "On this device only"), chevron: false)
+                ForEach(model.allStores, id: \.id) { store in
+                    let linked = SyncSettings.repo(for: store.id)
+                    let dot = LabelPalette.swatchColor(model.workspaceColorName(store.id), dark: y.dark) ?? y.dim
+                    if store.id.isEmpty {
+                        row(dot: dot, title: store.readManifest()?.name ?? "Workspace",
+                            subtitle: store.isReadOnly ? "Read-only here — update Yantra to edit" : (linked?.slug ?? "On this device only"),
+                            chevron: false)
+                    } else {
+                        // Tappable, because a linked workspace has something to say: where it
+                        // points, when it last synced, and the one button that removes it.
+                        Button { path.append(Route.workspace(store.id)) } label: {
+                            row(dot: dot, title: model.registry.entry(store.id)?.name ?? store.readManifest()?.name ?? "Workspace",
+                                subtitle: store.isReadOnly ? "Read-only here — update Yantra to edit" : (linked?.slug ?? "Not connected"),
+                                chevron: true)
+                        }.buttonStyle(.plain)
+                    }
+                }
+                Button { path.append(Route.addWorkspace) } label: {
+                    row(title: "Add a workspace", subtitle: "Join a repository, or start a shared one", chevron: true)
+                }.buttonStyle(.plain)
+
                 SectionLabel(text: "Sync").padding(.top, 28)
                 Text(SyncSettings.lastStatus ?? "Every change is saved to a file and committed on its own").font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
-                YantraButton(label: model.syncing ? "Syncing…" : "Sync now", tone: .quiet, enabled: SyncSettings.repo != nil && !model.syncing) { model.syncInBackground("asked to sync") }
-                row(title: "Add a workspace", subtitle: "Join a repository, or start a shared one", chevron: true)
+                YantraButton(label: model.syncing ? "Syncing…" : "Sync now", tone: .quiet,
+                             enabled: model.allStores.contains { SyncSettings.repo(for: $0.id) != nil } && !model.syncing) { model.syncInBackground("asked to sync") }
 
                 SectionLabel(text: "Archive").padding(.top, 28)
                 Text("Finished tasks leave your lists after a while. They stay in the repository and can be brought back — this is about keeping lists short, not deleting anything.")
@@ -47,9 +66,25 @@ struct SettingsView: View {
                         let n = model.sweepArchive(); archiveNote = n == 0 ? "Nothing was old enough yet" : "\(n) moved out of your lists"
                     }.padding(.top, 8)
                 }
-                let archived = model.writer.archivedCount()
+                let archived = model.allStores.reduce(0) { total, store in total + store.archivedPageIds().reduce(0) { n, page in n + store.readArchivedLines(page).count } }
                 if archived > 0 {
                     Button { path.append(Route.archive) } label: { row(title: "\(archived) archived", subtitle: "See what left, and put any of it back", chevron: true) }.buttonStyle(.plain).padding(.top, 8)
+                }
+
+                // While the app is being lived with rather than tested: a week of use leaves a
+                // record here, and this is how it gets off the phone. See `Diagnostics`.
+                SectionLabel(text: "Diagnostics").padding(.top, 28)
+                let log = Diagnostics.summary()
+                Text("What the app has done — syncs, sign-ins, writes it refused. No task words are in it, only shapes: ids, counts and what GitHub said.")
+                    .font(Face.text(12.5)).foregroundStyle(y.muted).padding(.top, 2).padding(.bottom, 10)
+                if log.lines > 0 {
+                    ShareLink(item: Diagnostics.file) {
+                        row(title: "\(log.lines) entries · \(log.bytes / 1024) KB",
+                            subtitle: "Send the log", chevron: true)
+                    }.buttonStyle(.plain)
+                    YantraButton(label: "Clear the log", tone: .quiet) { Diagnostics.clear() }
+                } else {
+                    row(title: "Nothing recorded yet", subtitle: "It fills as the app is used", chevron: false)
                 }
 
                 CalendarSetting()
@@ -92,18 +127,17 @@ struct SettingsView: View {
                     GlyphSample(label: "Open", initial: .open); GlyphSample(label: "On it", initial: .inProgress); GlyphSample(label: "Done", initial: .done)
                 }
 
-                SectionLabel(text: "Conformance").padding(.top, 28).padding(.bottom, 10)
-                Button { path.append(Route.conformance) } label: { row(title: "Reading what Android wrote", subtitle: "The bytes both apps agree on", chevron: true) }.buttonStyle(.plain)
                 Spacer().frame(height: 40)
             }
-            .padding(.horizontal, Layout.pageMargin).padding(.top, 8)
+            .padding(.horizontal, Layout.pageMargin).padding(.top, 8).readableColumn()
         }
         .background(y.page.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
     }
 
-    private func row(title: String, subtitle: String, chevron: Bool) -> some View {
+    private func row(dot: Color? = nil, title: String, subtitle: String, chevron: Bool) -> some View {
         HStack {
+            if let dot { Circle().fill(dot).frame(width: 10, height: 10).padding(.trailing, 2) }
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(Face.text(15.5, .semibold)).foregroundStyle(y.ink)
                 Text(subtitle).font(Face.text(12.5)).foregroundStyle(y.muted)
@@ -179,7 +213,7 @@ struct StatsView: View {
                     }.buttonStyle(.plain)
                 }
                 Spacer().frame(height: 40)
-            }.padding(.horizontal, Layout.pageMargin).padding(.top, 8)
+            }.padding(.horizontal, Layout.pageMargin).padding(.top, 8).readableColumn()
         }
         .background(y.page.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)

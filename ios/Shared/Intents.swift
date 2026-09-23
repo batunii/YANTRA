@@ -45,8 +45,8 @@ public struct ToggleDoneIntent: AppIntent {
     public init(taskId: String) { self.taskId = taskId }
 
     public func perform() async throws -> some IntentResult {
-        let (store, writer) = AppGroup.openWorkspace()
-        let ix = WorkspaceIndex.read(store)
+        let ix = AppGroup.readIndex()
+        let (_, writer) = AppGroup.owning(taskId)
         if let n = ix.nodes[taskId] { try? writer.setDone(taskId, !n.done) }
         WidgetCenter.shared.reloadAllTimelines()
         return .result()

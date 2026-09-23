@@ -13,7 +13,8 @@ import YantraCore
 final class DeviceCalendars: ObservableObject {
     static let shared = DeviceCalendars()
 
-    private let store = EKEventStore()
+    /// Shared, because a second `EKEventStore` is a second permission handshake and a second cache.
+    let store = EKEventStore()
 
     /// The calendars this device can see, for the settings list.
     struct CalendarInfo: Identifiable, Equatable {
