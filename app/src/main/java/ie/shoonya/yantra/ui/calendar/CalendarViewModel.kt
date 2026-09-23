@@ -305,14 +305,12 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                         allDay = item.allDay,
                     ),
                     location = item.location,
-                    // Stamped with whoever this device is signed in as, because this meeting is a
-                    // fact about *their* calendar. Somebody else pulling the repository has no such
-                    // entry: the line would be a meeting they cannot see, cannot open, and did not
-                    // put there. The file still syncs — it should follow you to your own tablet —
-                    // and the workspace simply does not index the ones it cannot claim.
-                    author = container.credentials.login(
-                        ie.shoonya.yantra.data.sync.Credentials.ACCOUNT,
-                    ),
+                    // The calendar itself, as the account names it — `shrey@napkin.ie`. Not the
+                    // GitHub login this device signs in with: those are two different identities,
+                    // and the question a row has to answer is *which calendar*, not *which
+                    // account pushed the file*. One person may keep a work calendar and a personal
+                    // one, and telling those apart is worth as much as telling two people apart.
+                    author = item.account,
                     external = ie.shoonya.yantra.data.format.ExternalRef(
                         uid = uid,
                         // Named only when the meeting repeats, so a page about this Monday does not

@@ -86,10 +86,14 @@ internal fun EventBlockRow(
         Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(workspaceInk ?: tint ?: y.accent))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            // Title on the left, when it is on the right — the shape a task row already has, and
-            // an event sitting among tasks should not invent a second one. It had the time on its
-            // own line underneath, which pushed everything else down and left the row reading as a
-            // different kind of thing than its neighbours.
+            // **An event says three things: when, what day, and whose calendar.** One beside the
+            // title, two under it — the same shape on every event, so a row is read the same way
+            // wherever it appears rather than rearranging itself per surface.
+            //
+            // The clock goes beside the title because it is the shortest and the most glanced at,
+            // and because a task row already puts its date there — an event sitting among tasks
+            // should not invent a second shape. The day and the calendar go underneath, where
+            // there is room for a name.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     // A sitting borrows its task's words, exactly as it does on the calendar.
@@ -105,37 +109,34 @@ internal fun EventBlockRow(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    whenWords(start, end, e.allDay, sitting),
+                    clockWords(start, end, e.allDay),
                     fontFamily = YantraMono,
                     fontSize = YantraType.dense,
                     color = y.textMuted,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            // Whose calendar it came off — said for **every** claimed meeting, including yours.
+            Spacer(Modifier.height(2.dp))
+            // The day, and the calendar it is on. Two things, one line.
             //
-            // Marking only other people's looked tidier and was unreadable. There are three states,
-            // not two: yours, somebody else's, and one nobody claimed — an event typed by hand, or
-            // written before events carried an author at all. Leaving yours unmarked made it
-            // identical to the unclaimed one, so the absence of a line meant either "this is mine"
-            // or "nobody knows", and you could not tell which. Saying it every time costs a line
-            // and removes the ambiguity entirely.
+            // The calendar is named as the account names it — `shrey@napkin.ie` — and not dressed
+            // up as a sentence. "from saieeshward's calendar" was three words of grammar around one
+            // word of information, and it pushed the row to three lines and still ellipsised on the
+            // part that mattered. An address is shorter than a sentence about an address, and it is
+            // also the thing you would recognise.
             //
-            // **Its own line, not appended to the time.** Tacked onto a one-line time string it
-            // read `Thu 24 Sept · 09:00–09:30 · from sa…` — the ellipsis landing exactly on the
-            // name, which is the only part carrying any information.
-            e.author?.let { who ->
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    if (who == me) "from your calendar" else "from $who's calendar",
-                    fontFamily = YantraMono,
-                    fontSize = YantraType.dense,
-                    color = if (who == me) y.textMuted else y.accent,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            // Said for **every** calendar, including your own. There are three states, not two —
+            // yours, somebody else's, and one nobody claimed, which is an event typed by hand or
+            // written before events carried a calendar. Leaving yours silent made it identical to
+            // the unclaimed one.
+            Text(
+                listOfNotNull(dayWords(start, sitting), e.author).joinToString("  ·  "),
+                fontFamily = YantraMono,
+                fontSize = YantraType.dense,
+                color = if (e.author != null && e.author != me) y.accent else y.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Spacer(Modifier.width(8.dp))
         Box(
@@ -145,6 +146,25 @@ internal fun EventBlockRow(
             Text("›", fontSize = YantraType.row, color = y.textDim)
         }
     }
+}
+
+/** The clock alone — what sits beside a title. */
+internal fun clockWords(start: LocalDateTime?, end: LocalDateTime?, allDay: Boolean): String {
+    if (start == null) return "—"
+    if (allDay) return "all day"
+    val head = start.format(CLOCK)
+    return when {
+        end == null || end == start -> head
+        end.toLocalDate() == start.toLocalDate() -> "$head–${end.format(CLOCK)}"
+        // Across midnight the end clock alone would read as earlier than the start.
+        else -> "$head →"
+    }
+}
+
+/** The day alone — what sits under the title, beside whose calendar it is. */
+internal fun dayWords(start: LocalDateTime?, sitting: Boolean): String? {
+    if (start == null) return null
+    return (if (sitting) "for " else "") + start.format(DAY)
 }
 
 /** When it is, in as few words as say it. */
