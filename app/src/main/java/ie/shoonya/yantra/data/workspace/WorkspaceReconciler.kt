@@ -135,8 +135,42 @@ object WorkspaceReconciler {
             events += m.events
         }
 
+        // **Two nodes cannot share a system key.** `node` carries a unique index on
+        // (workspace_id, system_key) and the insert is REPLACE, so a second `today` does not fail
+        // loudly — SQLite deletes the first one mid-insert and everything that pointed at it is
+        // left dangling. `smart_list_def` is the row that then refuses, because its key onto `node`
+        // takes no action on delete, and the rebuild dies with FOREIGN KEY constraint failed (787)
+        // inside the transaction the sync is waiting on. Nothing is ever pushed again, and the only
+        // sign is a toast.
+        //
+        // A workspace earns duplicates honestly: a fresh install scaffolds its own `today` and
+        // `inbox` before the repository's copies have been pulled, and then both exist. Resolve it
+        // here, where the index is assembled and the whole set is in hand, rather than leaving it
+        // to a conflict strategy that resolves it by destroying a row.
+        //
+        // The newer page wins because it is the one the device has been writing to. The loser is
+        // reported rather than deleted — its file is untouched on disk, and the reconciler's job is
+        // to say what it could not use, not to throw it away.
+        val superseded = HashSet<String>()
+        val bySystemKey = HashMap<String, NodeEntity>()
+        nodes.forEach { n ->
+            val key = n.systemKey ?: return@forEach
+            val prev = bySystemKey[key]
+            if (prev == null) {
+                bySystemKey[key] = n
+                return@forEach
+            }
+            val winner = if (n.updatedAt >= prev.updatedAt) n else prev
+            val loser = if (winner === n) prev else n
+            bySystemKey[key] = winner
+            superseded += loser.id
+            problems += "two pages claim the system key '$key' (${winner.id} and ${loser.id}); " +
+                "kept the newer and ignored the other"
+        }
+        val nodeRows = if (superseded.isEmpty()) nodes else nodes.filterNot { it.id in superseded }
+
         val labels = resolveLabels(store, links, stamp, ws)
-        val knownNodes = nodes.mapTo(HashSet()) { it.id }
+        val knownNodes = nodeRows.mapTo(HashSet()) { it.id }
         // Checked against the rows that are emitted, not the map they came from. The two agree only
         // because one is built out of the other, and that is precisely the kind of agreement an edit
         // breaks without noticing: appending a label to this list and not to the map is how the
@@ -144,8 +178,12 @@ object WorkspaceReconciler {
         val labelRows = labels.values.sortedBy { it.name }
         val knownLabels = labelRows.mapTo(HashSet()) { it.id }
         return WorkspaceIndex(
-            nodes = nodes,
-            values = values,
+            nodes = nodeRows,
+            // Every list below is filtered to the nodes actually emitted. `nodeLabels` and `focus`
+            // already were; `values`, `ink`, `events` and `smartLists` were not, and each one is a
+            // foreign key onto `node` that fails the whole rebuild if it names a row that is not
+            // there. `smartLists` is how this was found.
+            values = values.filter { it.nodeId in knownNodes },
             labels = labelRows,
             nodeLabels = links
                 .mapNotNull { l ->
@@ -159,15 +197,17 @@ object WorkspaceReconciler {
                     isBuiltIn = true, createdAt = stamp, updatedAt = stamp,
                 )
             },
-            smartLists = store.readSmartLists().map {
-                SmartListDefEntity(
-                    nodeId = it.nodeId, workspaceId = ws, scopeRootId = it.scopeRootId, filterJson = it.filterJson,
-                    sortJson = it.sortJson, homeParentId = it.homeParentId,
-                    applyOnCreateJson = it.applyOnCreateJson,
-                )
-            },
-            ink = ink,
-            events = events,
+            smartLists = store.readSmartLists()
+                .filter { it.nodeId in knownNodes }
+                .map {
+                    SmartListDefEntity(
+                        nodeId = it.nodeId, workspaceId = ws, scopeRootId = it.scopeRootId, filterJson = it.filterJson,
+                        sortJson = it.sortJson, homeParentId = it.homeParentId,
+                        applyOnCreateJson = it.applyOnCreateJson,
+                    )
+                },
+            ink = ink.filter { it.nodeId in knownNodes },
+            events = events.filter { it.nodeId in knownNodes },
             // Every node, not only the pages. A session belongs to whatever you focused on, and
             // most tasks never own a page — a page exists only once a task holds something. Checking
             // against page ids therefore threw away the sessions of every plain task: appended to the
