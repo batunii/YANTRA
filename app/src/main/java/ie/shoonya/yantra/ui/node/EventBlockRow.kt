@@ -21,6 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,8 +69,10 @@ internal fun EventBlockRow(
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
     val workspaceInk = LabelPalette.byName(ie.shoonya.yantra.ui.appContainer().workspaceColours()[e.workspaceId])
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
-    val me = ie.shoonya.yantra.ui.appContainer().credentials
-        .login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)
+    // Compared against this device's *calendars*, not against the GitHub login it pushes with.
+    // The line carries a calendar address, so measuring it against a login would make every event
+    // on the device read as somebody else's.
+    val mine = ie.shoonya.yantra.ui.appContainer().myCalendarAccounts()
 
     Row(
         Modifier
@@ -129,11 +134,25 @@ internal fun EventBlockRow(
             // yours, somebody else's, and one nobody claimed, which is an event typed by hand or
             // written before events carried a calendar. Leaving yours silent made it identical to
             // the unclaimed one.
+            //
+            // The accent is on the calendar alone, not on the whole line. Colouring the Text
+            // coloured the day with it, which made the row look like the *date* was the unusual
+            // thing — and a date is the one part of an event nobody needs alerting to. One string
+            // so it still ellipsises as one, two spans so only the part that distinguishes this
+            // row from its neighbour is lit.
+            val day = dayWords(start, sitting)
             Text(
-                listOfNotNull(dayWords(start, sitting), e.author).joinToString("  ·  "),
+                buildAnnotatedString {
+                    day?.let { withStyle(SpanStyle(color = y.textMuted)) { append(it) } }
+                    e.author?.let { who ->
+                        if (day != null) withStyle(SpanStyle(color = y.textMuted)) { append("  ·  ") }
+                        withStyle(
+                            SpanStyle(color = if (who in mine) y.textMuted else y.accent),
+                        ) { append(who) }
+                    }
+                },
                 fontFamily = YantraMono,
                 fontSize = YantraType.dense,
-                color = if (e.author != null && e.author != me) y.accent else y.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
