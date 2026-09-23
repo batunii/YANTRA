@@ -54,6 +54,9 @@ import ie.shoonya.yantra.ui.components.BottomBar
 import ie.shoonya.yantra.ui.components.SwitchHereDialog
 import ie.shoonya.yantra.ui.components.startedTaskIds
 import ie.shoonya.yantra.ui.components.NavCircle
+import androidx.compose.runtime.saveable.rememberSaveable
+import ie.shoonya.yantra.ui.components.DoneSectionHeader
+import ie.shoonya.yantra.ui.components.rememberSettledSections
 import ie.shoonya.yantra.ui.node.TextualBlockRow
 import ie.shoonya.yantra.ui.container
 import androidx.compose.ui.graphics.Color
@@ -220,6 +223,26 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
             if (started.isEmpty()) tasks else tasks.sortedByDescending { it.id in started }
         }
 
+        /**
+         * Which half each row is in, decided when this view was built rather than when a box is
+         * tapped.
+         *
+         * `tasks` and `completed` are two queries, so ticking a row used to move it from one to the
+         * other the instant the write landed: it left the place you were reading and reappeared
+         * under DONE, and the strike animation played down there instead of under your finger. The
+         * rule's own ordering does the same thing for a different reason — a row that stops being
+         * urgent slides away mid-read. Both are the same complaint, so both are answered here: the
+         * rows hold the arrangement they were drawn with, and re-sort the next time you open the
+         * view. See [ie.shoonya.yantra.ui.components.settleSections].
+         */
+        val sections = rememberSettledSections(
+            key = nodeId,
+            live = remember(ordered, completed) { ordered + completed },
+            idOf = { it.id },
+            isDone = { it.done },
+        )
+        var doneExpanded by rememberSaveable(nodeId) { mutableStateOf(false) }
+
         @Composable
         fun SmartTaskRow(task: NodeEntity) {
             // The repository, as the spine — the same mark it is on the player, a widget row and a
@@ -292,11 +315,11 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 if (absentWorkspaces.isNotEmpty()) {
                     item(key = "absent-workspaces") { AbsentWorkspaces(absentWorkspaces) }
                 }
-                if (tasks.isEmpty() && completed.isEmpty()) {
+                if (sections.todo.isEmpty() && sections.done.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty("Nothing matches right now")
                     }
-                } else if (tasks.isEmpty()) {
+                } else if (sections.todo.isEmpty()) {
                     // Everything this view asked for is finished. Saying so beats "nothing matches",
                     // which would be true of the rule and wrong about the day.
                     item(key = "all-done") {
@@ -308,16 +331,22 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 // Open first, then what you finished. Two cards rather than one run of rows: the done
                 // half is not part of the rule's ordering — it is there because you did it today, not
                 // because it still matches — and giving it its own surface says so.
-                items(ordered, key = { it.id }) { task -> SmartTaskRow(task) }
+                items(sections.todo, key = { it.id }) { task -> SmartTaskRow(task) }
 
-                if (completed.isNotEmpty()) {
+                // Collapsed until asked for: what is left is the list, what is finished is the
+                // receipt, and the count on the header is usually the whole of what you wanted from
+                // it.
+                if (sections.done.isNotEmpty()) {
                     item(key = "done-header") {
-                        SectionLabel(
-                            "DONE · ${completed.size}",
-                            modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp),
+                        DoneSectionHeader(
+                            count = sections.done.size,
+                            expanded = doneExpanded,
+                            onToggle = { doneExpanded = !doneExpanded },
                         )
                     }
-                    items(completed, key = { "done-" + it.id }) { task -> SmartTaskRow(task) }
+                    if (doneExpanded) {
+                        items(sections.done, key = { "done-" + it.id }) { task -> SmartTaskRow(task) }
+                    }
                 }
 
                 item(key = "bottom-spacer") { Spacer(Modifier.height(12.dp)) }
