@@ -62,6 +62,23 @@ data class Person(
  * joined the project" into a merge conflict in a file nobody edits, which is exactly the kind of
  * churn the format is designed to avoid.
  */
+/**
+ * Everyone a quick capture may name, gathered from every open repository.
+ *
+ * Personal's roster comes first and the rest follow in registry order, because Home's Inbox is
+ * Personal's: the common case should be nearest the top of a list somebody is scanning while
+ * typing. Duplicates collapse — the same collaborator on two shared repos is one person — and the
+ * first position a name appears in is the one it keeps.
+ *
+ * A pure function so the ordering is pinned by a test rather than by whichever screen happens to
+ * call it; [People] itself needs a database and a context and cannot be built in one.
+ */
+fun assignableLogins(personal: List<String>, shared: List<List<String>>): List<String> {
+    val all = LinkedHashSet<String>(personal)
+    shared.forEach { all += it }
+    return all.toList()
+}
+
 class People(
     context: Context,
     private val db: AppDatabase,
