@@ -86,34 +86,56 @@ internal fun EventBlockRow(
         Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(workspaceInk ?: tint ?: y.accent))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                // A sitting borrows its task's words, exactly as it does on the calendar. Failing
-                // that, it is still a piece of time and says so rather than saying nothing.
-                row.displayTitle?.takeIf { it.isNotBlank() }
-                    ?: if (sitting) "Time set aside" else "Event",
-                fontSize = YantraType.body,
-                fontWeight = FontWeight.W600,
-                color = y.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
-            // Whose calendar it came off, said only when it is not yours.
+            // Title on the left, when it is on the right — the shape a task row already has, and
+            // an event sitting among tasks should not invent a second one. It had the time on its
+            // own line underneath, which pushed everything else down and left the row reading as a
+            // different kind of thing than its neighbours.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    // A sitting borrows its task's words, exactly as it does on the calendar.
+                    // Failing that, it is still a piece of time and says so rather than nothing.
+                    row.displayTitle?.takeIf { it.isNotBlank() }
+                        ?: if (sitting) "Time set aside" else "Event",
+                    fontSize = YantraType.body,
+                    fontWeight = FontWeight.W600,
+                    color = y.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    whenWords(start, end, e.allDay, sitting),
+                    fontFamily = YantraMono,
+                    fontSize = YantraType.dense,
+                    color = y.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Whose calendar it came off — said for **every** claimed meeting, including yours.
             //
-            // Two people who each tapped the same meeting have two entries, and without this they
-            // are the same row twice with no way to tell which is which — the one you can open in
-            // your calendar and the one you cannot. Your own are unmarked because you already know:
-            // marking every row would put the same word down the whole page and say nothing.
-            val from = e.author?.takeIf { it != me }
-            Text(
-                whenWords(start, end, e.allDay, sitting) +
-                    if (from != null) "  ·  from $from's calendar" else "",
-                fontFamily = YantraMono,
-                fontSize = YantraType.dense,
-                color = if (from != null) y.textDim else y.textMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Marking only other people's looked tidier and was unreadable. There are three states,
+            // not two: yours, somebody else's, and one nobody claimed — an event typed by hand, or
+            // written before events carried an author at all. Leaving yours unmarked made it
+            // identical to the unclaimed one, so the absence of a line meant either "this is mine"
+            // or "nobody knows", and you could not tell which. Saying it every time costs a line
+            // and removes the ambiguity entirely.
+            //
+            // **Its own line, not appended to the time.** Tacked onto a one-line time string it
+            // read `Thu 24 Sept · 09:00–09:30 · from sa…` — the ellipsis landing exactly on the
+            // name, which is the only part carrying any information.
+            e.author?.let { who ->
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (who == me) "from your calendar" else "from $who's calendar",
+                    fontFamily = YantraMono,
+                    fontSize = YantraType.dense,
+                    color = if (who == me) y.textMuted else y.accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         Box(
