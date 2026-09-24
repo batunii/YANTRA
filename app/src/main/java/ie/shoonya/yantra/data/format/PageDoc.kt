@@ -262,6 +262,21 @@ data class EventRef(
     val id: String,
     val title: String,
     val time: EventTime,
+    /**
+     * Whose calendar this meeting came off, when it came off one at all.
+     *
+     * An event node made by tapping a meeting is a note about *your* day: it exists because your
+     * phone's calendar has that meeting on it, and the times and the title are read live from the
+     * calendar that owns it. Somebody else pulling the repository has no such calendar entry — the
+     * line would be a meeting they cannot see, cannot open and did not put there.
+     *
+     * So it is stamped with the login of the person whose calendar it is, and a workspace only
+     * indexes the ones it can claim. The file still syncs, deliberately: it follows you to your own
+     * second device, and the day it turns out somebody *should* see it, nothing has to be
+     * recovered. Null means nobody claimed it, which is every event written before this and every
+     * event somebody typed by hand — those belong to the list, and everyone sees them.
+     */
+    val author: String? = null,
     /** RFC 5545 subset — see CALENDAR_PLAN.md §4. Stored verbatim, including rules we cannot expand. */
     val rrule: String? = null,
     /**

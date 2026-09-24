@@ -50,6 +50,14 @@ data class DeviceEvent(
      * Null when the provider gives neither, in which case the event simply cannot be annotated.
      */
     val uid: String?,
+    /**
+     * The calendar this is on, as the account names it — `shrey@napkin.ie`, and so on.
+     *
+     * Written onto an event node so a list can say which calendar a meeting came off. Two people
+     * each annotating the same meeting produce two rows, and this is the only thing that tells them
+     * apart. Null when the provider gives no account, which some local-only calendars do not.
+     */
+    val account: String? = null,
 )
 
 /**
@@ -167,6 +175,9 @@ class DeviceCalendarSource(private val context: Context) {
             // Not exposed on Instances, but the view joins Events, so the Events constant names the
             // same column. Reaching for Instances._SYNC_ID does not compile; the column is there.
             CalendarContract.Events._SYNC_ID,
+            // Which calendar it is on, said the way the account says it — an address, usually.
+            // Instances joins Calendars, so the Calendars constant names a column that is there.
+            CalendarContract.Calendars.ACCOUNT_NAME,
         )
         val where = "${CalendarContract.Instances.CALENDAR_ID} IN " +
             calendarIds.joinToString(prefix = "(", postfix = ")") +
@@ -193,6 +204,7 @@ class DeviceCalendarSource(private val context: Context) {
                                     color = if (c.isNull(7)) null else c.getInt(7),
                                     uid = c.getString(8)?.takeIf { it.isNotBlank() }
                                         ?: c.getString(9)?.takeIf { it.isNotBlank() },
+                                    account = c.getString(10)?.takeIf { it.isNotBlank() },
                                 )
                             )
                         }

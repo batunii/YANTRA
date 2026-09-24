@@ -316,6 +316,12 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                         allDay = item.allDay,
                     ),
                     location = item.location,
+                    // The calendar itself, as the account names it — `shrey@napkin.ie`. Not the
+                    // GitHub login this device signs in with: those are two different identities,
+                    // and the question a row has to answer is *which calendar*, not *which
+                    // account pushed the file*. One person may keep a work calendar and a personal
+                    // one, and telling those apart is worth as much as telling two people apart.
+                    author = item.account,
                     external = ie.shoonya.yantra.data.format.ExternalRef(
                         uid = uid,
                         // Named only when the meeting repeats, so a page about this Monday does not

@@ -570,3 +570,21 @@ val MIGRATION_20_21 = object : Migration(20, 21) {
         db.execSQL("ALTER TABLE `node` ADD COLUMN `pinned` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * An event remembers whose calendar it came off.
+ *
+ * The column only has to exist: it is filled from the workspace files on the next rebuild, which is
+ * where the answer actually lives.
+ *
+ * **21 and not 20.** Pinning and attribution were built on separate branches and both claimed 21,
+ * because each was the next number when it was written. Only one of them can be: a schema version
+ * names a *shape*, and two shapes with one name is how a device that took the other branch's build
+ * gets a database Room believes it has already migrated. Whichever lands second becomes the next
+ * number, and this one landed second.
+ */
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `event` ADD COLUMN `author` TEXT")
+    }
+}

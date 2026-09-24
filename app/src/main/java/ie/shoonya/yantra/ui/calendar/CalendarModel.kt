@@ -77,6 +77,8 @@ sealed interface DayItem {
         val end: LocalDateTime,
         val allDay: Boolean,
         val location: String?,
+        /** Which calendar it is on — see [ie.shoonya.yantra.data.device.DeviceEvent.account]. */
+        val account: String? = null,
         /** The owning calendar's own colour, drawn as-is: it is that calendar's identity, not ours. */
         val color: Int?,
         /**
@@ -366,6 +368,7 @@ object CalendarBucketer {
                 if (!day.isBefore(from) && day.isBefore(toExclusive)) {
                     out.getOrPut(day) { ArrayList() } += DayItem.Device(
                         nodeId = "device:${d.instanceId}",
+                        account = d.account,
                         // One node, not two: the line about this meeting *is* the task.
                         noteId = noteFor(d)?.nodeId,
                         taskId = noteFor(d)?.nodeId,

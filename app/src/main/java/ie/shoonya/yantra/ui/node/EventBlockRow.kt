@@ -21,6 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +69,10 @@ internal fun EventBlockRow(
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
     val workspaceInk = LabelPalette.byName(ie.shoonya.yantra.ui.appContainer().workspaceColours()[e.workspaceId])
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+    // Compared against this device's *calendars*, not against the GitHub login it pushes with.
+    // The line carries a calendar address, so measuring it against a login would make every event
+    // on the device read as somebody else's.
+    val mine = ie.shoonya.yantra.ui.appContainer().myCalendarAccounts()
 
     Row(
         Modifier
@@ -84,23 +91,68 @@ internal fun EventBlockRow(
         Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(workspaceInk ?: tint ?: y.accent))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                // A sitting borrows its task's words, exactly as it does on the calendar. Failing
-                // that, it is still a piece of time and says so rather than saying nothing.
-                row.displayTitle?.takeIf { it.isNotBlank() }
-                    ?: if (sitting) "Time set aside" else "Event",
-                fontSize = YantraType.body,
-                fontWeight = FontWeight.W600,
-                color = y.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // **An event says three things: when, what day, and whose calendar.** One beside the
+            // title, two under it — the same shape on every event, so a row is read the same way
+            // wherever it appears rather than rearranging itself per surface.
+            //
+            // The clock goes beside the title because it is the shortest and the most glanced at,
+            // and because a task row already puts its date there — an event sitting among tasks
+            // should not invent a second shape. The day and the calendar go underneath, where
+            // there is room for a name.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    // A sitting borrows its task's words, exactly as it does on the calendar.
+                    // Failing that, it is still a piece of time and says so rather than nothing.
+                    row.displayTitle?.takeIf { it.isNotBlank() }
+                        ?: if (sitting) "Time set aside" else "Event",
+                    fontSize = YantraType.body,
+                    fontWeight = FontWeight.W600,
+                    color = y.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    clockWords(start, end, e.allDay),
+                    fontFamily = YantraMono,
+                    fontSize = YantraType.dense,
+                    color = y.textMuted,
+                    maxLines = 1,
+                )
+            }
             Spacer(Modifier.height(2.dp))
+            // The day, and the calendar it is on. Two things, one line.
+            //
+            // The calendar is named as the account names it — `shrey@napkin.ie` — and not dressed
+            // up as a sentence. "from saieeshward's calendar" was three words of grammar around one
+            // word of information, and it pushed the row to three lines and still ellipsised on the
+            // part that mattered. An address is shorter than a sentence about an address, and it is
+            // also the thing you would recognise.
+            //
+            // Said for **every** calendar, including your own. There are three states, not two —
+            // yours, somebody else's, and one nobody claimed, which is an event typed by hand or
+            // written before events carried a calendar. Leaving yours silent made it identical to
+            // the unclaimed one.
+            //
+            // The accent is on the calendar alone, not on the whole line. Colouring the Text
+            // coloured the day with it, which made the row look like the *date* was the unusual
+            // thing — and a date is the one part of an event nobody needs alerting to. One string
+            // so it still ellipsises as one, two spans so only the part that distinguishes this
+            // row from its neighbour is lit.
+            val day = dayWords(start, sitting)
             Text(
-                whenWords(start, end, e.allDay, sitting),
+                buildAnnotatedString {
+                    day?.let { withStyle(SpanStyle(color = y.textMuted)) { append(it) } }
+                    e.author?.let { who ->
+                        if (day != null) withStyle(SpanStyle(color = y.textMuted)) { append("  ·  ") }
+                        withStyle(
+                            SpanStyle(color = if (who in mine) y.textMuted else y.accent),
+                        ) { append(who) }
+                    }
+                },
                 fontFamily = YantraMono,
                 fontSize = YantraType.dense,
-                color = y.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -113,6 +165,25 @@ internal fun EventBlockRow(
             Text("›", fontSize = YantraType.row, color = y.textDim)
         }
     }
+}
+
+/** The clock alone — what sits beside a title. */
+internal fun clockWords(start: LocalDateTime?, end: LocalDateTime?, allDay: Boolean): String {
+    if (start == null) return "—"
+    if (allDay) return "all day"
+    val head = start.format(CLOCK)
+    return when {
+        end == null || end == start -> head
+        end.toLocalDate() == start.toLocalDate() -> "$head–${end.format(CLOCK)}"
+        // Across midnight the end clock alone would read as earlier than the start.
+        else -> "$head →"
+    }
+}
+
+/** The day alone — what sits under the title, beside whose calendar it is. */
+internal fun dayWords(start: LocalDateTime?, sitting: Boolean): String? {
+    if (start == null) return null
+    return (if (sitting) "for " else "") + start.format(DAY)
 }
 
 /** When it is, in as few words as say it. */

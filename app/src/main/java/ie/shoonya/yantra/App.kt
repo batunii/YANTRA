@@ -256,6 +256,25 @@ class AppContainer(val app: Application) {
      * not change. A second instance would start with that memory empty and rewrite everything on its
      * first pass — which, since the sync engine used to have its own, is what every sync did.
      */
+    /**
+     * The calendars this device owns, named the way their accounts name them.
+     *
+     * An event row is muted when it came off one of these and accented when it did not, which is
+     * the whole point of writing the calendar onto the line. It has to be compared against
+     * *calendars*, not against the GitHub login this device pushes with: those are different
+     * identities, and comparing a calendar address to a login makes every event on the device look
+     * like somebody else's.
+     *
+     * Cached because it is read once per row and changes about as often as somebody adds an
+     * account. Empty without the calendar permission, which mutes nothing and accents nothing.
+     */
+    private var calendarAccounts: Set<String>? = null
+
+    fun myCalendarAccounts(): Set<String> = calendarAccounts ?: runCatching {
+        ie.shoonya.yantra.data.device.DeviceCalendarSource(app).calendars()
+            .mapTo(HashSet()) { it.account }
+    }.getOrDefault(emptySet()).also { calendarAccounts = it }
+
     private val indexer = Indexer(db)
 
     val workspaces = Workspaces(db, indexer, device, appScope) { id, change ->

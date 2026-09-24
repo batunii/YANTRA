@@ -201,6 +201,7 @@ object PageMapper {
             color = e.color,
             extUid = e.external?.uid,
             extStart = e.external?.occurrence?.toString(),
+            author = e.author,
             seriesId = e.series?.id,
             // The bare `series:s1` form means "the occurrence at this line's own start", so the
             // index writes that start rather than a null the reader would have to know to fill in.

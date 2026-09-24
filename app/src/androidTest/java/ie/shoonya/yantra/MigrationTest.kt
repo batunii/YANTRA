@@ -24,6 +24,8 @@ import ie.shoonya.yantra.data.db.MIGRATION_16_17
 import ie.shoonya.yantra.data.db.MIGRATION_17_18
 import ie.shoonya.yantra.data.db.MIGRATION_18_19
 import ie.shoonya.yantra.data.db.MIGRATION_19_20
+import ie.shoonya.yantra.data.db.MIGRATION_20_21
+import ie.shoonya.yantra.data.db.MIGRATION_21_22
 import ie.shoonya.yantra.data.db.MIGRATION_9_10
 import ie.shoonya.yantra.data.label.LabelPalette
 import ie.shoonya.yantra.data.db.SystemKey
@@ -679,6 +681,34 @@ class MigrationTest {
             )
             // A due date with no reminder does not acquire one.
             assertNull(db.scalar("SELECT v_reminders FROM property_value WHERE node_id = 't2'"))
+        }
+    }
+
+    /**
+     * 20 to 22, in order, because two branches both thought they were 21.
+     *
+     * Pinning (`node.pinned`) and attribution (`event.author`) were built separately and each took
+     * the next free number. Only one of them can have it: a schema version names a *shape*, and two
+     * shapes under one name means a device that installed the other branch's build has a database
+     * Room is certain it has already migrated — so the column is simply missing, and the first
+     * query for it fails at runtime rather than at the migration.
+     *
+     * Nothing about either step is interesting on its own; both are `ADD COLUMN`. What is worth a
+     * test is that the chain still *is* a chain, and that the end of it has both columns —
+     * `runMigrationsAndValidate` checks the result against the exported schema, so a renumbering
+     * that leaves 22 describing only one of them fails here.
+     */
+    @Test
+    fun pinnedAndAuthorBothSurviveTheRenumbering() {
+        helper.createDatabase(DB, 20).use { db ->
+            db.execSQL("INSERT INTO node (id, type, rank, done, in_progress, indent, collapsed, created_at, updated_at, workspace_id) VALUES ('n1','list','a',0,0,0,0,1,1,'')")
+        }
+
+        helper.runMigrationsAndValidate(DB, 22, true, MIGRATION_20_21, MIGRATION_21_22).use { db ->
+            // Present, and defaulted the way an unrebuilt index should read: not pinned, unclaimed.
+            assertEquals("0", db.scalar("SELECT pinned FROM node WHERE id = 'n1'"))
+            db.execSQL("INSERT INTO event (node_id, workspace_id, start_local, end_local, all_day, start_utc, end_utc, cancelled) VALUES ('n1','','2026-09-23T11:00','2026-09-23T11:30',0,0,0,0)")
+            assertNull(db.scalar("SELECT author FROM event WHERE node_id = 'n1'"))
         }
     }
 }
