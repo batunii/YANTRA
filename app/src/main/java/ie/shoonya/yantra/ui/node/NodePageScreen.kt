@@ -1521,7 +1521,7 @@ private fun PageBand(
                     // read the same way that line does everywhere else. Without this the one place
                     // that names the task most loudly was also the only place still shouting a UUID.
                     val titleStyle = remember(y.textDim, y.accent, y.textMuted) {
-                        InlineStyle(marker = y.textDim, link = y.accent, brokenLink = y.textMuted)
+                        InlineStyle(marker = y.textDim, link = y.accent, brokenLink = y.textMuted, token = y.textMuted)
                     }
                     val titleResolve = LocalLinkResolver.current
                     val titleOpen = LocalLinkOpener.current
@@ -1960,7 +1960,7 @@ internal fun TextualBlockRow(
     // link whose target is in a repository this device has not added is a normal state, not a
     // mistake, and colouring it as an error would make half a shared workspace look broken.
     val inlineStyle = remember(y.textDim, y.accent, y.textMuted) {
-        InlineStyle(marker = y.textDim, link = y.accent, brokenLink = y.textMuted)
+        InlineStyle(marker = y.textDim, link = y.accent, brokenLink = y.textMuted, token = y.textMuted)
     }
     val resolveLink = LocalLinkResolver.current
     val onOpenLink = LocalLinkOpener.current
@@ -2346,6 +2346,13 @@ internal fun TextualBlockRow(
                         style = inlineStyle,
                         emphasis = !isTask,
                         resolve = resolveLink,
+                        // A task line's trailing words are read as fields — `@sai` assigns, `#bug`
+                        // tags, `!high` prioritises — and then they are gone from the title. Typing
+                        // one here did all of that silently, in the same white as the title, so the
+                        // only way to learn that `@saieeshward` had left the name was to commit the
+                        // line and look. The quick-add bar has said so for months; the page, where
+                        // subtasks are actually written, did not.
+                        taskTokens = isTask,
                     )
                 },
                 modifier = Modifier

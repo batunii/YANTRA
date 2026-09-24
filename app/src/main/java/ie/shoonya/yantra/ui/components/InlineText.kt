@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import ie.shoonya.yantra.data.format.Links
+import ie.shoonya.yantra.data.format.PageCodec
 import ie.shoonya.yantra.data.format.Markdown
 
 /**
@@ -102,6 +103,15 @@ data class InlineStyle(
     val link: Color,
     /** A link whose target is gone, or in a workspace this device has not added. */
     val brokenLink: Color,
+    /**
+     * The trailing tokens on a task line — `@sai`, `#bug`, `!high`, `due:…` — which the format
+     * reads as fields and takes out of the title.
+     *
+     * Null leaves them plain, which is right for a surface that is only reading: a task drawn in a
+     * list has already had its tokens parsed away and never shows them. It matters in a *field*,
+     * where the characters are still there and the person needs to know what became of them.
+     */
+    val token: Color? = null,
 )
 
 /**
@@ -221,16 +231,48 @@ class InlineTransformation(
     private val style: InlineStyle,
     private val emphasis: Boolean,
     private val resolve: (String) -> String?,
+    /**
+     * Whether this field holds a **task line**, whose trailing words the format reads as fields.
+     *
+     * Off by default, and off for prose, where `@sai` is simply the characters `@sai`.
+     */
+    private val taskTokens: Boolean = false,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText = collapsed(text.text)
+
+    /**
+     * The trailing tokens, tinted where the parser says they start.
+     *
+     * The boundary comes from [PageCodec.tokenStart], which runs the real parser — a highlight that
+     * drew a different line from the one the file format draws would promise the wrong thing
+     * confidently, which is worse than promising nothing.
+     *
+     * One span for the whole run rather than one per token: they are a single thing from where the
+     * reader sits — "these words are not the title any more" — and splitting them by kind would
+     * invite a second classifier to disagree with the first.
+     */
+    private fun tokenSpans(source: String): List<AnnotatedString.Range<SpanStyle>> {
+        val colour = style.token ?: return emptyList()
+        if (!taskTokens) return emptyList()
+        val start = PageCodec.tokenStart(source)
+        if (start >= source.length) return emptyList()
+        return listOf(
+            AnnotatedString.Range(
+                SpanStyle(color = colour, fontWeight = FontWeight.W700),
+                start,
+                source.length,
+            )
+        )
+    }
 
     /**
      * No links, so nothing changes length: emphasis markers stay put and are merely dimmed, and the
      * mapping is the identity — the property the rest of this app's inline rendering is built on.
      */
     private fun plain(source: String): TransformedText {
-        val spans = if (emphasis) markdownSpans(source, style.marker) else emptyList()
+        val spans = (if (emphasis) markdownSpans(source, style.marker) else emptyList()) +
+            tokenSpans(source)
         return TransformedText(AnnotatedString(source, spans), OffsetMapping.Identity)
     }
 
@@ -239,6 +281,14 @@ class InlineTransformation(
         val c = Links.collapse(source, resolve)
         val spans = ArrayList<AnnotatedString.Range<SpanStyle>>()
         if (emphasis) spans += markdownSpans(c.text, style.marker)
+        // Mapped into the collapsed string's coordinates, like the link spans below. A token is
+        // always past the last link — it is what *follows* the title — so the mapping never lands
+        // inside one.
+        tokenSpans(source).forEach { r ->
+            val a = c.map[r.start.coerceIn(0, c.map.size - 1)]
+            val b = c.map[r.end.coerceIn(0, c.map.size - 1)]
+            if (b > a) spans += AnnotatedString.Range(r.item, a, b)
+        }
         c.shown.forEach { link ->
             if (link.range.isEmpty()) return@forEach
             spans += AnnotatedString.Range(
@@ -264,10 +314,11 @@ class InlineTransformation(
      */
     override fun equals(other: Any?): Boolean =
         other is InlineTransformation && other.style == style && other.emphasis == emphasis &&
-            other.resolve === resolve
+            other.taskTokens == taskTokens && other.resolve === resolve
 
     override fun hashCode(): Int =
-        (style.hashCode() * 31 + emphasis.hashCode()) * 31 + System.identityHashCode(resolve)
+        ((style.hashCode() * 31 + emphasis.hashCode()) * 31 + taskTokens.hashCode()) * 31 +
+            System.identityHashCode(resolve)
 }
 
 /**
