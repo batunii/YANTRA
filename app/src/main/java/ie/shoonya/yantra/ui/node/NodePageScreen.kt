@@ -1627,21 +1627,10 @@ private fun BlockRow(
         NodeType.INK -> InkBlockRow(child, active, onActivate, inkStrokes, vm, onOpen)
         // An event is not a line of text with a marker in front of it — it is a span, and the span
         // is the part worth reading. See CALENDAR_PLAN.md §18.
+        // An event with no row of its own says so, rather than falling through to an editable
+        // blank line. See [BrokenEventRow].
         NodeType.EVENT -> event?.let { EventBlockRow(it, onOpen) }
-            ?: TextualBlockRow(
-                child, active, onActivate, onFocusChange, claimCaret, onCaretClaimed, onSplit,
-                onMergeBack, chips, childCount, ordinal, pomoCount, origin, autoFocus,
-                onAutoFocusConsumed,
-                onRename = { vm.rename(child.id, it) },
-                onToggleDone = { vm.setDone(child.id, it) },
-                onToggleInProgress = { vm.setInProgress(child.id, it) },
-                onBecome = onBecome,
-                onOpen = onOpen,
-                editable = editable,
-                onDraft = onDraft,
-                replaceWith = replaceWith,
-                onReplaced = onReplaced,
-            )
+            ?: BrokenEventRow(child.title, onOpen)
         NodeType.IMAGE -> ImageBlockRow(child, active, onActivate, vm)
         else -> TextualBlockRow(
             child, active, onActivate, onFocusChange, claimCaret, onCaretClaimed, onSplit,

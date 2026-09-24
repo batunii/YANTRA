@@ -115,6 +115,57 @@ internal fun EventBlockRow(
     }
 }
 
+/**
+ * An event whose times could not be read, said plainly.
+ *
+ * **What it replaces.** An event node with no `event` row fell through to the ordinary text block,
+ * which draws an empty, editable line with `Write something…` in it. So a broken meeting looked
+ * exactly like a blank note somebody had left on the page — and invited you to type into it, which
+ * would write prose into a node the index still believes is an event.
+ *
+ * It happens when a line and its row disagree: an event whose row was dropped while the node
+ * survived. It should be impossible, and the answer to something that should be impossible is to
+ * say so rather than disguise it as an ordinary empty line.
+ *
+ * Kept on screen rather than hidden, because the node is somebody's and vanishing is worse than
+ * wrong. Tapping still opens it.
+ */
+@Composable
+internal fun BrokenEventRow(title: String?, onOpen: () -> Unit) {
+    val y = Yantra.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clip(RoundedCornerShape(YantraRadius.control))
+            .background(y.cardBg)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(SPINE_WIDTH).height(30.dp).spine(y.textDim))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title?.takeIf { it.isNotBlank() } ?: "Event",
+                fontSize = YantraType.body,
+                fontWeight = FontWeight.W600,
+                color = y.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "times could not be read",
+                fontFamily = YantraMono,
+                fontSize = YantraType.dense,
+                color = y.textDim,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
 /** When it is, in as few words as say it. */
 internal fun whenWords(
     start: LocalDateTime?,
