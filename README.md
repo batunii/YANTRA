@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <img src="site/shots/home.png" alt="Home: every list, each with how many of its tasks are done" width="210">
-  <img src="site/shots/list.png" alt="A list of tasks with dates and priorities" width="210">
-  <img src="site/shots/calendar.png" alt="The day view, with events and scheduled tasks on it" width="210">
-  <img src="site/shots/focus.png" alt="A focus session running" width="210">
+  <img src="site/shots/home.webp" alt="Home: every list, each with how many of its tasks are done" width="210">
+  <img src="site/shots/list.webp" alt="A list of tasks with dates and priorities" width="210">
+  <img src="site/shots/calendar.webp" alt="The day view, with events and scheduled tasks on it" width="210">
+  <img src="site/shots/focus.webp" alt="A focus session running" width="210">
 </p>
 
 ---

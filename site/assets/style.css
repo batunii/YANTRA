@@ -544,3 +544,55 @@ footer a { color: var(--secondary); }
   .prose table { display: block; overflow-x: auto; white-space: nowrap; }
   .prose td, .prose th { white-space: normal; min-width: 8rem; }
 }
+
+/* ------------------------------------------------------------------- the real file, and skipping */
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  text-decoration: none;
+}
+.skip:focus { left: var(--margin); top: 8px; }
+
+/* Anchors land under the sticky bar without this. */
+section[id] { scroll-margin-top: 64px; }
+
+.file {
+  margin: 22px 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  max-width: 48rem;
+}
+
+.file figcaption {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-high);
+}
+
+.file pre {
+  margin: 0;
+  padding: 16px 14px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--secondary);
+}
+
+/* The code block is the one thing on the page allowed its own sideways scroll — wrapping a file
+ * changes what the file says. The page itself still never scrolls sideways. */
+.file code { background: none; border: 0; padding: 0; font-size: inherit; white-space: pre; }

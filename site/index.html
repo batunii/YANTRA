@@ -12,6 +12,8 @@
 </head>
 <body>
 
+<a class="skip" href="#moments">Skip to what it is like</a>
+
 <header class="topbar">
   <svg class="mark" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
     <path d="M8 4 L11 4 L11 2 L17 2 L17 4 L20 4 Q24 4 24 8 L24 11 L26 11 L26 17 L24 17 L24 20 Q24 24 20 24 L17 24 L17 26 L11 26 L11 24 L8 24 Q4 24 4 20 L4 17 L2 17 L2 11 L4 11 L4 8 Q4 4 8 4 Z"/>
@@ -44,7 +46,7 @@
       </div>
     </div>
 
-    <p class="hero-caption" id="hero-caption"></p>
+    <p class="hero-caption" id="hero-caption" aria-live="polite"></p>
   </div>
 </div>
 
@@ -141,16 +143,53 @@
 
     <div class="device-rail">
       <div class="device">
-        <img src="shots/home.png" alt="Yantra's home screen: pinned Today, then the lists, each with how many of its tasks are done." class="on" data-shot="home" width="1206" height="2622">
-        <img src="shots/list.png" alt="A list of tasks with dates and priorities, one of them finished." data-shot="list" width="1206" height="2622" loading="lazy">
-        <img src="shots/calendar.png" alt="The day view: hours down the screen with events and scheduled tasks placed on them." data-shot="calendar" width="1206" height="2622" loading="lazy">
-        <img src="shots/focus.png" alt="A focus session running, with the clock and the task it is being spent on." data-shot="focus" width="1206" height="2622" loading="lazy">
-        <img src="shots/ink.png" alt="The ink canvas with handwriting on it and the pen tray along the bottom." data-shot="ink" width="1206" height="2622" loading="lazy">
-        <img src="shots/stats.png" alt="The stats screen, summarising focus sessions from the ledger." data-shot="stats" width="1206" height="2622" loading="lazy">
+        <img src="shots/home.webp" alt="Yantra's home screen: pinned Today, then the lists, each with how many of its tasks are done." class="on" data-shot="home" width="699" height="1520">
+        <img src="shots/list.webp" alt="A list of tasks with dates and priorities, one of them finished." data-shot="list" width="699" height="1520" loading="lazy">
+        <img src="shots/calendar.webp" alt="The day view: hours down the screen with events and scheduled tasks placed on them." data-shot="calendar" width="699" height="1520" loading="lazy">
+        <img src="shots/focus.webp" alt="A focus session running, with the clock and the task it is being spent on." data-shot="focus" width="699" height="1520" loading="lazy">
+        <img src="shots/ink.webp" alt="The ink canvas with handwriting on it and the pen tray along the bottom." data-shot="ink" width="699" height="1520" loading="lazy">
+        <img src="shots/stats.webp" alt="The stats screen, summarising focus sessions from the ledger." data-shot="stats" width="699" height="1520" loading="lazy">
       </div>
       <p class="device-note">iOS, running on a simulator with a seeded workspace</p>
     </div>
   </div>
+</section>
+
+<!-- ------------------------------------------------------------------------------- the real file -->
+
+<section class="wrap" id="the-file">
+  <p class="section-label">The same list, on disk</p>
+  <h2>This is the file behind that screen.</h2>
+  <p>
+    Not an illustration of the format — this is <code>deep-work.md</code>, copied out of the
+    workspace the screenshots above were taken from, unedited. The dates, durations, priorities and
+    events are all plain text you can read, grep, edit in any editor and put in any repository.
+  </p>
+  <figure class="file">
+    <figcaption>workspaces/local/pages/deep-work.md</figcaption>
+    <pre><code>---
+id: demo-writing
+type: list
+title: Deep work
+color: Teal
+modified_at: 2026-09-24T00:06:55.299Z
+device: demo
+---
+- [ ] Draft the chapter on conflict arbitration ^demo-chapter due:2026-09-24T09:00:00Z/PT1H30M !High
+- [ ] Read the JGit rebase source properly ^demo-3 due:2026-09-25
+- [x] Write up what the Thursday outage actually was ^demo-4 done:2026-09-24
+- [ ] Reply to the review comments on the sync doc ^demo-5 due:2026-09-22 !High
+- [ ] Sketch the empty states ^demo-6
+- [~] Cut the onboarding copy in half ^demo-7
+@ 2026-09-24T09:30/PT15M Standup ^demo-8 col:Blue
+@ 2026-09-24T14:00/PT1H Design review ^demo-9 col:Violet
+@ 2026-09-24T17:30/PT45M Walk ^demo-10 col:Moss</code></pre>
+  </figure>
+  <p class="tight">
+    <code>^id</code> is the task's identity, which is what lets two devices agree about the same
+    line. <code>[~]</code> is in progress. <code>@</code> is an event. Nothing here needs Yantra to
+    be readable.
+  </p>
 </section>
 
 <!-- ----------------------------------------------------------------------------------- the data -->
