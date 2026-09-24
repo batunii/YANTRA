@@ -60,6 +60,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import ie.shoonya.yantra.ui.components.DoneSectionHeader
+import ie.shoonya.yantra.ui.components.rememberSettledSections
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -687,27 +691,12 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         }
 
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                // The column stays a column. Given a tablet's width the page does not take it —
-                // prose set across 1300dp is prose nobody finishes a paragraph of, because the eye
-                // loses the line on the way back. See PAGE_MEASURE.
-                .then(
-                    if (panes.isWide) Modifier.width(PAGE_MEASURE).align(Alignment.CenterHorizontally)
-                    else Modifier.fillMaxWidth()
-                )
-                .nestedScroll(headerScroll),
-            // A list card is inset like a card; a document runs to the page edge, with its start
-            // inset living inside each block's drag gutter so nothing shifts sideways.
-            contentPadding = if (isDocument) {
-                PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
-            } else {
-                PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp)
-            },
-        ) {
-            itemsIndexed(shown, key = { _, it -> it.id }) { _, child ->
+        // One row of the page. Lifted out of the item lambda because a list now draws rows from
+        // two places — what is left to do, and the finished half under DONE — and the second
+        // copy has to be the same row, not a simplified one. A `LazyItemScope` extension because
+        // the body animates its own placement.
+        @Composable
+        fun LazyItemScope.PageBlock(child: NodeEntity) {
                 // Tasks, sketches and images are carried; prose is not. A handle on every paragraph
                 // was mostly noise, but a sketch or a picture is a distinct object you place, and
                 // it is the block you are most likely to want somewhere else. The gutter stays on
@@ -914,6 +903,73 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                     },
                 )
                 }
+                }
+        }
+
+        // A list settles into two halves; a document keeps its own order and is never split —
+        // prose and sketches are not "to do", and a task's page is a document.
+        // A meeting that has finished is finished. It is not a task and nobody ticks it, but it is
+        // just as done as one, and leaving yesterday's standup at the top of a list among things
+        // still to do makes the list wrong in the way a list is not allowed to be wrong.
+        //
+        // Read once per row, when that row first appears, like everything else here — so a meeting
+        // that ends while you are looking at the list stays where it is and joins DONE the next
+        // time you open it. That is the same promise ticking a task makes, and it would be strange
+        // for the clock to be allowed to move a row out from under you when your own finger is not.
+        val endedBy = System.currentTimeMillis()
+        val sections = rememberSettledSections(
+            key = nodeId,
+            live = shown,
+            idOf = { it.id },
+            isDone = { node ->
+                when (node.type) {
+                    NodeType.TASK -> node.done
+                    NodeType.EVENT -> pageEvents[node.id]?.event?.let { it.endUtc <= endedBy } == true
+                    else -> false
+                }
+            },
+            // An event's times arrive from a different query than its row, so for a frame a
+            // finished meeting is indistinguishable from an unfinished one. Wait rather than guess.
+            canJudge = { node -> node.type != NodeType.EVENT || pageEvents.containsKey(node.id) },
+        )
+        val todoRows = if (isDocument) shown else sections.todo
+        val doneRows = if (isDocument) emptyList() else sections.done
+        var doneExpanded by rememberSaveable(nodeId) { mutableStateOf(false) }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                // The column stays a column. Given a tablet's width the page does not take it —
+                // prose set across 1300dp is prose nobody finishes a paragraph of, because the eye
+                // loses the line on the way back. See PAGE_MEASURE.
+                .then(
+                    if (panes.isWide) Modifier.width(PAGE_MEASURE).align(Alignment.CenterHorizontally)
+                    else Modifier.fillMaxWidth()
+                )
+                .nestedScroll(headerScroll),
+            // A list card is inset like a card; a document runs to the page edge, with its start
+            // inset living inside each block's drag gutter so nothing shifts sideways.
+            contentPadding = if (isDocument) {
+                PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
+            } else {
+                PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp)
+            },
+        ) {
+            items(todoRows, key = { it.id }) { child -> PageBlock(child) }
+
+            // Collapsed until asked for: what is left is the list, what is finished is the
+            // receipt, and the count on the header is usually the whole of what you wanted.
+            if (doneRows.isNotEmpty()) {
+                item(key = "done-header") {
+                    DoneSectionHeader(
+                        count = doneRows.size,
+                        expanded = doneExpanded,
+                        onToggle = { doneExpanded = !doneExpanded },
+                    )
+                }
+                if (doneExpanded) {
+                    items(doneRows, key = { it.id }) { child -> PageBlock(child) }
                 }
             }
             // The write line is an invitation to a blank page, and nothing else. It shows only when
