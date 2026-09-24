@@ -34,6 +34,10 @@ class Workspaces(
         else {
             store.ensureBuiltInProperties()
             store.upgradeFormat()
+            // Every workspace made before the `.tmp` suffix was declared to git has a directory
+            // `git add .` will walk while a keystroke is mid-rename, and one of those is how a sync
+            // dies with ENOENT on a file that was never an edit. See WorkspaceStore.ensureGitignore.
+            store.ensureGitignore()
         }
         stores[id] = store
         writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
