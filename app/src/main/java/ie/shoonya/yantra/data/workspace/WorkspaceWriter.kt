@@ -18,6 +18,8 @@ import ie.shoonya.yantra.data.db.SystemKey
 import ie.shoonya.yantra.data.sync.Change
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
@@ -69,6 +71,26 @@ class WorkspaceWriter(
     private fun newId(): String = UUID.randomUUID().toString()
 
     /** Rebuilds the index from disk. Returns anything the workspace could not resolve. */
+    /**
+     * Holds the writer's lock **and** gets off whatever thread asked.
+     *
+     * Every write here ends in a file: read the page, transform it, write it back atomically —
+     * open, fsync, rename. None of that belongs on the main thread, and none of it was leaving it.
+     * The writer never named a dispatcher, so it ran on the caller's, and the caller is almost
+     * always `viewModelScope`, which is `Dispatchers.Main.immediate`. Fifty-nine call sites across
+     * the screens, every one writing to disk on the thread that draws.
+     *
+     * It ANR'd where that is worst: tearing a view model down during a package replace, with the
+     * main thread inside `openat()` in an uninterruptible wait, holding it past the ten seconds the
+     * system allows for input. The trace read
+     * `ViewModelStore.clear → cancel → editPage → writePage → writeBytesAtomically`, `state=D`.
+     *
+     * Fixed here rather than at the call sites because there is one of this and fifty-nine of
+     * those, and because a writer that can block the UI is a property of the writer.
+     */
+    private suspend fun <T> onIo(block: suspend () -> T): T =
+        withContext(Dispatchers.IO) { mutex.withLock { block() } }
+
     suspend fun reindex(): List<String> = indexer.rebuild(store)
 
     private var pendingIndex: kotlinx.coroutines.Job? = null
@@ -106,7 +128,7 @@ class WorkspaceWriter(
             delay(INDEX_QUIET_MS)
             // Fresh acquisition: the caller is holding the mutex right now and will release it long
             // before this runs.
-            mutex.withLock {
+            onIo {
                 if (indexOwed) {
                     indexer.rebuild(store)
                     indexOwed = false
@@ -123,7 +145,7 @@ class WorkspaceWriter(
      */
     suspend fun flushIndex() {
         pendingIndex?.cancel()
-        mutex.withLock {
+        onIo {
             if (indexOwed) {
                 indexer.rebuild(store)
                 indexOwed = false
@@ -144,8 +166,8 @@ class WorkspaceWriter(
         pageId: String,
         change: Change = Change.EDIT,
         transform: (PageDoc) -> PageDoc,
-    ): Unit = mutex.withLock {
-        val page = loadPage(pageId) ?: return
+    ): Unit = onIo {
+        val page = loadPage(pageId) ?: return@onIo
         val next = transform(page)
 
         // An edit that changes nothing writes nothing. The UI asks for these constantly — a tap
@@ -153,7 +175,7 @@ class WorkspaceWriter(
         // modified_at each time. That is not merely wasteful: modified_at is what the conflict
         // resolver arbitrates on, so a page that keeps claiming to be newer would start winning
         // against real edits made elsewhere, and the sync history would fill with empty diffs.
-        if (next.copy(modifiedAt = page.modifiedAt, device = page.device) == page) return
+        if (next.copy(modifiedAt = page.modifiedAt, device = page.device) == page) return@onIo
 
         store.writePage(next.copy(modifiedAt = Instant.ofEpochMilli(now()), device = device))
         refreshIndex(change)
@@ -166,7 +188,7 @@ class WorkspaceWriter(
 
     /** A page with no parent: a list, a group, a smart list. Its title lives in its own frontmatter. */
     suspend fun createTopLevel(type: String, title: String?, systemKey: String? = null): String =
-        mutex.withLock {
+        onIo {
             val id = newId()
             store.writePage(
                 PageDoc(
@@ -215,13 +237,13 @@ class WorkspaceWriter(
         title: String?,
         afterId: String? = null,
         indent: Int = 0,
-    ): String = mutex.withLock {
+    ): String = onIo {
         val id = if (type == NodeType.TASK || type == NodeType.INK) newId() else ""
         // A task is only a line until it holds something — this is the moment it earns a document.
         // Without this, the first block added to any task went nowhere at all: no page to load, no
         // write, no error, and a screen that looked dead to the touch.
         ensurePage(pageId)
-        val page = loadPage(pageId) ?: return@withLock ""
+        val page = loadPage(pageId) ?: return@onIo ""
         val block = blockOf(type, id, title.orEmpty(), indent)
         val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
         val blocks = page.blocks.toMutableList()
@@ -242,10 +264,10 @@ class WorkspaceWriter(
      * positional id changes the moment a line is inserted above.
      */
     suspend fun addEvent(pageId: String, event: EventRef, afterId: String? = null): String =
-        mutex.withLock {
+        onIo {
             val id = event.id.ifEmpty { newId() }
             ensurePage(pageId)
-            val page = loadPage(pageId) ?: return@withLock ""
+            val page = loadPage(pageId) ?: return@onIo ""
             val block = event.copy(id = id, raw = null)
             val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
             val blocks = page.blocks.toMutableList()
@@ -318,7 +340,7 @@ class WorkspaceWriter(
         // the only thing that has to be named here.
         val home = homePageOf(nodeId)
         if (home == null) {
-            mutex.withLock {
+            onIo {
                 store.deletePage(nodeId)
                 refreshIndex(Change.STRUCTURAL)
                 onChange(Change.STRUCTURAL)
@@ -341,7 +363,7 @@ class WorkspaceWriter(
                 blockIdOf(b, page.id, page.blocks, i) != nodeId
             })
         }
-        mutex.withLock {
+        onIo {
             store.deletePage(nodeId)
             // Both sidecars a block can own. An image left behind is worse than a stray stroke file:
             // it is a megabyte, it is committed, and nothing on any device refers to it again.
@@ -361,11 +383,11 @@ class WorkspaceWriter(
      * own files are deliberately left where they are — the caller copies them across first and
      * removes them afterwards, so a failure in the middle leaves two copies rather than none.
      */
-    suspend fun takeLine(nodeId: String): Block? = mutex.withLock {
-        val home = homePageOf(nodeId) ?: return@withLock null
-        val page = loadPage(home) ?: return@withLock null
+    suspend fun takeLine(nodeId: String): Block? = onIo {
+        val home = homePageOf(nodeId) ?: return@onIo null
+        val page = loadPage(home) ?: return@onIo null
         val line = page.blocks.firstOrNull { blockIdOf(it, page.id, page.blocks) == nodeId }
-            ?: return@withLock null
+            ?: return@onIo null
         store.writePage(
             page.copy(
                 blocks = page.blocks.filterNot { blockIdOf(it, page.id, page.blocks) == nodeId },
@@ -378,7 +400,7 @@ class WorkspaceWriter(
     }
 
     /** Puts a line at the end of a page, and points the page it owns at its new home. */
-    suspend fun putLine(block: Block, parentId: String, nodeId: String) = mutex.withLock {
+    suspend fun putLine(block: Block, parentId: String, nodeId: String) = onIo {
         ensurePage(parentId)
         loadPage(parentId)?.let { p ->
             store.writePage(
@@ -393,13 +415,13 @@ class WorkspaceWriter(
     }
 
     /** Removes a node's own files, after its line has been taken somewhere else. */
-    suspend fun dropFiles(nodeId: String) = mutex.withLock {
+    suspend fun dropFiles(nodeId: String) = onIo {
         store.deletePage(nodeId)
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.STRUCTURAL)
     }
 
-    suspend fun reparent(nodeId: String, newParent: String?) = mutex.withLock {
+    suspend fun reparent(nodeId: String, newParent: String?) = onIo {
         val old = homePageOf(nodeId)
         val page = loadPage(nodeId)
         var line: Block? = null
@@ -521,7 +543,7 @@ class WorkspaceWriter(
 
     /** A smart list is a page with no blocks; its rule lives beside it in the workspace meta. */
     suspend fun createSmartList(def: SmartListDef, title: String, systemKey: String? = null): String =
-        mutex.withLock {
+        onIo {
             val id = def.nodeId.ifEmpty { newId() }
             store.writePage(
                 PageDoc(
@@ -536,7 +558,7 @@ class WorkspaceWriter(
             id
         }
 
-    suspend fun updateSmartList(def: SmartListDef) = mutex.withLock {
+    suspend fun updateSmartList(def: SmartListDef) = onIo {
         store.writeSmartList(def)
         // Not deferred despite being an edit: changing a rule changes which tasks a list contains,
         // and that list is drawn from the index.
@@ -558,7 +580,7 @@ class WorkspaceWriter(
      * Structural: a chip vanishing from tasks on screen is exactly the kind of change a deferred
      * reindex would leave half-applied and looking broken.
      */
-    suspend fun deleteLabel(name: String): Int = mutex.withLock {
+    suspend fun deleteLabel(name: String): Int = onIo {
         val matches = { it: String -> it.equals(name, ignoreCase = true) }
         store.writeLabels(store.readLabels().filterNot { matches(it.name) })
 
@@ -587,7 +609,7 @@ class WorkspaceWriter(
     }
 
     /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
-    suspend fun upsertLabel(label: LabelDef) = mutex.withLock {
+    suspend fun upsertLabel(label: LabelDef) = onIo {
         val kept = store.readLabels().filterNot { it.id == label.id }
         store.writeLabels(kept + label)
         // A renamed or recoloured label is visible on every chip carrying it; deferring would leave
@@ -597,7 +619,7 @@ class WorkspaceWriter(
     }
 
     /** One line, appended. Never rewritten — that is what keeps two offline devices from colliding. */
-    suspend fun appendFocus(line: String, month: String) = mutex.withLock {
+    suspend fun appendFocus(line: String, month: String) = onIo {
         store.appendFocus(line, month)
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.EDIT)
@@ -612,7 +634,7 @@ class WorkspaceWriter(
      * the complete set, so no caller ever reads the current strokes and writes them back — which is
      * what lost strokes when several finished at once, each having read before any had written.
      */
-    suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = mutex.withLock {
+    suspend fun writeInk(nodeId: String, strokes: List<ByteArray>) = onIo {
         store.writeInk(nodeId, strokes)
         refreshIndex(Change.INK)
         onChange(Change.INK)
@@ -622,7 +644,7 @@ class WorkspaceWriter(
      * Puts a picture in the workspace. Written before the block that names it, so the file is never
      * referenced by a page that has already been indexed.
      */
-    suspend fun writeImage(id: String, bytes: ByteArray) = mutex.withLock {
+    suspend fun writeImage(id: String, bytes: ByteArray) = onIo {
         store.writeImage(id, bytes)
         // Committed like ink: a binary blob that arrives occasionally and is worth its own commit
         // rather than being batched behind a burst of typing.
@@ -645,7 +667,7 @@ class WorkspaceWriter(
      * A finished task whose subtasks are *not* finished stays put. Archiving it would take its
      * children out of the working set with it, and unfinished work must never leave by accident.
      */
-    suspend fun archiveFinished(before: java.time.LocalDate): Int = mutex.withLock {
+    suspend fun archiveFinished(before: java.time.LocalDate): Int = onIo {
         var moved = 0
         store.readPages().forEach { page ->
             val leaving = page.blocks.filterIsInstance<TaskRef>().filter { t ->
@@ -682,15 +704,15 @@ class WorkspaceWriter(
      * Finishing something is not the same as being finished with it, so this exists and is not a
      * convenience: an archive you cannot come back from is a delete with a longer name.
      */
-    suspend fun restoreArchived(pageId: String, taskIds: Set<String>): Int = mutex.withLock {
+    suspend fun restoreArchived(pageId: String, taskIds: Set<String>): Int = onIo {
         val archived = store.readArchivedLines(pageId)
-        if (archived.isEmpty()) return@withLock 0
+        if (archived.isEmpty()) return@onIo 0
 
         val decoded = archived.map { it to PageCodec.decodeBlock(it) }
         val coming = decoded.filter { (_, b) -> b is TaskRef && b.id in taskIds }
-        if (coming.isEmpty()) return@withLock 0
+        if (coming.isEmpty()) return@onIo 0
 
-        val page = loadPage(pageId) ?: return@withLock 0
+        val page = loadPage(pageId) ?: return@onIo 0
         store.writePage(
             page.copy(
                 blocks = page.blocks + coming.map { it.second },
