@@ -32,7 +32,9 @@ import ie.shoonya.yantra.data.format.Numbered
 import ie.shoonya.yantra.data.format.Prose
 import ie.shoonya.yantra.data.format.TaskRef
 import ie.shoonya.yantra.data.format.TaskStatus
+import ie.shoonya.yantra.data.workspace.WorkspaceReconciler
 import ie.shoonya.yantra.data.workspace.Workspaces
+import ie.shoonya.yantra.Trace
 import ie.shoonya.yantra.data.sync.Change
 import ie.shoonya.yantra.data.workspace.LabelDef
 import ie.shoonya.yantra.data.workspace.SmartListDef
@@ -614,7 +616,7 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
         val trimmed = name.trim()
         dao.byName(trimmed)?.let { return it }
         val store = ws.primaryStore()
-        val id = "${store.id}:label:${trimmed.lowercase()}"
+        val id = WorkspaceReconciler.idFor(store.id, trimmed)
         ws.primary().upsertLabel(
             LabelDef(id = id, name = trimmed, color = color ?: LabelPalette.defaultFor(trimmed))
         )
@@ -655,10 +657,33 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
         return ws.all.sumOf { store -> ws.writer(store.id)?.deleteLabel(name) ?: 0 }
     }
 
-    /** Recolour a label. Null clears it back to the neutral chip. */
+    /**
+     * Recolour a label. Null clears it back to the neutral chip.
+     *
+     * **Into the workspace that owns the label, not into whichever one happens to be first.**
+     *
+     * This wrote through `primary()` whatever it was recolouring, so picking a colour for a tag on
+     * a task in another repo put *that repo's* label id into Personal's registry. Rebuilding
+     * Personal then read it as Personal's own definition of that name — and `label`'s primary key
+     * is the id, its insert is REPLACE, and `node_label` cascades from `label`. The real row was
+     * deleted to make room and every attachment of the tag went with it, in a repo that had not
+     * changed and so was not going to be rebuilt. On the phone: tap a swatch, and the tag is off
+     * the task, staying off until the next cold start rebuilds from the files. Nothing was ever
+     * lost — the tag is a word on a line in the page, and the page was never touched — but a chip
+     * that vanishes when you recolour it is indistinguishable from one that was.
+     *
+     * The id names its owner, which is the one part of a label row nobody else's file can rewrite.
+     * A workspace this device has not opened cannot be written to at all, so the colour is refused
+     * out loud rather than redirected somewhere it would do harm.
+     */
     suspend fun setColor(labelId: String, color: Long?) {
         val existing = dao.allOnce().firstOrNull { it.id == labelId } ?: return
-        ws.primary().upsertLabel(LabelDef(id = labelId, name = existing.name, color = color))
+        val owner = WorkspaceReconciler.ownerOf(labelId) ?: existing.workspaceId
+        val writer = ws.writer(owner) ?: run {
+            Trace.warn("label", "cannot recolour ${Trace.id(labelId)}: its workspace is not open")
+            return
+        }
+        writer.upsertLabel(LabelDef(id = labelId, name = existing.name, color = color))
     }
 
 }

@@ -358,15 +358,27 @@ object WorkspaceReconciler {
     ): Map<String, LabelEntity> {
         val byName = LinkedHashMap<String, LabelEntity>()
         store.readLabels().forEach {
-            byName[it.name.lowercase()] = LabelEntity(it.id, ws, it.name, it.color, now, now)
+            val key = it.name.lowercase()
+            // **The id comes from the workspace and the name, never from the file.**
+            //
+            // The registry entry is a colour for a tag; the id written beside it is a cache of
+            // this expression and nothing more. Honouring it let a *foreign* id into this
+            // workspace's rows — and `label`'s primary key is the id, its insert is REPLACE, and
+            // `node_label` cascades from it. So a v2-tasks label id sitting in Personal's registry
+            // meant rebuilding Personal deleted the real v2-tasks row and took every attachment of
+            // that tag with it, in a repo that had not changed and so was not going to be rebuilt.
+            // One tap on a colour swatch and the tag was off the task until the next cold start.
+            //
+            // `LabelRepository.setColor` is what put it there and no longer does. This is the
+            // floor under it: a file cannot name a row outside the workspace it belongs to, so no
+            // future writer can reopen the hole, and files already poisoned heal on the next read.
+            byName[key] = LabelEntity(idFor(ws, key), ws, it.name, it.color, now, now)
         }
         links.forEach { link ->
             val key = link.name.lowercase()
             if (key !in byName) {
                 byName[key] = LabelEntity(
-                    // Scoped: two repos may both use #sync without meaning one tag, and an
-                    // unscoped id would silently merge them into the same row.
-                    id = "$ws:label:$key",
+                    id = idFor(ws, key),
                     workspaceId = ws,
                     name = link.name,
                     color = LabelPalette.defaultFor(link.name),
@@ -376,4 +388,26 @@ object WorkspaceReconciler {
         }
         return byName
     }
+
+    /**
+     * What a label is called by, in one place.
+     *
+     * Scoped to the workspace: two repos may both use `#sync` without meaning one tag, and an
+     * unscoped id would silently merge them into the same row. Shared with
+     * `LabelRepository.getOrCreate`, which mints the same id when it registers a colour — they have
+     * to agree, or a recolour writes a definition the reindex will not recognise as the same label.
+     */
+    fun idFor(workspaceId: String, name: String) = "$workspaceId$LABEL_MARK${name.lowercase()}"
+
+    /**
+     * The workspace a label id belongs to, or null if it is not one of ours.
+     *
+     * The inverse of [idFor], and the reason a recolour can find its way home: `workspace_id` on the
+     * row is derived and can be rewritten by whichever workspace was indexed last, but the id is
+     * minted once and carries its owner with it.
+     */
+    fun ownerOf(labelId: String): String? =
+        if (LABEL_MARK in labelId) labelId.substringBefore(LABEL_MARK) else null
+
+    private const val LABEL_MARK = ":label:"
 }

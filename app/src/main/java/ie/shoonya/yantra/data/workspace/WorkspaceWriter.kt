@@ -588,7 +588,15 @@ class WorkspaceWriter(
 
     /** The label registry is the workspace's, so a tag typed on one device is the same on another. */
     suspend fun upsertLabel(label: LabelDef) = mutex.withLock {
-        val kept = store.readLabels().filterNot { it.id == label.id }
+        // By name as well as by id. One workspace cannot hold two definitions of one tag — the
+        // index keys them by name and would drop one anyway — and a registry that carries both has
+        // no way to say which colour it means. Files written before `LabelRepository.setColor`
+        // learned to write to the workspace that owns the label have exactly that shape, so they
+        // are tidied the first time anything here writes rather than being left to keep losing the
+        // argument differently on each rebuild.
+        val kept = store.readLabels().filterNot {
+            it.id == label.id || it.name.equals(label.name, ignoreCase = true)
+        }
         store.writeLabels(kept + label)
         // A renamed or recoloured label is visible on every chip carrying it; deferring would leave
         // the old colour on screen for no reason anyone could see.
