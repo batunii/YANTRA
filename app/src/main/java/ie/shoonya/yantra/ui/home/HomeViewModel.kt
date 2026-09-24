@@ -169,15 +169,35 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Quick-capture a task from the cog: drop it in the Inbox, then open that list. */
     /**
-     * Who a typed `@` may name on Home.
+     * Who a typed `@` may name on Home — everyone, across every open repository.
      *
-     * Home captures into the Inbox, which is Personal's, so this is Personal's roster — not a union
-     * across repos. Offering a shared project's collaborators on a line that is about to land in
-     * your own workspace is exactly the mix-up the scoped query exists to prevent.
+     * This was Personal's roster alone, on the reasoning that Home captures into Personal's Inbox
+     * and offering a shared project's collaborators on a line landing in your own workspace is a
+     * mix-up. The reasoning was sound about *where the task lands* and wrong about what the person
+     * typing is doing: quick capture is where you write down "ask Sai about the deck" the moment it
+     * is said, and being unable to name Sai there means retyping the whole line somewhere else
+     * later. A capture bar that cannot say who a thing is for is a capture bar you stop using.
+     *
+     * The mix-up it was guarding against is already caught downstream and said out loud: a task
+     * assigned to somebody without access to the list it sits in is shown as exactly that. So the
+     * check moved from "you may not type this" to "here is what is true about what you typed",
+     * which is the better of the two — one of them loses the thought, the other keeps it and tells
+     * you what to fix.
+     *
+     * Ordered with Personal's roster first, because Home's Inbox is Personal's and the common case
+     * should be the one nearest the top of the list.
      */
     val assignable: StateFlow<List<String>> =
-        flow { emit(container.people.loginsFor("")) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        flow {
+            emit(
+                ie.shoonya.yantra.data.people.assignableLogins(
+                    personal = container.people.loginsFor(""),
+                    shared = container.openWorkspaces()
+                        .filter { it.id.isNotEmpty() }
+                        .map { container.people.loginsFor(it.id) },
+                )
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     suspend fun linkTargets(query: String) = container.nodes.searchLinkTargets(query)
 
