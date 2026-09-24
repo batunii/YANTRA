@@ -60,7 +60,7 @@ object PageCodec {
             i++ // closing fence
         }
 
-        val known = setOf("id", "type", "parent", "title", "system_key", "icon", "color", "modified_at", "device")
+        val known = setOf("id", "type", "parent", "title", "system_key", "icon", "color", "pinned", "modified_at", "device")
         val blocks = ArrayList<Block>()
         while (i < lines.size) {
             val line = lines[i]
@@ -80,6 +80,10 @@ object PageCodec {
             systemKey = front["system_key"]?.takeIf { it.isNotBlank() },
             icon = front["icon"]?.takeIf { it.isNotBlank() },
             color = front["color"]?.takeIf { it.isNotBlank() },
+            // Only "true"/"false" count. Anything else is a file somebody edited by hand into a
+            // state this build does not understand, and the old rule is a better answer than a
+            // guess.
+            pinned = front["pinned"]?.lowercase()?.let { if (it == "true") true else if (it == "false") false else null },
             modifiedAt = front["modified_at"]?.let { runCatching { Instant.parse(it) }.getOrNull() }
                 ?: Instant.EPOCH,
             device = front["device"]?.takeIf { it.isNotBlank() },
@@ -502,6 +506,7 @@ object PageCodec {
         page.systemKey?.let { append("system_key: ").append(it).append('\n') }
         page.icon?.let { append("icon: ").append(it).append('\n') }
         page.color?.let { append("color: ").append(it).append('\n') }
+        page.pinned?.let { append("pinned: ").append(it).append('\n') }
         append("modified_at: ").append(page.modifiedAt).append('\n')
         page.device?.let { append("device: ").append(it).append('\n') }
         page.unknownKeys.forEach { (k, v) -> append(k).append(": ").append(v).append('\n') }

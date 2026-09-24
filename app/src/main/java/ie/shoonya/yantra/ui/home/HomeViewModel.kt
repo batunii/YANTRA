@@ -232,6 +232,11 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     val defaultWorkspaceId: String
         get() = workspaces.firstOrNull { it.id.isEmpty() }?.id ?: workspaces.firstOrNull()?.id ?: ""
 
+    /** Puts a list at the top of Home, or takes it off the top. */
+    fun setPinned(listId: String, pinned: Boolean) {
+        viewModelScope.launch { nodes.setPinned(listId, pinned) }
+    }
+
     /** The colour a list wears, or null to take it off — the colour law, as remade. */
     fun setListColor(listId: String, color: String?) {
         viewModelScope.launch { container.nodes.setListColor(listId, color) }

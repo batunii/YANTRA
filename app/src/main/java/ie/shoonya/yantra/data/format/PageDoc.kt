@@ -64,6 +64,15 @@ data class PageDoc(
      * Last in the list, because PageDoc is built positionally in places.
      */
     val color: String? = null,
+    /**
+     * Whether this list sits at the top of Home, or `null` when the file has never said.
+     *
+     * Nullable rather than defaulting to false, because "never said" and "said no" have to be told
+     * apart: every list written before pinning existed says nothing, and the section used to be
+     * "every ungrouped smart list". Reading absence as *false* would have emptied Home's Pinned
+     * section for everybody on upgrade. Absence means the old rule; a value means somebody chose.
+     */
+    val pinned: Boolean? = null,
 )
 
 /** How a task line renders its glyph. Mirrors `done` + `in_progress`, which are never both set. */
