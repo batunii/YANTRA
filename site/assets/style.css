@@ -596,3 +596,10 @@ section[id] { scroll-margin-top: 64px; }
 /* The code block is the one thing on the page allowed its own sideways scroll — wrapping a file
  * changes what the file says. The page itself still never scrolls sideways. */
 .file code { background: none; border: 0; padding: 0; font-size: inherit; white-space: pre; }
+
+/* A second heading inside a section, for the half of an idea that follows the first. */
+h3.sub {
+  font-size: 1.28rem;
+  margin: 40px 0 10px;
+  letter-spacing: -0.015em;
+}

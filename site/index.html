@@ -190,6 +190,74 @@ device: demo
     line. <code>[~]</code> is in progress. <code>@</code> is an event. Nothing here needs Yantra to
     be readable.
   </p>
+
+  <h3 class="sub">And the first line of it is a page too.</h3>
+  <p>
+    <code>^demo-chapter</code> above is a task. It is also a file. Open the task and you are in it,
+    and what you write there can be prose, a drawing, or more tasks — which have pages of their own,
+    as far down as the work actually goes. A subtask here is not a lesser kind of thing with fewer
+    rights: it is a task, with its own due date, its own notes and its own inside.
+  </p>
+  <figure class="file">
+    <figcaption>workspaces/local/pages/deep-work-chapter.md</figcaption>
+    <pre><code>---
+id: demo-chapter
+type: task
+parent: demo-writing
+modified_at: 2026-09-24T00:06:55.299Z
+device: demo
+---
+The arbitration only has to be right for one person on several devices.
+
+Start from what the merge already does, then say what it should have asked first.
+
+- [ ] Re-read WorkspaceLinker ^demo-11
+- [x] Write the adopt / push / ask table ^demo-12 done:2026-09-24
+
+![[ink:demo-ink]]</code></pre>
+  </figure>
+  <p class="tight">
+    <code>parent:</code> is the line it came from. That is the whole of the nesting: a task that
+    holds work is a page, and a page is a file.
+  </p>
+</section>
+
+<!-- --------------------------------------------------------------------------- somebody else's day -->
+
+<section class="wrap" id="meetings">
+  <p class="section-label">Other people's meetings</p>
+  <h2>Their meeting, your page.</h2>
+  <p>
+    A meeting in your device calendar belongs to whoever sent it. You cannot make it yours, and a
+    calendar you can only look at is a calendar you cannot prepare for. Tap one in Yantra and it
+    makes you a page for it — in your inbox, holding a reference to the original — so the notes and
+    the tasks you put on it are yours. Tap the same meeting tomorrow and it is the same page, with
+    what you wrote still on it.
+  </p>
+  <p class="tight">
+    A repeating meeting gets a page per occurrence rather than one page for every Monday, because a
+    page about this Monday is not a page about all of them.
+  </p>
+</section>
+
+<!-- ----------------------------------------------------------------------------- sharing the work -->
+
+<section class="wrap" id="sharing">
+  <p class="section-label">Working with someone</p>
+  <h2>Sharing a list is sharing a repository.</h2>
+  <p>
+    There is no invite flow to learn, because there is nothing of ours to join. A workspace
+    <em>is</em> a git repository, so you share one the way you share code: add them as a collaborator
+    on GitHub. They point Yantra at the same repository and both devices are working on the same
+    files.
+  </p>
+  <p class="tight">
+    Assignment then works off that repository's own roster. <code>@</code> offers the people
+    actually on the repo rather than a free text field, because a task assigned to somebody who
+    cannot see the repository is a task nobody will ever be shown — and the app knows who can see it
+    at the moment of the tap. Their changes arrive the way code does: as commits, rebased and
+    arbitrated.
+  </p>
 </section>
 
 <!-- ----------------------------------------------------------------------------------- the data -->
@@ -215,8 +283,9 @@ device: demo
   <p class="section-label">Deliberately not done</p>
   <h2>Things it does not do, on purpose.</h2>
   <ul class="not-doing">
-    <li><b>No collaborators.</b> The conflict arbitration exists for one person on several devices.
-        Multi-user anything is out of scope, not merely unbuilt.</li>
+    <li><b>Not built for a team editing at once.</b> You can share a repository and assign work on
+        it, but the conflict arbitration was written for one person on several devices. Two people
+        editing the same line at the same moment is not a case it claims to be good at.</li>
     <li><b>No arbitrary filter editor.</b> Smart lists are created from the builder's templates. The
         underlying JSON model supports more than the interface offers, and that is the intended
         trade.</li>
