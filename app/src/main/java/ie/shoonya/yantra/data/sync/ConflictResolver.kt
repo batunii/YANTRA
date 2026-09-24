@@ -102,32 +102,69 @@ object ConflictResolver {
         val l = decode(local) ?: return null
         val r = decode(remote) ?: return null
 
-        val localNewer = l.modifiedAt >= r.modifiedAt
+        // **Which side comes first, decided from the pages and never from which one is "local".**
+        //
+        // Every choice below is made with this one value, and that is the point. `local` and
+        // `remote` are opposite labels on the two machines — my local is your remote — so a rule
+        // phrased in those terms answers differently on each, and two devices that resolve the same
+        // conflict differently have not merged anything: they have made a new conflict, and they
+        // will make it again on the next pull, forever.
+        //
+        // `modified_at` decides it, and a tie falls to the device name, which is a fact about the
+        // pages rather than about who is asking. It replaced a `>=` on the timestamps alone: that
+        // is fine while the stamps differ and silently picks *your own side* when they do not, so
+        // two saves in the same millisecond — which is exactly what an offline pair syncing on
+        // reconnection produces — left each device keeping its own block and its own frontmatter.
+        val localFirst = when {
+            l.modifiedAt != r.modifiedAt -> l.modifiedAt > r.modifiedAt
+            else -> l.device.orEmpty() >= r.device.orEmpty()
+        }
         val bk = keyed(b.blocks)
         val lk = keyed(l.blocks)
         val rk = keyed(r.blocks)
 
-        val order = lk.keys.toMutableList()
-        rk.keys.forEach { if (it !in lk) order += it }
+        // The order the blocks come out in is decided the same way everything else here is, because
+        // it has to be. Walking the local side first and appending what only the remote has reads
+        // naturally and is wrong for the same reason "keep mine" is wrong: I walk my page first and
+        // you walk yours, so my new subtask lands above yours and yours lands above mine. Same
+        // blocks, different bytes, and the merge is a conflict again on the next pull.
+        val (lead, follow) = if (localFirst) lk.keys to rk.keys else rk.keys to lk.keys
+        val order = lead.toMutableList()
+        follow.forEach { if (it !in lead) order += it }
 
-        val merged = order.mapNotNull { key ->
+        val merged = order.flatMap { key ->
             val bb = bk[key]
             val ll = lk[key]
             val rr = rk[key]
             when {
-                ll == null && rr == null -> null
+                ll == null && rr == null -> emptyList()
                 // A side dropping a block only wins if the other side left it alone. An edit
                 // always outlives a delete.
-                ll == null -> if (rr == bb) null else rr
-                rr == null -> if (ll == bb) null else ll
-                ll == rr -> ll
-                bb == ll -> rr          // only the remote touched it
-                bb == rr -> ll          // only the local touched it
-                else -> if (localNewer) ll else rr   // both did; someone has to lose
+                ll == null -> if (rr == bb) emptyList() else listOfNotNull(rr)
+                rr == null -> if (ll == bb) emptyList() else listOfNotNull(ll)
+                ll == rr -> listOfNotNull(ll)
+                bb == ll -> listOfNotNull(rr)          // only the remote touched it
+                bb == rr -> listOfNotNull(ll)          // only the local touched it
+
+                // **Both added something here. That is two additions, not a disagreement.**
+                //
+                // A block with no id of its own — prose, a heading, a bullet — is keyed by kind and
+                // position, so a paragraph you wrote and a paragraph somebody else wrote land on
+                // the same key without being the same block. The base has neither, and that is
+                // exactly what tells this apart from an edit: nothing was changed, two things were
+                // written. Last-writer-wins then threw one away silently, with the only trace in a
+                // git history nobody was going to read.
+                //
+                // Two notes on one task is the ordinary case for two people working on it, so both
+                // are kept.
+                bb == null -> if (localFirst) listOfNotNull(ll, rr) else listOfNotNull(rr, ll)
+
+                // Both edited the *same* block; someone still has to lose.
+                else -> listOfNotNull(if (localFirst) ll else rr)
             }
         }
 
-        val header = if (localNewer) l else r
+        val header = if (localFirst) l else r
         return PageCodec.encode(
             header.copy(blocks = merged.map { stripRaw(it) })
         ).toByteArray()
