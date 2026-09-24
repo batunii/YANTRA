@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.workspace
 
 import ie.shoonya.yantra.data.db.AppDatabase
+import ie.shoonya.yantra.Trace
 import java.io.File
 
 /**
@@ -121,11 +122,25 @@ class Workspaces(
         val sourceWriter = writers[from] ?: return
         val destWriter = writers[to] ?: return
 
+        // **Written there before it is taken from here.**
+        //
+        // The order used to be: copy the files, take the line out of the source, put it on the
+        // destination, delete the source files. The note above it claimed a failure in the middle
+        // leaves two copies rather than none, and that is true of a node with a *page* — `adopt`
+        // copies those first. It is not true of a node that is only a line, and a meeting tapped
+        // off a calendar is exactly that: `adopt` copies nothing, the take deletes the only copy,
+        // and anything stopping the put loses it outright. One did — an event node made at 21:30
+        // was in neither list by 21:43.
+        //
+        // Now the copy lands first and the original goes only once it has. A failure in the middle
+        // leaves a duplicate, which is something a person can delete.
         dest.adopt(source, nodeId)
-        // Null only if the line is not where the index says it is, which is a workspace already
-        // disagreeing with itself. The copy above is then a harmless orphan rather than a deletion.
-        val line = sourceWriter.takeLine(nodeId) ?: return
-        destWriter.putLine(line, newParent, nodeId)
+        val line = sourceWriter.peekLine(nodeId)
+            ?: return Trace.warn("move", "no line for ${Trace.id(nodeId)}; nothing moved")
+        if (!destWriter.putLine(line, newParent, nodeId)) {
+            return Trace.warn("move", "could not write into ${Trace.id(newParent)}; left it where it was")
+        }
+        sourceWriter.dropLine(nodeId)
         sourceWriter.dropFiles(nodeId)
     }
 

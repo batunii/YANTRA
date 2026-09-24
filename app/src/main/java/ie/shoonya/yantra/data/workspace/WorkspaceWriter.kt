@@ -383,11 +383,25 @@ class WorkspaceWriter(
      * own files are deliberately left where they are — the caller copies them across first and
      * removes them afterwards, so a failure in the middle leaves two copies rather than none.
      */
-    suspend fun takeLine(nodeId: String): Block? = onIo {
+    /**
+     * The line as it reads, without touching it.
+     *
+     * Split from [dropLine] so a move can write the copy **before** destroying the original. Taking
+     * and returning in one step meant the only copy of a line lived in a local variable between two
+     * file writes, and a node that is nothing but a line — which every meeting tapped off a
+     * calendar is — had nowhere else to be. See [Workspaces.moveAcross].
+     */
+    suspend fun peekLine(nodeId: String): Block? = onIo {
         val home = homePageOf(nodeId) ?: return@onIo null
         val page = loadPage(home) ?: return@onIo null
-        val line = page.blocks.firstOrNull { blockIdOf(it, page.id, page.blocks) == nodeId }
-            ?: return@onIo null
+        page.blocks.firstOrNull { blockIdOf(it, page.id, page.blocks) == nodeId }
+    }
+
+    /** Removes the line, once somebody else holds a copy. True when there was one to remove. */
+    suspend fun dropLine(nodeId: String): Boolean = onIo {
+        val home = homePageOf(nodeId) ?: return@onIo false
+        val page = loadPage(home) ?: return@onIo false
+        if (page.blocks.none { blockIdOf(it, page.id, page.blocks) == nodeId }) return@onIo false
         store.writePage(
             page.copy(
                 blocks = page.blocks.filterNot { blockIdOf(it, page.id, page.blocks) == nodeId },
@@ -396,22 +410,33 @@ class WorkspaceWriter(
         )
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.STRUCTURAL)
-        line
+        true
     }
 
     /** Puts a line at the end of a page, and points the page it owns at its new home. */
-    suspend fun putLine(block: Block, parentId: String, nodeId: String) = onIo {
+    /**
+     * Writes the line onto a page here. **False when it did not land**, which the caller has to
+     * know before removing the original.
+     *
+     * It used to return nothing and swallow the case: `loadPage(parentId)?.let { … }` quietly did
+     * nothing when the destination could not be read, and the caller — having already taken the
+     * line out of the source — carried on to delete the files.
+     */
+    suspend fun putLine(block: Block, parentId: String, nodeId: String): Boolean = onIo {
         ensurePage(parentId)
-        loadPage(parentId)?.let { p ->
-            store.writePage(
-                p.copy(blocks = p.blocks + block, modifiedAt = Instant.ofEpochMilli(now()), device = device)
+        val target = loadPage(parentId) ?: return@onIo false
+        store.writePage(
+            target.copy(
+                blocks = target.blocks + block,
+                modifiedAt = Instant.ofEpochMilli(now()), device = device,
             )
-        }
+        )
         loadPage(nodeId)?.let {
             store.writePage(it.copy(parent = parentId, modifiedAt = Instant.ofEpochMilli(now()), device = device))
         }
         refreshIndex(Change.STRUCTURAL)
         onChange(Change.STRUCTURAL)
+        true
     }
 
     /** Removes a node's own files, after its line has been taken somewhere else. */
