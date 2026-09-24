@@ -77,6 +77,18 @@ object Diagnostics {
             }
             previous?.uncaughtException(thread, error)
         }
+
+        // A freeze leaves no exception, so nothing above would ever fire for one — and a freeze is
+        // what a person actually reports. See [MainThreadWatchdog].
+        runCatching {
+            MainThreadWatchdog { stuckMs, stack ->
+                record(
+                    'E', "watchdog",
+                    "main thread has not answered for ${stuckMs}ms",
+                )
+                append(stack.joinToString("\n") { "\tat $it" } + "\n")
+            }.start()
+        }
     }
 
     /** One line, in the same shape [Trace] prints to logcat. */
