@@ -173,6 +173,36 @@ object PageCodec {
      * A left-to-right scan would have to guess, and would guess wrong on anything containing a hash
      * or an at-sign, which is most of how people write.
      */
+    /**
+     * Where a task line's title ends and its trailing tokens begin.
+     *
+     * For a field that is being typed into, so it can show that `@sai` at the end of a line is
+     * about to *stop being part of the title*. The same argument capture makes in the quick-add
+     * bar: "buy milk tomorrow" quietly losing its last word is alarming, and a word tinted as you
+     * type says what became of it while it can still be edited away.
+     *
+     * Answered by running [parseTask] and measuring the title it kept, rather than by a second
+     * scanner that agrees with it today. The right-to-left rule has edge cases worth having only
+     * once — `Buy #2 pencils` tags nothing, a word carrying `]]` is never a token — and a highlight
+     * that draws a different boundary from the parser is worse than no highlight, because it
+     * promises the wrong thing confidently.
+     *
+     * Returns the body's length when nothing trails, so the caller's range is simply empty.
+     */
+    fun tokenStart(body: String): Int {
+        val lead = body.length - body.trimStart().length
+        val title = parseTask(body, TaskStatus.OPEN, 0, body).title
+        // The title is the surviving words joined by single spaces, and the scan only ever drops
+        // from the right — so it is a literal prefix of the trimmed body, and its length is the
+        // boundary. Nothing is re-derived from the token text.
+        //
+        // Past the separating space, so the run starts at the `@` rather than at the gap before it.
+        // A highlight that begins on whitespace reads as a stray indent, not as a mark on a word.
+        var at = (lead + title.length).coerceAtMost(body.length)
+        while (at < body.length && body[at] == ' ') at++
+        return at
+    }
+
     private fun parseTask(body: String, status: TaskStatus, indent: Int, raw: String): TaskRef {
         val words = body.trim().split(" ").toMutableList()
         var id = ""
