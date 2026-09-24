@@ -1,0 +1,546 @@
+/* Yantra — the website.
+ *
+ * Every colour here is a token from DESIGN.md, which is the app's palette of record: one warm
+ * neutral at hue 80 with chroma under 0.01 for the grounds, and coral as the accent. Nothing is
+ * picked to look nice on a web page; if a colour is not in the app, it is not here.
+ */
+
+:root {
+  /* Grounds — DESIGN.md 4.1, light column. */
+  --page: oklch(0.972 0.006 80);
+  --surface: oklch(0.995 0.003 80);
+  --surface-high: oklch(0.958 0.007 80);
+  --rail: oklch(0.935 0.007 80);
+
+  /* Text inks — DESIGN.md 4.2, light column. */
+  --ink: oklch(0.26 0.012 80);
+  --secondary: oklch(0.44 0.011 80);
+  --muted: oklch(0.545 0.010 80);
+  --dim: oklch(0.655 0.009 80);
+
+  /* Fixed inks — DESIGN.md 4.3. Coral is the default accent. */
+  --accent: #D85A30;
+  --crimson: #A32D2D;
+  --amber: #BA7517;
+
+  /* Hairline = primary @ 8.5%, tile border = primary @ 10.5% — DESIGN.md 4.2. */
+  --hairline: oklch(0.26 0.012 80 / 0.085);
+  --border: oklch(0.26 0.012 80 / 0.105);
+  /* accentFill = accent @ 12% light / 15% dark — DESIGN.md 4.5. */
+  --accent-fill: rgb(216 90 48 / 0.12);
+
+  --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --text: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --margin: 20px;
+  --radius: 14px;
+  --measure: 34rem;
+}
+
+/* Dark is the app's own dark column, not a filter over the light one. The app ships forced dark on
+ * iOS (UIUserInterfaceStyle), so dark is the mode the screenshots are in. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: oklch(0.171 0.005 80);
+    --surface: oklch(0.216 0.007 80);
+    --surface-high: oklch(0.257 0.009 80);
+    --rail: oklch(0.137 0.005 80);
+    --ink: oklch(0.948 0.005 80);
+    --secondary: oklch(0.735 0.008 80);
+    --muted: oklch(0.638 0.009 80);
+    --dim: oklch(0.510 0.010 80);
+    --accent: #E8865F;
+    --crimson: #E24B4A;
+    --amber: #EF9F27;
+    --hairline: oklch(0.948 0.005 80 / 0.085);
+    --border: oklch(0.948 0.005 80 / 0.105);
+    --accent-fill: rgb(232 134 95 / 0.15);
+  }
+}
+
+:root[data-theme="dark"] {
+  --page: oklch(0.171 0.005 80);
+  --surface: oklch(0.216 0.007 80);
+  --surface-high: oklch(0.257 0.009 80);
+  --rail: oklch(0.137 0.005 80);
+  --ink: oklch(0.948 0.005 80);
+  --secondary: oklch(0.735 0.008 80);
+  --muted: oklch(0.638 0.009 80);
+  --dim: oklch(0.510 0.010 80);
+  --accent: #E8865F;
+  --crimson: #E24B4A;
+  --amber: #EF9F27;
+  --hairline: oklch(0.948 0.005 80 / 0.085);
+  --border: oklch(0.948 0.005 80 / 0.105);
+  --accent-fill: rgb(232 134 95 / 0.15);
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("fonts/bricolage_grotesque.ttf") format("truetype");
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space_grotesk.ttf") format("truetype");
+  font-weight: 300 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Mono";
+  src: url("fonts/space_mono_regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Mono";
+  src: url("fonts/space_mono_bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--text);
+  font-size: 17px;
+  line-height: 1.55;
+  /* No horizontal scroll at any width. */
+  overflow-x: hidden;
+}
+
+a { color: var(--accent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.wrap {
+  width: min(100% - var(--margin) * 2, 68rem);
+  margin-inline: auto;
+}
+
+/* ------------------------------------------------------------------ the mark, and the top bar */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px var(--margin);
+  background: color-mix(in oklab, var(--page) 86%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.topbar .mark { width: 22px; height: 22px; color: var(--accent); }
+.topbar .name { font-family: var(--display); font-weight: 700; letter-spacing: -0.01em; }
+.topbar .spacer { flex: 1; }
+.topbar a { color: var(--secondary); text-decoration: none; font-size: 14.5px; }
+.topbar a:hover { color: var(--ink); }
+
+/* ------------------------------------------------------------------------------------- the hero */
+
+.hero {
+  position: relative;
+  /* About two and a half screens of pin. */
+  height: 250vh;
+}
+
+.hero-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The words sit over the scene and never wait for it. */
+.hero-words {
+  position: relative;
+  z-index: 2;
+  /* At the top on a phone, where the scene sits below them rather than behind them. */
+  align-self: start;
+  padding-top: 7vh;
+  padding: 0 var(--margin);
+  width: min(100% - var(--margin) * 2, 68rem);
+  margin-inline: auto;
+  pointer-events: none;
+}
+
+.hero-words > * { pointer-events: auto; }
+
+@media (min-width: 900px) {
+  .hero-words { align-self: center; padding-top: 0; }
+  /* The words keep the page's left margin and stop short of the scene, rather than being centred
+   * in a narrower box — a centred column drifts right and meets the picture in the middle. */
+  .hero h1 { max-width: 11ch; }
+  .hero .lede { max-width: 30ch; }
+  .hero .keys { max-width: 30ch; }
+}
+
+.hero h1 {
+  font-family: var(--display);
+  font-size: clamp(2.2rem, 5.4vw, 3.7rem);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+  max-width: 16ch;
+}
+
+.hero .lede {
+  font-size: clamp(1rem, 2.4vw, 1.2rem);
+  color: var(--secondary);
+  max-width: 38ch;
+  margin: 0 0 1.5rem;
+}
+
+.keys { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 17px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  background: var(--surface);
+  min-height: 44px;
+}
+
+.key.primary {
+  background: var(--accent-fill);
+  border-color: color-mix(in oklab, var(--accent) 44%, transparent);
+  color: var(--accent);
+}
+
+.key:hover { border-color: color-mix(in oklab, var(--accent) 44%, transparent); }
+
+.hero-caption {
+  position: relative;
+  z-index: 2;
+  padding: 0 var(--margin) 42px;
+  width: min(100% - var(--margin) * 2, 68rem);
+  margin-inline: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  min-height: 3.6em;
+}
+
+.hero-caption b { color: var(--ink); font-weight: 700; }
+
+/* ------------------------------------------------------------------------------------ sections */
+
+section { padding: 88px 0; }
+
+.section-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+h2 {
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 3.6vw, 2.3rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  max-width: 22ch;
+}
+
+h3 {
+  font-family: var(--display);
+  font-size: 1.12rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+p { max-width: var(--measure); color: var(--secondary); }
+p.tight { margin-top: 0; }
+
+/* ------------------------------------------------- the scrolled moments, beside a sticky device */
+
+.moments {
+  display: grid;
+  grid-template-columns: 1fr minmax(260px, 340px);
+  gap: 56px;
+  align-items: start;
+}
+
+.moment {
+  min-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: 20px;
+}
+
+.device-rail { position: sticky; top: 14vh; }
+
+.device {
+  width: 100%;
+  aspect-ratio: 1206 / 2622;
+  border-radius: 34px;
+  border: 1px solid var(--border);
+  background: var(--rail);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 18px 50px oklch(0 0 0 / 0.18);
+}
+
+.device img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.device img.on { opacity: 1; }
+
+.device-note {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--dim);
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* --------------------------------------------------------------------------------------- cards */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 26px;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px;
+}
+
+.card p { font-size: 15px; margin: 0; color: var(--muted); }
+
+.not-doing li {
+  color: var(--secondary);
+  margin-bottom: 10px;
+  max-width: var(--measure);
+}
+
+.not-doing b { color: var(--ink); }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--surface-high);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.status {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px 20px;
+  max-width: var(--measure);
+}
+
+footer {
+  border-top: 1px solid var(--hairline);
+  padding: 34px 0 60px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+footer a { color: var(--secondary); }
+
+/* ---------------------------------------------------------------------------------- prose page */
+
+.prose-page { background: var(--page); }
+
+.prose {
+  width: min(100% - var(--margin) * 2, 42rem);
+  margin: 0 auto;
+  padding: 56px 0 90px;
+}
+
+.prose h1 { font-family: var(--display); font-size: 2rem; letter-spacing: -0.02em; }
+.prose h2 { font-size: 1.3rem; margin-top: 2em; }
+.prose h3 { font-size: 1.05rem; margin-top: 1.6em; }
+.prose p, .prose li { color: var(--secondary); max-width: none; }
+.prose .back a { font-family: var(--mono); font-size: 13px; text-decoration: none; }
+
+/* ------------------------------------------------------------------------------------ narrow */
+
+@media (max-width: 860px) {
+  .moments { grid-template-columns: 1fr; gap: 0; }
+  /* On a phone the device stops being a column beside the words and becomes a band above them,
+   * because a 340px frame beside text at 390px wide is neither. */
+  .device-rail {
+    position: sticky;
+    top: 52px;
+    z-index: 20;
+    margin: 0 auto 8px;
+    width: min(62vw, 220px);
+    background: color-mix(in oklab, var(--page) 88%, transparent);
+    backdrop-filter: blur(10px);
+    padding-bottom: 6px;
+  }
+  .moment { min-height: 0; padding-block: 30px; }
+  /* The caption sits over the bottom of the scene on a phone, so it carries its own ground. */
+  .hero-caption {
+    background: linear-gradient(to top, var(--page) 55%, transparent);
+    padding-top: 18px;
+  }
+  section { padding: 56px 0; }
+  .hero { height: 220vh; }
+}
+
+/* --------------------------------------------------------------------------- reduced motion */
+
+/* No pinning and one still frame. The hero becomes an ordinary block: the scene renders its first
+ * frame once and never again, and nothing moves as you scroll. */
+@media (prefers-reduced-motion: reduce) {
+  .hero { height: auto; }
+  .hero-stage { position: static; height: auto; min-height: 88vh; }
+  .device img { transition: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+/* ------------------------------------------------- the hero without WebGL, and behind the scene */
+
+/* This is the page's own first frame: the idea drawn in HTML, showing before anything loads and
+ * left in place if the scene never starts. hero.js hides it only once three.js is actually running.
+ * It is also what a reduced-motion visitor sees, since there is no scrubbing to scrub. */
+.hero-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding-bottom: 6vh;
+  padding: 0 var(--margin);
+  pointer-events: none;
+}
+
+.still {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  width: min(100%, 60rem);
+  opacity: 0.32;
+}
+
+@media (min-width: 900px) {
+  /* Where the scene's page rests, so the stand-in stands in the same place. */
+  .hero-fallback { place-items: center end; padding: 0 max(var(--margin), 4vw) 0 0; }
+  .still { width: min(46%, 30rem); grid-template-columns: 1fr; }
+  .still .raw { display: none; }
+}
+
+.still-page {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px 20px;
+  overflow: hidden;
+}
+
+.still-title { font-family: var(--display); font-weight: 700; margin: 0; color: var(--ink); }
+.still-title.mono { font-family: var(--mono); font-size: 0.9rem; }
+.still-sub { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 2px 0 14px; }
+
+.still ul { list-style: none; margin: 0; padding: 0; }
+.still li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--ink);
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.still li.done { color: var(--muted); }
+.still .box {
+  width: 17px; height: 17px;
+  border: 2px solid var(--dim);
+  border-radius: 5px;
+  display: inline-grid; place-items: center;
+  font-size: 11px; color: var(--accent);
+  flex: none;
+}
+.still li.done .box { border-color: var(--accent); }
+
+.still pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--secondary);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  /* One page, not two: side by side at 390px is two unreadable columns. */
+  .still { grid-template-columns: 1fr; }
+  .still .raw { display: none; }
+}
+
+/* With the scene running the canvas carries the idea, so the stand-in goes. */
+.hero-fallback[hidden] { display: none; }
+
+/* Tables in the policy: what is stored, where, and whether it leaves the device. */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  font-size: 15px;
+}
+.prose th, .prose td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+.prose th { color: var(--ink); font-weight: 700; }
+.prose td { color: var(--secondary); }
+/* A table cannot be made narrow enough for a phone, so it scrolls in its own box rather than
+ * widening the page — nothing on this site may scroll sideways. */
+@media (max-width: 620px) {
+  .prose table { display: block; overflow-x: auto; white-space: nowrap; }
+  .prose td, .prose th { white-space: normal; min-width: 8rem; }
+}

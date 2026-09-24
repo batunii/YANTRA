@@ -1,0 +1,56 @@
+name: site
+
+# Two jobs, and only the first one has an opinion.
+#
+# `check` fails if anything in site/ that is generated from the repository has fallen behind its
+# source — the mark is parsed out of YantraGlyph.kt and the privacy page out of docs/PRIVACY.md, so
+# editing either without regenerating would leave the website quietly claiming the old thing.
+#
+# `deploy` publishes site/ to GitHub Pages, and only from the default branch.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "scripts/build_site.py"
+      - "docs/PRIVACY.md"
+      - "app/src/main/java/ie/shoonya/yantra/ui/components/YantraGlyph.kt"
+      - ".github/workflows/site.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "scripts/build_site.py"
+      - "docs/PRIVACY.md"
+      - "app/src/main/java/ie/shoonya/yantra/ui/components/YantraGlyph.kt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The generated files still match their sources
+        run: python3 scripts/build_site.py --check
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

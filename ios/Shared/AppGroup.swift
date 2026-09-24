@@ -37,7 +37,8 @@ public enum AppGroup {
         let store = WorkspaceStore(root: workspaceRoot, id: "")
         if !store.exists {
             store.scaffold(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000))
-            if CommandLine.arguments.contains("-uitest") { UITestFixture.seed(store) }
+            if CommandLine.arguments.contains("-demo") { DemoFixture.seed(store) }
+            else if CommandLine.arguments.contains("-uitest") { UITestFixture.seed(store) }
             else { WorkspaceSeeder.seed(store) }
         }
         return (store, WorkspaceWriter(store: store, device: device))

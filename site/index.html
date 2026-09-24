@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yantra — a todo app whose notes are as good as a notes app's</title>
+<meta name="description" content="Tasks, notes and drawings as plain Markdown in a git repository you own. Offline-first, single-user, no account required.">
+<link rel="icon" href="assets/bhupura.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<meta property="og:title" content="Yantra">
+<meta property="og:description" content="A todo app whose notes are as good as a notes app's. Your files are plain Markdown in a git repository you own.">
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="mark" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    <path d="M8 4 L11 4 L11 2 L17 2 L17 4 L20 4 Q24 4 24 8 L24 11 L26 11 L26 17 L24 17 L24 20 Q24 24 20 24 L17 24 L17 26 L11 26 L11 24 L8 24 Q4 24 4 20 L4 17 L2 17 L2 11 L4 11 L4 8 Q4 4 8 4 Z"/>
+  </svg>
+  <span class="name">Yantra</span>
+  <span class="spacer"></span>
+  <a href="#moments">What it is like</a>
+  <a href="https://github.com/batunii/YANTRA">Source</a>
+</header>
+
+<!-- ------------------------------------------------------------------------------------ hero -->
+
+<div class="hero">
+  <div class="hero-stage">
+    <canvas id="scene" aria-hidden="true"></canvas>
+
+    <!-- The static version of the same three states. It is the page's real content: the 3D scene
+         hides it only once it has actually started, so a blocked CDN or no WebGL costs nothing. -->
+    <div class="hero-fallback" aria-hidden="true"></div>
+
+    <div class="hero-words">
+      <h1>Your tasks are files you own.</h1>
+      <p class="lede">
+        Yantra is a todo app whose notes are as good as a notes app's. Everything you write is plain
+        Markdown in a git repository you control — not a database you can only reach through us.
+      </p>
+      <div class="keys">
+        <a class="key primary" href="https://github.com/batunii/YANTRA">Read the source</a>
+        <a class="key" href="#moments">See it working</a>
+      </div>
+    </div>
+
+    <p class="hero-caption" id="hero-caption"></p>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------------------ the one idea -->
+
+<section class="wrap">
+  <p class="section-label">The rule everything follows</p>
+  <h2>One loop, and nothing is allowed to block it.</h2>
+  <p>
+    The spine is a task list, and the whole app is judged on <b>capture → triage → do</b>. Notes,
+    drawings, the calendar and the timer are all in service of that loop rather than competing with
+    it. Capture in particular is never blocked: what you type is parsed for dates, labels, priority
+    and a list, and it lands whether or not the parse understood you.
+  </p>
+  <div class="cards">
+    <div class="card">
+      <h3>Offline first</h3>
+      <p>It runs entirely on the device. There is no account until you choose to point a workspace at
+         a repository, and no Yantra server at any point.</p>
+    </div>
+    <div class="card">
+      <h3>Plain Markdown</h3>
+      <p>A directory of ordinary files. If the app went away tomorrow you would still have
+         everything, readable in any editor.</p>
+    </div>
+    <div class="card">
+      <h3>Sync is git</h3>
+      <p>Each workspace is a repository of Markdown on a <code>yantra-tasks</code> branch. Commits
+         are batched by policy; conflicts are rebased and arbitrated.</p>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------------------------------- the moments -->
+
+<section class="wrap" id="moments">
+  <p class="section-label">What it is like to use</p>
+  <h2>Six moments, from the app itself.</h2>
+
+  <div class="moments">
+    <div>
+      <article class="moment" data-shot="home">
+        <h3>Home is every list you have</h3>
+        <p>
+          Each row counts only its tasks — the events on a page are not tasks and are not counted,
+          and an archived task has left the list, so it is not counted either. The ring closes as a
+          list is finished.
+        </p>
+      </article>
+
+      <article class="moment" data-shot="list">
+        <h3>A list, and a page for anything on it</h3>
+        <p>
+          Every task can open into a page of its own: prose, subtasks, links to other tasks, images
+          and ink. That is what "notes as good as a notes app's" has to mean to be worth saying.
+        </p>
+      </article>
+
+      <article class="moment" data-shot="calendar">
+        <h3>A day you can put things on</h3>
+        <p>
+          The day is a ruler with your tasks and events on it. Pick a task up from the rail and tap
+          an hour to place it; drag a block to move it; swipe the day itself to reach yesterday or
+          tomorrow.
+        </p>
+      </article>
+
+      <article class="moment" data-shot="focus">
+        <h3>Focus is a ledger, not a timer</h3>
+        <p>
+          Every session is written down start to end with how it ended — finished, interrupted, ran
+          out — and survives the process being killed. A clock you cannot account for afterwards is
+          not worth starting.
+        </p>
+      </article>
+
+      <article class="moment" data-shot="ink">
+        <h3>Ink is stored as ink</h3>
+        <p>
+          Each stroke keeps its own input points — position, time, pressure, tilt, orientation — in a
+          portable envelope, on a document that is a stack of pages rather than a screenful. It is
+          drawing on paper, not a picture of a drawing.
+        </p>
+      </article>
+
+      <article class="moment" data-shot="stats">
+        <h3>And what it added up to</h3>
+        <p>
+          Because every session was persisted rather than counted, the stats screen is reading a
+          ledger. It can be wrong only if the ledger is.
+        </p>
+      </article>
+    </div>
+
+    <div class="device-rail">
+      <div class="device">
+        <img src="shots/home.png" alt="Yantra's home screen: pinned Today, then the lists, each with how many of its tasks are done." class="on" data-shot="home" width="1206" height="2622">
+        <img src="shots/list.png" alt="A list of tasks with dates and priorities, one of them finished." data-shot="list" width="1206" height="2622" loading="lazy">
+        <img src="shots/calendar.png" alt="The day view: hours down the screen with events and scheduled tasks placed on them." data-shot="calendar" width="1206" height="2622" loading="lazy">
+        <img src="shots/focus.png" alt="A focus session running, with the clock and the task it is being spent on." data-shot="focus" width="1206" height="2622" loading="lazy">
+        <img src="shots/ink.png" alt="The ink canvas with handwriting on it and the pen tray along the bottom." data-shot="ink" width="1206" height="2622" loading="lazy">
+        <img src="shots/stats.png" alt="The stats screen, summarising focus sessions from the ledger." data-shot="stats" width="1206" height="2622" loading="lazy">
+      </div>
+      <p class="device-note">iOS, running on a simulator with a seeded workspace</p>
+    </div>
+  </div>
+</section>
+
+<!-- ----------------------------------------------------------------------------------- the data -->
+
+<section class="wrap">
+  <p class="section-label">Where your writing goes</p>
+  <h2>Nowhere, unless you send it somewhere.</h2>
+  <p>
+    Yantra collects nothing. There is no Yantra server, no account with us, no analytics and no
+    third-party SDKs — nothing you write is sent to us because there is nowhere for it to go.
+  </p>
+  <p class="tight">
+    If you turn sync on, your files are pushed to a git repository <b>you</b> own, with a token you
+    granted, and the traffic goes from your device to GitHub without passing through us. On Android
+    that token is sealed with a Keystore key that never leaves the phone.
+  </p>
+  <p><a href="privacy.html">The full privacy policy</a></p>
+</section>
+
+<!-- ------------------------------------------------------------------------- what it does not do -->
+
+<section class="wrap">
+  <p class="section-label">Deliberately not done</p>
+  <h2>Things it does not do, on purpose.</h2>
+  <ul class="not-doing">
+    <li><b>No collaborators.</b> The conflict arbitration exists for one person on several devices.
+        Multi-user anything is out of scope, not merely unbuilt.</li>
+    <li><b>No arbitrary filter editor.</b> Smart lists are created from the builder's templates. The
+        underlying JSON model supports more than the interface offers, and that is the intended
+        trade.</li>
+    <li><b>No canvas mode.</b> The schema carries the coordinates for one and nothing reads them
+        yet.</li>
+    <li><b>No account, no cloud of ours.</b> Not a feature that is coming; there is deliberately
+        nothing to sign up for.</li>
+  </ul>
+</section>
+
+<!-- ------------------------------------------------------------------------------------- status -->
+
+<section class="wrap">
+  <p class="section-label">Where it actually is</p>
+  <h2>Not released yet.</h2>
+  <div class="status">
+    <p class="tight">
+      <b>Android</b> is the complete app and the one the design is defined by. It is not on Google
+      Play; it builds from this repository with <code>./gradlew :app:assembleDebug</code>.
+    </p>
+    <p>
+      <b>iOS</b> is being brought to parity with it and is not finished. It is not on the App Store.
+      Several areas are still missing — some widgets, lasso selection in ink, parts of the sync
+      interface — and the repository's own notes track what is left.
+    </p>
+    <p class="tight">
+      If you want to try it, build it. If you want to judge it, read it.
+    </p>
+  </div>
+  <div class="keys" style="margin-top:22px">
+    <a class="key primary" href="https://github.com/batunii/YANTRA">Read the source</a>
+    <a class="key" href="https://github.com/batunii/YANTRA/blob/main/ARCHITECTURE.md">Architecture</a>
+    <a class="key" href="https://github.com/batunii/YANTRA/blob/main/DESIGN.md">Design language</a>
+  </div>
+</section>
+
+<footer class="wrap">
+  <p>
+    Yantra is a personal project by <a href="https://github.com/batunii">batunii</a>. The mark is the
+    bhupura, the gated square, drawn from the same path the app draws.
+    <a href="privacy.html">Privacy</a> · <a href="https://github.com/batunii/YANTRA">Source</a>
+  </p>
+</footer>
+
+<script src="assets/main.js" defer></script>
+<script type="module" src="assets/hero.js"></script>
+</body>
+</html>

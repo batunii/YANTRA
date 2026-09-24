@@ -1,6 +1,32 @@
-# Yantra
+<p align="center">
+  <img src="YANTRA-icon.png" alt="" width="96" height="96">
+</p>
 
-**A todo app whose notes are as good as a notes app's.**
+<h1 align="center">Yantra</h1>
+
+<p align="center">
+  A todo app whose notes are as good as a notes app's.<br>
+  Your tasks, notes and drawings are plain Markdown in a git repository you own.
+</p>
+
+<p align="center">
+  <a href="https://batunii.github.io/YANTRA/">Website</a> ·
+  <a href="ARCHITECTURE.md">Architecture</a> ·
+  <a href="DESIGN.md">Design language</a> ·
+  <a href="docs/PRIVACY.md">Privacy</a> ·
+  <a href="RELEASE.md">Releasing</a>
+</p>
+
+<p align="center">
+  <img src="site/shots/home.png" alt="Home: every list, each with how many of its tasks are done" width="210">
+  <img src="site/shots/list.png" alt="A list of tasks with dates and priorities" width="210">
+  <img src="site/shots/calendar.png" alt="The day view, with events and scheduled tasks on it" width="210">
+  <img src="site/shots/focus.png" alt="A focus session running" width="210">
+</p>
+
+---
+
+## What it is
 
 Not a notes app that tracks tasks. The spine is a task list, and the whole thing is judged on one
 loop — **capture → triage → do** — which nothing is allowed to block. Everything else is in service
@@ -13,19 +39,27 @@ would still have them.
 Offline-first, single-user, no account required. It runs entirely on the device until you choose to
 point a workspace at a repository.
 
----
+## Where it is
 
-## What is in it
+**Not released.** Android is the complete app and the one the design is defined by; it is not on
+Google Play and builds from this repository. iOS is being brought to parity with it and is not
+finished — it is not on the App Store. Section 5 of [CLAUDE.md](CLAUDE.md) tracks what is left.
 
-**Tasks and pages are the same thing.** One `node` table with a `type` discriminator is the entire
-spine. A list's body is its child nodes; opening a task "as a page" renders that task's children
-through the same code that renders a list. Nesting has no special case because there is no
-distinction to special-case.
+## For an AI agent reading this
 
-**Notes are first class** — typed, drawn, or photographed. Ink strokes are stored as every input
-point the pen produced, in a small envelope of Yantra's own (`YNK1`, see `StrokeEnvelope.kt`), and
-rebuilt as real strokes, so a sketch stays a sketch rather than becoming a picture of one — and a
-second platform can read it.
+Read these two first, in this order, before proposing or writing anything:
+
+1. **[The website](https://batunii.github.io/YANTRA/)** — what the product is for and the one idea it
+   is built on, in the shortest form there is.
+2. **[CLAUDE.md](CLAUDE.md)** — how to work in this repository: the traps that have produced real
+   bugs here, what is already done, and what is deliberately not being done.
+
+Then the document for the area you are touching: [ARCHITECTURE.md](ARCHITECTURE.md) for the rules
+the code follows, [DESIGN.md](DESIGN.md) for anything a person will see, [NAMING.md](NAMING.md) for
+what to call it. Android is the specification — when porting, read the Kotlin doc comments rather
+than only the Kotlin, because several of them record why a decision was made and are load-bearing.
+
+## The rest of it
 
 **Focus is a ledger, not a timer.** Every session is persisted start to end with its outcome —
 finished, interrupted, ran out — and survives the process being killed. A running session holds a
@@ -35,9 +69,9 @@ system judges the notification's shape, the user can refuse it per app, and Sams
 *Developer options → Live notifications for all apps* regardless of both. When the chip is refused
 the notification keeps its own transport controls instead, which is the better half of that trade.
 
-**Five home-screen widgets**: a list, today, quick-add, the focus panel, and the bhupura — the
-gated square that is the app's mark, unframed, with the running session inside it. Each list widget
-can be pointed at any list you own.
+**Six home-screen widgets**: a list, today, the calendar, quick-add, the focus panel, and the
+bhupura — the gated square that is the app's mark, unframed, with the running session inside it.
+Each list widget can be pointed at any list you own.
 
 **Smart lists are computed, not stored.** A serializable filter tree compiles to SQL; the write side
 derives what to apply on create from the filter's own `=` clauses, so a task added to "Today" is
@@ -47,10 +81,33 @@ actually due today.
 `yantra-tasks` branch. Commits are batched by policy, conflicts are rebased and arbitrated, and
 tokens are sealed with a Keystore key that never leaves the phone.
 
+**Ink stays ink.** Each stroke stores its own input points — position, time, pressure, tilt,
+orientation — plus a small brush header, in a portable envelope that does not depend on the
+rendering library.
+
 Also: labels, reminders on exact alarms, a share target, an archive, a stats screen, four theme
 modes (system, light, dark, OLED) and five accents that repaint the app *and* its launcher icon.
 
----
+## Build and run
+
+Needs **JDK 21** — that is what CI builds on and the one configuration this is known to work under.
+`jvmTarget = 17` says which bytecode to emit, which is a different question.
+
+```sh
+./gradlew :app:assembleDebug
+./gradlew :app:testDebugUnitTest      # 326 tests
+./gradlew :app:lintDebug              # configured to abort on error
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+A release build additionally needs the signing key, which is not in this repository; without it
+`assembleRelease` will tell you so. See [RELEASE.md](RELEASE.md) — and note the rule written there:
+**install and open the release APK, not the debug one.** R8 removes code reached only by reflection,
+and it fails at launch rather than at build time.
+
+The iOS app is in [`ios/`](ios/); `docs/APP_STORE_SUBMISSION.md` covers building and running its
+tests. The website is plain static files in [`site/`](site/) with no build step — two of its files
+are generated from this repository by `scripts/build_site.py`, and CI fails if they drift.
 
 ## Stack
 
@@ -71,27 +128,6 @@ and one activity with Navigation Compose.
 `compileSdkMinor = 1` is load-bearing: the Live Update APIs the focus notification needs landed in
 Android 16 QPR1, not in 36 proper.
 
----
-
-## Build & run
-
-Needs **JDK 21** — that is what CI builds on and the one configuration this is known to work under.
-`jvmTarget = 17` says which bytecode to emit, which is a different question.
-
-```
-./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest      # 326 tests
-./gradlew :app:lintDebug              # configured to abort on error
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-A release build additionally needs the signing key, which is not in this repository; without it
-`assembleRelease` will tell you so. See [RELEASE.md](RELEASE.md) — and note the rule written there:
-**install and open the release APK, not the debug one.** R8 removes code reached only by reflection,
-and it fails at launch rather than at build time.
-
----
-
 ## Where things live
 
 ```
@@ -101,23 +137,18 @@ data/db/Daos.kt            children/subtree CTEs, counts, raw smart-list query h
 data/rank/Rank.kt          fractional (LexoRank-style) sibling ordering, base-36 strings
 data/filter/               serializable filter tree, SortSpec, filter_json -> recursive-CTE SQL
 data/format/               Markdown emphasis runs, [[links]], the page codec, inline reduction
-data/ink/StrokeEnvelope.kt YNK1: [magic][header JSON][tool][points…]; the portable half, no androidx.ink
-data/ink/StrokeCodec.kt    envelope <-> androidx.ink Stroke; still reads the pre-0.4 StrokeInputBatch bytes
+data/ink/StrokeEnvelope.kt YNK1: [magic][header JSON][tool][points…]; the portable half
 data/sync/                 JGit repo, sync engine, commit policy, conflict arbitration,
                            GitHub device auth, Keystore-sealed credentials, token renewal
 data/workspace/            registry, store, writer, page mapper, indexer, reconciler
-data/repo/                 Node / Property / SmartList / Focus / Ink repositories
 domain/FocusTimer.kt       app-scoped session; every one persisted start-to-end
-domain/FocusSessionService.kt   the foreground service that holds a running session open
-domain/SessionNotification.kt   shade transport, Live Update chip, completion bell
-domain/SessionClock.kt     one clock format, shared by every surface that shows one
 reminders/                 exact alarms, boot/time-change re-arming
-widget/                    five Glance widgets, their config and settings activities
+widget/                    six Glance widgets, their config and settings activities
 ui/                        home, node page (universal renderer), smart list, focus, stats,
                            ink, settings, sync, archive, share target
+ios/                       the SwiftUI port, and YantraCore, its shared logic package
+site/                      the website: plain HTML, CSS and one three.js scene
 ```
-
----
 
 ## Design decisions carried through
 
@@ -127,21 +158,14 @@ ui/                        home, node page (universal renderer), smart list, foc
   `0`; reorder, indent and outdent never renumber siblings.
 - **Global typed property registry** — property chips, the sheet editor and smart-list filters all
   run off the same `property_def` / `property_value` tables.
-- **Smart lists are the "real place"** — the read side compiles `filter_json` to SQL (recursive CTE
-  only when scoped); the write side inserts into `home_parent_id` and applies
-  `apply_on_create_json`, derived from the filter's `=` clauses.
-- **Ink stays ink** — each stroke row stores its input points (x, y, time, pressure, tilt,
-  orientation) plus a tiny brush header, rebuilt as `Stroke(brush, inputs)` and re-rendered with
-  `CanvasStrokeRenderer`. Until 0.3.0 the points were androidx.ink's own serialised batch; those
-  bytes are still read and are rewritten once, on launch, which raises the manifest to format 2.
+- **Smart lists are the "real place"** — the read side compiles `filter_json` to SQL; the write side
+  inserts into `home_parent_id` and applies `apply_on_create_json`, derived from the filter's `=`
+  clauses.
 - **The format is versioned, and the version is enforced** — a build that meets a workspace newer
-  than it reads and syncs it but refuses to write, and says so. The manifest merges field by field
-  in a conflict, so a version bump on one phone cannot be reverted by an unrelated edit on another.
+  than it reads and syncs it but refuses to write, and says so.
 - **The session outlives the app** — restored from disk on any process wake, finalized by a worker
   if the process is gone when it ends, and visible on three surfaces that agree with each other
   because they read one clock.
-
----
 
 ## Deliberately deferred
 
@@ -151,8 +175,6 @@ ui/                        home, node page (universal renderer), smart list, foc
   model supports more than the UI offers.
 - **Multi-user anything** — the conflict arbitration exists for one person on several devices, not
   for collaborators.
-
----
 
 ## The other documents
 
