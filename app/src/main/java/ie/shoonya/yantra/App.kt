@@ -61,6 +61,9 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Before anything else that could throw, or the first crash of a session is the one crash
+        // with nowhere to be written down.
+        Diagnostics.install(this)
         // First line of every session, so a log somebody sends is anchored to a build. It also
         // proves the channel works: a trace that is stripped or retagged by R8 is worse than none,
         // because it reads as "nothing happened".

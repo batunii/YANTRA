@@ -61,6 +61,29 @@ android {
     }
 
     buildTypes {
+        /**
+         * The build to *use*, when what you are doing is finding out what is broken.
+         *
+         * Release in every way that matters for living with it — signed with the real key, same
+         * applicationId, so it upgrades the app in place and keeps every workspace — but with R8
+         * off and `debuggable` on. That costs the one class of bug only minification produces, and
+         * buys two things worth more while hunting: a stack trace that is already readable, with no
+         * mapping file to find for that exact build, and `run-as`, which is what makes the app's own
+         * database and workspace files reachable at all. On a release build `run-as` refuses, and a
+         * live bug in the index had to be diagnosed without ever reading the index.
+         *
+         * Tag a release when you want the shipping configuration tested; that is what the tag build
+         * is for. This one is for the week in between.
+         */
+        create("dogfood") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("release")
+            matchingFallbacks += listOf("release")
+        }
+
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
@@ -108,6 +131,10 @@ android {
     }
     buildFeatures {
         compose = true
+        // For [ie.shoonya.yantra.Diagnostics], which says in its header which build produced a
+        // stack trace. A dogfood build is unminified and a release build is not, and mistaking one
+        // for the other is the difference between reading a trace and hunting for a mapping file.
+        buildConfig = true
     }
 
     lint {

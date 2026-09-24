@@ -197,7 +197,7 @@ class SyncEngine(
                     // and then report losing a race that never happened, so it is reported as what
                     // it is. This is the case that used to be indistinguishable from success.
                     if (!push.retryable) {
-                        Log.w(TAG, "push refused: ${push.reason}")
+                        ie.shoonya.yantra.Trace.error("sync", "push refused: ${push.reason}")
                         return SyncResult(
                             committed = committed, pulled = pulled, conflicts = resolutions,
                             problems = reindex(),
@@ -222,7 +222,7 @@ class SyncEngine(
             // Logged as well as returned. The message on screen has to be short enough to read at a
             // glance, which makes it useless for working out *why* — and a sync that has been
             // failing for a day is exactly when the underlying cause is worth having somewhere.
-            Log.w(TAG, "sync failed", e)
+            ie.shoonya.yantra.Trace.error("sync", "sync failed", e)
             SyncResult(
                 committed = committed, pulled = pulled, conflicts = resolutions,
                 error = readable(e),

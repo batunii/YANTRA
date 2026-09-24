@@ -443,8 +443,8 @@ class WorkspaceStore(
      */
     private fun refuseWhenAhead(what: String): Boolean {
         if (!isAhead) return false
-        android.util.Log.w(
-            "Yantra.workspace",
+        ie.shoonya.yantra.Trace.error(
+            "workspace",
             "refusing $what: workspace '$id' is format $formatVersion, this build reads $FORMAT_VERSION",
         )
         return true
