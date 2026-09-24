@@ -80,6 +80,16 @@ class WorkspaceStore(
          * a workspace it does not fully understand either.
          */
         const val FORMAT_VERSION = 2
+
+        /**
+         * What a workspace's `.gitignore` must say — see [ensureGitignore].
+         *
+         * One entry, and it is the suffix every atomic write uses on its way to the real name. The
+         * comment goes in the file because the file is in the repository: somebody reading the repo
+         * on GitHub should not have to guess what `*.tmp` is doing there.
+         */
+        val GITIGNORE = listOf("# Half-written files, mid-rename. Never a real edit.", "*.tmp")
+
         private const val META = ".yantra"
         private const val PAGES = "pages"
         private const val ARCHIVE = "archive"
@@ -139,9 +149,42 @@ class WorkspaceStore(
     fun scaffold(name: String, now: Long) {
         pagesDir.mkdirs()
         smartDir.mkdirs()
+        ensureGitignore()
         writeManifest(Manifest(name = name, createdAt = now))
         writeProperties(builtInProperties())
         writeLabels(emptyList())
+    }
+
+    /**
+     * Tells git to ignore the half-second a file spends being written.
+     *
+     * Every file here is written the same way: bytes to `<name>.tmp`, then a rename onto the real
+     * name, so a reader sees the old file or the new one and never a partial one. The rename is the
+     * point and it works. What it does not survive is somebody *walking the directory* in that
+     * half-second — and that is exactly what `git add .` does. jgit's tree walk listed the `.tmp`,
+     * went to open it, and by then the rename had taken it away:
+     *
+     *     java.io.FileNotFoundException: …/pages/fe8741a9-….md.tmp: ENOENT
+     *         at org.eclipse.jgit.api.AddCommand.call(AddCommand.java:271)
+     *
+     * The whole sync failed on that, and the only thing that had happened was that somebody was
+     * typing while it ran. There is no lock to take: the writer and the sync engine hold different
+     * mutexes on purpose, because making a keystroke wait on a push is the worse trade.
+     *
+     * So the transient name is declared transient, in the repository, where both git and a person
+     * reading the repo can see it. Written on scaffold and ensured on open, because every workspace
+     * made before this — including the ones already on GitHub — has a directory git will walk.
+     *
+     * Appends rather than replaces: the file is in the repository, so it is the user's to add to.
+     */
+    fun ensureGitignore(): Boolean {
+        val f = File(root, ".gitignore")
+        val lines = if (f.exists()) f.readLines() else emptyList()
+        val missing = GITIGNORE.filterNot { want -> lines.any { it.trim() == want } }
+        if (missing.isEmpty()) return false
+        val body = (lines + missing).joinToString("\n", postfix = "\n")
+        f.writeText(body)
+        return true
     }
 
     /**
