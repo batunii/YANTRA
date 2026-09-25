@@ -94,7 +94,11 @@ class SyncEngine(
      */
         internal fun readable(e: Throwable): String {
             val chain = generateSequence(e) { it.cause }.take(8)
-            val text = chain.mapNotNull { it.message }.joinToString(" | ")
+            // Class names as well as messages. JGit's transport error says "connection failed" and
+            // its cause's message says `Unable to resolve host "github.com"` — the word that names
+            // the problem, `UnknownHostException`, is only ever the class. Matching messages alone
+            // let both reach the screen raw.
+            val text = chain.map { "${it.javaClass.simpleName}: ${it.message.orEmpty()}" }.joinToString(" | ")
             fun has(vararg needles: String) = needles.any { text.contains(it, ignoreCase = true) }
             return when {
                 has("not authorized", "Authentication is required", "invalid credentials") ->
@@ -105,7 +109,17 @@ class SyncEngine(
                 // clears it (GitRepo.clearStaleLock), so the honest instruction is to wait, not retry.
                 has("Cannot lock", "index.lock", "LockFailed") ->
                     "A change was still being written — this clears itself, try again in a minute"
-                has("UnknownHost", "Unable to access", "Connection refused", "timed out", "Network is unreachable") ->
+                // Before the general case, because the remedy differs. The phone's network answered
+                // and then had no way to GitHub: a Wi-Fi that has half-come-back — roamed to another
+                // access point, say — while the phone still calls it connected. Waiting does not fix
+                // that; reconnecting does, and the browser working is no evidence either way, since
+                // it has its own resolver and caches.
+                has("NoRouteToHost", "Host unreachable", "No route to host") ->
+                    "This network cannot reach GitHub — if it persists, turn Wi-Fi off and on"
+                has(
+                    "UnknownHost", "Unable to resolve host", "Unable to access", "Connection refused",
+                    "ConnectException", "timed out", "Network is unreachable",
+                ) ->
                     "Could not reach GitHub — this will sync when the connection is back"
                 has("non-fast-forward", "cannot be resolved to any branch") ->
                     "Someone else pushed first — the next sync will pick their work up"
