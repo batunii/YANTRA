@@ -64,6 +64,12 @@
 
           Widgets, notifications and the quick-add tile target MainActivity by class and are
           unaffected by which alias is live.
+
+          The aliases target LauncherTrampoline, not MainActivity. Android removes every task whose
+          root intent names a component that has just been disabled, whatever DONT_KILL_APP says,
+          so an alias that opened MainActivity directly took the running app with it the moment a
+          new accent disabled it. The trampoline starts MainActivity in a task of its own and
+          finishes, so the component that goes away is only ever an empty one.
         -->
         <activity
             android:name=".MainActivity"
@@ -92,9 +98,22 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Its own affinity and no history, so it never becomes the task MainActivity lives in:
+          MainActivity is started with NEW_TASK and lands in the app's usual task, found by the
+          package affinity, whose root intent names MainActivity by class and so outlives any alias.
+        -->
+        <activity
+            android:name=".LauncherTrampoline"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <activity-alias
             android:name=".LaunchCoral"
-            android:targetActivity=".MainActivity"
+            android:targetActivity=".LauncherTrampoline"
             android:exported="true"
             android:enabled="true"
             android:icon="@mipmap/ic_launcher_coral"
@@ -108,7 +127,7 @@
 
         <activity-alias
             android:name=".LaunchJade"
-            android:targetActivity=".MainActivity"
+            android:targetActivity=".LauncherTrampoline"
             android:exported="true"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_jade"
@@ -122,7 +141,7 @@
 
         <activity-alias
             android:name=".LaunchAzure"
-            android:targetActivity=".MainActivity"
+            android:targetActivity=".LauncherTrampoline"
             android:exported="true"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_azure"
@@ -136,7 +155,7 @@
 
         <activity-alias
             android:name=".LaunchIndigo"
-            android:targetActivity=".MainActivity"
+            android:targetActivity=".LauncherTrampoline"
             android:exported="true"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_indigo"
@@ -150,7 +169,7 @@
 
         <activity-alias
             android:name=".LaunchOrchid"
-            android:targetActivity=".MainActivity"
+            android:targetActivity=".LauncherTrampoline"
             android:exported="true"
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_orchid"
