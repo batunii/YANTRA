@@ -14,6 +14,7 @@ import ie.shoonya.yantra.data.db.PropertyValueEntity
 import ie.shoonya.yantra.data.db.SmartListDefEntity
 import ie.shoonya.yantra.data.db.SystemKey
 import ie.shoonya.yantra.data.filter.ApplyOnCreate
+import ie.shoonya.yantra.data.label.LabelCanon
 import ie.shoonya.yantra.data.filter.Filter
 import ie.shoonya.yantra.data.filter.FilterCompiler
 import ie.shoonya.yantra.data.filter.completedVariant
@@ -44,6 +45,7 @@ import ie.shoonya.yantra.data.time.localDateOf
 import ie.shoonya.yantra.data.time.localMidnight
 import ie.shoonya.yantra.data.label.LabelPalette
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
@@ -617,8 +619,13 @@ class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces
 class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.labelDao()
 
-    fun all() = dao.all()
-    suspend fun allOnce() = dao.allOnce()
+    /** One label per tag name — see [LabelCanon]. What every picker offers. */
+    fun all() = dao.all().map(LabelCanon::distinct)
+
+    /** Every row's id to the label that speaks for its tag. What chips resolve attachments with. */
+    fun byAnyId() = dao.all().map(LabelCanon::byId)
+
+    suspend fun allOnce() = LabelCanon.distinct(dao.allOnce())
     fun forNode(nodeId: String) = dao.forNode(nodeId)
     fun forChildrenOf(parentId: String) = dao.forChildrenOf(parentId)
     fun allNodeLabels() = dao.allNodeLabels()
@@ -631,7 +638,10 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
      */
     suspend fun getOrCreate(name: String, color: Long? = null): LabelEntity {
         val trimmed = name.trim()
-        dao.byName(trimmed)?.let { return it }
+        // Any workspace's row for the name will do, as the one that speaks for it: a tag that
+        // exists anywhere is reused rather than registered again beside itself.
+        LabelCanon.distinct(dao.allOnce()).firstOrNull { LabelCanon.key(it.name) == LabelCanon.key(trimmed) }
+            ?.let { return it }
         val store = ws.primaryStore()
         val id = WorkspaceReconciler.idFor(store.id, trimmed)
         ws.primary().upsertLabel(
@@ -659,8 +669,14 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * Asked before the deletion rather than reported after it: "this is on 7 tasks" is a question
      * somebody can answer, and "that was on 7 tasks" is not.
      */
-    suspend fun usageCount(labelId: String): Int =
-        dao.countUsage(labelId)
+    suspend fun usageCount(labelId: String): Int = dao.countUsage(sameTagIds(labelId))
+
+    /** Every workspace's row id for the tag [labelId] names, [labelId] included. */
+    private suspend fun sameTagIds(labelId: String): List<String> {
+        val rows = dao.allOnce()
+        val name = rows.firstOrNull { it.id == labelId }?.name ?: return listOf(labelId)
+        return rows.filter { LabelCanon.key(it.name) == LabelCanon.key(name) }.map { it.id }
+    }
 
     /**
      * Deletes a label everywhere — the registry, and the tag on every task.
@@ -692,15 +708,22 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * The id names its owner, which is the one part of a label row nobody else's file can rewrite.
      * A workspace this device has not opened cannot be written to at all, so the colour is refused
      * out loud rather than redirected somewhere it would do harm.
+     *
+     * **Every workspace that has the tag, each into its own registry.** A tag is one name however
+     * many repos it was typed in, so one colour: recolouring only the row that was tapped left the
+     * same tag in two colours side by side in any view that gathers across workspaces.
      */
     suspend fun setColor(labelId: String, color: Long?) {
-        val existing = dao.allOnce().firstOrNull { it.id == labelId } ?: return
-        val owner = WorkspaceReconciler.ownerOf(labelId) ?: existing.workspaceId
-        val writer = ws.writer(owner) ?: run {
-            Trace.warn("label", "cannot recolour ${Trace.id(labelId)}: its workspace is not open")
-            return
+        val rows = dao.allOnce()
+        val existing = rows.firstOrNull { it.id == labelId } ?: return
+        rows.filter { LabelCanon.key(it.name) == LabelCanon.key(existing.name) }.forEach { row ->
+            val owner = WorkspaceReconciler.ownerOf(row.id) ?: row.workspaceId
+            val writer = ws.writer(owner) ?: run {
+                Trace.warn("label", "cannot recolour ${Trace.id(row.id)}: its workspace is not open")
+                return@forEach
+            }
+            writer.upsertLabel(LabelDef(id = row.id, name = row.name, color = color))
         }
-        writer.upsertLabel(LabelDef(id = labelId, name = existing.name, color = color))
     }
 
 }

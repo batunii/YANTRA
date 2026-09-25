@@ -263,7 +263,7 @@ internal fun buildRows(
             listName = n.parentId?.let { parentTitles[it] },
             // A tag the rule pins is on every row here, so printing it is printing it twice.
             labels = labels[n.id].orEmpty()
-                .filterNot { ie.shoonya.yantra.data.filter.Field.Label(it.id) in grammar.pinned },
+                .filterNot { ie.shoonya.yantra.data.label.LabelCanon.namesTag(grammar.pinned, it.id) },
             workspaceHue = workspaceHues[n.workspaceId],
             listColor = n.parentId?.let { parentColors[it] },
         )
@@ -384,7 +384,7 @@ open class YantraListWidget : GlanceAppWidget() {
             container.db.labelDao().all(),
             container.db.labelDao().allNodeLabels(),
         ) { defs, links ->
-            val byId = defs.associateBy { it.id }
+            val byId = ie.shoonya.yantra.data.label.LabelCanon.byId(defs)
             links.mapNotNull { link -> byId[link.labelId]?.let { link.nodeId to WidgetLabel(it.name, it.color, it.id) } }
                 .groupBy({ it.first }, { it.second })
         }

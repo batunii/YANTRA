@@ -79,7 +79,7 @@ class RecolourStaysInItsWorkspaceTest {
         return task to row.id
     }
 
-    private suspend fun attachmentsOf(labelId: String) = db.labelDao().countUsage(labelId)
+    private suspend fun attachmentsOf(labelId: String) = db.labelDao().countUsage(listOf(labelId))
 
     @Test
     fun `recolouring a tag leaves it on its tasks`() = runBlocking {
@@ -109,6 +109,29 @@ class RecolourStaysInItsWorkspaceTest {
             ws.store("")!!.readLabels().none { it.id == labelId },
         )
         assertEquals(4282222776L, db.labelDao().allOnce().single { it.name == "question" }.color)
+    }
+
+    /**
+     * One tag in two repos is one tag: one entry to pick, one colour, one count. Each workspace
+     * still keeps its own row and gets the colour in its own registry, under its own id.
+     */
+    @Test
+    fun `a tag typed in two workspaces is one tag with one colour`() = runBlocking {
+        val (_, workId) = taggedTaskInWork()
+        val p = ws.writer("")!!
+        val inbox = p.createTopLevel(NodeType.LIST, "Inbox", systemKey = SystemKey.INBOX)
+        p.editTask(p.addBlock(inbox, NodeType.TASK, "Ask Laurance")) { it.copy(labels = listOf("Question")) }
+        val personalId = db.labelDao().allOnce().single { it.workspaceId == "" && it.name.equals("question", true) }.id
+
+        assertEquals("the picker lists the tag once", 1, labels.all().first().count { it.name.equals("question", true) })
+        assertEquals("the tag is on two tasks", 2, labels.usageCount(workId))
+
+        labels.setColor(workId, 4282222776L)
+
+        assertEquals(listOf(LabelDef(id = workId, name = "question", color = 4282222776L)), ws.store(work)!!.readLabels())
+        assertEquals(4282222776L, ws.store("")!!.readLabels().single { it.id == personalId }.color)
+        val byId = labels.byAnyId().first()
+        assertEquals("both attachments resolve to one label", byId[workId], byId[personalId])
     }
 
     /**
