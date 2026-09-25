@@ -334,7 +334,7 @@ class NodePageViewModel(
         combine(
             properties.defs(),
             properties.valuesUnder(nodeId),
-            labels.all(),
+            labels.byAnyId(),
             labels.forChildrenOf(nodeId),
             container.people.rosters(),
         ) { d, v, allLabels, nodeLabels, rosters ->
@@ -373,9 +373,8 @@ class NodePageViewModel(
 
     /** Labels attached to any given node, resolved from the join table. */
     fun labelsFor(childId: String): Flow<List<LabelEntity>> =
-        combine(labels.forNode(childId), labels.all()) { nodeLabels, allLabels ->
-            val byId = allLabels.associateBy { it.id }
-            nodeLabels.mapNotNull { byId[it.labelId] }
+        combine(labels.forNode(childId), labels.byAnyId()) { nodeLabels, byId ->
+            nodeLabels.mapNotNull { byId[it.labelId] }.distinctBy { it.id }
         }
 
     val childCounts: StateFlow<Map<String, SubtreeTaskCount>> =

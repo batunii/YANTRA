@@ -1,5 +1,6 @@
 package ie.shoonya.yantra.ui.smart
 
+import ie.shoonya.yantra.data.label.LabelCanon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -195,7 +196,9 @@ fun SmartListBuilderSheet(
     var pickingLabelsForIndex by remember { mutableStateOf<Int?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val defsById = defs.associateBy { it.id }
-    val labelsById = labels.associateBy { it.id }
+    // A saved rule may name another workspace's row for a tag the picker lists once, under the id
+    // of the row that speaks for it — so a remembered id is matched by the tag it spells.
+    fun labelFor(id: String) = labels.firstOrNull { LabelCanon.sameTag(it.id, id) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = y.cardBg) {
         Column(
@@ -281,7 +284,7 @@ fun SmartListBuilderSheet(
                 conds.forEachIndexed { i, c ->
                     if (c.isLabelCond) {
                         LabelConditionCard(
-                            labelNames = c.labelIds.mapNotNull { labelsById[it]?.name },
+                            labelNames = c.labelIds.mapNotNull { labelFor(it)?.name }.distinct(),
                             match = c.labelMatch,
                             onEdit = { pickingLabelsForIndex = i },
                             onModeChange = { mode -> conds[i] = c.copy(labelMatch = mode) },
@@ -387,7 +390,7 @@ fun SmartListBuilderSheet(
         if (current != null) {
             LabelChecklistDialog(
                 allLabels = labels,
-                initiallyChecked = current.labelIds.toSet(),
+                initiallyChecked = current.labelIds.map { labelFor(it)?.id ?: it }.toSet(),
                 onCreateLabel = onCreateLabel,
                 onDismiss = {
                     // A freshly-added card that's cancelled before picking anything is just noise.

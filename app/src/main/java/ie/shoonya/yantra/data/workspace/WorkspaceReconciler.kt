@@ -409,5 +409,12 @@ object WorkspaceReconciler {
     fun ownerOf(labelId: String): String? =
         if (LABEL_MARK in labelId) labelId.substringBefore(LABEL_MARK) else null
 
+    /**
+     * The tag a label id spells, lowercased — the other half of [idFor], or null if the id is not
+     * one of ours. Two workspaces' ids for `#sync` differ in their owner and agree here.
+     */
+    fun nameKeyOf(labelId: String): String? =
+        if (LABEL_MARK in labelId) labelId.substringAfter(LABEL_MARK) else null
+
     private const val LABEL_MARK = ":label:"
 }
