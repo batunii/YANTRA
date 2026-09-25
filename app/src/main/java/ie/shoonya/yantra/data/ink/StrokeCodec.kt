@@ -6,6 +6,7 @@ import androidx.ink.brush.InputToolType
 import androidx.ink.brush.StockBrushes
 import androidx.ink.strokes.MutableStrokeInputBatch
 import androidx.ink.strokes.Stroke
+import androidx.ink.strokes.StrokeInput
 import androidx.ink.strokes.StrokeInputBatch
 import androidx.ink.storage.decode
 import androidx.ink.storage.encode
@@ -426,11 +427,54 @@ object StrokeCodec {
             .map { candidates[it.first].id }
     }
 
-    /** A stroke's path, extracted once so the geometry can be done without it. */
+    /**
+     * A stroke's path, extracted once so the geometry can be done without it — and **once per
+     * stroke, not once per call**.
+     *
+     * Reading a point crosses into the ink library's native code, and `inputs[i]` allocates a fresh
+     * object each time. The canvas asked for every stroke's path and box again whenever one stroke
+     * was added, so a page got slower to draw on with every stroke it held: on the tablet's
+     * 273-stroke, 75,000-point sketch that was a third of a second on the main thread per stroke.
+     * A stroke's points never change after it is built, so its path is remembered against the
+     * stroke itself; the map is weak, so a stroke that is gone takes its path with it.
+     */
     fun path(stroke: Stroke, id: String = ""): StrokePath {
+        val xy = synchronized(paths) { paths[stroke] }
+            ?: extract(stroke).also { synchronized(paths) { paths[stroke] = it } }
+        return if (xy.id == id) xy else StrokePath(id, xy.xs, xy.ys)
+    }
+
+    /** A stroke's `[x, y, width, height]`, remembered like its [path]. Callers must not write to it. */
+    fun bbox(stroke: Stroke): FloatArray? {
+        synchronized(boxes) { if (boxes.containsKey(stroke)) return boxes[stroke] }
+        return path(stroke).bbox().also { b -> synchronized(boxes) { boxes[stroke] = b } }
+    }
+
+    /**
+     * Hands [from]'s remembered geometry to [to], a copy with the same points — a theme recolour.
+     * Nothing to hand over is fine; [to] is then measured when first asked, as any stroke is.
+     */
+    fun shareGeometry(from: Stroke, to: Stroke) {
+        synchronized(paths) { paths[from]?.let { paths[to] = it } }
+        synchronized(boxes) { if (boxes.containsKey(from)) boxes[to] = boxes[from] }
+    }
+
+    // Keyed by identity: Stroke does not override equals, and must not be compared by content here.
+    private val paths = java.util.WeakHashMap<Stroke, StrokePath>()
+    private val boxes = java.util.WeakHashMap<Stroke, FloatArray?>()
+
+    private fun extract(stroke: Stroke): StrokePath {
         val inputs = stroke.inputs
         val n = inputs.size
-        return StrokePath(id, FloatArray(n) { inputs[it].x }, FloatArray(n) { inputs[it].y })
+        val xs = FloatArray(n)
+        val ys = FloatArray(n)
+        val p = StrokeInput()
+        for (i in 0 until n) {
+            inputs.populate(i, p)
+            xs[i] = p.x
+            ys[i] = p.y
+        }
+        return StrokePath("", xs, ys)
     }
 
     /**
@@ -497,8 +541,10 @@ object StrokeCodec {
         var minY = Float.MAX_VALUE
         var maxX = -Float.MAX_VALUE
         var maxY = -Float.MAX_VALUE
+        // One scratch point, filled in place: `inputs[i]` would allocate one per point.
+        val p = StrokeInput()
         for (i in 0 until inputs.size) {
-            val p = inputs[i]
+            inputs.populate(i, p)
             if (p.x < minX) minX = p.x
             if (p.y < minY) minY = p.y
             if (p.x > maxX) maxX = p.x

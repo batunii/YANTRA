@@ -2,6 +2,8 @@ package ie.shoonya.yantra.data.repo
 
 import ie.shoonya.yantra.data.db.AppDatabase
 import ie.shoonya.yantra.data.workspace.Workspaces
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Strokes live in a sidecar beside the page, as the exact bytes the stroke codec produces.
@@ -23,7 +25,13 @@ class InkRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * The only mutation there is. The drawing screen holds the session and hands over the whole set,
      * so nothing here reads-then-writes — which is what used to lose strokes when several finished
      * at once, each having read the same list before any of them wrote.
+     *
+     * Off the main thread, always. The drawing screen calls this from its own scope, which is the
+     * main thread, and a write here re-encodes the whole sidecar and rebuilds the workspace's index
+     * inline — work that grows with the drawing and the workspace, landing under the pen at every
+     * pause.
      */
-    suspend fun replace(nodeId: String, strokes: List<ByteArray>) =
+    suspend fun replace(nodeId: String, strokes: List<ByteArray>) = withContext(Dispatchers.IO) {
         ws.writerFor(nodeId).writeInk(nodeId, strokes)
+    }
 }

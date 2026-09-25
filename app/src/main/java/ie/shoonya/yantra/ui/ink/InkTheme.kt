@@ -30,11 +30,21 @@ object InkTheme {
         else -> stored
     }
 
-    /** Theme-swap a single stroke's ink color (accent colors pass through). */
+    /**
+     * Theme-swap a single stroke's ink color (accent colors pass through).
+     *
+     * **The same recoloured stroke every time**, remembered against the original. The screen asks
+     * again whenever a stroke is added, and a fresh copy of every other stroke each time made each
+     * of them a stranger to [StrokeCodec]'s per-stroke geometry — so every stroke drawn in the
+     * other theme's ink was measured again, point by point, on every new stroke. The copy also
+     * reuses the original's mesh: the shape does not depend on the colour.
+     */
     private fun remap(stroke: Stroke, dark: Boolean): Stroke {
         val mapped = displayColor(stroke.brush.colorIntArgb, dark)
-        return if (mapped == stroke.brush.colorIntArgb) stroke
-        else Stroke(
+        if (mapped == stroke.brush.colorIntArgb) return stroke
+        val memo = if (dark) toDark else toLight
+        synchronized(memo) { memo[stroke]?.let { return it } }
+        return Stroke(
             brush = Brush.createWithColorIntArgb(
                 family = stroke.brush.family,
                 colorIntArgb = mapped,
@@ -42,8 +52,16 @@ object InkTheme {
                 epsilon = stroke.brush.epsilon,
             ),
             inputs = stroke.inputs,
-        )
+            shape = stroke.shape,
+        ).also {
+            StrokeCodec.shareGeometry(stroke, it)
+            synchronized(memo) { memo[stroke] = it }
+        }
     }
+
+    // Weak and by identity, like StrokeCodec's: a stroke that is gone takes its copy with it.
+    private val toDark = java.util.WeakHashMap<Stroke, Stroke>()
+    private val toLight = java.util.WeakHashMap<Stroke, Stroke>()
 
     // Highlighters always sit behind pen/marker strokes, even when drawn later. sortedBy is
     // stable, so drawing order is preserved within each layer.
