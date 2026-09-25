@@ -22,6 +22,10 @@ import android.content.pm.PackageManager
  *    re-add the entry, which is visible. [apply] returns early when the right alias is already
  *    live, so a cold start costs one cheap query and nothing else.
  *
+ * And one the manifest keeps: the aliases open `LauncherTrampoline`, never MainActivity. Disabling
+ * a component removes every task whose root intent names it, so an alias that opened the app
+ * directly closed it the moment [apply] switched it off.
+ *
  * The cost that cannot be designed away: a home-screen *shortcut* pinned to the old alias points at
  * a component that no longer resolves, so it may need re-adding. Widgets are unaffected — they bind
  * to their own provider components, and everything else launches MainActivity by class.
