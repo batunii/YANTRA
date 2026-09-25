@@ -74,7 +74,7 @@ class FinishedStrokesView(context: Context) : View(context) {
             val scale = width / docWidth
             var contentTop = Float.MAX_VALUE
             for (s in strokes) {
-                val b = StrokeCodec.bbox(s.inputs) ?: continue
+                val b = StrokeCodec.bbox(s) ?: continue
                 if (b[1] < contentTop) contentTop = b[1]
             }
             if (contentTop == Float.MAX_VALUE) contentTop = 0f
@@ -89,7 +89,7 @@ class FinishedStrokesView(context: Context) : View(context) {
         var maxX = -Float.MAX_VALUE
         var maxY = -Float.MAX_VALUE
         for (s in strokes) {
-            val b = StrokeCodec.bbox(s.inputs) ?: continue
+            val b = StrokeCodec.bbox(s) ?: continue
             if (b[0] < minX) minX = b[0]
             if (b[1] < minY) minY = b[1]
             if (b[0] + b[2] > maxX) maxX = b[0] + b[2]
@@ -152,7 +152,7 @@ fun inkContentHeight(strokes: List<Stroke>): Float {
     var minY = Float.MAX_VALUE
     var maxY = 0f
     for (s in strokes) {
-        val b = StrokeCodec.bbox(s.inputs) ?: continue
+        val b = StrokeCodec.bbox(s) ?: continue
         if (b[1] < minY) minY = b[1]
         if (b[1] + b[3] > maxY) maxY = b[1] + b[3]
     }

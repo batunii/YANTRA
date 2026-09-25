@@ -220,8 +220,12 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
 
     private fun contentPages(): Int {
         var maxY = 0f
-        for (s in dryLayer.items.map { it.stroke } + dryLayer.extraStrokes) {
-            val b = StrokeCodec.bbox(s.inputs) ?: continue
+        for (s in dryLayer.items) {
+            val b = StrokeCodec.bbox(s.stroke) ?: continue
+            maxY = max(maxY, b[1] + b[3])
+        }
+        for (s in dryLayer.extraStrokes) {
+            val b = StrokeCodec.bbox(s) ?: continue
             maxY = max(maxY, b[1] + b[3])
         }
         return max(1, ceil((maxY + 1f) / PAGE_HEIGHT_DU).toInt())
@@ -840,7 +844,8 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
             // point on the page, per frame, during a pinch.
             if (field === value) return
             field = value
-            itemBoxes = value.map { StrokeCodec.bbox(it.stroke.inputs) }
+            // Remembered per stroke (StrokeCodec), so adding one stroke measures one stroke.
+            itemBoxes = value.map { StrokeCodec.bbox(it.stroke) }
             itemPaths = value.map { StrokeCodec.path(it.stroke, it.id) }
             invalidate()
         }
@@ -849,7 +854,7 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
     var extraStrokes: List<Stroke> = emptyList()
         set(value) {
             field = value
-            extraBoxes = value.map { StrokeCodec.bbox(it.inputs) }
+            extraBoxes = value.map { StrokeCodec.bbox(it) }
             invalidate()
         }
 

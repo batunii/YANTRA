@@ -197,7 +197,13 @@ class InkViewModel(
                 if (drawnHere) return@collect
                 held.value = withContext(Dispatchers.Default) {
                     rows.mapNotNull { row ->
-                        StrokeCodec.decodeOrNull(row.data)?.let { Held(StrokeItem(row.id, it), row.data) }
+                        StrokeCodec.decodeOrNull(row.data)?.let { stroke ->
+                            // Measured here, off the main thread, while it is being decoded anyway:
+                            // the canvas needs every stroke's box and path the moment it is handed
+                            // the page, and on a full page that is a fifth of a second of points.
+                            StrokeCodec.bbox(stroke)
+                            Held(StrokeItem(row.id, stroke), row.data)
+                        }
                     }
                 }
             }
