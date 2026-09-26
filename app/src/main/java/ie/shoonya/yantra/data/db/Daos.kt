@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.db
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -8,6 +9,7 @@ import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
@@ -236,6 +238,19 @@ interface NodeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(nodes: List<NodeEntity>)
+
+    /**
+     * Writes these rows in place: an UPDATE for a row that exists, an INSERT for one that does not.
+     *
+     * Not REPLACE, which deletes the old row first — and a delete on `node` cascades to `node_label`
+     * and `event`, so replacing one renamed task used to take its tags and its meeting header with
+     * it. An update touches nothing else. See `Indexer.applyChanges`.
+     */
+    @Upsert
+    suspend fun upsertAll(nodes: List<NodeEntity>)
+
+    @Delete
+    suspend fun deleteAll(nodes: List<NodeEntity>)
 
     @Query("DELETE FROM node WHERE workspace_id = :ws")
     suspend fun clearNodes(ws: String)
@@ -570,6 +585,12 @@ interface PropertyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertValues(values: List<PropertyValueEntity>)
 
+    @Upsert
+    suspend fun upsertValues(values: List<PropertyValueEntity>)
+
+    @Delete
+    suspend fun deleteValues(values: List<PropertyValueEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDefs(defs: List<PropertyDefEntity>)
 
@@ -781,6 +802,9 @@ interface LabelDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun attachAll(links: List<NodeLabelEntity>)
 
+    @Delete
+    suspend fun detachAll(links: List<NodeLabelEntity>)
+
     @Query("DELETE FROM label WHERE workspace_id = :ws")
     suspend fun clearLabels(ws: String)
 
@@ -984,6 +1008,12 @@ interface EventDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(events: List<EventEntity>)
+
+    @Upsert
+    suspend fun upsertAll(events: List<EventEntity>)
+
+    @Delete
+    suspend fun deleteAll(events: List<EventEntity>)
 
     @Query("DELETE FROM event WHERE workspace_id = :ws")
     suspend fun clearEvents(ws: String)
