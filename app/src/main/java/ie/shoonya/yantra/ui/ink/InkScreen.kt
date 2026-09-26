@@ -324,17 +324,21 @@ class InkViewModel(
     fun moveStrokes(ids: Collection<String>, dx: Float, dy: Float) {
         if (ids.isEmpty() || (dx == 0f && dy == 0f)) return
         val moving = ids.toSet()
-        held.update { list ->
-            list.map { h ->
-                if (h.item.id !in moving) h
-                else {
+        val snapshot = held.value.filter { it.item.id in moving }
+        // Re-encoding and decoding a big catch is real work — seventy strokes of handwriting is a
+        // visible hitch on the frame the finger lifts — so it happens off the main thread and lands
+        // by id, onto whatever the page holds by then.
+        viewModelScope.launch {
+            val moved = withContext(Dispatchers.Default) {
+                snapshot.associate { h ->
                     val data = StrokeCodec.translate(h.data, dx, dy)
-                    Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
+                    h.item.id to Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
                 }
             }
+            held.update { list -> list.map { moved[it.item.id] ?: it } }
+            redoable.value = emptyList()
+            touch()
         }
-        redoable.value = emptyList()
-        touch()
     }
 
     fun clear() {
