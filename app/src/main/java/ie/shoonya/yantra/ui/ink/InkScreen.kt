@@ -422,8 +422,17 @@ private val DrawingColors = listOf(
  * original palette deliberately carried side by side. A wrong heuristic that silently removes a
  * colour someone wanted is worse than two swatches that happen to be neighbours.
  */
-internal fun inkPresets(accent: Color): List<Long> =
-    listOf(accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+internal fun inkPresets(accent: Color, dark: Boolean): List<Long> =
+    // The paper's own ink first — white on dark paper, graphite on light, and swapping with the
+    // theme because it is stored as that pair. It is what every pen starts with, and it was not on
+    // offer: pick any other colour and there was no way back to it.
+    listOf(InkTheme.defaultPen(dark), accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+
+/** The same ink as far as a swatch is concerned: equal, or the two halves of the paper's own ink. */
+internal fun sameInk(a: Long, b: Long): Boolean =
+    a == b || (isPaperInk(a) && isPaperInk(b))
+
+private fun isPaperInk(c: Long) = c == InkTheme.BLACK_INK || c == InkTheme.WHITE_INK
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1118,13 +1127,13 @@ internal fun InkSwatches(
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        (inkPresets(y.accent) + recents).distinct().take(8).forEach { c ->
+        (inkPresets(y.accent, y.isDark) + recents).distinct().take(9).forEach { c ->
             Box(
                 Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color(c.toInt()))
-                    .then(if (c == current) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
+                    .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
+                    .then(if (sameInk(c, current)) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
                     .clickable { onPick(c) },
             )
         }

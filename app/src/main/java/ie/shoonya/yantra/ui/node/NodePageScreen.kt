@@ -2350,7 +2350,17 @@ internal fun TextualBlockRow(
     // coral, seeded by the task id so a given task's strike is always the same wobble. The font's
     // ruler-straight line said "field disabled"; the strike says someone crossed it off.
     val style: TextStyle = when {
-        isHeading -> TextStyle(fontSize = YantraType.card, fontWeight = FontWeight.W800, letterSpacing = (-0.2).sp, color = y.textPrimary)
+        // A heading, not bold body text. It was 15.5 sp against a 14.5 sp paragraph — one point and
+        // a weight apart, which reads as emphasis, not as a heading. The page title's face, at the
+        // size the app uses for screen titles, so it heads the text under it.
+        isHeading -> TextStyle(
+            fontFamily = YantraDisplay,
+            fontSize = YantraType.title,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.W700,
+            letterSpacing = (-0.3).sp,
+            color = y.textPrimary,
+        )
         isTask -> MaterialTheme.typography.bodyLarge.copy(color = titleColor)
         // Primary, not secondary. Prose on a task's page IS the page — it is the thing you came
         // here to read — and it was being drawn in the colour reserved for supporting text, thin

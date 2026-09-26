@@ -186,13 +186,13 @@ fun DockControls(
                 }
             }
             DockDivider(vertical = !vertical)
-            (inkPresets(y.accent) + recents).distinct().take(8).forEach { c ->
+            (inkPresets(y.accent, y.isDark) + recents).distinct().take(9).forEach { c ->
                 Box(
                     Modifier
                         .size(26.dp)
                         .clip(CircleShape)
-                        .background(Color(c.toInt()))
-                        .then(if (c == slot.color) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
+                        .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
+                        .then(if (sameInk(c, slot.color)) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
                         .clickable { onSlotChange(slot.copy(color = c)) },
                 )
             }
