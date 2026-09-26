@@ -133,7 +133,17 @@ object StrokeCodec {
      * untouched. A stroke that has been moved is the same ink in a different place, and nothing
      * about how it was drawn should change because it was picked up.
      */
-    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray {
+    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray = transform(data, 1f, 0f, 0f, dx, dy)
+
+    /**
+     * Scales a stored stroke by [scale] about ([anchorX], [anchorY]) and then moves it by [dx], [dy],
+     * all in document units — resizing a lasso'd catch.
+     *
+     * The brush size scales with it. Handwriting made bigger should look like handwriting written
+     * bigger, not like the same thin line stretched over a larger shape — which is also what every
+     * app that resizes ink does.
+     */
+    fun transform(data: ByteArray, scale: Float, anchorX: Float, anchorY: Float, dx: Float = 0f, dy: Float = 0f): ByteArray {
         DataInputStream(ByteArrayInputStream(data)).use { dis ->
             val headerBytes = ByteArray(dis.readInt())
             dis.readFully(headerBytes)
@@ -150,12 +160,15 @@ object StrokeCodec {
             for (i in 0 until inputs.size) {
                 val p = inputs[i]
                 moved.add(
-                    p.toolType, p.x + dx, p.y + dy, p.elapsedTimeMillis,
+                    p.toolType,
+                    anchorX + (p.x - anchorX) * scale + dx,
+                    anchorY + (p.y - anchorY) * scale + dy,
+                    p.elapsedTimeMillis,
                     p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
                 )
             }
             val stroke = Stroke(
-                brush = brush(header.family, header.color, header.size, header.epsilon),
+                brush = brush(header.family, header.color, header.size * scale, header.epsilon),
                 inputs = moved.toImmutable(),
             )
             return encode(stroke, header.family)

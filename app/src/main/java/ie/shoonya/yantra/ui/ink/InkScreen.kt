@@ -323,6 +323,19 @@ class InkViewModel(
      */
     fun moveStrokes(ids: Collection<String>, dx: Float, dy: Float) {
         if (ids.isEmpty() || (dx == 0f && dy == 0f)) return
+        rewrite(ids) { StrokeCodec.translate(it, dx, dy) }
+    }
+
+    /**
+     * Resizes a lasso'd group by [k] about ([ax], [ay]), in document units, brush widths included.
+     * Rewritten like a move — the points are the stroke — and off the main thread for the same reason.
+     */
+    fun scaleStrokes(ids: Collection<String>, k: Float, ax: Float, ay: Float) {
+        if (ids.isEmpty() || k == 1f) return
+        rewrite(ids) { StrokeCodec.transform(it, k, ax, ay) }
+    }
+
+    private fun rewrite(ids: Collection<String>, change: (ByteArray) -> ByteArray) {
         val moving = ids.toSet()
         val snapshot = held.value.filter { it.item.id in moving }
         // Re-encoding and decoding a big catch is real work — seventy strokes of handwriting is a
@@ -331,7 +344,7 @@ class InkViewModel(
         viewModelScope.launch {
             val moved = withContext(Dispatchers.Default) {
                 snapshot.associate { h ->
-                    val data = StrokeCodec.translate(h.data, dx, dy)
+                    val data = change(h.data)
                     h.item.id to Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
                 }
             }
@@ -654,6 +667,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                             selectionAt = Offset(cx, bottom)
                         }
                         onMoveSelection = { ids, dx, dy -> vm.moveStrokes(ids, dx, dy) }
+                        onScaleSelection = { ids, k, ax, ay -> vm.scaleStrokes(ids, k, ax, ay) }
                         canvasRef = this
                     }
                 },
