@@ -130,6 +130,7 @@ import coil.compose.AsyncImage
 import ie.shoonya.yantra.data.db.LabelEntity
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
+import ie.shoonya.yantra.data.db.SystemKey
 import ie.shoonya.yantra.ui.Routes
 import ie.shoonya.yantra.ui.smart.Origin
 import ie.shoonya.yantra.domain.FocusTimer
@@ -508,7 +509,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 // start one that is already going.
                 nav.navigate(if (liveHere != null) Routes.FOCUS_CURRENT else Routes.focus(nodeId))
             },
-            onDelete = { deletingPage = true },
+            // Inbox is where capture lands and cannot be deleted — see SystemKey.isProtected.
+            onDelete = if (SystemKey.isProtected(current?.systemKey)) null else ({ deletingPage = true }),
             // A top-level list has no line on any page, so there is nothing to pick up and move.
             onMove = if (current?.parentId == null) null else ({
                 scope.launch { movePicker = vm.listsToMoveInto() }
@@ -1244,7 +1246,7 @@ private fun PageBand(
     /** The session running on this page's own task, if there is one. */
     live: FocusTimer.State?,
     onFocus: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)?,
     onRename: (String) -> Unit,
     onTitleFocusChanged: (Boolean) -> Unit,
     onToggleDone: (Boolean) -> Unit,
@@ -1398,7 +1400,9 @@ private fun PageBand(
                             onClick = { menu = false; move() },
                         )
                     }
-                    DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
+                    if (onDelete != null) {
+                        DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
+                    }
                 }
             }
         }
@@ -1502,6 +1506,8 @@ private fun PageBand(
                     BasicTextField(
                         value = title,
                         onValueChange = { title = it; onRename(it) },
+                        // Inbox's name is fixed — see SystemKey.isProtected.
+                        readOnly = SystemKey.isProtected(node?.systemKey),
                         textStyle = MaterialTheme.typography.headlineMedium.copy(color = y.textPrimary),
                         cursorBrush = SolidColor(y.accent),
                         // A page title is a name, so no emphasis — the same rule task rows follow.

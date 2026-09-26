@@ -51,6 +51,20 @@ object SystemKey {
      * lookup miss and quietly created a second one beside it.
      */
     const val INBOX = "inbox"
+
+    /**
+     * The two views everything else leans on, which nobody can delete or rename.
+     *
+     * Quick-add, the widgets and every capture without a list land in Inbox; Today is what the app
+     * opens on and what the Today widget draws. Both used to be deletable like any list, and deleting
+     * either left the app quietly making a new one the next time it needed it — a copy with none of
+     * the old one's tasks or rules, which reads as the app losing your work.
+     *
+     * Nor renamed. The key is what the code finds them by, but the name is what people find them by
+     * — on Home, in the widgets, in "lands in Inbox" — and an Inbox called something else is one
+     * nobody on a shared workspace recognises as the place their captures went.
+     */
+    fun isProtected(key: String?): Boolean = key == TODAY || key == INBOX
 }
 
 @Entity(
