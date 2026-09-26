@@ -433,8 +433,20 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun quickCaptureToInbox(title: String): String =
         create(inboxList(), NodeType.TASK, title)
 
-    suspend fun rename(id: String, title: String?) =
-        ws.writerFor(id).editBlock(id) { renamed(it, title.orEmpty()) }
+    /**
+     * Renames a node — except Today and Inbox, whose names are fixed.
+     *
+     * A top-level list is not a line on anyone's page; it *is* a page, and its name is that page's
+     * title. This only ever edited lines — it looked the node up as a line on its parent's page, and
+     * a list with no parent has no such line — so renaming a list from Home did nothing at all.
+     */
+    suspend fun rename(id: String, title: String?) {
+        val node = dao.byId(id) ?: return
+        if (SystemKey.isProtected(node.systemKey)) return
+        val writer = ws.writerFor(id)
+        if (node.parentId == null) writer.editPage(id) { it.copy(title = title.orEmpty()) }
+        else writer.editBlock(id) { renamed(it, title.orEmpty()) }
+    }
 
     suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id, Change.STRUCTURAL) {
         // Completion supersedes being started: a finished task is not still being worked on, and
@@ -486,7 +498,11 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     /** Returns the id the block ends up with — converting to a task mints it a real one. */
     suspend fun setType(id: String, type: String): String = ws.writerFor(id).convertBlock(id, type)
 
-    suspend fun delete(id: String) = ws.writerFor(id).removeBlock(id)
+    /** Deletes a node and everything under it — except Today and Inbox, which stay. */
+    suspend fun delete(id: String) {
+        if (SystemKey.isProtected(dao.byId(id)?.systemKey)) return
+        ws.writerFor(id).removeBlock(id)
+    }
 
     suspend fun moveUp(node: NodeEntity) = moveBy(node, -1)
 

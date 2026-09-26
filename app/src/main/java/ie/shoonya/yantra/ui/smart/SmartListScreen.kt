@@ -143,7 +143,8 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                             text = { Text("Edit rules", color = y.textPrimary) },
                             onClick = { menu = false; editingRule = true },
                         )
-                        DropdownMenuItem(
+                        // Today's name is fixed — see SystemKey.isProtected.
+                        if (!ie.shoonya.yantra.data.db.SystemKey.isProtected(node?.systemKey)) DropdownMenuItem(
                             text = { Text("Rename", color = y.textPrimary) },
                             onClick = { menu = false; renaming = true },
                         )
@@ -404,7 +405,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 onCreateLabel = vm::createLabel,
                 onDismiss = { editingRule = false },
                 onCreate = { newName, filter, sort, homeId ->
-                    if (newName != node?.title) vm.renameList(newName)
+                    if (newName != node?.title && !ie.shoonya.yantra.data.db.SystemKey.isProtected(node?.systemKey)) vm.renameList(newName)
                     vm.updateRule(filter, sort, homeId)
                     editingRule = false
                 },

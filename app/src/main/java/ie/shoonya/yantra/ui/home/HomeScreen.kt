@@ -101,6 +101,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import ie.shoonya.yantra.data.db.SystemKey
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import androidx.compose.foundation.combinedClickable
@@ -149,17 +150,31 @@ fun HomeScreen(nav: NavHostController) {
     var deleting by remember { mutableStateOf<NodeEntity?>(null) }
     var movingNode by remember { mutableStateOf<NodeEntity?>(null) }
 
+    // Views — the top of Home, the way a mail app puts its inboxes above its folders. Inbox and
+    // Today first, then every other smart list. A view is somewhere you *look*, not somewhere tasks
+    // live, so it sits above the lists that own them instead of taking a card-sized row in among
+    // them — and it is always there, in the same place, without having to be pinned to get there.
+    //
+    // The local workspace's Inbox when there is one: that is where capture lands. Another repo's
+    // Inbox stays in that repo's section.
+    val inbox = allLists.firstOrNull { it.systemKey == SystemKey.INBOX && it.workspaceId == "" }
+        ?: allLists.firstOrNull { it.systemKey == SystemKey.INBOX }
+    val today = allLists.firstOrNull { it.systemKey == SystemKey.TODAY }
+    val views = listOfNotNull(inbox, today) +
+        allLists.filter { it.type == NodeType.SMART_LIST && it.id != today?.id }
+    val viewIds = views.mapTo(HashSet()) { it.id }
+
     val groups = nodes.filter { it.type == NodeType.GROUP }
-    val ungrouped = allLists.filter { it.parentId == null }
+    val ungrouped = allLists.filter { it.parentId == null && it.id !in viewIds }
     // Pinned is a choice now, not a type. It was "every ungrouped smart list", which meant the
     // section held exactly the two lists the app scaffolds and nothing you put there — and the one
     // thing you could not do to a pinned list was unpin it. A pinned list keeps its place in its
     // repository: pinning moves a list to the top, it does not put a copy there.
-    val pinned = allLists.filter { it.pinned }
+    val pinned = allLists.filter { it.pinned && it.id !in viewIds }
     val ungroupedLists = ungrouped.filter { it.type == NodeType.LIST }
     // Pinned excluded here too, for the same reason it is excluded from the repository sections:
     // a pinned list is at the top, and showing it again inside its group is the same list twice.
-    val byGroup = allLists.filter { it.parentId != null && !it.pinned }.groupBy { it.parentId!! }
+    val byGroup = allLists.filter { it.parentId != null && !it.pinned && it.id !in viewIds }.groupBy { it.parentId!! }
     val allRegularLists = allLists.filter { it.type == NodeType.LIST }
     val y = Yantra.colors
 
@@ -298,7 +313,29 @@ fun HomeScreen(nav: NavHostController) {
 
                 // The app has an empty state, with its own mark and an action, and until now used it
                 // on one screen out of five — not this one, which is the first screen anyone sees.
-                if (pinned.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty()) {
+                if (views.isNotEmpty()) {
+                    items(views, key = { "view-" + it.id }) { node ->
+                        val c = counts[node.id]
+                        ViewRow(
+                            node = node,
+                            // Open work, the one number a view is looked at for. Nothing when
+                            // there is none: an empty view says so by having no badge.
+                            open = c?.let { (it.total - it.doneCount).coerceAtLeast(0) } ?: 0,
+                            onClick = {
+                                nav.navigate(
+                                    if (node.type == NodeType.SMART_LIST) Routes.smart(node.id)
+                                    else Routes.node(node.id)
+                                )
+                            },
+                            onColour = { colouring = node },
+                            // Today and Inbox are fixed: never renamed, never deleted — see SystemKey.
+                            onRename = if (SystemKey.isProtected(node.systemKey)) null else ({ renaming = node }),
+                            onDelete = if (SystemKey.isProtected(node.systemKey)) null else ({ deleting = node }),
+                        )
+                    }
+                    item(key = "views-end") { Spacer(Modifier.height(10.dp)) }
+                }
+                if (pinned.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty() && views.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty(
                             "Nothing here yet",
@@ -361,6 +398,7 @@ fun HomeScreen(nav: NavHostController) {
                         (it.type == NodeType.LIST || it.type == NodeType.GROUP ||
                             it.type == NodeType.SMART_LIST) &&
                             !it.pinned &&
+                            it.id !in viewIds &&
                             (id == null || it.workspaceId == id)
                     }
                     if (entries.isEmpty()) return@forEach
@@ -832,6 +870,74 @@ private fun SectionHeader(text: String, ink: Color? = null) {
         modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
         color = ink ?: Yantra.colors.textMuted,
     )
+}
+
+/**
+ * A view at the top of Home: one line, its mark, its name, and how much is open in it.
+ *
+ * Deliberately lighter than a list row. A list row carries "4 of 11 done" because a list is where
+ * the work lives and its progress is the point; a view is a way of looking at work that lives
+ * elsewhere, and what you want from it before opening it is only whether there is anything there.
+ */
+@Composable
+private fun ViewRow(
+    node: NodeEntity,
+    open: Int,
+    onClick: () -> Unit,
+    onColour: () -> Unit,
+    /** Both null for Today and Inbox, which cannot be renamed or deleted. */
+    onRename: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val y = Yantra.colors
+    val mark = when (node.systemKey) {
+        SystemKey.INBOX -> YantraMark.List
+        SystemKey.TODAY -> YantraMark.Calendar
+        else -> YantraMark.SmartList
+    }
+    val tint = node.color?.let { LabelPalette.byName(it) }
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+        ?: y.accent
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(YantraRadius.control))
+            .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+            .padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        YantraIcon(mark, tint = tint, contentDescription = null, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(
+            node.title.orEmpty().ifBlank { "Untitled" },
+            fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
+            color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (open > 0) {
+            Box(
+                Modifier
+                    .clip(CircleShape)
+                    .background(y.tileWarm)
+                    .padding(horizontal = 9.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("$open", fontFamily = YantraMono, fontSize = YantraType.caption, color = y.textMuted)
+            }
+        }
+        Box {
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (onRename != null) {
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+                }
+                DropdownMenuItem(text = { Text("Colour…") }, onClick = { menu = false; onColour() })
+                if (onDelete != null) {
+                    DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
+                }
+            }
+        }
+    }
 }
 
 @Composable
