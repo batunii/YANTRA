@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -466,6 +467,10 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
      */
     var leftHanded by rememberSaveable { mutableStateOf(false) }
     var kitFolded by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    var penButton by remember { mutableStateOf(InkPrefs.penButton(context)) }
+    // The tool the pen is being held as — side button down, or eraser end — while it is.
+    var heldTool by remember { mutableStateOf<EditorTool?>(null) }
     var selection by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectionAt by remember { mutableStateOf(Offset.Zero) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
@@ -612,6 +617,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                             }
                         }
                         onZoomChanged = { zoomPercent = it }
+                        onHeldToolChanged = { heldTool = it }
                         onLassoSelection = { ids, cx, bottom ->
                             selection = ids
                             selectionAt = Offset(cx, bottom)
@@ -644,6 +650,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     // Recognition belongs to the freehand pen. While you are dragging a shape out
                     // on purpose there is nothing to recognise.
                     canvas.recognizeShapes = snap && mode == InkMode.DRAW
+                    canvas.buttonTool = penButton.tool
                     // Pixels, not document units: the eraser is the size of the thing in your hand,
                     // so it stays that size on screen while the page zooms beneath it. In du it
                     // would swallow half a page once you zoomed out.
@@ -673,7 +680,9 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             PenKit(
                 slots = slots,
                 active = active,
-                mode = mode,
+                // While the button is held the key that is really working lights, so the page never
+                // looks like it is drawing with a pen that is erasing.
+                mode = heldTool?.asMode() ?: mode,
                 snap = snap,
                 // Everything except undo dims while the pen is down.
                 dimmed = drawing,
@@ -695,6 +704,11 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         drawingShapes = mode == InkMode.SHAPE,
                         shapeKind = shapeKind,
                         leftHanded = leftHanded,
+                        penButton = penButton.takeIf { stylusMode },
+                        onPenButton = {
+                            penButton = penButton.next()
+                            InkPrefs.setPenButton(context, penButton)
+                        },
                         onSlotChange = { next -> (open as? KitPanel.Slot)?.let { setSlot(it.index) { next } } },
                         onEraserSize = { eraserSize = it },
                         onShapeMode = { picked ->
@@ -807,6 +821,9 @@ private fun KitControls(
     drawingShapes: Boolean,
     shapeKind: ShapeKind,
     leftHanded: Boolean,
+    /** Null until a pen has touched the page — a phone with no pen has no button to configure. */
+    penButton: PenButton?,
+    onPenButton: () -> Unit,
     onSlotChange: (PenSlot) -> Unit,
     onEraserSize: (Float) -> Unit,
     onShapeMode: (ShapeMode) -> Unit,
@@ -895,6 +912,25 @@ private fun KitControls(
                 modifier = Modifier.weight(1f),
             )
             Text("Swap", fontSize = YantraType.meta, fontWeight = FontWeight.W700, color = y.accentText)
+        }
+        if (penButton != null) {
+            // Stepped in place rather than opened as a list: three choices, and the one you want is
+            // at most two taps away without anything covering the page.
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(YantraRadius.control))
+                    .clickable(onClick = onPenButton)
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Pen button, held",
+                    fontSize = YantraType.meta,
+                    color = y.textMuted,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(penButton.label, fontSize = YantraType.meta, fontWeight = FontWeight.W700, color = y.accentText)
+            }
         }
     }
 }
