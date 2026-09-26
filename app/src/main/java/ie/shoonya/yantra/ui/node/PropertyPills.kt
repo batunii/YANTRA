@@ -311,7 +311,11 @@ internal fun PropertyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        (set + unset).forEach { def ->
+        // Everything the task *has*, then everything it could. A label is a fact about the task
+        // exactly as a due date is, and it used to be drawn after every "+ Something" offer — so a
+        // task whose one property was a tag showed a row of empty offers and hid the tag past the
+        // fade, the one thing on the row worth reading.
+        val pill: @Composable (PropertyDefEntity) -> Unit = { def ->
             PropertyPill(
                 def = def,
                 value = values[def.id],
@@ -320,6 +324,7 @@ internal fun PropertyRow(
                 onRequest = onRequest,
             )
         }
+        set.forEach { pill(it) }
         attachedLabels.forEach { label ->
             LabelChip(
                 label = label,
@@ -327,6 +332,7 @@ internal fun PropertyRow(
                 onRecolour = { onRequest(PillRequest.Recolour(label)) },
             )
         }
+        unset.forEach { pill(it) }
         GhostPill(label = "+ Label", dashed = true, onClick = { onRequest(PillRequest.Label) })
         Spacer(Modifier.width(12.dp))
     }
