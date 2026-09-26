@@ -84,6 +84,23 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
     var onZoomChanged: (Int) -> Unit = {}
 
     /**
+     * What the pen's side button turns the pen into while it is held, or null to leave it alone.
+     *
+     * The eraser by default, because that is what a barrel button means on paper-like apps and it
+     * is the switch made most often mid-page: draw, rub out, draw on, without the hand leaving the
+     * page for the kit. Held, not toggled — let go and the pen is the pen again, so there is no
+     * mode to forget you are in.
+     */
+    var buttonTool: EditorTool? = EditorTool.ERASE
+
+    /**
+     * The tool the pen is being held as instead of [tool] — its side button down, or its eraser end
+     * on the glass — and null when it is just the pen. So the kit can show which key is really
+     * doing the work, including while the pen hovers with the button already pressed.
+     */
+    var onHeldToolChanged: (EditorTool?) -> Unit = {}
+
+    /**
      * What a lasso caught, and where to put the bar that acts on it.
      *
      * The ids are the caller's to act on; the two floats are the centre and the bottom of the
@@ -190,6 +207,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
         addView(wetLayer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         wetLayer.addFinishedStrokesListener(this)
         wetLayer.setOnTouchListener { view, event -> handleTouch(view, event) }
+        wetLayer.setOnGenericMotionListener { _, event -> handleHover(event); false }
     }
 
     fun setStrokeItems(items: List<StrokeItem>) {
@@ -263,11 +281,50 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
 
     // ---- input ----
 
+    /**
+     * The tool this gesture uses, fixed when it touches down.
+     *
+     * Decided once rather than per event: a button let go halfway through a stroke should finish the
+     * stroke it started, not turn the rest of it into something else.
+     */
+    private var gestureTool = EditorTool.DRAW
+
+    private var held: EditorTool? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            onHeldToolChanged(value)
+        }
+
+    /** A pen's eraser end, or its body with the side button down, and what that should do. */
+    private fun heldToolFor(event: MotionEvent, index: Int): EditorTool? {
+        val type = event.getToolType(index)
+        if (type == MotionEvent.TOOL_TYPE_ERASER) return EditorTool.ERASE
+        val barrel = type == MotionEvent.TOOL_TYPE_STYLUS &&
+            event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY != 0
+        return if (barrel) buttonTool else null
+    }
+
+    /** Shows the held tool before the pen lands, and takes it away when the button goes up. */
+    private fun handleHover(event: MotionEvent) {
+        if (erasing || activeStrokeId != null || shapeActive || movingSelection) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE,
+            MotionEvent.ACTION_BUTTON_PRESS, MotionEvent.ACTION_BUTTON_RELEASE ->
+                held = heldToolFor(event, 0)
+            MotionEvent.ACTION_HOVER_EXIT -> held = null
+        }
+    }
+
     private fun handleTouch(view: View, event: MotionEvent): Boolean {
         return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 view.requestUnbufferedDispatch(event)
-                val isStylus = event.getToolType(event.actionIndex) == MotionEvent.TOOL_TYPE_STYLUS
+                val toolType = event.getToolType(event.actionIndex)
+                // The eraser end is the pen too. Counted as a finger, it would pan the page on a
+                // canvas the pen had already claimed.
+                val isStylus = toolType == MotionEvent.TOOL_TYPE_STYLUS ||
+                    toolType == MotionEvent.TOOL_TYPE_ERASER
                 if (isStylus && !stylusSeen) {
                     stylusSeen = true
                     onStylusModeChanged(true)
@@ -278,14 +335,17 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                     return true
                 }
                 panning = false
+                val heldTool = if (isStylus) heldToolFor(event, event.actionIndex) else null
+                gestureTool = heldTool ?: tool
+                held = heldTool
                 // Drawing over a catch is moving on. Panning and pinching are not — those are ways
                 // of looking at what you caught, often on the way to dragging it — so they leave it
                 // alone and the bar follows the ink instead (see [afterViewportMove]).
-                if (tool != EditorTool.LASSO) dropSelection()
+                if (gestureTool != EditorTool.LASSO) dropSelection()
                 onDrawingChanged(true)
                 holdReset(event)
                 endedOnHold = false
-                when (tool) {
+                when (gestureTool) {
                     EditorTool.DRAW -> {
                         val pointerId = event.getPointerId(event.actionIndex)
                         activePointerId = pointerId
@@ -349,7 +409,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                     trackPanAndPinch(event)
                     return true
                 }
-                when (tool) {
+                when (gestureTool) {
                     EditorTool.DRAW -> {
                         holdTrack(event)
                         val pointerId = activePointerId ?: return false
@@ -381,7 +441,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
             }
             MotionEvent.ACTION_UP -> {
                 if (!panning) {
-                    when (tool) {
+                    when (gestureTool) {
                         EditorTool.DRAW -> {
                             holdTrack(event)
                             endedOnHold = event.eventTime - holdSince >= HOLD_MS
@@ -420,6 +480,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                 dryLayer.clearPreview()
                 erasing = false
                 panning = false
+                held = null
                 onDrawingChanged(false)
                 true
             }
@@ -438,6 +499,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                 dryLayer.setMove(0f, 0f)
                 erasing = false
                 panning = false
+                held = null
                 onDrawingChanged(false)
                 true
             }
