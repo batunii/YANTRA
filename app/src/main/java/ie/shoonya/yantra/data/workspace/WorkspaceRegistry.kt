@@ -53,14 +53,38 @@ class WorkspaceRegistry(private val root: File) {
 
     private val file get() = File(root, "registry.json")
 
-    fun entries(): List<WorkspaceEntry> =
-        file.takeIf { it.exists() }
-            ?.let {
-                runCatching {
-                    FilterJson.decodeFromString(ListSerializer(WorkspaceEntry.serializer()), it.readText())
-                }.getOrNull()
-            }
-            ?: emptyList()
+    /**
+     * The entries, parsed once per change to the file.
+     *
+     * Asked for constantly — every workspace colour and name on screen goes through here, some of
+     * it while a row is being drawn — and it re-read and re-decoded the file each time, on whatever
+     * thread asked, the main thread included. The file is this device's own and only this class
+     * writes it, so the stamp check is a guard against the unexpected rather than the mechanism.
+     */
+    fun entries(): List<WorkspaceEntry> {
+        val f = file
+        if (!f.exists()) return emptyList()
+        val stamp = f.lastModified() to f.length()
+        cachedEntries?.takeIf { it.first == stamp }?.let { return it.second }
+        val parsed = runCatching {
+            FilterJson.decodeFromString(ListSerializer(WorkspaceEntry.serializer()), f.readText())
+        }.getOrNull() ?: emptyList()
+        cachedEntries = stamp to parsed
+        return parsed
+    }
+
+    @Volatile private var cachedEntries: Pair<Pair<Long, Long>, List<WorkspaceEntry>>? = null
+
+    /** The local workspace's colour file, read once per change; null while there is none. */
+    private fun localColour(): String? {
+        val f = localColor
+        if (!f.exists()) return null
+        val stamp = f.lastModified() to f.length()
+        cachedLocal?.takeIf { it.first == stamp }?.let { return it.second }
+        return f.readText().trim().ifBlank { null }.also { cachedLocal = stamp to it }
+    }
+
+    @Volatile private var cachedLocal: Pair<Pair<Long, Long>, String?>? = null
 
     /** Adds, or replaces an entry with the same id. */
     fun add(entry: WorkspaceEntry) {
@@ -80,8 +104,7 @@ class WorkspaceRegistry(private val root: File) {
             // The file this class writes wins, then whatever a listed entry happens to carry: some
             // builds wrote the local workspace into the registry as well, and a colour picked in
             // Settings goes to the file.
-            localColor.takeIf { it.exists() }?.readText()?.trim()?.ifBlank { null }
-                ?: entries().firstOrNull { it.id.isEmpty() }?.color
+            localColour() ?: entries().firstOrNull { it.id.isEmpty() }?.color
         } else entries().firstOrNull { it.id == id }?.color
 
     /** The colour a workspace wears, or null to take it off. Kept, so it can be corrected. */
@@ -92,6 +115,7 @@ class WorkspaceRegistry(private val root: File) {
             // new colour up anyway, so it looked like it had worked until the screen was reopened.
             root.mkdirs()
             if (color == null) localColor.delete() else localColor.writeText(color)
+            cachedLocal = null
             return
         }
         val found = entries().firstOrNull { it.id == id } ?: return
@@ -112,6 +136,7 @@ class WorkspaceRegistry(private val root: File) {
     fun dirFor(id: String): File = File(root, if (id.isEmpty()) "local" else id)
 
     private fun write(list: List<WorkspaceEntry>) {
+        cachedEntries = null
         root.mkdirs()
         val text = FilterJson.encodeToString(ListSerializer(WorkspaceEntry.serializer()), list)
         // Same temp-and-rename as the workspace files: a half-written registry is the one file that
@@ -122,5 +147,6 @@ class WorkspaceRegistry(private val root: File) {
             file.writeText(text)
             tmp.delete()
         }
+        cachedEntries = null
     }
 }

@@ -139,7 +139,8 @@ class Workspaces(
         val sourceWriter = writers[from] ?: return Trace.warn("move", "no writer for '${from}'")
         val destWriter = writers[to] ?: return Trace.warn("move", "no writer for '${to}'")
 
-        dest.adopt(source, nodeId)
+        // A subtree's files, copied byte for byte — off the main thread, where the move is asked for.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dest.adopt(source, nodeId) }
         // Null only if the line is not where the index says it is, which is a workspace already
         // disagreeing with itself. The copy above is then a harmless orphan rather than a deletion.
         val line = sourceWriter.takeLine(nodeId)

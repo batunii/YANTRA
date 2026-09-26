@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.workspace
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.sync.withLock
 import ie.shoonya.yantra.data.db.AppDatabase
 
 /**
@@ -27,7 +28,18 @@ class Indexer(private val db: AppDatabase) {
      * per table, every flow in the app woke up. The drawing previews on a page re-decoded every
      * stroke on it because someone renamed a task.
      */
-    private val last = HashMap<String, WorkspaceIndex>()
+    private val last = java.util.concurrent.ConcurrentHashMap<String, WorkspaceIndex>()
+
+    /**
+     * One rebuild at a time, across every caller.
+     *
+     * Writers rebuild under their own lock and sync rebuilds under the engine's, so nothing else
+     * kept two of them apart — and with writes now on IO threads they genuinely overlap. [mapped]
+     * and the reconciler's page cache are plain maps mutated outside the Room transaction, and
+     * [last] is read and written around it; two passes interleaving could leave either describing
+     * rows the other wrote.
+     */
+    private val lock = kotlinx.coroutines.sync.Mutex()
 
     /**
      * Removes every row a workspace owns.
@@ -42,7 +54,7 @@ class Indexer(private val db: AppDatabase) {
      * foreign key on `node.parent_id` refuses. [reindexAll] cannot do this job: it rebuilds the
      * workspaces that are *open*, and the whole point here is one that is not.
      */
-    suspend fun purge(workspaceId: String) {
+    suspend fun purge(workspaceId: String) = lock.withLock {
         last.remove(workspaceId)
         db.labelDao().clearNodeLabels(workspaceId)
         db.labelDao().clearLabels(workspaceId)
@@ -54,23 +66,25 @@ class Indexer(private val db: AppDatabase) {
     }
 
     /** Per workspace, the mapping of each page — reused while the page's file is untouched. */
-    private val mapped = HashMap<String, MutableMap<String, Pair<
+    private val mapped = java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, Pair<
         ie.shoonya.yantra.data.format.PageDoc, MappedPage>>>()
 
     /** Reads every file and rebuilds the whole index. Returns whatever could not be resolved. */
     suspend fun rebuild(
         store: WorkspaceStore,
         now: Long = System.currentTimeMillis(),
-    ): List<String> {
+    ): List<String> = lock.withLock {
         val index = WorkspaceReconciler.read(
             store, now,
             mapCache = mapped.getOrPut(store.id) { HashMap() },
         )
-        apply(index, store.id)
-        return index.problems
+        write(index, store.id)
+        index.problems
     }
 
-    suspend fun apply(index: WorkspaceIndex, workspaceId: String) = db.withTransaction {
+    suspend fun apply(index: WorkspaceIndex, workspaceId: String) = lock.withLock { write(index, workspaceId) }
+
+    private suspend fun write(index: WorkspaceIndex, workspaceId: String) = db.withTransaction {
         val nodes = db.nodeDao()
         val props = db.propertyDao()
         val labels = db.labelDao()
