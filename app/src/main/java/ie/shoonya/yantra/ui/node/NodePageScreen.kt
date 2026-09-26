@@ -185,6 +185,8 @@ import ie.shoonya.yantra.ui.theme.YantraText
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.Immutable
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
@@ -691,219 +693,131 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
         }
 
 
+        // What a row asks of the page, built fresh each composition so it always sees the page as it
+        // is now, and handed to rows through one holder that never changes — so a row can skip
+        // without holding a stale copy of the page. See [rememberRowActions].
+        val rowActions = rememberRowActions(object : PageRowActions {
+            override fun activate(child: NodeEntity) { activeBlockId = child.id }
+            override fun focusChanged(child: NodeEntity, focused: Boolean) {
+                if (focused) lastCaretBlockId = child.id
+            }
+            override fun caretClaimed(child: NodeEntity) {
+                if (caretTarget == child.id) caretTarget = null
+            }
+            override fun split(child: NodeEntity, before: String, after: String) {
+                vm.splitBlock(child, before, after) { id -> caretTarget = id }
+            }
+            override fun mergeBack(child: NodeEntity) {
+                val i = blocks.indexOfFirst { it.id == child.id }
+                val prev = blocks.getOrNull(i - 1)?.takeIf { it.type in NodeType.TEXTUAL }
+                // Only if nothing is nested under it. delete() removes the whole subtree,
+                // so backspacing a blank block that still had children would have taken
+                // them with it — content you cannot even see from the empty line you are
+                // deleting. Backspace must never be able to do that.
+                val childless = (childCounts[child.id]?.total ?: 0) == 0
+                if (prev != null && childless) {
+                    caretTarget = prev.id
+                    vm.delete(child.id)
+                }
+            }
+            override fun become(child: NodeEntity, type: String, text: String) {
+                vm.becomeBlock(child, type, text) { id -> caretTarget = id }
+            }
+            override fun draft(child: NodeEntity, value: TextFieldValue) { linkDraft = child.id to value }
+            override fun replaced() { linkInsert = null }
+            override fun autoFocusConsumed(child: NodeEntity) {
+                if (justCreatedId == child.id) justCreatedId = null
+            }
+            override fun open(child: NodeEntity) {
+                // A destination that is this page is not a destination. Belt and braces
+                // over the id fix: if a block ever resolves to its own page again, the tap
+                // does nothing visible instead of playing a transition onto an identical
+                // screen and stacking a second copy on the back stack.
+                //
+                // Deliberately NOT launchSingleTop. Every task page is the same *destination*
+                // — one `node/{nodeId}` in the graph — and singleTop matches on the
+                // destination, not on the argument. So it read "you are already on a task
+                // page" as "you are already here", popped back to the existing entry and
+                // replaced it: the whole chain of pages you had walked down collapsed into
+                // one, and Back from a subtask went to the list instead of to its parent.
+                // Nesting and singleTop cannot both be true of this route.
+                // A sitting has no subject of its own — it is two hours on Thursday, and
+                // there is nothing to write about that. Its notes are the task's, so the
+                // chevron goes there. CALENDAR_PLAN.md §18.
+                val target = pageEvents[child.id]?.event?.forNodeId ?: child.id
+                if (target != nodeId) when (child.type) {
+                    NodeType.INK -> nav.navigate(Routes.ink(child.id))
+                    else -> nav.navigate(Routes.node(target))
+                }
+            }
+            override fun dragStart(child: NodeEntity, pointerY: Float, grabOffset: Float) {
+                // Long-press selects as well as lifts **only for the two
+                // blocks that cannot take a caret**.
+                //
+                // Selection exists so ink and an image can reach the Delete
+                // chip, which they otherwise cannot: everything else is
+                // selected by putting the caret in it. Claiming it for every
+                // block meant a long-press that never moved — the gesture
+                // ends in onDragCancel, which puts the drag back but not
+                // this — left a task sitting under a 5% accent wash with
+                // nothing on screen to clear it.
+                if (child.type == NodeType.INK || child.type == NodeType.IMAGE) {
+                    activeBlockId = child.id
+                }
+                dragOrder = liveBlocks
+                drag.start(child.id, pointerY, grabOffset)
+                haptics?.tick()
+            }
+            // The finger's own position, accumulated in viewport coordinates. Not compensated for
+            // scrolling, deliberately: a scroll moves the page under the finger, not the finger.
+            override fun dragMove(dy: Float) {
+                drag.moveTo(drag.pointerY + dy)
+                settleTarget()
+            }
+            override fun dragEnd() { commitDrag() }
+            override fun dragCancel() {
+                drag.stop()
+                dragOrder = null
+            }
+        })
+
         // One row of the page. Lifted out of the item lambda because a list now draws rows from
         // two places — what is left to do, and the finished half under DONE — and the second
         // copy has to be the same row, not a simplified one. A `LazyItemScope` extension because
         // the body animates its own placement.
+        //
+        // **Only the row's own values reach it.** The body lives in [PageRow], a composable of its
+        // own, and this looks up what belongs to this one row and hands it over. Reading the
+        // page-wide maps — chips, counts, previews, which block is active — inside the row itself
+        // subscribed every row to all of them, so any edit anywhere on the page, the moment the
+        // index came back, recomposed every visible row down to its text field. Now a row whose
+        // values are unchanged skips.
         @Composable
         fun LazyItemScope.PageBlock(child: NodeEntity) {
-                // Tasks, sketches and images are carried; prose is not. A handle on every paragraph
-                // was mostly noise, but a sketch or a picture is a distinct object you place, and
-                // it is the block you are most likely to want somewhere else. The gutter stays on
-                // every block regardless, so text still lines up down the page — it just has no
-                // grip in it.
-                //
-                // This was briefly opened up to prose as well, on the reasoning that long-press
-                // sorts itself out (a text field claims it for selection, so a paragraph could only
-                // be lifted by its margin). The gesture worked; the cost was the grip, which then
-                // had to appear on every paragraph — and a column of handles down a document is
-                // exactly the noise the rule exists to prevent. The rule was right.
-                //
-                // Ink and image keep their own long-press for selecting (that is how the Delete
-                // chip finds them), so for those two the gutter is specifically the drag handle
-                // rather than "anywhere that isn't text".
-                val draggable = child.type == NodeType.TASK ||
-                    child.type == NodeType.INK ||
-                    child.type == NodeType.IMAGE
-                val lifted = drag.id == child.id
-                val liftScale by animateFloatAsState(
-                    targetValue = if (lifted) 1.02f else 1f,
-                    animationSpec = YantraMotion.fastSpatial(),
-                    label = "blockLift",
-                )
-                // Where this row currently sits, so the carried block can be held under the finger
-                // rather than under wherever its slot has got to. Between two crossings the slot is
-                // still and the finger is not; the difference is exactly this.
-                val slotTop = listState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.key == child.id }?.offset?.toFloat()
-                Box(
-                    Modifier
-                        .zIndex(if (lifted) 1f else 0f)
-                        // The rows that step aside do so because the block genuinely left, and the
-                        // list animates its own placement. The carried row is exempt: its slot has
-                        // to snap so that the finger, which is not animated, stays on it.
-                        .then(if (lifted) Modifier else Modifier.animateItem())
-                        .graphicsLayer {
-                            if (lifted) {
-                                translationY =
-                                    if (slotTop == null) 0f
-                                    else drag.pointerY - drag.grabOffset - slotTop
-                                scaleX = liftScale
-                                scaleY = liftScale
-                            }
-                        }
-                        .then(
-                            if (lifted) {
-                                Modifier
-                                    .shadow(12.dp, RoundedCornerShape(YantraRadius.card))
-                                    .background(y.tileWarm, RoundedCornerShape(YantraRadius.card))
-                                    .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
-                            } else Modifier
-                        )
-                        // Long-press anywhere in the block's own space to pick it up. It cannot
-                        // be the words: a text field claims long-press for its own selection, and
-                        // taking that away would cost you Cut/Copy/Select-all. So every block gets
-                        // a gutter down its left instead — empty space belonging to this box, wide
-                        // enough to hit, with a grip drawn in it once the block is selected.
-                        .then(
-                            if (!draggable) Modifier else Modifier.pointerInput(child.id) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { local ->
-                                        // Long-press selects as well as lifts **only for the two
-                                        // blocks that cannot take a caret**.
-                                        //
-                                        // Selection exists so ink and an image can reach the Delete
-                                        // chip, which they otherwise cannot: everything else is
-                                        // selected by putting the caret in it. Claiming it for every
-                                        // block meant a long-press that never moved — the gesture
-                                        // ends in onDragCancel, which puts the drag back but not
-                                        // this — left a task sitting under a 5% accent wash with
-                                        // nothing on screen to clear it.
-                                        if (child.type == NodeType.INK || child.type == NodeType.IMAGE) {
-                                            activeBlockId = child.id
-                                        }
-                                        val top = listState.layoutInfo.visibleItemsInfo
-                                            .firstOrNull { it.key == child.id }?.offset ?: 0
-                                        dragOrder = liveBlocks
-                                        drag.start(child.id, top + local.y, local.y)
-                                        haptics?.tick()
-                                    },
-                                    // The finger's own position, accumulated in viewport coordinates.
-                                    // Not compensated for scrolling, deliberately: a scroll moves the
-                                    // page under the finger, not the finger.
-                                    onDrag = { _, amount ->
-                                        drag.moveTo(drag.pointerY + amount.y)
-                                        settleTarget()
-                                    },
-                                    onDragEnd = { commitDrag() },
-                                    onDragCancel = {
-                                        drag.stop()
-                                        dragOrder = null
-                                    },
-                                )
-                            }
-                        ),
-                ) {
-                // Visible on the block you are working on, and on every block once a drag starts —
-                // mid-drag you want to see where the other handles are. Faded rather than
-                // switched, so it never pops.
-                val gripAlpha by animateFloatAsState(
-                    targetValue = when {
-                        !draggable -> 0f
-                        lifted -> 1f
-                        child.id == activeBlockId -> 0.75f
-                        drag.id != null -> 0.35f
-                        else -> 0f
-                    },
-                    animationSpec = YantraMotion.effects(),
-                    label = "gripAlpha",
-                )
-                if (gripAlpha > 0.01f) {
-                    YantraIcon(YantraMark.Drag,
-                        contentDescription = "Drag to move",
-                        tint = if (lifted) y.accent else y.textDim,
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 4.dp)
-                            .size(18.dp)
-                            .alpha(gripAlpha),
-                    )
-                }
-                // A list is a card of rows; a task's page is a document, so its blocks sit bare.
-                // Prose is not a block you handle, so it is not laid out like one. The gutter
-                // exists to hold a drag grip; text and headings have none — only tasks, ink and
-                // images can be picked up — so reserving the strip for them just pushed every
-                // paragraph a thumb's width off the margin and made a document look like a stack of
-                // widgets. They keep the indent, which is theirs.
-                Wrapper(
-                    grouped = !isDocument,
-                    inset = (if (draggable) BLOCK_GUTTER else PROSE_MARGIN) + NEST_STEP * child.indent,
-                    // Completion supersedes it and the repository clears the flag, so a finished
-                    // task never arrives here still lit.
-                    started = child.inProgress,
-                ) {
-                BlockRow(
-                    child = child,
-                    active = child.id == activeBlockId,
-                    onActivate = { activeBlockId = child.id },
-                    onFocusChange = { focused -> if (focused) lastCaretBlockId = child.id },
-                    claimCaret = child.id == caretTarget,
-                    onCaretClaimed = { if (caretTarget == child.id) caretTarget = null },
-                    onSplit = { before, after ->
-                        vm.splitBlock(child, before, after) { id -> caretTarget = id }
-                    },
-                    onMergeBack = {
-                        val i = blocks.indexOfFirst { it.id == child.id }
-                        val prev = blocks.getOrNull(i - 1)?.takeIf { it.type in NodeType.TEXTUAL }
-                        // Only if nothing is nested under it. delete() removes the whole subtree,
-                        // so backspacing a blank block that still had children would have taken
-                        // them with it — content you cannot even see from the empty line you are
-                        // deleting. Backspace must never be able to do that.
-                        val childless = (childCounts[child.id]?.total ?: 0) == 0
-                        if (prev != null && childless) {
-                            caretTarget = prev.id
-                            vm.delete(child.id)
-                        }
-                    },
-                    chips = chips[child.id].orEmpty(),
-                    // Open subtasks, not blocks. "hel · 20 ›" was counting the lines of a note —
-                    // an implementation detail of how a page is stored, printed on the row as
-                    // though it were something about the task.
-                    childCount = childCounts[child.id]
-                        ?.let { (it.taskCount - it.doneCount).coerceAtLeast(0) } ?: 0,
-                    ordinal = ordinals[child.id] ?: 0,
-                    pomoCount = pomoCounts[child.id] ?: 0,
-                    // Absent on a page: every row here is already somewhere you can see.
-                    origin = null,
-                    inkStrokes = inkPreviews[child.id].orEmpty(),
-                    event = pageEvents[child.id],
-                    autoFocus = child.type == NodeType.TASK && child.id == justCreatedId,
-                    onAutoFocusConsumed = { if (justCreatedId == child.id) justCreatedId = null },
-                    vm = vm,
-                    onBecome = { type, text ->
-                        vm.becomeBlock(child, type, text) { id -> caretTarget = id }
-                    },
-                    // Complement of `grouped` above: a task's page is a document you type in, a
-                    // list is a set of rows you open.
-                    editable = isDocument,
-                    onDraft = { v -> linkDraft = child.id to v },
-                    replaceWith = linkInsert?.takeIf { it.first == child.id }?.second,
-                    onReplaced = { linkInsert = null },
-                    onOpen = {
-                        // A destination that is this page is not a destination. Belt and braces
-                        // over the id fix: if a block ever resolves to its own page again, the tap
-                        // does nothing visible instead of playing a transition onto an identical
-                        // screen and stacking a second copy on the back stack.
-                        //
-                        // Deliberately NOT launchSingleTop. Every task page is the same *destination*
-                        // — one `node/{nodeId}` in the graph — and singleTop matches on the
-                        // destination, not on the argument. So it read "you are already on a task
-                        // page" as "you are already here", popped back to the existing entry and
-                        // replaced it: the whole chain of pages you had walked down collapsed into
-                        // one, and Back from a subtask went to the list instead of to its parent.
-                        // Nesting and singleTop cannot both be true of this route.
-                        // A sitting has no subject of its own — it is two hours on Thursday, and
-                        // there is nothing to write about that. Its notes are the task's, so the
-                        // chevron goes there. CALENDAR_PLAN.md §18.
-                        val target = pageEvents[child.id]?.event?.forNodeId ?: child.id
-                        if (target != nodeId) when (child.type) {
-                            NodeType.INK -> nav.navigate(Routes.ink(child.id))
-                            else -> nav.navigate(Routes.node(target))
-                        }
-                    },
-                )
-                }
-                }
+            PageRow(
+                child = child,
+                lifted = drag.id == child.id,
+                anyDrag = drag.id != null,
+                active = child.id == activeBlockId,
+                claimCaret = child.id == caretTarget,
+                autoFocus = child.type == NodeType.TASK && child.id == justCreatedId,
+                replaceWith = linkInsert?.takeIf { it.first == child.id }?.second,
+                chips = RowChips(chips[child.id].orEmpty()),
+                // Open subtasks, not blocks. "hel · 20 ›" was counting the lines of a note — an
+                // implementation detail of how a page is stored, printed on the row as though it
+                // were something about the task.
+                childCount = childCounts[child.id]
+                    ?.let { (it.taskCount - it.doneCount).coerceAtLeast(0) } ?: 0,
+                ordinal = ordinals[child.id] ?: 0,
+                pomoCount = pomoCounts[child.id] ?: 0,
+                inkStrokes = inkPreviews[child.id].orEmpty(),
+                event = pageEvents[child.id],
+                isDocument = isDocument,
+                listState = listState,
+                drag = drag,
+                vm = vm,
+                actions = rowActions,
+            )
         }
 
         // A list settles into two halves; a document keeps its own order and is never split —
@@ -1646,6 +1560,248 @@ private fun PageBand(
                 properties()
             }
         }
+    }
+}
+
+/**
+ * A row's chips, compared by what they say.
+ *
+ * The chip lists are rebuilt whenever the index comes back, so a new list with the same chips is
+ * the ordinary case — and a bare `List` is compared by identity when Compose decides whether a
+ * row can skip. Wrapping it lets an unchanged row be recognised as unchanged.
+ */
+@Immutable
+private data class RowChips(val list: List<ChipData>)
+
+/** What a row of the page asks of the page. See [rememberRowActions]. */
+private interface PageRowActions {
+    fun activate(child: NodeEntity)
+    fun focusChanged(child: NodeEntity, focused: Boolean)
+    fun caretClaimed(child: NodeEntity)
+    fun split(child: NodeEntity, before: String, after: String)
+    fun mergeBack(child: NodeEntity)
+    fun become(child: NodeEntity, type: String, text: String)
+    fun draft(child: NodeEntity, value: TextFieldValue)
+    fun replaced()
+    fun autoFocusConsumed(child: NodeEntity)
+    fun open(child: NodeEntity)
+    fun dragStart(child: NodeEntity, pointerY: Float, grabOffset: Float)
+    fun dragMove(dy: Float)
+    fun dragEnd()
+    fun dragCancel()
+}
+
+/**
+ * One holder for the page's row actions, the same object for the life of the page, that forwards
+ * each call to the most recent [latest].
+ *
+ * A row can only skip if what it is handed is equal to last time. Handlers written inline close
+ * over the page's state as it was that composition, so they are new every time and no row ever
+ * skips; remembering them once would skip, and then act on a page that has since moved on — the
+ * trap the drag's own `liveBlocks` exists to avoid. Forwarding through an updated state is both:
+ * one identity, current behaviour.
+ */
+@Composable
+private fun rememberRowActions(latest: PageRowActions): PageRowActions {
+    val current = rememberUpdatedState(latest)
+    return remember {
+        object : PageRowActions {
+            override fun activate(child: NodeEntity) = current.value.activate(child)
+            override fun focusChanged(child: NodeEntity, focused: Boolean) =
+                current.value.focusChanged(child, focused)
+            override fun caretClaimed(child: NodeEntity) = current.value.caretClaimed(child)
+            override fun split(child: NodeEntity, before: String, after: String) =
+                current.value.split(child, before, after)
+            override fun mergeBack(child: NodeEntity) = current.value.mergeBack(child)
+            override fun become(child: NodeEntity, type: String, text: String) =
+                current.value.become(child, type, text)
+            override fun draft(child: NodeEntity, value: TextFieldValue) = current.value.draft(child, value)
+            override fun replaced() = current.value.replaced()
+            override fun autoFocusConsumed(child: NodeEntity) = current.value.autoFocusConsumed(child)
+            override fun open(child: NodeEntity) = current.value.open(child)
+            override fun dragStart(child: NodeEntity, pointerY: Float, grabOffset: Float) =
+                current.value.dragStart(child, pointerY, grabOffset)
+            override fun dragMove(dy: Float) = current.value.dragMove(dy)
+            override fun dragEnd() = current.value.dragEnd()
+            override fun dragCancel() = current.value.dragCancel()
+        }
+    }
+}
+
+/**
+ * One row of a page: the block, its drag gutter, its grip, and its placement. Everything it shows
+ * arrives as a parameter, so when none of them changed it skips — see `PageBlock`.
+ */
+@Composable
+private fun LazyItemScope.PageRow(
+    child: NodeEntity,
+    lifted: Boolean,
+    anyDrag: Boolean,
+    active: Boolean,
+    claimCaret: Boolean,
+    autoFocus: Boolean,
+    replaceWith: TextFieldValue?,
+    chips: RowChips,
+    childCount: Int,
+    ordinal: Int,
+    pomoCount: Int,
+    inkStrokes: List<androidx.ink.strokes.Stroke>,
+    event: ie.shoonya.yantra.data.db.EventWithTitle?,
+    isDocument: Boolean,
+    listState: LazyListState,
+    drag: BlockDrag,
+    vm: NodePageViewModel,
+    actions: PageRowActions,
+) {
+    val y = Yantra.colors
+    // Tasks, sketches and images are carried; prose is not. A handle on every paragraph
+    // was mostly noise, but a sketch or a picture is a distinct object you place, and
+    // it is the block you are most likely to want somewhere else. The gutter stays on
+    // every block regardless, so text still lines up down the page — it just has no
+    // grip in it.
+    //
+    // This was briefly opened up to prose as well, on the reasoning that long-press
+    // sorts itself out (a text field claims it for selection, so a paragraph could only
+    // be lifted by its margin). The gesture worked; the cost was the grip, which then
+    // had to appear on every paragraph — and a column of handles down a document is
+    // exactly the noise the rule exists to prevent. The rule was right.
+    //
+    // Ink and image keep their own long-press for selecting (that is how the Delete
+    // chip finds them), so for those two the gutter is specifically the drag handle
+    // rather than "anywhere that isn't text".
+    val draggable = child.type == NodeType.TASK ||
+        child.type == NodeType.INK ||
+        child.type == NodeType.IMAGE
+    val liftScale by animateFloatAsState(
+        targetValue = if (lifted) 1.02f else 1f,
+        animationSpec = YantraMotion.fastSpatial(),
+        label = "blockLift",
+    )
+    Box(
+        Modifier
+            .zIndex(if (lifted) 1f else 0f)
+            // The rows that step aside do so because the block genuinely left, and the
+            // list animates its own placement. The carried row is exempt: its slot has
+            // to snap so that the finger, which is not animated, stays on it.
+            .then(if (lifted) Modifier else Modifier.animateItem())
+            .graphicsLayer {
+                if (lifted) {
+                    // Where this row currently sits, so the carried block can be held
+                    // under the finger rather than under wherever its slot has got to.
+                    // Between two crossings the slot is still and the finger is not;
+                    // the difference is exactly this.
+                    //
+                    // Read here, in the layer, and never while composing. The list's
+                    // layout changes on every scrolled frame, and reading it in the
+                    // row's body subscribed every visible row to it.
+                    val slotTop = listState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.key == child.id }?.offset?.toFloat()
+                    translationY =
+                        if (slotTop == null) 0f
+                        else drag.pointerY - drag.grabOffset - slotTop
+                    scaleX = liftScale
+                    scaleY = liftScale
+                }
+            }
+            .then(
+                if (lifted) {
+                    Modifier
+                        .shadow(12.dp, RoundedCornerShape(YantraRadius.card))
+                        .background(y.tileWarm, RoundedCornerShape(YantraRadius.card))
+                        .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.card))
+                } else Modifier
+            )
+            // Long-press anywhere in the block's own space to pick it up. It cannot
+            // be the words: a text field claims long-press for its own selection, and
+            // taking that away would cost you Cut/Copy/Select-all. So every block gets
+            // a gutter down its left instead — empty space belonging to this box, wide
+            // enough to hit, with a grip drawn in it once the block is selected.
+            .then(
+                if (!draggable) Modifier else Modifier.pointerInput(child.id) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { local ->
+                            val top = listState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.key == child.id }?.offset ?: 0
+                            actions.dragStart(child, top + local.y, local.y)
+                        },
+                        // The finger's own position, accumulated in viewport coordinates.
+                        // Not compensated for scrolling, deliberately: a scroll moves the
+                        // page under the finger, not the finger.
+                        onDrag = { _, amount -> actions.dragMove(amount.y) },
+                        onDragEnd = { actions.dragEnd() },
+                        onDragCancel = { actions.dragCancel() },
+                    )
+                }
+            ),
+    ) {
+    // Visible on the block you are working on, and on every block once a drag starts —
+    // mid-drag you want to see where the other handles are. Faded rather than
+    // switched, so it never pops.
+    val gripAlpha by animateFloatAsState(
+        targetValue = when {
+            !draggable -> 0f
+            lifted -> 1f
+            active -> 0.75f
+            anyDrag -> 0.35f
+            else -> 0f
+        },
+        animationSpec = YantraMotion.effects(),
+        label = "gripAlpha",
+    )
+    if (gripAlpha > 0.01f) {
+        YantraIcon(YantraMark.Drag,
+            contentDescription = "Drag to move",
+            tint = if (lifted) y.accent else y.textDim,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 4.dp)
+                .size(18.dp)
+                .alpha(gripAlpha),
+        )
+    }
+    // A list is a card of rows; a task's page is a document, so its blocks sit bare.
+    // Prose is not a block you handle, so it is not laid out like one. The gutter
+    // exists to hold a drag grip; text and headings have none — only tasks, ink and
+    // images can be picked up — so reserving the strip for them just pushed every
+    // paragraph a thumb's width off the margin and made a document look like a stack of
+    // widgets. They keep the indent, which is theirs.
+    Wrapper(
+        grouped = !isDocument,
+        inset = (if (draggable) BLOCK_GUTTER else PROSE_MARGIN) + NEST_STEP * child.indent,
+        // Completion supersedes it and the repository clears the flag, so a finished
+        // task never arrives here still lit.
+        started = child.inProgress,
+    ) {
+    BlockRow(
+        child = child,
+        active = active,
+        onActivate = { actions.activate(child) },
+        onFocusChange = { focused -> actions.focusChanged(child, focused) },
+        claimCaret = claimCaret,
+        onCaretClaimed = { actions.caretClaimed(child) },
+        onSplit = { before, after -> actions.split(child, before, after) },
+        onMergeBack = { actions.mergeBack(child) },
+        chips = chips.list,
+        childCount = childCount,
+        ordinal = ordinal,
+        pomoCount = pomoCount,
+        // Absent on a page: every row here is already somewhere you can see.
+        origin = null,
+        inkStrokes = inkStrokes,
+        event = event,
+        autoFocus = autoFocus,
+        onAutoFocusConsumed = { actions.autoFocusConsumed(child) },
+        vm = vm,
+        onBecome = { type, text -> actions.become(child, type, text) },
+        // Complement of `grouped` above: a task's page is a document you type in, a
+        // list is a set of rows you open.
+        editable = isDocument,
+        onDraft = { v -> actions.draft(child, v) },
+        replaceWith = replaceWith,
+        onReplaced = { actions.replaced() },
+        onOpen = { actions.open(child) },
+    )
+    }
     }
 }
 
