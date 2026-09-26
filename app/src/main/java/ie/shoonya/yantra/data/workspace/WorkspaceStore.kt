@@ -127,6 +127,24 @@ class WorkspaceStore(
     private val pageCache = java.util.concurrent.ConcurrentHashMap<String, Cached<PageDoc>>()
     private val inkCache = java.util.concurrent.ConcurrentHashMap<String, Cached<List<ByteArray>>>()
 
+    /**
+     * Every other file a rebuild reads, parsed once per change to it: the label and property
+     * registries, each smart list, each month of the focus ledger.
+     *
+     * They were read and decoded in full on every rebuild — every debounced keystroke, every tick,
+     * every sync — and the focus ledger is append-only, so that cost grew for as long as anyone used
+     * the app. Same stamp as the page cache, and dropped on any write that goes through this class,
+     * so a change made within the stamp's resolution is never missed from here.
+     */
+    private val fileCache = java.util.concurrent.ConcurrentHashMap<String, Cached<Any?>>()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> File.parsedOnce(parse: (File) -> T): T {
+        val stamp = Stamp(lastModified(), length())
+        fileCache[path]?.takeIf { it.stamp == stamp }?.let { return it.value as T }
+        return parse(this).also { fileCache[path] = Cached(stamp, it) }
+    }
+
     private val metaDir get() = File(root, META)
     private val pagesDir get() = File(root, PAGES)
     private val manifestFile get() = File(metaDir, "manifest.json")
@@ -241,7 +259,10 @@ class WorkspaceStore(
         return true
     }
 
-    fun readManifest(): Manifest? =
+    /** The manifest, from the cache while the file is unchanged — see [cachedManifest]. */
+    fun readManifest(): Manifest? = cachedManifest()
+
+    private fun parseManifest(): Manifest? =
         manifestFile.takeIf { it.exists() }
             ?.let { runCatching { FilterJson.decodeFromString(Manifest.serializer(), it.readText()) }.getOrNull() }
 
@@ -270,7 +291,7 @@ class WorkspaceStore(
         }
         val stamp = Stamp(f.lastModified(), f.length())
         manifestCache?.takeIf { it.stamp == stamp }?.let { return it.value }
-        val parsed = readManifest() ?: return null
+        val parsed = parseManifest() ?: return null
         manifestCache = Cached(stamp, parsed)
         return parsed
     }
@@ -599,6 +620,7 @@ class WorkspaceStore(
         val f = File(focusDir, "$month.log")
         f.parentFile?.mkdirs()
         f.appendText(line.trimEnd('\n') + "\n")
+        fileCache.remove(f.path)
     }
 
     /**
@@ -612,8 +634,7 @@ class WorkspaceStore(
         listOf(focusDir, legacyFocusDir)
             .flatMap { it.listFiles { f -> f.name.endsWith(".log") }.orEmpty().asIterable() }
             .sortedBy { it.name }
-            .flatMap { it.readLines() }
-            .filter { it.isNotBlank() }
+            .flatMap { log -> log.parsedOnce { f -> f.readLines().filter { it.isNotBlank() } } }
 
     /**
      * Moves `pomodoro/` to `focus/` once, in place.
@@ -635,6 +656,8 @@ class WorkspaceStore(
             dest.parentFile?.mkdirs()
             if (dest.exists()) dest.appendText(old.readText()) else old.copyTo(dest, overwrite = true)
             old.delete()
+            fileCache.remove(dest.path)
+            fileCache.remove(old.path)
         }
         // Only if it emptied: anything unexpected in there is left alone rather than discarded.
         legacy.listFiles()?.takeIf { it.isEmpty() }?.let { legacy.delete() }
@@ -654,8 +677,10 @@ class WorkspaceStore(
 
     fun readSmartLists(): List<SmartListDef> =
         smartDir.listFiles { f -> f.name.endsWith(".json") }.orEmpty().sortedBy { it.name }
-            .mapNotNull {
-                runCatching { FilterJson.decodeFromString(SmartListDef.serializer(), it.readText()) }.getOrNull()
+            .mapNotNull { file ->
+                file.parsedOnce {
+                    runCatching { FilterJson.decodeFromString(SmartListDef.serializer(), it.readText()) }.getOrNull()
+                }
             }
 
     fun writeSmartList(def: SmartListDef) =
@@ -664,15 +689,16 @@ class WorkspaceStore(
 
     fun deleteSmartList(nodeId: String) {
         if (refuseWhenAhead("deleteSmartList($nodeId)")) return
-        File(smartDir, "$nodeId.json").delete()
+        File(smartDir, "$nodeId.json").also { fileCache.remove(it.path) }.delete()
     }
 
     // ---- io ----
 
     private fun <T> File.readList(ser: kotlinx.serialization.KSerializer<T>): List<T> =
-        takeIf { it.exists() }
-            ?.let { runCatching { FilterJson.decodeFromString(ListSerializer(ser), it.readText()) }.getOrNull() }
-            .orEmpty()
+        if (!exists()) emptyList()
+        else parsedOnce { f ->
+            runCatching { FilterJson.decodeFromString(ListSerializer(ser), f.readText()) }.getOrNull().orEmpty()
+        }
 
     /**
      * Write to a sibling and rename over the target.
@@ -684,6 +710,7 @@ class WorkspaceStore(
     private fun File.write(text: String) = writeBytesAtomically(text.toByteArray())
 
     private fun File.writeBytesAtomically(bytes: ByteArray) {
+        fileCache.remove(path)
         // The read-only gate for everything that puts bytes on disk — pages, ink, images, the
         // manifest and the metadata alike. It is not the *only* gate: deleting and moving a file
         // destroy data without writing any bytes and never come through here, so they carry their
