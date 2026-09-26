@@ -26,7 +26,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -209,7 +208,7 @@ fun HomeScreen(nav: NavHostController) {
         }
     }
 
-    val renderRow: @Composable (NodeEntity, Boolean) -> Unit = { node, closesRun ->
+    val renderRow: @Composable (NodeEntity) -> Unit = { node ->
         val smart = node.type == NodeType.SMART_LIST
         val c = counts[node.id]
         HomeRow(
@@ -229,7 +228,6 @@ fun HomeScreen(nav: NavHostController) {
             onDelete = { deleting = node },
             onMove = { movingNode = node },
             onColour = { colouring = node },
-            closesRun = closesRun,
         )
     }
 
@@ -331,9 +329,6 @@ fun HomeScreen(nav: NavHostController) {
                             // Today and Inbox are fixed: never renamed, never deleted — see SystemKey.
                             onRename = if (SystemKey.isProtected(node.systemKey)) null else ({ renaming = node }),
                             onDelete = if (SystemKey.isProtected(node.systemKey)) null else ({ deleting = node }),
-                            // The views are a run like any section's, and close the same way: a
-                            // hairline under the last one, not a gap of their own.
-                            closesRun = node.id == views.last().id,
                         )
                     }
                 }
@@ -349,7 +344,7 @@ fun HomeScreen(nav: NavHostController) {
                 if (pinned.isNotEmpty()) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
                     items(pinned, key = { "pinned-" + it.id }) { node ->
-                        renderRow(node, node.id == pinned.last().id)
+                        renderRow(node)
                     }
                 }
                 // Lists under the repository they belong to, and groups nested inside it.
@@ -413,15 +408,10 @@ fun HomeScreen(nav: NavHostController) {
                                 ?.let { Color(LabelPalette.display(it.light, y.isDark)) },
                         )
                     }
-                    entries.forEachIndexed { i, node ->
+                    entries.forEach { node ->
                         if (node.type != NodeType.GROUP) {
-                            // A loose row closes its run when a group — or the end of the
-                            // repository — comes next.
-                            val next = entries.getOrNull(i + 1)
-                            item(key = node.id) {
-                                renderRow(node, next == null || next.type == NodeType.GROUP)
-                            }
-                            return@forEachIndexed
+                            item(key = node.id) { renderRow(node) }
+                            return@forEach
                         }
                         item(key = "g-${node.id}") {
                             GroupBanner(
@@ -436,7 +426,7 @@ fun HomeScreen(nav: NavHostController) {
                         if (!node.collapsed) {
                             val kids = byGroup[node.id].orEmpty()
                             items(kids, key = { it.id }) { kid ->
-                                renderRow(kid, kid.id == kids.last().id)
+                                renderRow(kid)
                             }
                         }
                     }
@@ -782,7 +772,6 @@ private fun NextRow(
                 )
             }
         }
-        HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
@@ -890,8 +879,6 @@ private fun ViewRow(
     /** Both null for Today and Inbox, which cannot be renamed or deleted. */
     onRename: (() -> Unit)?,
     onDelete: (() -> Unit)?,
-    /** A hairline under the last view, as [HomeRow] closes the last row of a section. */
-    closesRun: Boolean = false,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -943,7 +930,6 @@ private fun ViewRow(
             }
         }
     }
-    if (closesRun) HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
@@ -963,16 +949,6 @@ private fun HomeRow(
     onDelete: () -> Unit,
     onMove: () -> Unit,
     onColour: () -> Unit,
-    /**
-     * Whether to close the run with a hairline.
-     *
-     * **A line ends a run; it does not separate two rows inside one.** Every row used to carry one,
-     * which drew four rules through a four-row screen and read as padding — and it was saying what
-     * the heading above already said, since a heading and the space under it is what groups these
-     * rows in the first place. Now the only rule is the one under the last row before the next
-     * heading, which is a boundary and therefore worth a mark.
-     */
-    closesRun: Boolean = true,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -1058,7 +1034,6 @@ private fun HomeRow(
                 }
             }
         }
-        if (closesRun) HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
