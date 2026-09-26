@@ -192,7 +192,7 @@ fun DockControls(
                         .size(26.dp)
                         .clip(CircleShape)
                         .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
-                        .then(if (sameInk(c, slot.color)) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
+                        .then(if (sameInk(c, slot.color)) Modifier.border(2.dp, ringFor(c, y.accent, y.textPrimary), CircleShape) else Modifier)
                         .clickable { onSlotChange(slot.copy(color = c)) },
                 )
             }

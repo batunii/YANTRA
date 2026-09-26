@@ -434,6 +434,13 @@ internal fun sameInk(a: Long, b: Long): Boolean =
 
 private fun isPaperInk(c: Long) = c == InkTheme.BLACK_INK || c == InkTheme.WHITE_INK
 
+/**
+ * The ring that marks the swatch in use. The accent, except on the accent's own swatch, where an
+ * accent ring on an accent disc is no ring at all and the selection simply vanished.
+ */
+internal fun ringFor(swatch: Long, accent: Color, other: Color): Color =
+    if (Color(swatch.toInt()).toArgb() == accent.toArgb()) other else accent
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InkScreen(nav: NavHostController, nodeId: String) {
@@ -1133,7 +1140,7 @@ internal fun InkSwatches(
                     .size(28.dp)
                     .clip(CircleShape)
                     .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
-                    .then(if (sameInk(c, current)) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
+                    .then(if (sameInk(c, current)) Modifier.border(2.dp, ringFor(c, y.accent, y.textPrimary), CircleShape) else Modifier)
                     .clickable { onPick(c) },
             )
         }
