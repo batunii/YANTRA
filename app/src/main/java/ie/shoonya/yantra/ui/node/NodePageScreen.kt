@@ -2780,27 +2780,18 @@ private fun InkBlockRow(
                     Text("Tap to sketch", color = y.textMuted.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
-                val density = LocalDensity.current
-                val previewWPx = with(density) { maxWidth.toPx() }
-                // Height tracks the sketch's full content so the block grows and pushes the
-                // blocks below it down (rather than overlapping them). Clipped so that even a
-                // very tall multi-page sketch never paints past its allotted row height.
-                //
-                // The content height is in document units, so it converts by how many pixels this
-                // preview gives a page-width — which is what InkPreview itself scales by. It used to
-                // divide by this screen's pixel width, back when that was what a document's width
-                // was assumed to be, and so came out wrong on any device that had not drawn it.
-                val heightDp = remember(strokes, previewWPx) {
-                    val contentPx = inkContentHeight(strokes) * (previewWPx / PAGE_WIDTH_DU)
-                    with(density) { contentPx.toDp() }
-                }.coerceIn(64.dp, 2400.dp)
-                Box(Modifier.height(heightDp).clipToBounds()) {
-                    InkPreview(
-                        strokes = strokes,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(heightDp),
-                    )
+                // In full, as page-slices that each draw only their own strokes — see InkBands. The
+                // 2400 dp cap that used to cut long sketches off (silently) is gone with the single
+                // tall view that needed it.
+                val context = LocalContext.current
+                var collapsed by remember(child.id) {
+                    mutableStateOf(ie.shoonya.yantra.ui.ink.InkPrefs.isInkCollapsed(context, child.id))
+                }
+                ie.shoonya.yantra.ui.ink.InkBands(
+                    strokes = strokes,
+                    collapsed = collapsed,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { foldable ->
                     Text(
                         (child.title?.takeIf { it.isNotBlank() } ?: "Ink").uppercase(),
                         style = MonoBreadcrumb,
@@ -2809,6 +2800,28 @@ private fun InkBlockRow(
                             .align(Alignment.BottomEnd)
                             .padding(4.dp),
                     )
+                    // Fold or unfold, in the corner of the sketch itself. Offered only when there is
+                    // something to fold: a sketch shorter than its folded height has nothing to hide.
+                    if (foldable) {
+                        Box(
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(YantraRadius.control))
+                                .background(y.cardBg.copy(alpha = 0.85f))
+                                .clickable {
+                                    collapsed = !collapsed
+                                    ie.shoonya.yantra.ui.ink.InkPrefs.setInkCollapsed(context, child.id, collapsed)
+                                }
+                                .padding(6.dp),
+                        ) {
+                            YantraIcon(
+                                if (collapsed) YantraMark.Expand else YantraMark.Collapse,
+                                contentDescription = if (collapsed) "Show the whole sketch" else "Fold the sketch",
+                                tint = y.textMuted,
+                            )
+                        }
+                    }
                 }
             }
         }

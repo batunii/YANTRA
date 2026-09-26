@@ -51,6 +51,25 @@ object InkPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(DOCK, value.name).apply()
     }
 
+    private const val COLLAPSED_INK = "ink_collapsed_blocks"
+
+    /**
+     * Sketches folded down on their page, by ink block id.
+     *
+     * Here rather than in the index's `collapsed` column: that row is rewritten whenever anything on
+     * the page it sits on changes, so a folded sketch would unfold itself every time you typed
+     * beside it. Folding is about this screen, not about the work, so it stays on this device.
+     */
+    fun isInkCollapsed(context: Context, id: String): Boolean =
+        id in context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(COLLAPSED_INK, emptySet()).orEmpty()
+
+    fun setInkCollapsed(context: Context, id: String, collapsed: Boolean) {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val now = p.getStringSet(COLLAPSED_INK, emptySet()).orEmpty().toMutableSet()
+        if (collapsed) now += id else now -= id
+        p.edit().putStringSet(COLLAPSED_INK, now).apply()
+    }
+
     fun penButton(context: Context): PenButton =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(PEN_BUTTON, null)
             ?.let { saved -> PenButton.entries.firstOrNull { it.name == saved } }
