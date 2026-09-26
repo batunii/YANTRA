@@ -331,9 +331,11 @@ fun HomeScreen(nav: NavHostController) {
                             // Today and Inbox are fixed: never renamed, never deleted — see SystemKey.
                             onRename = if (SystemKey.isProtected(node.systemKey)) null else ({ renaming = node }),
                             onDelete = if (SystemKey.isProtected(node.systemKey)) null else ({ deleting = node }),
+                            // The views are a run like any section's, and close the same way: a
+                            // hairline under the last one, not a gap of their own.
+                            closesRun = node.id == views.last().id,
                         )
                     }
-                    item(key = "views-end") { Spacer(Modifier.height(10.dp)) }
                 }
                 if (pinned.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty() && views.isEmpty()) {
                     item(key = "empty") {
@@ -888,6 +890,8 @@ private fun ViewRow(
     /** Both null for Today and Inbox, which cannot be renamed or deleted. */
     onRename: (() -> Unit)?,
     onDelete: (() -> Unit)?,
+    /** A hairline under the last view, as [HomeRow] closes the last row of a section. */
+    closesRun: Boolean = false,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -899,6 +903,7 @@ private fun ViewRow(
     val tint = node.color?.let { LabelPalette.byName(it) }
         ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
         ?: y.accent
+    Column {
     Row(
         Modifier
             .fillMaxWidth()
@@ -937,6 +942,8 @@ private fun ViewRow(
                 }
             }
         }
+    }
+    if (closesRun) HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
