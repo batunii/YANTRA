@@ -302,7 +302,7 @@ private fun KitColumn(
 
 /** A slot drawn as the stroke it makes — the label is a name, the drawing is the answer. */
 @Composable
-private fun SlotStroke(slot: PenSlot, modifier: Modifier) {
+internal fun SlotStroke(slot: PenSlot, modifier: Modifier) {
     val color = Color(slot.color.toInt())
     val translucent = slot.family == StrokeCodec.FAMILY_HIGHLIGHTER
     Canvas(modifier) {
@@ -326,7 +326,7 @@ private fun SlotStroke(slot: PenSlot, modifier: Modifier) {
 }
 
 @Composable
-private fun KitTool(
+internal fun KitTool(
     label: String,
     on: Boolean,
     onClick: () -> Unit,
