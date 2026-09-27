@@ -113,6 +113,7 @@ object PageMapper {
                 extUid = (block as? TaskRef)?.external?.uid ?: (block as? EventRef)?.external?.uid,
                 extStart = ((block as? TaskRef)?.external ?: (block as? EventRef)?.external)
                     ?.occurrence?.toString(),
+                author = (block as? TaskRef)?.author,
                 createdAt = ts,
                 updatedAt = ts,
             )
@@ -308,6 +309,7 @@ object PageMapper {
             priority = values.firstOrNull { it.defId == BuiltIns.PRIORITY_DEF_ID }?.vText,
             labels = labels,
             assignee = values.firstOrNull { it.defId == BuiltIns.ASSIGNEE_DEF_ID }?.vText,
+            author = n.author,
         )
         else -> Prose(n.title.orEmpty(), n.indent)
     }

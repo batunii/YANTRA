@@ -23,6 +23,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -148,6 +149,17 @@ class SmartListViewModel(
             if (d == null) flowOf(emptyList())
             else smartLists.queryCompleted(d) ?: flowOf(emptyList())
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Who added each task in this view, by id — only where it was somebody other than you. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val addedBy: StateFlow<Map<String, String>> =
+        combine(tasks, completed) { a, b -> (a + b).map { it.id } }
+            .distinctUntilChanged()
+            .flatMapLatest { ids ->
+                if (ids.isEmpty()) flowOf(emptyList()) else container.db.originDao().authorsOf(ids)
+            }
+            .map { rows -> ie.shoonya.yantra.data.people.addedByOthers(rows, container.credentials::login) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     /**
      * Where each task actually lives — `PERSONAL · INBOX` — by task id.

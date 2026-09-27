@@ -1,5 +1,6 @@
 package ie.shoonya.yantra.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Embedded
@@ -1076,3 +1077,58 @@ data class TaskOrigin(
     val listColor: String?,
     val workspaceId: String,
 )
+
+/** Who added a task: the login, and the workspace whose login would make it "you". */
+data class NodeAuthor(
+    @ColumnInfo(name = "node_id") val nodeId: String,
+    @ColumnInfo(name = "workspace_id") val workspaceId: String,
+    val login: String,
+)
+
+/**
+ * Who added what — the file's `by:` first, the repository's history when the line says nothing.
+ *
+ * The two are joined here rather than merged into `node`, because they are answers from different
+ * places with different lifetimes: `node.author` is rebuilt from the files on every pass, and
+ * [TaskOriginEntity] is read once out of git and kept. See [TaskOriginEntity] for why it carries no
+ * foreign key.
+ */
+@Dao
+interface OriginDao {
+    /** First sighting wins: history is read oldest first, so an id already here was added earlier. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(rows: List<TaskOriginEntity>)
+
+    @Query("SELECT head FROM origin_scan WHERE workspace_id = :workspaceId")
+    suspend fun head(workspaceId: String): String?
+
+    @Upsert
+    suspend fun setHead(row: OriginScanEntity)
+
+    /** Everything read out of one workspace's history, so it can be read again. */
+    @Transaction
+    suspend fun forget(workspaceId: String) {
+        clearOrigins(workspaceId)
+        clearHead(workspaceId)
+    }
+
+    @Query("DELETE FROM task_origin WHERE workspace_id = :workspaceId")
+    suspend fun clearOrigins(workspaceId: String)
+
+    @Query("DELETE FROM origin_scan WHERE workspace_id = :workspaceId")
+    suspend fun clearHead(workspaceId: String)
+
+    @Query(
+        """SELECT n.id AS node_id, n.workspace_id AS workspace_id, COALESCE(n.author, o.login) AS login
+           FROM node n LEFT JOIN task_origin o ON o.workspace_id = n.workspace_id AND o.node_id = n.id
+           WHERE n.parent_id = :parentId AND n.type = 'task' AND COALESCE(n.author, o.login) IS NOT NULL"""
+    )
+    fun authorsUnder(parentId: String): Flow<List<NodeAuthor>>
+
+    @Query(
+        """SELECT n.id AS node_id, n.workspace_id AS workspace_id, COALESCE(n.author, o.login) AS login
+           FROM node n LEFT JOIN task_origin o ON o.workspace_id = n.workspace_id AND o.node_id = n.id
+           WHERE n.id IN (:ids) AND COALESCE(n.author, o.login) IS NOT NULL"""
+    )
+    fun authorsOf(ids: List<String>): Flow<List<NodeAuthor>>
+}

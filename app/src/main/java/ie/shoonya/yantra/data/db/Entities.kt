@@ -166,9 +166,41 @@ data class NodeEntity(
     @ColumnInfo(name = "ext_uid") val extUid: String? = null,
     /** Which occurrence, for a repeating meeting. Null when it has only the one. */
     @ColumnInfo(name = "ext_start") val extStart: String? = null,
+    /**
+     * Who added this task, as the file says — [ie.shoonya.yantra.data.format.TaskRef.author]. Null
+     * when the line says nothing, which is where [TaskOriginEntity] takes over.
+     */
+    val author: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,    // LWW clock for sync
     @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,
+)
+
+/**
+ * Who first put a task's `^id` into the repository, read out of its history — the answer for a task
+ * whose line carries no `by:`.
+ *
+ * **No foreign key to `node`, deliberately.** The index wipes and rewrites `node` on every rebuild;
+ * a cascading key would empty this table each time (the history is not re-read to put it back), and
+ * a plain one would refuse the wipe. This is a cache of facts about git, not about the index, so it
+ * is keyed the way git knows a task: by workspace and id.
+ *
+ * [login] is null when the commit that added the id could not say who made it — every commit the app
+ * made before it signed them with the login. The row still matters: it records that the *first*
+ * sighting has been seen, so a later commit that merely edits the line cannot claim the task.
+ */
+@Entity(tableName = "task_origin", primaryKeys = ["workspace_id", "node_id"])
+data class TaskOriginEntity(
+    @ColumnInfo(name = "workspace_id") val workspaceId: String,
+    @ColumnInfo(name = "node_id") val nodeId: String,
+    val login: String?,
+)
+
+/** The last commit [TaskOriginEntity] has read up to, per workspace, so each pass reads only what is new. */
+@Entity(tableName = "origin_scan")
+data class OriginScanEntity(
+    @PrimaryKey @ColumnInfo(name = "workspace_id") val workspaceId: String,
+    val head: String,
 )
 
 object PropertyKind {

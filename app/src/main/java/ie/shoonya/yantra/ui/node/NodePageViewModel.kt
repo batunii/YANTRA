@@ -77,6 +77,23 @@ class NodePageViewModel(
     val node: StateFlow<NodeEntity?> =
         nodes.observe(nodeId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /** Who added each task on this page, by id — only where it was somebody other than you. */
+    val addedBy: StateFlow<Map<String, String>> =
+        container.db.originDao().authorsUnder(nodeId)
+            .map { rows -> ie.shoonya.yantra.data.people.addedByOthers(rows, container.credentials::login) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /**
+     * Who added the task this page is, and whether that was you. The page says either — it is the
+     * one place the question is being asked directly — where a row only speaks up for somebody else.
+     */
+    val author: StateFlow<Pair<String, Boolean>?> =
+        container.db.originDao().authorsOf(listOf(nodeId))
+            .map { rows ->
+                rows.firstOrNull()?.let { it.login to ie.shoonya.yantra.data.people.isYou(it, container.credentials::login) }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     /**
      * Whether the answer has arrived yet — CALENDAR_PLAN.md §25.
      *

@@ -277,7 +277,15 @@ class AppContainer(val app: Application) {
 
     private val indexer = Indexer(db)
 
-    val workspaces = Workspaces(db, indexer, device, appScope) { id, change ->
+    /** Who added each task, read out of each workspace's history — see [ie.shoonya.yantra.data.sync.TaskOrigins]. */
+    private val origins = ie.shoonya.yantra.data.sync.TaskOrigins(db, appScope)
+
+    // A task is stamped with who added it only where somebody else could be reading: Personal is
+    // yours alone, and every line in it saying so would be noise.
+    val workspaces = Workspaces(
+        db, indexer, device, appScope,
+        authorOf = { id -> if (id.isEmpty()) null else credentials.login(id) },
+    ) { id, change ->
         commits[id]?.record(change)
     }
 
@@ -456,6 +464,11 @@ class AppContainer(val app: Application) {
                     credentials.providerFor(store.id)
                 },
                 activity = network,
+                // Signed as you, so the history says who made each change — and so a task whose
+                // line has no `by:` can still be attributed from it.
+                author = { credentials.login(store.id) },
+                // Not Personal: nothing there is ever attributed, so its history is not read.
+                origins = origins.takeIf { store.id.isNotEmpty() },
             ),
         )
     }

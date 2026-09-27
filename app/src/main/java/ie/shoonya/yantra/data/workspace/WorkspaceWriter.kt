@@ -50,6 +50,12 @@ class WorkspaceWriter(
      */
     private val scope: kotlinx.coroutines.CoroutineScope? = null,
     /**
+     * The login to stamp on a task this writer creates — [TaskRef.author]. Asked at each creation
+     * rather than captured, because signing in happens after the writer exists. Null writes no
+     * token, which is what Personal and a workspace nobody has signed in to both want.
+     */
+    private val author: () -> String? = { null },
+    /**
      * Told about every write that actually happened, so something can decide when files become a
      * commit. Reported here rather than by each repository because a mutation that changed nothing
      * must not count — and this is the only place that knows whether one did.
@@ -235,7 +241,7 @@ class WorkspaceWriter(
         // write, no error, and a screen that looked dead to the touch.
         ensurePage(pageId)
         val page = loadPage(pageId) ?: return@locked ""
-        val block = blockOf(type, id, title.orEmpty(), indent)
+        val block = blockOf(type, id, title.orEmpty(), indent, author = author())
         val at = page.blocks.indexOfFirst { blockIdOf(it, page.id, page.blocks) == afterId }
         val blocks = page.blocks.toMutableList()
         if (afterId != null && at >= 0) blocks.add(at + 1, block) else blocks += block
@@ -504,7 +510,9 @@ class WorkspaceWriter(
             // and converting away and back should not fork its page.
             val id = if (b is TaskRef && b.id.isNotEmpty()) b.id else minted
             settled = id
-            blockOf(type, id, text, b.indent)
+            // Who added it does not change because its kind did. A line that was already a task
+            // keeps its author; one that becomes a task now is being added now, by whoever did it.
+            blockOf(type, id, text, b.indent, author = if (b is TaskRef) b.author else author())
         }
         settled
     }
@@ -758,8 +766,8 @@ class WorkspaceWriter(
     private suspend fun homePageOf(nodeId: String): String? =
         db.nodeDao().byId(nodeId)?.parentId
 
-    private fun blockOf(type: String, id: String, text: String, indent: Int): Block = when (type) {
-        NodeType.TASK -> TaskRef(id = id, title = text, indent = indent)
+    private fun blockOf(type: String, id: String, text: String, indent: Int, author: String? = null): Block = when (type) {
+        NodeType.TASK -> TaskRef(id = id, title = text, indent = indent, author = author)
         NodeType.HEADING -> Heading(text, indent)
         NodeType.BULLET -> Bullet(text, indent)
         NodeType.NUMBERED -> Numbered(text, indent)

@@ -80,6 +80,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val origins by vm.origins.collectAsStateWithLifecycle()
+    val addedBy by vm.addedBy.collectAsStateWithLifecycle()
     val rowContext by vm.rowContext.collectAsStateWithLifecycle()
     val pomoCounts by vm.pomoCounts.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
@@ -298,6 +299,7 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         // A smart list is a list: the row opens the task, it does not become a
                         // text field. Typing happens on the task's own page.
                         editable = false,
+                        addedBy = addedBy[task.id],
                     )
                 }
                 }
