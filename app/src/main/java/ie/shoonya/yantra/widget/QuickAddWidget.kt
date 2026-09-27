@@ -71,7 +71,8 @@ private fun QuickAddContent() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(
                 provider = ImageProvider(R.drawable.ic_widget_add),
-                contentDescription = "New task",
+                // Named only when it stands alone; beside the word it would be read out twice.
+                contentDescription = if (iconOnly) "New task" else null,
                 colorFilter = ColorFilter.tint(GlanceTheme.colors.onPrimary),
                 modifier = GlanceModifier.size(if (iconOnly) 22.dp else 17.dp),
             )

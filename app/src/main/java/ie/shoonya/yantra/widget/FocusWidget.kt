@@ -59,6 +59,7 @@ import ie.shoonya.yantra.domain.FocusTimer
 import ie.shoonya.yantra.widget.actions.FocusAction
 import ie.shoonya.yantra.domain.sessionClock
 import ie.shoonya.yantra.data.format.Markdown
+import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
  * Focus-timer widget. The running clock is a RemoteViews Chronometer embedded via
@@ -79,8 +80,12 @@ class FocusWidget : GlanceAppWidget() {
     // provider info, so a widget dragged out to full width was still typeset for a strip. Two
     // layouts are worth having, so Responsive rather than Exact — see WidgetMetrics in ListWidget
     // for the same argument at more length.
+    //
+    // The regular bucket starts at 190dp because that is where its stack actually fits: header,
+    // title, clock, bar and keys come to about 185dp. At 130 it was chosen for widgets it could not
+    // hold, and what got cut off the bottom was the keys — the only controls on the thing.
     override val sizeMode: SizeMode = SizeMode.Responsive(
-        setOf(DpSize(180.dp, 70.dp), DpSize(250.dp, 130.dp))
+        setOf(DpSize(180.dp, 70.dp), DpSize(250.dp, 190.dp))
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -144,10 +149,10 @@ private data class FocusMetrics(
 
         fun forSize(size: DpSize): FocusMetrics =
             if (size.height < COMPACT) FocusMetrics(
-                header = 10.sp, title = 12.sp, clock = 22f, chip = 12.sp,
+                header = YantraType.caption, title = 12.sp, clock = 22f, chip = 12.sp,
                 clockHeight = 30.dp, pad = 11.dp, key = 38.dp, mark = 24.dp, compact = true,
             ) else FocusMetrics(
-                header = 11.sp, title = 15.sp, clock = 34f, chip = 13.sp,
+                header = YantraType.caption, title = 15.sp, clock = 34f, chip = 13.sp,
                 clockHeight = 44.dp, pad = 15.dp, key = 46.dp, mark = 34.dp, compact = false,
             )
     }
@@ -180,6 +185,8 @@ private fun FocusContent(state: FocusTimer.State?, last: Pair<String, String>?) 
                 .cornerRadius(R.dimen.widget_radius)
                 .padding(m.pad)
                 .clickable(actionStartActivity(openFocus)),
+            // A strip is one row, centred in whatever height the launcher gave it.
+            verticalAlignment = if (m.compact) Alignment.CenterVertically else Alignment.Top,
         ) {
             when {
                 state == null -> IdleContent(last, m)
@@ -322,6 +329,20 @@ private fun ActionChip(label: String, command: String, m: FocusMetrics, filled: 
 
 @Composable
 private fun IdleContent(last: Pair<String, String>?, m: FocusMetrics) {
+    if (m.compact) {
+        // A strip has room for the task and the one thing to do with it; the eyebrow is dropped
+        // rather than squeezed, because stacking it is what pushed the chip out of the widget.
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = GlanceModifier.defaultWeight()) {
+                TitleText(last?.second ?: "Pick a task in the app", m)
+            }
+            if (last != null) {
+                Spacer(GlanceModifier.width(10.dp))
+                ActionChip("Start 25m", FocusAction.START_LAST, m, filled = true)
+            }
+        }
+        return
+    }
     HeaderText("FOCUS", m)
     Spacer(GlanceModifier.height(4.dp))
     TitleText(last?.second ?: "Pick a task in the app", m)
@@ -343,11 +364,6 @@ private fun IdleContent(last: Pair<String, String>?, m: FocusMetrics) {
 @Composable
 private fun SessionContent(state: FocusTimer.State, m: FocusMetrics) {
     val context = LocalContext.current
-    HeaderText(if (state.isRunning) "FOCUSING" else "PAUSED", m, urgent = !state.isRunning)
-    Spacer(GlanceModifier.height(2.dp))
-    TitleText(state.nodeTitle, m)
-    Spacer(GlanceModifier.height(if (m.compact) 2.dp else 6.dp))
-
     // One box, one face, whichever way the session is going. Running was a mono Chronometer and
     // paused a Glance Text — which meant the reading changed typeface *and* jumped position every
     // time the transport was pressed, because Glance's TextStyle carries no fontFamily and quietly
@@ -382,6 +398,24 @@ private fun SessionContent(state: FocusTimer.State, m: FocusMetrics) {
             )
         }
     }
+
+    if (m.compact) {
+        // A strip is the clock and the buttons, and nothing else — which is what the metrics
+        // always said and the layout did not do. The mark goes too: at 180dp across it would
+        // leave the clock too narrow for "25:00", and Pause against a filled Resume already says
+        // whether the session is running.
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            AndroidRemoteViews(rv, modifier = GlanceModifier.defaultWeight().height(m.clockHeight))
+            Spacer(GlanceModifier.width(10.dp))
+            TransportKeys(state, m)
+        }
+        return
+    }
+
+    HeaderText(if (state.isRunning) "FOCUSING" else "PAUSED", m, urgent = !state.isRunning)
+    Spacer(GlanceModifier.height(2.dp))
+    TitleText(state.nodeTitle, m)
+    Spacer(GlanceModifier.height(6.dp))
     Row(
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -393,7 +427,7 @@ private fun SessionContent(state: FocusTimer.State, m: FocusMetrics) {
 
     // How much of the promise is left, for the instrument that made one. An open session has no
     // denominator, so it gets no bar rather than a bar that means nothing.
-    if (!state.isOpen && !m.compact && state.plannedSecs > 0) {
+    if (!state.isOpen && state.plannedSecs > 0) {
         Spacer(GlanceModifier.height(6.dp))
         LinearProgressIndicator(
             progress = (state.elapsedSecs.toFloat() / state.plannedSecs).coerceIn(0f, 1f),
@@ -405,27 +439,39 @@ private fun SessionContent(state: FocusTimer.State, m: FocusMetrics) {
         )
     }
 
-    Spacer(GlanceModifier.height(if (m.compact) 6.dp else 10.dp))
+    Spacer(GlanceModifier.height(10.dp))
     Row(modifier = GlanceModifier.fillMaxWidth()) {
-        if (state.isRunning) {
-            TransportKey(R.drawable.ic_widget_pause, "Pause", FocusAction.PAUSE, m)
-        } else {
-            // Resume leads when the clock is stopped: it is the only thing you are likely to
-            // have come to the home screen to do.
-            TransportKey(R.drawable.ic_widget_play, "Resume", FocusAction.RESUME, m, primary = true)
-        }
-        Spacer(GlanceModifier.width(10.dp))
-        TransportKey(R.drawable.ic_widget_stop, "Stop", FocusAction.STOP, m)
+        TransportKeys(state, m)
     }
+}
+
+/** The primary key and Stop, shared by the strip's one row and the panel's key row. */
+@Composable
+private fun TransportKeys(state: FocusTimer.State, m: FocusMetrics) {
+    if (state.isRunning) {
+        TransportKey(R.drawable.ic_widget_pause, "Pause", FocusAction.PAUSE, m)
+    } else {
+        // Resume leads when the clock is stopped: it is the only thing you are likely to
+        // have come to the home screen to do.
+        TransportKey(R.drawable.ic_widget_play, "Resume", FocusAction.RESUME, m, primary = true)
+    }
+    Spacer(GlanceModifier.width(10.dp))
+    TransportKey(R.drawable.ic_widget_stop, "Stop", FocusAction.STOP, m)
 }
 
 @Composable
 private fun FinishedContent(state: FocusTimer.State, m: FocusMetrics) {
-    HeaderText("DONE", m)
-    Spacer(GlanceModifier.height(2.dp))
-    TitleText(state.nodeTitle, m)
-    Spacer(GlanceModifier.height(4.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    if (!m.compact) {
+        HeaderText("DONE", m)
+        Spacer(GlanceModifier.height(2.dp))
+        TitleText(state.nodeTitle, m)
+        Spacer(GlanceModifier.height(4.dp))
+    }
+    // In a strip the mark, what you gave and Dismiss share one row.
+    Row(
+        modifier = if (m.compact) GlanceModifier.fillMaxWidth() else GlanceModifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         // Filled, because a landed bindu is what completion looks like everywhere else in the app.
         Image(
             provider = ImageProvider(R.drawable.ic_widget_mark),
@@ -444,11 +490,18 @@ private fun FinishedContent(state: FocusTimer.State, m: FocusMetrics) {
                 fontWeight = FontWeight.Bold,
             ),
             maxLines = 1,
+            modifier = if (m.compact) GlanceModifier.defaultWeight() else GlanceModifier,
         )
+        if (m.compact) {
+            Spacer(GlanceModifier.width(10.dp))
+            ActionChip("Dismiss", FocusAction.DISMISS, m, filled = true)
+        }
     }
-    Spacer(GlanceModifier.height(if (m.compact) 6.dp else 10.dp))
-    Row(modifier = GlanceModifier.fillMaxWidth()) {
-        ActionChip("Dismiss", FocusAction.DISMISS, m, filled = true)
+    if (!m.compact) {
+        Spacer(GlanceModifier.height(10.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            ActionChip("Dismiss", FocusAction.DISMISS, m, filled = true)
+        }
     }
 }
 

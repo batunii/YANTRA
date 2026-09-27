@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -294,7 +296,7 @@ fun CalendarScreen(
                     selected.format(DAY_LABEL),
                     fontSize = YantraType.section,
                     fontWeight = FontWeight.W700,
-                    color = y.textDim,
+                    color = y.textMuted,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = PAGE_MARGIN, vertical = 6.dp),
@@ -402,10 +404,14 @@ fun CalendarScreen(
                 fontWeight = FontWeight.W700,
                 color = y.accent,
                 modifier = Modifier
-                    .padding(start = PAGE_MARGIN, bottom = 2.dp)
+                    .padding(start = PAGE_MARGIN)
                     .clip(RoundedCornerShape(YantraRadius.panel))
                     .clickable { vm.today() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    // The way home after swiping away, so it gets a whole thumb's height rather
+                    // than the height of its word.
+                    .heightIn(min = 48.dp)
+                    .wrapContentHeight(Alignment.CenterVertically)
+                    .padding(horizontal = 8.dp),
             )
         }
 
@@ -529,7 +535,7 @@ private fun PickForRange(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onEvent)
-                    .padding(vertical = 14.dp),
+                    .padding(vertical = 16.dp),
             )
         }
     }
@@ -866,7 +872,7 @@ private fun CalendarBar(
         if (showRail) {
             Box(
                 Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(RoundedCornerShape(YantraRadius.control))
                     .then(if (railOpen) Modifier.background(y.accentFill) else Modifier)
                     .clickable(onClick = onRail)
@@ -913,7 +919,8 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
             val on = m == mode
             Box(
                 Modifier
-                    .height(30.dp)
+                    // 44 inside the pill's 2dp padding: the whole switch is a 48dp target.
+                    .height(44.dp)
                     .clip(RoundedCornerShape(YantraRadius.block))
                     .then(if (on) Modifier.background(y.accentFill) else Modifier)
                     .clickable { onMode(m) },
@@ -925,7 +932,7 @@ private fun ModeSwitch(mode: CalendarMode, days: Int, onMode: (CalendarMode) -> 
                     // The segment says what it will actually show. "Week" on a phone that gives you
                     // three days is a label that lies about the button underneath it.
                     if (m == CalendarMode.WEEK && days < 7) "$days days" else m.label,
-                    fontSize = YantraType.caption,
+                    fontSize = YantraType.section,
                     fontWeight = if (on) FontWeight.W700 else FontWeight.W500,
                     color = if (on) y.accentText else y.textMuted,
                     maxLines = 1,

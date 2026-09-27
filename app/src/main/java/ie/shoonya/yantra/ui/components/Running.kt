@@ -803,14 +803,9 @@ fun SwitchHereDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(
-                    "SWITCH HERE",
-                    fontFamily = YantraMono,
-                    fontSize = YantraType.section,
-                    fontWeight = FontWeight.W700,
-                    letterSpacing = 1.4.sp,
-                    color = y.accent,
-                )
+                // The button's own voice, the same as the dismiss beside it. Mono is the instrument
+                // (§5), and one dialog with two button faces reads as two dialogs.
+                Text("Switch here", color = y.accentText)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Leave it running") } },

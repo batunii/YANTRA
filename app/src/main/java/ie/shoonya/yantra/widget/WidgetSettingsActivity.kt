@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -45,7 +46,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ie.shoonya.yantra.App
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
-import ie.shoonya.yantra.ui.components.NavCircle
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.components.PageHeader
 import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.theme.SuperTasksTheme
 import ie.shoonya.yantra.ui.theme.Yantra
@@ -55,7 +57,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
-import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -244,26 +245,16 @@ private fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .background(y.page)
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            // The list has a search field in it, and its results must not end up under the keyboard.
+            .imePadding(),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavCircle(
-                mark = YantraMark.Back,
-                contentDescription = "Close",
-                onClick = onClose,
-                iconSize = 20.dp,
-            )
-            Spacer(Modifier.width(14.dp))
-            Text("Widget settings", style = MaterialTheme.typography.headlineSmall, color = y.textPrimary)
-        }
+        PageHeader(title = "Widget settings", onBack = onClose)
 
         LazyColumn(
             Modifier.fillMaxWidth().navigationBarsPadding(),
             contentPadding = PaddingValues(
-                start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp,
+                start = PAGE_MARGIN, end = PAGE_MARGIN, top = 8.dp, bottom = 24.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -271,7 +262,7 @@ private fun SettingsScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+                        .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -370,7 +361,7 @@ private fun ToggleCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.card))
             .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

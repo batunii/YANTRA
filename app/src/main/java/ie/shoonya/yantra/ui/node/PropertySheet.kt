@@ -10,11 +10,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -27,13 +24,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.PropertyDefEntity
 import ie.shoonya.yantra.data.db.PropertyKind
 import ie.shoonya.yantra.data.db.PropertyValueEntity
+import ie.shoonya.yantra.ui.components.ButtonTone
 import ie.shoonya.yantra.ui.components.DueSheet
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.components.SectionLabel
+import ie.shoonya.yantra.ui.components.SelectChip
+import ie.shoonya.yantra.ui.components.YantraButton
+import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraDisplay
+import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.components.dateLabel
 import ie.shoonya.yantra.ui.components.dateTimeLabel
 import ie.shoonya.yantra.ui.components.selectConfig
@@ -62,15 +69,24 @@ fun PropertySheet(
     val attachedLabels by remember(targetId) { vm.labelsFor(targetId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
+    val y = Yantra.colors
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = PAGE_MARGIN)
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Properties", style = MaterialTheme.typography.titleLarge)
+            // A sheet's size, not a screen's: at titleLarge this half-height surface shouted.
+            Text(
+                "Properties",
+                fontFamily = YantraDisplay,
+                fontSize = YantraType.sheetTitle,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.3).sp,
+                color = y.textPrimary,
+            )
 
             defs.forEach { def ->
                 PropertyEditor(
@@ -86,7 +102,7 @@ fun PropertySheet(
             }
 
             HorizontalDivider()
-            Text("Labels", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionLabel("Labels")
             LabelChipsRow(
                 allLabels = allLabels,
                 attached = attachedLabels,
@@ -110,11 +126,7 @@ private fun PropertyEditor(
     onClear: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            def.name,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel(def.name)
         // Assignee before the kind switch, exactly as in the pill row. It is stored as text and the
         // text branch would give it a free-typing field — which is the escape hatch, not the
         // affordance: a login typed one character wrong assigns the task to nobody and no layer of
@@ -131,10 +143,10 @@ private fun PropertyEditor(
                 ) {
                     selectConfig(def).options.forEach { option ->
                         val selected = value?.vText == option.name
-                        FilterChip(
+                        SelectChip(
+                            label = option.name,
                             selected = selected,
                             onClick = { if (selected) onClear() else onSet(option.name, null, null, null) },
-                            label = { Text(option.name) },
                         )
                     }
                 }
@@ -144,13 +156,13 @@ private fun PropertyEditor(
                 val isDue = def.name == BuiltIns.DUE_NAME
                 val isDeadline = def.name == BuiltIns.DEADLINE_NAME
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { showPicker = true }) {
-                        Text(
-                            value?.vDate?.let {
-                                if (isDue && value.vBool == true) dateTimeLabel(it) else dateLabel(it)
-                            } ?: "Set date"
-                        )
-                    }
+                    YantraButton(
+                        label = value?.vDate?.let {
+                            if (isDue && value.vBool == true) dateTimeLabel(it) else dateLabel(it)
+                        } ?: "Set date",
+                        onClick = { showPicker = true },
+                        tone = ButtonTone.Quiet,
+                    )
                     if (value?.vDate != null) {
                         Spacer(Modifier.width(8.dp))
                         TextButton(onClick = onClear) { Text("Clear") }
@@ -248,9 +260,11 @@ private fun AssigneeButton(current: String?, onPick: (String) -> Unit, onClear: 
     var open by remember { mutableStateOf(false) }
     val source = LocalPeople.current
     Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(onClick = { open = true }) {
-            Text(current?.let { "@$it" } ?: "Assign to someone")
-        }
+        YantraButton(
+            label = current?.let { "@$it" } ?: "Assign to someone",
+            onClick = { open = true },
+            tone = ButtonTone.Quiet,
+        )
         if (current != null) {
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = onClear) { Text("Clear") }

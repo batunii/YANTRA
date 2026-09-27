@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.format.EventRef
 import ie.shoonya.yantra.data.format.EventTime
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
 import java.time.Duration
@@ -193,7 +195,7 @@ fun EventSheet(
                 }
                 if (onOpenTask != null) {
                     SheetRow("Open the task", onClick = { onOpenTask(); onDismiss() }) {
-                        Text("\u203a", fontSize = YantraType.card, color = y.accent)
+                        YantraIcon(YantraMark.Forward, tint = y.accent, contentDescription = null)
                     }
                 }
             } else {
@@ -219,7 +221,7 @@ fun EventSheet(
             // task's own, because a due date carries a duration.
             if (!sitting && onTurnIntoTask != null) {
                 SheetRow("Turn into a task", onClick = { onTurnIntoTask(); onDismiss() }) {
-                    Text("\u203a", fontSize = YantraType.card, color = y.accent)
+                    YantraIcon(YantraMark.Forward, tint = y.accent, contentDescription = null)
                 }
             }
             // An all-day sitting is a claim to the whole day rather than time set aside in it, and
@@ -262,7 +264,7 @@ fun EventSheet(
             // Offered on a sitting as much as on an appointment: a block of your own time is
             // exactly the kind of thing somebody wants to find at a glance in a full day.
             SheetRow("Colour") {
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Inherit first, and it is a swatch like the rest rather than a word, because
                     // "what this looks like when I do not choose" is a colour you should be able to
                     // see beside the ones you could choose instead.
@@ -397,23 +399,32 @@ private fun PickerDialog(
 @Composable
 private fun Swatch(fill: Color?, chosen: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
+    // The target is larger than the drawing. Six small circles in a row are easy to miss, and a
+    // miss here picks a neighbour's colour rather than nothing, so each takes a thumb's width and
+    // the gap between them becomes part of the target.
     Box(
         Modifier
-            .size(26.dp)
+            .size(44.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick)
-            .then(if (chosen) Modifier.border(2.dp, y.textPrimary, CircleShape) else Modifier),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
-                .size(if (chosen) 14.dp else 18.dp)
-                .clip(CircleShape)
-                .then(
-                    if (fill != null) Modifier.background(fill)
-                    else Modifier.border(1.5.dp, y.textDim, CircleShape)
-                ),
-        )
+                .size(26.dp)
+                .then(if (chosen) Modifier.border(2.dp, y.textPrimary, CircleShape) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(if (chosen) 14.dp else 18.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (fill != null) Modifier.background(fill)
+                        else Modifier.border(1.5.dp, y.textDim, CircleShape)
+                    ),
+            )
+        }
     }
 }
 

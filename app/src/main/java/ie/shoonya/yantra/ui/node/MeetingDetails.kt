@@ -40,6 +40,9 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
@@ -172,7 +175,7 @@ internal fun MeetingHeader(
                     color = y.accentText,
                     modifier = Modifier.weight(1f),
                 )
-                Text("\u203a", fontSize = YantraType.card, color = y.accentText)
+                YantraIcon(YantraMark.Forward, size = YantraIcons.Small, tint = y.accentText, contentDescription = null)
             }
         }
 
@@ -371,9 +374,9 @@ private fun Field(label: String, value: String) {
         Text(
             label.uppercase(),
             fontFamily = YantraMono,
-            fontSize = YantraType.dense,
+            fontSize = YantraType.caption,
             letterSpacing = 0.8.sp,
-            color = y.textDim,
+            color = y.textMuted,
             modifier = Modifier.width(74.dp).padding(top = 2.dp),
         )
         Text(value, fontSize = YantraType.meta, lineHeight = 17.sp, color = y.textPrimary, modifier = Modifier.weight(1f))

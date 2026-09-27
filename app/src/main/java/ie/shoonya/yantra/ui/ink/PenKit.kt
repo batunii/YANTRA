@@ -200,7 +200,7 @@ private fun KitColumn(
             YantraIcon(if (folded) YantraMark.Up else YantraMark.Down,
                 contentDescription = if (folded) "Show the whole kit" else "Fold the kit",
                 tint = y.textDim,
-                modifier = Modifier.size(20.dp),
+                size = YantraIcons.Medium,
             )
         }
 
@@ -238,7 +238,7 @@ private fun KitColumn(
                 Text(
                     slot.label,
                     fontFamily = YantraMono,
-                    fontSize = YantraType.dense,
+                    fontSize = YantraType.section,
                     letterSpacing = 0.8.sp,
                     fontWeight = FontWeight.W700,
                     color = if (on) y.accentText else y.textMuted,
@@ -392,7 +392,7 @@ private fun UndoKey(mark: YantraMark, label: String, enabled: Boolean, onClick: 
             mark,
             contentDescription = label,
             tint = if (enabled) y.textSecondary else y.textDim.copy(alpha = 0.4f),
-            modifier = Modifier.size(22.dp),
+            size = YantraIcons.Large,
         )
     }
 }

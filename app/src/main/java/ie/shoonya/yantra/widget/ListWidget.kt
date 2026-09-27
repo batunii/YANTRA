@@ -82,6 +82,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import ie.shoonya.yantra.ui.theme.YantraColors
+import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.data.label.LabelPalette
 
@@ -198,6 +199,12 @@ private data class WidgetMetrics(
     val rowGap: Dp,
     val pad: Dp,
     val addButton: Dp,
+    /**
+     * The one size both header glyphs draw at. They were each the key minus a different number,
+     * which put a 10dp overflow beside a 12dp plus; these are the calendar widget's key and glyph,
+     * so the two panes in the family have the same header controls.
+     */
+    val glyph: Dp,
 ) {
     companion object {
         /** Anything under this is a strip, not a panel, and has to stay terse. */
@@ -205,11 +212,12 @@ private data class WidgetMetrics(
 
         fun forSize(size: DpSize): WidgetMetrics =
             if (size.height < COMPACT) WidgetMetrics(
-                header = 15.sp, summary = 11.sp, rowTitle = 13.sp, meta = 11.sp, section = 10.sp,
-                box = 19.dp, rowGap = 3.dp, pad = 11.dp, addButton = 26.dp,
+                // The section label at the family's floor: nothing on a widget prints below 11sp.
+                header = 15.sp, summary = 11.sp, rowTitle = 13.sp, meta = 11.sp, section = YantraType.caption,
+                box = 19.dp, rowGap = 3.dp, pad = 11.dp, addButton = 28.dp, glyph = 16.dp,
             ) else WidgetMetrics(
                 header = 19.sp, summary = 12.5.sp, rowTitle = 15.sp, meta = 12.sp, section = 11.sp,
-                box = 23.dp, rowGap = 7.dp, pad = 15.dp, addButton = 32.dp,
+                box = 23.dp, rowGap = 7.dp, pad = 15.dp, addButton = 34.dp, glyph = 20.dp,
             )
     }
 }
@@ -604,7 +612,7 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                             provider = ImageProvider(R.drawable.ic_widget_add),
                             contentDescription = "Add task",
                             colorFilter = ColorFilter.tint(GlanceTheme.colors.primary),
-                            modifier = GlanceModifier.size(m.addButton - 14.dp),
+                            modifier = GlanceModifier.size(m.glyph),
                         )
                     }
                 }
@@ -626,7 +634,7 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                         provider = ImageProvider(R.drawable.ic_widget_more),
                         contentDescription = "Widget settings",
                         colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
-                        modifier = GlanceModifier.size(m.addButton - 16.dp),
+                        modifier = GlanceModifier.size(m.glyph),
                     )
                 }
             }
@@ -654,11 +662,14 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
                                 // separated bands rather than one list with bold labels in it.
                                 Column {
                                     if (index > 0) {
+                                        // The air above the rule is its own Spacer: padding on a
+                                        // 1dp box sits inside that 1dp, and the background paints
+                                        // the whole view, so the gap never showed.
+                                        Spacer(GlanceModifier.height(m.rowGap + 3.dp))
                                         Box(
                                             GlanceModifier
                                                 .fillMaxWidth()
                                                 .height(1.dp)
-                                                .padding(top = m.rowGap + 3.dp)
                                                 .background(
                                                     GlanceTheme.colors.onSurface.getColor(context)
                                                         .copy(alpha = 0.09f)
@@ -694,6 +705,7 @@ private fun ListContent(data: WidgetData, opacity: Int, widgetId: Int, isToday: 
  */
 @Composable
 private fun EmptyState(setUp: Boolean, metrics: WidgetMetrics, onAdd: androidx.glance.action.Action?) {
+    val context = LocalContext.current
     Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
@@ -709,15 +721,26 @@ private fun EmptyState(setUp: Boolean, metrics: WidgetMetrics, onAdd: androidx.g
             )
             if (onAdd != null) {
                 Spacer(GlanceModifier.size(10.dp))
-                Text(
-                    "Add a task",
-                    style = TextStyle(
-                        color = GlanceTheme.colors.primary,
-                        fontSize = metrics.meta,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    modifier = GlanceModifier.clickable(onAdd).padding(horizontal = 13.dp, vertical = 6.dp),
-                )
+                // The focus widget's worded action, so the family has one shape for "the thing to
+                // do here" — and a bare bold word did not look like it could be pressed.
+                Box(
+                    modifier = GlanceModifier
+                        .background(GlanceTheme.colors.primary.getColor(context).copy(alpha = 0.15f))
+                        .cornerRadius(R.dimen.widget_inner_radius)
+                        .clickable(onAdd)
+                        .padding(horizontal = 15.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "Add a task",
+                        style = TextStyle(
+                            color = GlanceTheme.colors.primary,
+                            fontSize = metrics.meta,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -767,22 +790,43 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
         // drawables rather than the drawn path — same geometry, same colour law, no choreography.
         // A done task is a bare bindu and keeps no priority tint: the enclosure is what carried
         // urgency, and it has un-drawn.
-        Image(
-            provider = ImageProvider(
-                when {
-                    row.done -> R.drawable.ic_widget_check_done
-                    row.inProgress -> R.drawable.ic_widget_check_progress
-                    else -> R.drawable.ic_widget_check_idle
-                }
-            ),
-            contentDescription = if (row.done) "Mark not done" else "Mark done",
-            // The done and in-progress marks are already coral in the drawable; only the open
-            // frame takes a tint, and only from priority.
-            colorFilter = if (row.done || row.inProgress) null
-            else ColorFilter.tint(priorityTint ?: GlanceTheme.colors.outline),
-            modifier = GlanceModifier.size(m.box).clickable(toggle),
-        )
-        Spacer(GlanceModifier.width(11.dp))
+        //
+        // The gap after the glyph belongs to the toggle: the mark alone was a 19dp target beside the
+        // row's open-task area, so a press meant to complete a task often opened it instead.
+        Box(
+            modifier = GlanceModifier.clickable(toggle).padding(end = 11.dp),
+            contentAlignment = Alignment.TopStart,
+        ) {
+            // Every layer is tinted here rather than coloured in its drawable. The done bindu and
+            // the in-progress ring were baked coral, so a user who chose another accent saw effort
+            // in a hue that was not theirs — a red ring on a widget beside a teal app. The ring is
+            // its own drawable over the open frame because a tint colours a whole image, and the
+            // frame and the ring are on different layers of the colour law.
+            Image(
+                provider = ImageProvider(
+                    if (row.done) R.drawable.ic_widget_check_done else R.drawable.ic_widget_check_idle
+                ),
+                contentDescription = if (row.done) "Mark not done" else "Mark done",
+                colorFilter = ColorFilter.tint(
+                    when {
+                        row.done -> GlanceTheme.colors.primary
+                        // Neutral under the ring, as the app draws it: priority is on the open
+                        // frame only.
+                        row.inProgress -> GlanceTheme.colors.outline
+                        else -> priorityTint ?: GlanceTheme.colors.outline
+                    }
+                ),
+                modifier = GlanceModifier.size(m.box),
+            )
+            if (row.inProgress && !row.done) {
+                Image(
+                    provider = ImageProvider(R.drawable.ic_widget_check_progress_ring),
+                    contentDescription = null,
+                    colorFilter = ColorFilter.tint(GlanceTheme.colors.primary),
+                    modifier = GlanceModifier.size(m.box),
+                )
+            }
+        }
         Column(
             modifier = GlanceModifier
                 .defaultWeight()
@@ -791,7 +835,8 @@ private fun TaskRow(row: WidgetRow, status: YantraColors, m: WidgetMetrics) {
         ) {
             Text(
                 row.title,
-                maxLines = 2,
+                // One line, so every row is a title and at most a meta line — the two-line row.
+                maxLines = 1,
                 style = TextStyle(
                     fontSize = m.rowTitle,
                     fontWeight = if (row.done) FontWeight.Normal else FontWeight.Medium,

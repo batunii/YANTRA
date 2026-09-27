@@ -1,6 +1,9 @@
 package ie.shoonya.yantra.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -31,7 +34,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.Text
@@ -52,7 +54,6 @@ import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.components.AppMark
 import ie.shoonya.yantra.ui.theme.YantraType
-import ie.shoonya.yantra.ui.theme.YantraRadius
 
 /**
  * The app's one nav/action button: a small translucent circle. Round rather than a rounded
@@ -82,7 +83,7 @@ fun NavCircle(
                 if (accent) y.accent.copy(alpha = 0.12f) else y.textPrimary.copy(alpha = 0.05f),
                 CircleShape,
             )
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it },
+            .let { if (onClick != null) it.clickable(role = Role.Button, onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) {
         val ink = if (accent) y.accentGlow else y.textSecondary
@@ -109,7 +110,7 @@ fun NavCircleSurface(
                 if (accent) y.accent.copy(alpha = 0.12f) else y.textPrimary.copy(alpha = 0.05f),
                 CircleShape,
             )
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it },
+            .let { if (onClick != null) it.clickable(role = Role.Button, onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -157,17 +158,19 @@ fun ComposedEmpty(
             tint = y.checkOutline.copy(alpha = 0.55f),
             checkTint = y.accent.copy(alpha = 0.45f),
         )
-        Text(line, fontSize = YantraType.meta, fontWeight = FontWeight.W500, color = y.textMuted)
+        // The one sentence on an empty screen is read, not glanced at, so it takes the paragraph
+        // size rather than the metadata one; centred because the mark above it is.
+        Text(
+            line,
+            style = MaterialTheme.typography.bodyMedium,
+            color = y.textMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = PAGE_MARGIN),
+        )
+        // The screen's one next action is a button, so it is *the* button (§6) — not a pill a
+        // third of a finger tall.
         if (action != null && onAction != null) {
-            Row(
-                Modifier
-                    .background(y.accentFill, RoundedCornerShape(YantraRadius.pill))
-                    .clickable(onClick = onAction)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(action, fontSize = YantraType.section, fontWeight = FontWeight.W700, color = y.accent)
-            }
+            YantraButton(action, onAction, tone = ButtonTone.Soft)
         }
     }
 }

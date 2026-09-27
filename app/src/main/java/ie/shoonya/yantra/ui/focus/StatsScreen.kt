@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,6 +91,7 @@ import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -375,7 +381,14 @@ fun StatsScreen(nav: NavHostController) {
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().nestedScroll(fold.connection),
-            contentPadding = PaddingValues(horizontal = PAGE_MARGIN, vertical = 8.dp),
+            // No bottom bar here to clear the navigation bar, so the list does it itself: content
+            // still draws behind the bar, but the last row comes to rest above it.
+            contentPadding = PaddingValues(
+                start = PAGE_MARGIN,
+                end = PAGE_MARGIN,
+                top = 8.dp,
+                bottom = 8.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+            ),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item(key = "week-yantra") {
@@ -391,7 +404,7 @@ fun StatsScreen(nav: NavHostController) {
             item(key = "strip") { StatStrip(stats, review) }
             item(key = "breakdown-header") {
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 10.dp),
+                    Modifier.fillMaxWidth().padding(top = 17.dp, bottom = 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SectionLabel("Breakdown", modifier = Modifier.weight(1f))
@@ -415,8 +428,10 @@ fun StatsScreen(nav: NavHostController) {
                             color = if (span == option) y.accentText else y.textMuted,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(YantraRadius.block))
-                                .clickable { span = option }
-                                .padding(horizontal = 4.dp, vertical = 3.dp),
+                                // Tall enough to hit, and announced as the selected tab. The
+                                // header row gave up the same height, so the chips stay put.
+                                .selectable(selected = span == option, role = Role.Tab, onClick = { span = option })
+                                .padding(horizontal = 4.dp, vertical = 14.dp),
                         )
                     }
                 }
@@ -686,7 +701,8 @@ private fun BreakdownRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(YantraRadius.panel))
             .then(if (onOpen == null) Modifier else Modifier.clickable(onClick = onOpen))
-            .padding(vertical = 8.dp),
+            // The play key sets the height of a row that has one; a row without keeps its own.
+            .padding(vertical = if (onPlay != null) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The task's own glyph, in its real state — open, on the go, or done. A list or a
@@ -709,25 +725,24 @@ private fun BreakdownRow(
         Column(Modifier.weight(1f).padding(start = if (isTask) 12.dp else 2.dp)) {
             Text(
                 row.title,
-                fontSize = YantraType.body,
-                fontWeight = FontWeight.W600,
+                style = MaterialTheme.typography.bodyLarge,
                 color = y.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 "${durationLabel(row.totalSecs)} · ${row.sessions} session${if (row.sessions == 1) "" else "s"}",
-                fontSize = YantraType.caption,
-                color = y.textDim,
+                style = MaterialTheme.typography.bodySmall,
+                color = y.textMuted,
                 maxLines = 1,
             )
         }
         if (onPlay != null) {
-            // Its own target, and a real one: 40dp of tappable circle inside a row that also opens.
+            // Its own target, and a real one: 48dp of tappable circle inside a row that also opens.
             // A play key you have to aim at is a play key that starts the wrong task.
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(if (running) y.accentFill else Color.Transparent)
                     .clickable(onClick = onPlay),
@@ -736,7 +751,7 @@ private fun BreakdownRow(
                 YantraIcon(if (running) YantraMark.Stop else YantraMark.Play,
                     contentDescription = if (running) "Stop the clock on ${row.title}" else "Start the clock on ${row.title}",
                     tint = if (running) y.accent else y.textMuted,
-                    modifier = Modifier.size(19.dp),
+                    size = YantraIcons.Medium,
                 )
             }
         }

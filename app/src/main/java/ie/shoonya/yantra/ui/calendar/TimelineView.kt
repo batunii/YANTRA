@@ -813,9 +813,9 @@ private fun BlockChip(
             Column(Modifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
                 Text(
                     item.title,
-                    fontSize = if (compact) 9.sp else 12.sp,
+                    fontSize = if (compact) YantraType.dense else YantraType.section,
                     fontWeight = FontWeight.W600,
-                    lineHeight = if (compact) 11.sp else 14.sp,
+                    lineHeight = if (compact) 12.sp else 14.sp,
                     color = when {
                         // A meeting you have made work of is one you have a stake in, so it reads
                         // at full strength rather than as backdrop.
@@ -1033,7 +1033,7 @@ private fun AllDayChip(item: DayItem, compact: Boolean = false, onClick: () -> U
     ) {
         Text(
             item.title,
-            fontSize = if (compact) 8.sp else 10.sp,
+            fontSize = if (compact) YantraType.dense else YantraType.caption,
             color = if (isEvent) y.accentText else y.textMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

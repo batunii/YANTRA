@@ -4,11 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -142,7 +139,6 @@ fun PropertyChip(chip: ChipData, modifier: Modifier = Modifier) {
         // legibility — the 1.6/28 ratio comes out under half a pixel at that size.
         if (chip.mark != null) {
             YantraIcon(chip.mark, size = YantraIcons.Small, tint = s.dot)
-            Spacer(Modifier.width(5.dp))
         } else {
             Box(Modifier.size(6.dp).background(s.dot, RoundedCornerShape(YantraRadius.tiny)))
         }
@@ -163,7 +159,7 @@ fun FocusCount(count: Int, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        YantraIcon(YantraMark.Focus, tint = Yantra.colors.accent, contentDescription = null)
+        YantraIcon(YantraMark.Focus, size = YantraIcons.Small, tint = Yantra.colors.accent, contentDescription = null)
         Text(
             "$count",
             fontSize = YantraType.caption,
@@ -180,7 +176,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Yan
         text.uppercase(),
         modifier = modifier,
         fontFamily = YantraText,
-        fontSize = YantraType.caption,
+        fontSize = YantraType.section,
         fontWeight = FontWeight.W700,
         letterSpacing = 1.4.sp,
         color = color,
@@ -227,6 +223,12 @@ fun ConfirmDialog(
     confirmLabel: String = "Delete",
     /** What backing out is called. "Cancel" is wrong wherever the choice is not destroy-or-abort. */
     dismissLabel: String = "Cancel",
+    /**
+     * Whether confirming destroys something. Crimson is the world asking (§2.1), and a dialog that
+     * only ends the user's own effort — a focus session cut short — must not borrow it, least of
+     * all in the focus view, where the law names it as absent. False takes the button's own accent.
+     */
+    destructive: Boolean = true,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -236,7 +238,7 @@ fun ConfirmDialog(
         text = { Text(body) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(confirmLabel, color = MaterialTheme.colorScheme.error)
+                if (destructive) Text(confirmLabel, color = MaterialTheme.colorScheme.error) else Text(confirmLabel)
             }
         },
         dismissButton = {

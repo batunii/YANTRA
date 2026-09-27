@@ -116,6 +116,14 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.theme.YantraDisplay
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -590,12 +598,27 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 value = title,
                 onValueChange = { title = it; vm.rename(it) },
                 singleLine = true,
-                textStyle = TextStyle(fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textPrimary),
+                textStyle = TextStyle(
+                    fontFamily = YantraDisplay,
+                    fontSize = YantraType.sheetTitle,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = (-0.3).sp,
+                    color = y.textPrimary,
+                ),
                 cursorBrush = SolidColor(y.accent),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box {
-                        if (title.isEmpty()) Text(placeholder, fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textMuted.copy(alpha = 0.6f))
+                        if (title.isEmpty()) Text(
+                            placeholder,
+                            fontFamily = YantraDisplay,
+                            fontSize = YantraType.sheetTitle,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = (-0.3).sp,
+                            color = y.textDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         inner()
                     }
                 },
@@ -775,7 +798,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 },
                 modifier = Modifier
                     .align(if (leftHanded) Alignment.BottomStart else Alignment.BottomEnd)
-                    .padding(22.dp),
+                    .padding(PAGE_MARGIN),
             )
             }
 
@@ -799,16 +822,20 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 )
             }
 
+            // Bottom-centre, the one stretch of the bottom edge the kit and the undo pair leave free:
+            // this is the way back from a pinch you did not mean, so it goes where the thumb is,
+            // not in the corner at the top that the hand has to leave the page to reach.
             if (zoomPercent != 100) {
                 Row(
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = PAGE_MARGIN)
+                        .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(YantraRadius.panel))
                         .background(y.cardBg)
                         .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
                         .clickable { canvasRef?.fitWidth() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -816,13 +843,13 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         fontFamily = YantraMono,
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
-                        color = y.textDim,
+                        color = y.textMuted,
                     )
                     Text(
                         "fit",
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
-                        color = y.accent,
+                        color = y.accentText,
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
@@ -835,7 +862,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 onRedo = vm::redo,
                 modifier = Modifier
                     .align(if (leftHanded) Alignment.BottomEnd else Alignment.BottomStart)
-                    .padding(18.dp),
+                    .padding(PAGE_MARGIN),
             )
         } }
 
@@ -970,8 +997,8 @@ private fun KitControls(
             // costs you the thing you opened it to fix.
             .padding(bottom = 78.dp)
             .width(232.dp)
-            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.panel))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -1004,7 +1031,7 @@ internal fun KitSettingRow(label: String, value: String, onClick: () -> Unit, mo
         modifier
             .clip(RoundedCornerShape(YantraRadius.control))
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, fontSize = YantraType.meta, color = y.textMuted, modifier = Modifier.weight(1f))
@@ -1063,7 +1090,7 @@ internal fun KitControlsBody(
                 if (slot == null) return@Column
                 SectionLabel(slot.label)
                 WidthRow(slot.width, 1f..24f) { onSlotChange(slot.copy(width = it)) }
-                Text("Ink", fontSize = YantraType.caption, color = y.textMuted, modifier = Modifier.padding(top = 6.dp))
+                SectionLabel("Ink", Modifier.padding(top = 6.dp))
                 InkSwatches(
                     current = slot.color,
                     recents = recents,
@@ -1092,8 +1119,8 @@ internal fun KitControlsBody(
                 Text(
                     if (drawingShapes) "Drag to place the shape."
                     else "Draw freehand; it settles into a shape when you lift.",
-                    fontSize = YantraType.caption,
-                    color = y.textDim,
+                    fontSize = YantraType.meta,
+                    color = y.textMuted,
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 if (drawingShapes) {
@@ -1159,7 +1186,11 @@ internal fun InkSwatches(
                     .clip(CircleShape)
                     .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
                     .then(if (sameInk(c, current)) Modifier.border(2.dp, ringFor(c, y.accent, y.textPrimary), CircleShape) else Modifier)
-                    .clickable { onPick(c) },
+                    .clickable { onPick(c) }
+                    .semantics {
+                        contentDescription = "Ink colour"
+                        selected = sameInk(c, current)
+                    },
             )
         }
         Box(
@@ -1169,7 +1200,7 @@ internal fun InkSwatches(
                 .border(1.dp, y.tileBorder, CircleShape)
                 .clickable(onClick = onCustom),
             contentAlignment = Alignment.Center,
-        ) { Text("+", fontSize = YantraType.body, color = y.textMuted) }
+        ) { YantraIcon(YantraMark.Add, size = YantraIcons.Small, tint = y.textMuted, contentDescription = "Custom colour") }
     }
 }
 
@@ -1187,12 +1218,20 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
     var value by remember { mutableFloatStateOf(hsv[2]) }
     val current = Color.hsv(hue, sat, value)
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.railBg) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.cardBg) {
         Column(
-            Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 20.dp),
+            Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Custom color", fontSize = YantraType.card, fontWeight = FontWeight.W800, color = y.textPrimary)
+            // A sheet title, as the due, assignee and property sheets set theirs.
+            Text(
+                "Custom colour",
+                fontFamily = YantraDisplay,
+                fontSize = YantraType.sheetTitle,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.3).sp,
+                color = y.textPrimary,
+            )
 
             // saturation / value square
             Box(
@@ -1293,10 +1332,9 @@ private fun BoxScope.SelectionBar(
     ) {
         Text(
             "$count",
-            fontFamily = YantraMono,
-            fontSize = YantraType.caption,
+            fontSize = YantraType.section,
             fontWeight = FontWeight.W700,
-            color = y.textDim,
+            color = y.textMuted,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         Text(
@@ -1313,27 +1351,23 @@ private fun BoxScope.SelectionBar(
 @Composable
 private fun BarAction(
     label: String,
-    accent: Boolean = false,
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val y = Yantra.colors
     Box(
         Modifier
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(YantraRadius.control))
-            .background(if (accent) y.accentFill else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 10.dp),
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontSize = YantraType.meta,
             fontWeight = FontWeight.W700,
-            color = when {
-                accent -> y.accentText
-                danger -> y.overdue
-                else -> y.textMuted
-            },
+            color = if (danger) y.overdue else y.textMuted,
         )
     }
 }

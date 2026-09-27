@@ -13,12 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -63,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import ie.shoonya.yantra.ui.components.spine
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraText
+import ie.shoonya.yantra.ui.theme.YantraMono
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.CompositionLocalProvider
 import ie.shoonya.yantra.ui.components.LocalLinkOpener
@@ -111,9 +110,10 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 // a band that sits above every screen — a signature you cannot look away from stops
                 // being cosmetic. What is left is the hairline below, which reads as the fold
                 // between two sheets of paper rather than as a shape.
-                .background(y.band, RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+                .background(y.band, RoundedCornerShape(bottomStart = YantraRadius.sheet, bottomEnd = YantraRadius.sheet))
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp)
+                // The same edge as the rows below, so the view's name lines up with its first task.
+                .padding(horizontal = PAGE_MARGIN)
                 .padding(top = 10.dp, bottom = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -161,10 +161,10 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 Spacer(Modifier.width(7.dp))
                 Text(
                     "SMART VIEW",
-                    fontFamily = YantraText,
-                    fontSize = YantraType.caption,
-                    fontWeight = FontWeight.W600,
-                    letterSpacing = 1.5.sp,
+                    fontFamily = YantraMono,
+                    fontSize = YantraType.section,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = 1.2.sp,
                     color = y.textMuted,
                 )
             }
@@ -172,6 +172,8 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                 node?.title.orEmpty(),
                 style = MaterialTheme.typography.titleLarge,
                 color = y.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 6.dp),
             )
             // Rule-speak demoted to a pill. How the view is assembled is mechanics; it belongs
@@ -185,12 +187,10 @@ fun SmartListScreen(nav: NavHostController, nodeId: String) {
                         .padding(horizontal = 11.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.size(6.dp).background(y.accent, CircleShape))
-                    Spacer(Modifier.width(7.dp))
                     Text(
                         description,
                         fontFamily = YantraText,
-                        fontSize = YantraType.caption,
+                        fontSize = YantraType.section,
                         fontWeight = FontWeight.W600,
                         color = y.textSecondary,
                         maxLines = 1,
@@ -447,7 +447,7 @@ private fun AbsentWorkspaces(names: List<String>) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
-            .background(y.warningChipBg, RoundedCornerShape(YantraRadius.control))
+            .background(y.neutralChipBg, RoundedCornerShape(YantraRadius.control))
             .padding(horizontal = 12.dp, vertical = 9.dp),
     )
 }

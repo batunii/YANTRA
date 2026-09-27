@@ -193,6 +193,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.style.TextAlign
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -358,9 +359,18 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     // it out made the page *lie*. An Inbox holding two events read "Empty", and the only way to
     // reach them was the day they happened to fall on. A thing you put on a page has to be on the
     // page. CALENDAR_PLAN.md §18.
-    val blocks = remember(allBlocks, isDocument) {
+    //
+    // **A sitting is the exception to that exception.** It is written here too, right under its
+    // task, but it is not a second thing on the list — it is that task, seen as an hour, and the
+    // task's own row is already on the page saying so. Drawn, it read as the same item twice. So a
+    // list shows appointments and leaves sittings to the calendar; the file still holds them, which
+    // is what the calendar and a second device read.
+    val blocks = remember(allBlocks, isDocument, pageEvents) {
         if (isDocument) allBlocks
-        else allBlocks.filter { it.type == NodeType.TASK || it.type == NodeType.EVENT }
+        else allBlocks.filter {
+            it.type == NodeType.TASK ||
+                (it.type == NodeType.EVENT && pageEvents[it.id]?.event?.forNodeId == null)
+        }
     }
 
     // The moment the reordered page arrives, the preview has nothing left to say and gets out of
@@ -867,7 +877,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
             // A list card is inset like a card; a document runs to the page edge, with its start
             // inset living inside each block's drag gutter so nothing shifts sideways.
             contentPadding = if (isDocument) {
-                PaddingValues(start = 2.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
+                PaddingValues(start = 2.dp, end = PAGE_MARGIN, top = 8.dp, bottom = 8.dp)
             } else {
                 PaddingValues(horizontal = PAGE_MARGIN, vertical = 10.dp)
             },
@@ -1216,7 +1226,7 @@ private fun MoveToListDialog(
                                 // The list it is already on is shown and not offered: taking it out
                                 // of the picker would read as the list having been deleted.
                                 .clickable(enabled = !here) { onPick(list.id) }
-                                .padding(vertical = 11.dp),
+                                .padding(vertical = 13.dp),
                         )
                     }
                 }
@@ -1274,9 +1284,9 @@ private fun PageBand(
         Modifier
             .fillMaxWidth()
             // Plain rounded edge; see the note on the smart view's band.
-            .background(y.band, RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp))
+            .background(y.band, RoundedCornerShape(bottomStart = YantraRadius.sheet, bottomEnd = YantraRadius.sheet))
             .statusBarsPadding()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = PAGE_MARGIN)
             .padding(top = 10.dp, bottom = if (collapsed) 10.dp else 22.dp),
     ) {
         // top row: back · (breadcrumb / collapsed title) · actions
@@ -1546,7 +1556,7 @@ private fun PageBand(
                                 // page that was sixty milliseconds behind came to look exactly like
                                 // a page that was not there — see NodePageViewModel.nodeLoaded.
                                 if (title.isEmpty() && loaded) {
-                                    Text("Untitled", style = MaterialTheme.typography.headlineMedium, color = y.textMuted.copy(alpha = 0.6f))
+                                    Text("Untitled", style = MaterialTheme.typography.headlineMedium, color = y.textDim)
                                 }
                                 inner()
                             }
@@ -1758,10 +1768,10 @@ private fun LazyItemScope.PageRow(
         YantraIcon(YantraMark.Drag,
             contentDescription = "Drag to move",
             tint = if (lifted) y.accent else y.textDim,
+            size = YantraIcons.Medium,
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = 4.dp)
-                .size(18.dp)
                 .alpha(gripAlpha),
         )
     }
@@ -1891,10 +1901,10 @@ private val BLOCK_GUTTER = 30.dp
  * Where prose starts.
  *
  * Counted so that a paragraph's own left edge lands on the page title's: the list contributes 2dp
- * of content padding and the block another 2dp of its own, and the header band is inset 20dp. Four
- * short of that is what made the first line of a paragraph look indented against the title above
- * it — a margin nobody chose, arrived at by adding three paddings that were each decided
- * separately.
+ * of content padding and the block another 2dp of its own, and the header band is inset
+ * PAGE_MARGIN (22dp), so 2 + 18 + 2 lands on it. Anything short of that is what made the first
+ * line of a paragraph look indented against the title above it — a margin nobody chose, arrived at
+ * by adding three paddings that were each decided separately.
  *
  * Not zero: the drag gutter was doubling as the page margin (the list's own start padding is 2.dp
  * precisely because the gutter supplied the rest), so taking it away put paragraphs flush against
@@ -1902,7 +1912,7 @@ private val BLOCK_GUTTER = 30.dp
  * task's glyph hangs into it — the way a checklist sits in a document, one left edge for the
  * writing with the marks in the margin beside it.
  */
-private val PROSE_MARGIN = 16.dp
+private val PROSE_MARGIN = 18.dp
 
 /**
  * Puts a block either into the shared list card or bare on the page, without either branch having
@@ -2513,7 +2523,7 @@ internal fun TextualBlockRow(
                 val shown = child.title.orEmpty()
                 val textMod = Modifier.fillMaxWidth().padding(top = 1.dp)
                 if (shown.isBlank()) {
-                    Text(placeholder, style = style, color = y.textMuted.copy(alpha = 0.5f), modifier = textMod)
+                    Text(placeholder, style = style, color = y.textDim, modifier = textMod)
                 } else {
                     Text(
                         // Read-only, so the markers can go and the links can collapse. The *stored*
@@ -2604,7 +2614,7 @@ internal fun TextualBlockRow(
                 decorationBox = { inner ->
                     Box {
                         if (text.isEmpty()) {
-                            Text(placeholder, style = style, color = y.textMuted.copy(alpha = 0.5f))
+                            Text(placeholder, style = style, color = y.textDim)
                         }
                         inner()
                     }
@@ -2749,7 +2759,7 @@ internal fun TextualBlockRow(
             if (!quietMeta) Text(
                 meta,
                 fontFamily = YantraMono,
-                fontSize = YantraType.dense,
+                fontSize = YantraType.caption,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // A line height, not a box height. Clamping the box to 15dp cropped every
@@ -2757,7 +2767,9 @@ internal fun TextualBlockRow(
                 // glyphs, not the layout. Setting the line height instead reserves the same space
                 // on an empty row and still leaves room under the baseline for a y.
                 lineHeight = 15.sp,
-                modifier = Modifier.padding(start = 35.dp, top = 4.dp, end = 4.dp),
+                // 37 = the 26dp glyph plus the 11dp spacer beside it, so the line under a title
+                // starts on the title's own left edge rather than a hair outside it.
+                modifier = Modifier.padding(start = 37.dp, top = 4.dp, end = 4.dp),
             )
         }
     }
@@ -2785,9 +2797,9 @@ private fun InkBlockRow(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(vertical = 10.dp),
                 ) {
-                    YantraIcon(YantraMark.Ink, tint = y.textMuted.copy(alpha = 0.6f), contentDescription = null)
+                    YantraIcon(YantraMark.Ink, tint = y.textDim, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Tap to sketch", color = y.textMuted.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium)
+                    Text("Tap to sketch", color = y.textDim, style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
                 // In full, as page-slices that each draw only their own strokes — see InkBands. The
@@ -2916,7 +2928,7 @@ private fun BlockTypeBar(
             .background(y.page)
             .let { if (scroll.maxValue > 0) it.horizontalFadingEdge(36.dp) else it }
             .horizontalScroll(scroll)
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 22.dp),
+            .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = 10.dp, bottom = 22.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -3026,7 +3038,7 @@ private fun WriteLine(label: String, onClick: () -> Unit) {
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
-            color = y.textMuted.copy(alpha = 0.5f),
+            color = y.textDim,
         )
     }
 }
@@ -3059,14 +3071,7 @@ private fun LinkedRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "LINKS TO",
-            fontFamily = YantraText,
-            fontSize = YantraType.dense,
-            fontWeight = FontWeight.W600,
-            letterSpacing = 1.2.sp,
-            color = y.textDim,
-        )
+        SectionLabel("Links to")
         targets.forEach { target ->
             SelectChip(
                 label = target.title?.takeIf { it.isNotBlank() } ?: "Untitled",

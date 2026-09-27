@@ -65,6 +65,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 
 // ---------------------------------------------------------------------------
 // State + ink
@@ -381,6 +386,20 @@ fun YantraCheckbox(
     Box(
         modifier
             .size(size)
+            // The drawing says nothing to TalkBack, so the glyph says it here: what it is, where
+            // the task stands, and the same one action a tap takes.
+            .semantics {
+                role = Role.Checkbox
+                stateDescription = when (state) {
+                    TaskState.DONE -> "Done"
+                    TaskState.IN_PROGRESS -> "In progress"
+                    else -> "Not done"
+                }
+                onClick(label = if (state == TaskState.DONE) "Mark not done" else "Complete") {
+                    if (state == TaskState.DONE) onUndo() else onComplete()
+                    true
+                }
+            }
             .pointerInput(state) {
                 // Tap only. The glyph used to also take a long-press (with a windup that drew the
                 // ring during the hold) to mark a task in progress; that gesture now lives as a
