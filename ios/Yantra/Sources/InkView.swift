@@ -59,7 +59,7 @@ struct InkView: View {
             ZStack(alignment: .bottomLeading) {
                 PencilCanvas(drawing: $drawing,
                              dark: y.dark,
-                             paper: y.dark ? UIColor(oklch(0.152, 0.005, 80)) : .white,
+                             paper: UIColor(y.inkPaper),
                              tool: tool,
                              shapeKind: mode == .shape ? shapeKind : nil,
                              snap: snap && mode == .draw,

@@ -45,6 +45,17 @@ struct YantraColors {
     let inkPageSep: Color
     let accent, accentText, accentFill, accentBorder, onAccent: Color
     let crimson, amber, overdue, due, warning: Color
+    /// The glyph frame's neutral, straight from the design language — `YantraInk.neutral`. A frame
+    /// and the text beside it are the same family, never the accent.
+    let checkOutline: Color
+    /// Chip grounds, one per layer of the colour law — `yantraColors`.
+    let neutralChipBg, accentChipBg, dueChipBg, overdueChipBg, warningChipBg, successChipBg: Color
+    /// The accent as an eyebrow: a touch softer on light paper.
+    let accentEyebrow: Color
+    /// The wash behind a task that is under way.
+    let startedWash: Color
+    /// The drawing's own paper: white, pure black on OLED, a shade under the page on dark.
+    let inkPaper: Color
 
     init(mode: ThemeMode, accent: Accent) {
         let m = mode == .system ? ThemeMode.dark : mode
@@ -61,17 +72,27 @@ struct YantraColors {
         secondary = light ? oklch(0.44, 0.011, H) : oklch(0.735, 0.008, H)
         muted = light ? oklch(0.545, 0.010, H) : oklch(0.638, 0.009, H)
         dim = light ? oklch(0.655, 0.009, H) : oklch(0.510, 0.010, H)
-        hairline = ink.opacity(0.08)
+        hairline = ink.opacity(0.085)
         inkPageSep = ink.opacity(0.095)
-        tileBorder = ink.opacity(0.10)
+        tileBorder = ink.opacity(0.105)
         let a = accent.ink(dark: !light)
         self.accent = a
         accentText = a
-        accentFill = a.opacity(0.16)
-        accentBorder = a.opacity(0.45)
+        accentFill = a.opacity(light ? 0.12 : 0.15)
+        accentBorder = a.opacity(0.44)
+        accentEyebrow = light ? a.opacity(0.85) : a
+        accentChipBg = a.opacity(light ? 0.15 : 0.20)
+        dueChipBg = a.opacity(0.14)
+        successChipBg = a.opacity(light ? 0.13 : 0.16)
+        startedWash = a.opacity(light ? 0.09 : 0.12)
+        neutralChipBg = ink.opacity(light ? 0.055 : 0.07)
+        checkOutline = light ? Color(argb: 0xFF5F5E5A) : Color(argb: 0xFFB4B2A9)
+        inkPaper = light ? .white : oled ? .black : oklch(0.152, 0.005, H)
         onAccent = light ? .white : oklch(0.16, 0.010, H)
         crimson = light ? Color(argb: 0xFFA32D2D) : Color(argb: 0xFFE24B4A)
         amber = light ? Color(argb: 0xFFBA7517) : Color(argb: 0xFFEF9F27)
+        overdueChipBg = crimson.opacity(light ? 0.13 : 0.16)
+        warningChipBg = amber.opacity(light ? 0.13 : 0.16)
         overdue = crimson
         due = a
         warning = amber

@@ -59,23 +59,41 @@ final class NetworkActivity: ObservableObject {
 struct NetworkPulse: View {
     @StateObject private var activity = NetworkActivity.shared
     @Environment(\.y) private var y
-    @State private var breathing = false
+    /// What is shown lags what is true, on purpose, and only in the direction of staying longer.
+    @State private var shown: String?
+    @State private var hide: Task<Void, Never>?
+
+    /// Long enough to read three words, short enough not to outstay a sync that is already done.
+    static let minVisible: Duration = .milliseconds(900)
 
     var body: some View {
-        if let what = activity.current {
-            HStack(spacing: 6) {
-                Circle().fill(y.accent).frame(width: 6, height: 6)
-                    .opacity(breathing ? 0.35 : 1)
-                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: breathing)
-                Text(what).font(Face.text(11.5, .medium)).foregroundStyle(y.muted).lineLimit(1)
+        Group {
+            if let what = shown {
+                // Still, rather than spinning or breathing. A spinner is the shape of something you
+                // are waiting for, and you are not waiting for this; a breathing dot was tried on
+                // Android and broke the motion law — nothing moves at rest. Arriving and leaving
+                // already say that something began and ended, and the label says what.
+                HStack(spacing: 6) {
+                    Circle().fill(y.accent).frame(width: 6, height: 6)
+                    Text(what).font(Face.text(11, .semibold)).foregroundStyle(y.muted).lineLimit(1)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 8).fill(y.neutralChipBg))
+                .transition(.opacity)
+                .accessibilityIdentifier("network.pulse")
             }
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Capsule().fill(y.surfaceHigh))
-            .overlay(Capsule().stroke(y.tileBorder, lineWidth: 1))
-            .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            .onAppear { breathing = true }
-            .accessibilityIdentifier("network.pulse")
-            .animation(.easeInOut(duration: 0.2), value: activity.current)
+        }
+        .animation(.easeInOut(duration: 0.2), value: shown)
+        // A sync with nothing to send finishes in milliseconds, and a label that appears and
+        // vanishes inside two frames reads as a flicker rather than as a thing that happened.
+        .onChange(of: activity.current, initial: true) { _, now in
+            hide?.cancel()
+            if let now { shown = now; return }
+            guard shown != nil else { return }
+            hide = Task { @MainActor in
+                try? await Task.sleep(for: Self.minVisible)
+                if !Task.isCancelled { shown = nil }
+            }
         }
     }
 }

@@ -236,7 +236,7 @@ struct TaskRow: View {
             .accessibilityAction { onOpen() }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 16).fill(node.inProgress ? y.accentFill.opacity(0.5) : y.cardBg))
+        .background(RoundedRectangle(cornerRadius: 16).fill(node.inProgress ? y.startedWash : y.cardBg))
         // Everything the card covers, including its padding, opens the task.
         .contentShape(Rectangle())
         .onTapGesture(perform: onOpen)
