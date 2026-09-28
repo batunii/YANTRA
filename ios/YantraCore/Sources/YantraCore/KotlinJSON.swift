@@ -51,7 +51,7 @@ public enum KotlinJSON {
     static func literal(_ v: String) -> String { JSONText.quote(v) }
     static func literal<I: BinaryInteger>(_ v: I) -> String { String(v) }
     static func literal(_ v: Double) -> String { javaDouble(v) }
-    static func literal(_ v: Float) -> String { JSONText.kotlinFloat(v) }
+    static func literal(_ v: Float) -> String { KotlinFloat.string(v) }
 
     /// `Double.toString()` on the JVM: the shortest digits that round-trip (Swift's own
     /// `description` finds the same ones), laid out plainly between 10⁻³ and 10⁷ with at least one

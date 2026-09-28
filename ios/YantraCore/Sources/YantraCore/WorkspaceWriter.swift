@@ -215,6 +215,12 @@ public final class WorkspaceWriter {
         try editPage(pageId) { var p = $0; p.color = color; return p }
     }
 
+    /// Pins a list to the top of Home, or takes it off — `NodeRepository.setPinned`. Always written
+    /// as a value once somebody has chosen, so "said no" is never mistaken for "never said".
+    public func setPinned(_ pageId: String, _ pinned: Bool) throws {
+        try editPage(pageId) { var p = $0; p.pinned = pinned; return p }
+    }
+
     /// The emoji a list wears instead of its mark. Cleaned to one user-perceived character on the
     /// way in, so what reaches the file is what the slot can actually hold.
     public func setPageIcon(_ pageId: String, _ icon: String?) throws {

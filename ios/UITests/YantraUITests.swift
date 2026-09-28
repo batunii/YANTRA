@@ -166,7 +166,8 @@ final class HomeUITests: YantraUITestCase {
         assertExists(app.staticTexts["home.greeting"], "the home screen never appeared")
         assertExists(el("home.row.\(Fixture.list)"), "the Groceries list is missing from Home")
         assertExists(el("home.row.\(Fixture.secondList)"), "the Work list is missing from Home")
-        assertExists(el("home.row.\(Fixture.smartList)"), "the Today smart list is missing from Home")
+        // Today is a view now, at the top of Home above the lists (17d0beb), not a list row.
+        assertExists(el("home.view.\(Fixture.smartList)"), "the Today view is missing from Home")
     }
 
     func testAListRowCountsOnlyItsTasks() {
@@ -732,12 +733,12 @@ final class ListLookUITests: YantraUITestCase {
         // A long press opens the context menu; the menu's item is what opens the sheet. Asserting
         // on the sheet straight after the press was asking for the second step to have happened.
         app.staticTexts[Fixture.list].press(forDuration: 1.2)
-        let item = app.buttons["How it looks"]
+        let item = app.buttons["Icon & colour…"]
         guard item.waitForExistence(timeout: 6) else {
             XCTFail("long-pressing a list offered no menu"); return
         }
         item.tap()
-        let look = app.navigationBars["How it looks"]
+        let look = app.navigationBars["Icon & colour"]
         guard look.waitForExistence(timeout: 6) else {
             XCTFail("the menu item did not open the sheet"); return
         }
@@ -763,8 +764,8 @@ final class ListLookUITests: YantraUITestCase {
             XCTAssertNil(error, "the row never came back after the sheet closed")
         }
         row.press(forDuration: 1.2)
-        XCTAssertTrue(app.buttons["How it looks"].waitForExistence(timeout: 6), "no menu on reopen")
-        app.buttons["How it looks"].tap()
+        XCTAssertTrue(app.buttons["Icon & colour…"].waitForExistence(timeout: 6), "no menu on reopen")
+        app.buttons["Icon & colour…"].tap()
         XCTAssertTrue(look.waitForExistence(timeout: 6), "the sheet did not reopen")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", ListIconGrid.first)).firstMatch.exists,
                       "the chosen icon is not in the sheet")

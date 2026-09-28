@@ -77,6 +77,11 @@ struct HomeView: View {
     }
     private var viewIds: Set<String> { Set(views.map(\.id)) }
 
+    /// Pinned is a choice, not a type. A pinned list keeps its place in its repository: pinning
+    /// moves it to the top, it does not put a copy there — so it is left out of its section and its
+    /// group below, or the same list shows twice on a screen this short.
+    private var pinned: [Node] { allLists.filter { $0.pinned && !viewIds.contains($0.id) } }
+
     /// One section per open repository, in registry order with the local one first — or a single
     /// "Lists" when there is only one and the split would say nothing. A nil id means everything.
     private var sections: [(id: String?, name: String)] {
@@ -91,13 +96,13 @@ struct HomeView: View {
     private func entries(in workspace: String?) -> [Node] {
         model.index.children(of: nil).filter {
             ($0.type == NodeType.list || $0.type == NodeType.group || $0.type == NodeType.smartList)
-                && !viewIds.contains($0.id)
+                && !viewIds.contains($0.id) && !$0.pinned
                 && (workspace == nil || $0.workspaceId == workspace)
         }
     }
     private func listsIn(_ group: Node) -> [Node] {
         model.index.children(of: group.id).filter {
-            ($0.type == NodeType.list || $0.type == NodeType.smartList) && !viewIds.contains($0.id)
+            ($0.type == NodeType.list || $0.type == NodeType.smartList) && !viewIds.contains($0.id) && !$0.pinned
         }
     }
 
@@ -180,8 +185,15 @@ struct HomeView: View {
                         }
                     }
 
-                    if views.isEmpty && sections.allSatisfy({ entries(in: $0.id).isEmpty }) {
+                    if views.isEmpty && pinned.isEmpty && sections.allSatisfy({ entries(in: $0.id).isEmpty }) {
                         ComposedEmpty(line: "Nothing here yet", action: "Make a list") { presented = .create }
+                    }
+
+                    // Pinned is deliberately not grouped by repository: it goes on top, ungrouped,
+                    // which is where All Inboxes sits in Mail.
+                    if !pinned.isEmpty {
+                        HomeSection(text: "Pinned")
+                        ForEach(pinned) { n in row(n) }
                     }
 
                     ForEach(sections, id: \.name) { section in
@@ -232,7 +244,7 @@ struct HomeView: View {
         .refreshable { await model.syncNowAndWait() }
         .background(y.page.ignoresSafeArea())
         // One modifier: a second `.sheet` on the same view is silently dropped, which is how the
-        // create key and "How it looks" ended up fighting over which one opened.
+        // create key and "Icon & colour" ended up fighting over which one opened.
         .sheet(item: $presented) { what in
             switch what {
             case .create: CreateSheet(path: $path)
@@ -370,7 +382,7 @@ struct HomeRow: View {
             // Deliberately no `contentShape` here. It looks like the right thing — the row's
             // *accessibility* frame is only as tall as the text — but a Button is already tappable
             // across its whole area, and adding one makes the row a single hit target that swallows
-            // the long press the context menu needs. Tried, and it broke "How it looks" on every
+            // the long press the context menu needs. Tried, and it broke "Icon & colour" on every
             // row; `ListLookUITests` is what caught it.
         }
         .buttonStyle(.plain)
@@ -385,7 +397,10 @@ struct HomeRow: View {
             // slot makes the whole menu fail to build — the row then long-presses to nothing, which
             // is exactly what putting one here did. The app draws its own marks everywhere it can;
             // a system menu is somewhere it cannot.
-            Button("How it looks") { onLook(node) }
+            Button(node.pinned ? "Unpin from top" : "Pin to top") {
+                model.write { try model.writerFor(node.id).setPinned(node.id, !node.pinned) }
+            }
+            Button("Icon & colour…") { onLook(node) }
         }
         .overlay(alignment: .bottom) { Rectangle().fill(y.hairline).frame(height: 1) }
     }

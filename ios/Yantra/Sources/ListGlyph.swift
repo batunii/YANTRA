@@ -112,7 +112,7 @@ struct ListLookSheet: View {
                 .padding(Layout.pageMargin)
             }
             .background(y.page.ignoresSafeArea())
-            .navigationTitle("How it looks")
+            .navigationTitle("Icon & colour")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

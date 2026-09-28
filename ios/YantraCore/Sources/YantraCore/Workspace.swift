@@ -538,6 +538,9 @@ public struct Node: Identifiable, Equatable, Sendable {
     /// The emoji a list wears, and the palette name it wears — both only on a page node.
     public var icon: String?
     public var color: String?
+    /// Whether the list sits at the top of Home — `PageMapper`: the page's own `pinned:` when it
+    /// says, and otherwise the rule the section used to be, an ungrouped smart list.
+    public var pinned: Bool = false
     /// The whole event line, for an event node.
     ///
     /// Kept intact rather than spread across the fields above: an event's span, zone, rule and
@@ -619,9 +622,13 @@ public struct WorkspaceIndex: Sendable {
                                       indent: 0, systemKey: p.systemKey, createdAt: stamp, due: nil, deadline: nil, priority: nil, labels: [], assignee: nil,
                                       doneAt: nil, homePageId: nil, lineIndex: nil, payload: nil,
                                       icon: p.icon, color: p.color)
+                ix.nodes[p.id]?.pinned = p.pinned ?? (p.type == NodeType.smartList)
             } else if let line = lineNodes[p.id] {
                 // The page file supplies identity and body; the parent's line supplies title, status, indent, rank.
                 var n = line; n.systemKey = p.systemKey
+                n.pinned = p.pinned ?? false
+                // A grouped list's look is on its own page too, as `PageMapper` reads it.
+                n.icon = p.icon ?? n.icon; n.color = p.color ?? n.color
                 lineNodes[p.id] = n
             } else {
                 ix.problems.append("page \(p.id) has a parent but no line names it")

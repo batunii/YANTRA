@@ -161,7 +161,11 @@ enum UITestFixture {
         }
         func ms(_ d: Date) -> Int64 { Int64(d.timeIntervalSince1970 * 1000) }
         let yesterday = now.addingTimeInterval(-86_400)
-        for (i, start) in [yesterday, now.addingTimeInterval(-3_600)].enumerated() {
+        // Today's session starts an hour ago — but never before midnight. Run just after midnight,
+        // "an hour ago" was yesterday, both sessions fell on one day, and the stats test failed for
+        // being run at 00:39.
+        let today = max(Calendar.current.startOfDay(for: now), now.addingTimeInterval(-3_600))
+        for (i, start) in [yesterday, today].enumerated() {
             let session = FocusSession(id: "fixture-session-\(i)", nodeId: taskId, startedAt: ms(start),
                                        endedAt: ms(start.addingTimeInterval(1_500)), plannedSecs: 1_500,
                                        actualSecs: 1_500, outcome: FocusOutcome.ranOut)
