@@ -38,23 +38,44 @@ struct EventSheet: View {
     @State private var loaded = false
 
     private var editingId: String? { if case let .editing(id) = target { return id }; return nil }
+    /// The task this is time for, when it is a sitting. A sitting has no title of its own by design —
+    /// it borrows the task's — so the sheet offers no field for one: a blank box above somebody's
+    /// task would look like a name waiting to be typed, and typing in it would give a second title
+    /// to a thing that already has one.
+    private var sittingFor: String? { editingId.flatMap { model.index.nodes[$0]?.event?.forTaskId } }
+    private var sitting: Bool { sittingFor != nil }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    field("What") {
-                        TextField("Event", text: $title)
-                            .font(Face.text(16, .medium)).foregroundStyle(y.ink)
-                            .textFieldStyle(.plain)
+                    if let task = sittingFor {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("TIME FOR").font(Face.mono(12, bold: true)).tracking(1.2).foregroundStyle(y.muted)
+                            Text(inlinePlain(model.index.nodes[task]?.title ?? "").isEmpty ? "a task"
+                                 : inlinePlain(model.index.nodes[task]?.title ?? ""))
+                                .font(Face.display(19, .bold)).foregroundStyle(y.ink)
+                        }
+                        .padding(.top, 8)
+                    } else {
+                        field("What") {
+                            TextField("New event", text: $title)
+                                .font(Face.text(16, .medium)).foregroundStyle(y.ink)
+                                .textFieldStyle(.plain)
+                        }
                     }
 
                     field("When") {
                         VStack(alignment: .leading, spacing: 10) {
-                            Toggle(isOn: $allDay) {
-                                Text("All day").font(Face.text(14)).foregroundStyle(y.secondary)
+                            // An all-day sitting is a claim to the whole day rather than time set
+                            // aside, and a place is a property of an appointment. Neither is what a
+                            // sitting is for.
+                            if !sitting {
+                                Toggle(isOn: $allDay) {
+                                    Text("All day").font(Face.text(14)).foregroundStyle(y.secondary)
+                                }
+                                .tint(y.accent)
                             }
-                            .tint(y.accent)
                             DatePicker("Starts", selection: $start,
                                        displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
                                 .font(Face.text(14))
@@ -64,9 +85,11 @@ struct EventSheet: View {
                         }
                     }
 
-                    field("Where") {
-                        TextField("Optional", text: $location)
-                            .font(Face.text(14)).foregroundStyle(y.ink).textFieldStyle(.plain)
+                    if !sitting {
+                        field("Where") {
+                            TextField("Optional", text: $location)
+                                .font(Face.text(14)).foregroundStyle(y.ink).textFieldStyle(.plain)
+                        }
                     }
 
                     field("Colour") {
@@ -92,7 +115,9 @@ struct EventSheet: View {
                             model.write { try model.writerFor(id).deleteEvent(id) }
                             onDone(); dismiss()
                         } label: {
-                            Text("Delete event").font(Face.text(14, .bold)).foregroundStyle(y.crimson)
+                            // Removing a sitting gives the time back; it does not touch the task. A
+                            // bare "Delete" over somebody's work is a sentence read the wrong way.
+                            Text(sitting ? "Remove from calendar" : "Delete").font(Face.text(14, .bold)).foregroundStyle(y.crimson)
                                 .frame(maxWidth: .infinity).padding(.vertical, 13)
                                 .background(RoundedRectangle(cornerRadius: Layout.buttonRadius).stroke(y.crimson.opacity(0.4), lineWidth: 1))
                         }.buttonStyle(.plain)
@@ -109,8 +134,9 @@ struct EventSheet: View {
                     Button("Cancel") { dismiss() }.foregroundStyle(y.secondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
+                    // Never disabled, as on Android: a sitting has no title to type, and an untitled
+                    // appointment is still an appointment.
                     Button("Save") { save() }.font(Face.text(15, .bold)).foregroundStyle(y.accentText)
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
@@ -163,7 +189,6 @@ struct EventSheet: View {
 
     private func save() {
         let t = title.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return }
         let s = LocalDateTime.of(start)
         // Back the other way: inclusive on screen, exclusive in the model.
         let e = allDay ? LocalDateTime(date: LocalDate.of(end)).adding(days: 1)

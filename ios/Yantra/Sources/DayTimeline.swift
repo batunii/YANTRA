@@ -8,6 +8,9 @@ struct DayTimeline: View {
     @ObservedObject var cal: CalendarModel
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
+    /// The hour's height when the pinch began. A magnification is relative to the start of the
+    /// gesture, so it has to multiply the height from then — not the height it has already produced.
+    @State private var pinchBase: CGFloat?
     @Binding var path: NavigationPath
     let railOpen: Bool
     /// True once the window is wide enough for the rail to be a column beside the day.
@@ -97,10 +100,18 @@ struct DayTimeline: View {
             // two — so this one line is what stopped the day being scrollable at all, everywhere
             // except the hour gutter. A pinch and a scroll are not in competition: nobody pinches by
             // accident while dragging, and the two can be recognised together.
-            .simultaneousGesture(MagnifyGesture().onChanged { g in
-                let next = CalendarModel.loadHourHeight() * g.magnification
-                cal.hourHeight = min(max(next, CalendarModel.minHourHeight), CalendarModel.maxHourHeight)
-            })
+            //
+            // **From the height the pinch started at.** It multiplied the stored height, and every
+            // change re-stores it — so each frame of one pinch compounded the last, and a small
+            // spread flung the day to its limit.
+            .simultaneousGesture(MagnifyGesture()
+                .onChanged { g in
+                    let base = pinchBase ?? cal.hourHeight
+                    if pinchBase == nil { pinchBase = base }
+                    let next = base * g.magnification
+                    cal.hourHeight = min(max(next, CalendarModel.minHourHeight), CalendarModel.maxHourHeight)
+                }
+                .onEnded { _ in pinchBase = nil })
             // Swipe the pane itself to the day before or the day after, as Android does. The band
             // at the top had the only swipe on this screen, which meant the commonest thing anybody
             // does on a calendar was reachable from the one strip most people never drag. UIKit
