@@ -95,39 +95,38 @@ public enum SyncSettings {
         case needsSignIn(String)
     }
 
-    /// Renews the account token when it is close enough to lapsing to matter.
+    /// Renews the account token when it is close enough to lapsing to matter — **once**, however
+    /// many callers ask at the same moment. See `TokenKeeper`: GitHub rotates the refresh token on
+    /// every use, and two renewals racing spend it twice; the loser is refused, and a refusal signs
+    /// the person out.
     ///
     /// Called before every sync pass, so it is cheap when there is nothing to do — a pasted personal
     /// token and a non-expiring App token both store no refresh token and return immediately with no
     /// request at all.
     public static func credential() async -> Credential {
-        guard var t = Keychain.accountToken else { return .needsSignIn("Sign in to sync") }
-        guard t.needsRenewal else { return .ok(t.accessToken) }
-
-        switch await GitHubAuth.refresh(t, method) {
-        case let .renewed(fresh):
-            Diagnostics.log("token.renewed")
-            // GitHub rotates the refresh token, so what came back replaces what was sent.
-            t = fresh
-            Keychain.accountToken = t
-            return .ok(t.accessToken)
-        case .nothingToDo:
-            return .ok(t.accessToken)
-        case .couldNotAsk:
-            Diagnostics.log("token.couldNotAsk")
-            // Nothing was said, so nothing is changed. The pass carries on with the token it has; if
-            // that one still works, this was never needed. A tunnel must not sign anybody out.
-            return .ok(t.accessToken)
-        case let .needsSignIn(why):
-            // Refused, which is different. The stored credential is scrap, and keeping it would mean
-            // presenting a dead token on every sync forever while the screen still claims to be
-            // signed in.
-            Keychain.accountToken = nil
-            login = nil
-            Diagnostics.log("token.refused", ["why": why])
-            return .needsSignIn(why)
+        switch await keeper.credential() {
+        case let .ok(t): return .ok(t)
+        case let .needsSignIn(why): return .needsSignIn(why)
         }
     }
+
+    private static let keeper = TokenKeeper(
+        load: { Keychain.accountToken },
+        save: { token in
+            Keychain.accountToken = token
+            // Refused, which is different from unreachable: the stored credential is scrap, and
+            // keeping it would present a dead token on every sync while the screen still claimed
+            // to be signed in.
+            if token == nil { login = nil }
+        },
+        refresh: { token in await GitHubAuth.refresh(token, method) },
+        note: { event in
+            switch event {
+            case .renewed: Diagnostics.log("token.renewed")
+            case .couldNotAsk: Diagnostics.log("token.couldNotAsk")
+            case let .refused(why): Diagnostics.log("token.refused", ["why": why])
+            }
+        })
 
     /// The access token alone, for a caller with nothing useful to do about the difference.
     public static func freshToken() async -> String? {
@@ -135,56 +134,59 @@ public enum SyncSettings {
         return nil
     }
 
-    /// Connects this device to a repository, deciding first whether to adopt or to push.
+    /// Connects this device's own workspace to `repo`, deciding first whether to adopt or to push.
     ///
     /// The decision has to happen **before** the first merge, not during it. A device that seeded a
     /// starter workspace on first launch and is now joining a repository that already has one will,
     /// under the ordinary merge, keep both — two Inboxes, two Todays, both claiming the same system
     /// key. The merge is not wrong; it is being asked a question that should never have reached it.
     ///
-    /// Returns `.ask` without touching anything when both sides hold real work. That case is a fork
-    /// only the person can take, so it is handed back rather than guessed at.
-    public static func connect(store: WorkspaceStore, message: String = "connect") async -> (WorkspaceLink.Decision, SyncResult) {
-        guard let engine = await engine(for: store) else {
-            return (.push, SyncResult(error: SyncError.noRemote.description))
+    /// **The repository is recorded only once the answer is settled** — on a push, or on an adoption
+    /// that worked. `.ask` hands the fork back with nothing written and nothing recorded: recording
+    /// it first meant that backgrounding the app while the question was on screen ran an ordinary
+    /// pass, which is the merge of both workspaces the question exists to prevent.
+    public static func connect(store: WorkspaceStore, repo: RepoRef, message: String = "connect") async -> (WorkspaceLink.Decision, SyncResult) {
+        guard case let .ok(token) = await credential() else {
+            return (.push, SyncResult(error: "Sign in to sync"))
         }
-        let decision: WorkspaceLink.Decision
-        do { decision = try await engine.linkDecision() }
-        catch { return (.push, SyncResult(error: "\(error)")) }
+        let engine = engine(store: store, repo: repo, token: token)
+        return await SyncGate.shared.run(store.id) {
+            let decision: WorkspaceLink.Decision
+            do { decision = try await engine.linkDecision() }
+            catch { return (.push, SyncResult(error: SyncEngine.readable(error))) }
 
-        switch decision {
-        case .ask:
-            return (.ask, SyncResult())
-        case .adopt:
-            do {
-                var r = try await engine.adoptRemote()
-                setStatus(r.error.map { "Not synced: \($0)" } ?? "Joined the repository's tasks", for: store.id)
-                // Anything this device had beyond the starter set is gone by design; a normal pass
-                // now has a common ancestor and behaves like any other.
-                if r.error == nil { r.pulled = true }
+            switch decision {
+            case .ask:
+                return (.ask, SyncResult())
+            case .adopt:
+                var r = await adopt(engine, store: store)
+                if r.error == nil { setRepo(repo, for: store.id); r.pulled = true }
                 return (.adopt, r)
-            } catch { return (.adopt, SyncResult(error: "\(error)")) }
-        case .push:
-            return (.push, await syncNow(store: store, message: message))
+            case .push:
+                setRepo(repo, for: store.id)
+                return (.push, await pass(engine, store: store, message: message))
+            }
         }
     }
 
-    /// Takes the repository as it stands, discarding this device's workspace. Only ever called
-    /// because the person chose it after `.ask`.
-    public static func adoptRepository(store: WorkspaceStore) async -> SyncResult {
-        guard let engine = await engine(for: store) else { return SyncResult(error: SyncError.noRemote.description) }
+    /// Takes the repository as it stands, discarding this device's workspace, and connects to it —
+    /// only ever because the person chose it after `.ask`, or because a new workspace is joining.
+    public static func adoptRepository(store: WorkspaceStore, repo: RepoRef) async -> SyncResult {
+        guard case let .ok(token) = await credential() else { return SyncResult(error: "Sign in to sync") }
+        let engine = engine(store: store, repo: repo, token: token)
+        return await SyncGate.shared.run(store.id) {
+            let r = await adopt(engine, store: store)
+            if r.error == nil { setRepo(repo, for: store.id) }
+            return r
+        }
+    }
+
+    private static func adopt(_ engine: SyncEngine, store: WorkspaceStore) async -> SyncResult {
         do {
             let r = try await engine.adoptRemote()
             setStatus(r.error.map { "Not synced: \($0)" } ?? "Joined the repository's tasks", for: store.id)
             return r
-        } catch { return SyncResult(error: "\(error)") }
-    }
-
-    /// The engine for the connected repository, with a token good for the next call.
-    private static func engine(for store: WorkspaceStore) async -> SyncEngine? {
-        guard let repo = repo(for: store.id) else { return nil }
-        guard case let .ok(token) = await credential() else { return nil }
-        return engine(store: store, repo: repo, token: token)
+        } catch { return SyncResult(error: SyncEngine.readable(error)) }
     }
 
     /// The base snapshot a workspace merges against lives beside the workspace, one directory per
@@ -198,8 +200,13 @@ public enum SyncSettings {
     }
 
     /// One sync pass against the connected repository, if any.
-    public static func syncNow(store: WorkspaceStore, message: String = "sync") async -> SyncResult {
-        guard let repo = repo(for: store.id) else { return SyncResult(error: SyncError.noRemote.description) }
+    ///
+    /// **One at a time per workspace, whoever asks** — the app's flushes, pull-to-sync, the
+    /// background refresh, the sign-in and add-workspace screens all come through here, and a caller
+    /// that arrives while a pass is running waits its turn rather than racing it. `repo` is for a
+    /// workspace being linked, whose repository is not recorded until the link has worked.
+    public static func syncNow(store: WorkspaceStore, repo explicit: RepoRef? = nil, message: String = "sync") async -> SyncResult {
+        guard let repo = explicit ?? repo(for: store.id) else { return SyncResult(error: SyncError.noRemote.description) }
         let token: String
         switch await credential() {
         case let .ok(t): token = t
@@ -210,8 +217,14 @@ public enum SyncSettings {
             Diagnostics.log("sync.needsSignIn", ["why": why])
             return SyncResult(error: "\(why) — sign in again")
         }
+        let engine = engine(store: store, repo: repo, token: token)
+        return await SyncGate.shared.run(store.id) { await pass(engine, store: store, message: message) }
+    }
+
+    /// The pass itself. Callers hold the gate.
+    private static func pass(_ engine: SyncEngine, store: WorkspaceStore, message: String) async -> SyncResult {
         let began = Date()
-        let result = await engine(store: store, repo: repo, token: token).sync(message: message)
+        let result = await engine.sync(message: message)
         // The single most useful line in a week of logs: what a pass did, and what it cost. A sync
         // that silently stopped happening on Thursday is invisible without it.
         Diagnostics.log("sync.pass", [

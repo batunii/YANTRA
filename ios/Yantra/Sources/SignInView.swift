@@ -375,12 +375,13 @@ struct SignInView: View {
         }
         Text("What is on this phone is replaced by what is in \(ref.slug). Do this when it is your own list and this device has simply lost it.")
             .font(Face.text(12)).foregroundStyle(y.dim)
-        YantraButton(label: "Keep both, and merge them", tone: .quiet, enabled: !busy) {
-            Task { await mergeAnyway(ref) }
+        YantraButton(label: busy ? "Adding…" : "Keep both", tone: .quiet, enabled: !busy) {
+            Task { await keepBoth(ref) }
         }.padding(.top, 8)
-        Text("Nothing is lost, and nothing is tidied: you end up with both lists side by side, including two of anything the two sets both start with.")
+        Text("\(ref.slug) is added as a separate workspace beside this one. Your tasks here are untouched, and stay on this phone.")
             .font(Face.text(12)).foregroundStyle(y.dim)
-        YantraButton(label: "Not now", tone: .quiet, enabled: !busy) { forkInTheRoad = nil; SyncSettings.repo = nil }.padding(.top, 8)
+        // Nothing was recorded while the question was up, so there is nothing to take back.
+        YantraButton(label: "Not now", tone: .quiet, enabled: !busy) { forkInTheRoad = nil }.padding(.top, 8)
     }
 
     /// Deletes the credential this device holds — the only thing Yantra stores about you.
@@ -451,15 +452,16 @@ struct SignInView: View {
         case .unauthorized: note = ("Yantra was not given access to \(ref.slug)", true); return
         case let .failed(e): note = ("Could not reach GitHub: \(e)", true); return
         }
-        SyncSettings.repo = ref
+        // The repository is **not** recorded here. `connect` records it once the answer is settled —
+        // recording it first meant that leaving the app while the question below was on screen ran
+        // an ordinary pass, which merged both workspaces into the repository anyway.
         let (decision, result) = await NetworkActivity.shared.during(NetworkActivity.Words.linking) {
-            await SyncSettings.connect(store: model.store, message: "attach")
+            await SyncSettings.connect(store: model.store, repo: ref, message: "attach")
         }
         model.wake()
         switch decision {
         case .ask:
-            // Nothing has been written. The repository stays set only so the buttons below know
-            // which one is being talked about; "Not now" takes it back off.
+            // Nothing has been written and nothing recorded; the buttons below carry the reference.
             forkInTheRoad = ref
             note = nil
         case .adopt:
@@ -477,19 +479,32 @@ struct SignInView: View {
 
     private func adopt(_ ref: RepoRef) async {
         busy = true; defer { busy = false }
-        let r = await SyncSettings.adoptRepository(store: model.store)
+        let r = await SyncSettings.adoptRepository(store: model.store, repo: ref)
         model.wake()
         forkInTheRoad = nil
-        note = r.error.map { ("Could not join: \($0)", true) } ?? ("Joined \(ref.slug). Its tasks are here.", false)
+        note = r.error.map { ("Could not join: \($0)", true) } ?? ("This device now shows the tasks in \(ref.slug)", false)
     }
 
-    /// Both lists, kept. The ordinary merge, reached deliberately rather than by accident.
-    private func mergeAnyway(_ ref: RepoRef) async {
+    /// Both lists, kept **apart** — Android's "Keep both": the repository becomes a workspace of its
+    /// own, and this device's workspace stays as it is, unconnected.
+    ///
+    /// Not a merge into this workspace. That pushed this device's starter set into the shared
+    /// repository — a second page claiming `system_key: inbox` among them, so quick capture could
+    /// land in either Inbox on every device that syncs it.
+    private func keepBoth(_ ref: RepoRef) async {
+        guard let token = await SyncSettings.freshToken() else { note = ("Signed out — sign in again", true); return }
         busy = true; defer { busy = false }
-        let r = await SyncSettings.syncNow(store: model.store, message: "attach")
-        model.wake()
+        let outcome = await NetworkActivity.shared.during(NetworkActivity.Words.linking) {
+            await model.addWorkspace(ref, token: token)
+        }
         forkInTheRoad = nil
-        note = r.error.map { ("Could not sync: \($0)", true) } ?? ("Both lists are now in \(ref.slug)", false)
+        switch outcome {
+        case let .added(id, name, _):
+            note = ("Added \(name). Your tasks here are untouched.", false)
+            await People.shared.refresh(workspaceId: id)
+        case let .refused(why):
+            note = (why, true)
+        }
     }
 
     private func syncNow() async {
