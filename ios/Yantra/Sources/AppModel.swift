@@ -53,13 +53,47 @@ final class AppModel: ObservableObject {
     /// that made adding one feel broken even when the link itself had worked.
     private func openAll() {
         var stores: [String: WorkspaceStore] = [:], writers: [String: WorkspaceWriter] = [:]
+        var schedulers: [String: CommitScheduler] = [:]
         for (store, writer) in AppGroup.openWorkspaces() {
-            writer.onChange = { [weak self] _ in Task { @MainActor in self?.reindex() } }
+            // Kept across a re-open, so a batch of edits waiting to go is not forgotten because a
+            // workspace was added somewhere else.
+            let scheduler = self.schedulers[store.id] ?? makeScheduler(store)
+            writer.onChange = { [weak self] change in
+                // File first, index second, sync last — and sync on its own schedule (L4).
+                Task { @MainActor in self?.reindex() }
+                scheduler.record(change)
+            }
             stores[store.id] = store
             writers[store.id] = writer
+            schedulers[store.id] = scheduler
         }
         self.stores = stores
         self.writers = writers
+        self.schedulers = schedulers
+    }
+
+    /// One per workspace — `CommitScheduler.kt`: a finished, created or removed task goes at once,
+    /// because someone else may be waiting to see it; typing waits until you stop (20 s), drawing
+    /// until you lift the pen (8 s), and nothing waits longer than 15 or 20 minutes.
+    private var schedulers: [String: CommitScheduler] = [:]
+
+    private func makeScheduler(_ store: WorkspaceStore) -> CommitScheduler {
+        CommitScheduler(flush: { [weak self] message in
+            // Nowhere to push to. iOS keeps no local history — the file is already the record — so
+            // for an unconnected workspace there is nothing more to do.
+            guard SyncSettings.repo(for: store.id) != nil else { return SyncResult() }
+            let r = await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
+                await SyncSettings.syncNow(store: store, message: message)
+            }
+            if r.pulled { await self?.reindex() }
+            return r
+        })
+    }
+
+    /// A pass for one workspace, carrying whatever edits were waiting into its commit message.
+    private func flush(_ store: WorkspaceStore, _ reason: String) async -> SyncResult {
+        if let s = schedulers[store.id] { return await s.flush(reason) }
+        return await SyncSettings.syncNow(store: store, message: reason)
     }
 
     /// The writer that owns a node, found through the index.
@@ -185,7 +219,7 @@ final class AppModel: ObservableObject {
                 // `NetworkActivity`.
                 await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
                     for store in connected {
-                        let r = await SyncSettings.syncNow(store: store, message: why)
+                        let r = await flush(store, why)
                         pulled = pulled || r.pulled
                     }
                 }
@@ -241,7 +275,7 @@ final class AppModel: ObservableObject {
             var pulled = false, failure: String?
             await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
                 for store in connected {
-                    let r = await SyncSettings.syncNow(store: store, message: "pulled to sync")
+                    let r = await self.flush(store, "pulled down to sync")
                     pulled = pulled || r.pulled
                     if failure == nil, let e = r.error { failure = e }
                 }
