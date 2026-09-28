@@ -139,9 +139,15 @@ public final class WorkspaceStore: @unchecked Sendable {
     // pages
     public func pageFile(_ id: String) -> URL { pagesDir.appendingPathComponent("\(id).md") }
     public func readPage(_ id: String) -> PageDoc? {
-        guard let s = try? String(contentsOf: pageFile(id), encoding: .utf8) else { return nil }
-        return PageCodec.decode(s)
+        guard let d = try? Data(contentsOf: pageFile(id)) else { return nil }
+        return PageCodec.decode(Self.decodeText(d))
     }
+
+    /// `File.readText()`: UTF-8, a malformed sequence becoming U+FFFD rather than the whole file
+    /// becoming nothing, and a BOM kept as the character it is (so, as on Android, a file that
+    /// starts with one has no frontmatter). `String(contentsOf:encoding:)` returned nil for a single
+    /// bad byte, which made the page vanish from the index while Android went on showing it.
+    public static func decodeText(_ d: Data) -> String { String(decoding: d, as: UTF8.self) }
     public func readPages() -> [PageDoc] {
         let names = ((try? fm.contentsOfDirectory(atPath: pagesDir.path)) ?? []).filter { $0.hasSuffix(".md") }.sorted()
         return names.compactMap { readPage(String($0.dropLast(3))) }
