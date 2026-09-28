@@ -44,11 +44,28 @@ public final class WorkspaceWriter {
         return id
     }
 
-    /// A task's page exists only once it holds something.
-    private func ensurePage(_ id: String, parent: String) {
+    /// Makes sure a task — or an event — has a page of its own, because it is about to hold
+    /// something. `WorkspaceWriter.ensurePage`.
+    ///
+    /// The page takes its type from the line that names it (`type: task` or `type: event`), its
+    /// parent from the page that line is on, and no title: a parented page is named by its line.
+    /// This used to write `type: task` whatever the line was, so the first note added under an event
+    /// made a page that called the event a task.
+    private func ensurePage(_ id: String, parent: String, type: String) {
         if store.readPage(id) == nil {
-            store.writePage(PageDoc(id: id, type: NodeType.task, parent: parent, title: nil, modifiedAt: Date(), device: device, blocks: []))
+            store.writePage(PageDoc(id: id, type: type, parent: parent, title: nil, modifiedAt: Date(), device: device, blocks: []))
         }
+    }
+
+    /// Which page holds the task or event line with this id, and what kind of line it is.
+    public func locateLine(_ id: String) -> (page: String, type: String)? {
+        for p in store.readPages() {
+            for b in p.blocks {
+                if case let .task(t) = b, t.id == id { return (p.id, NodeType.task) }
+                if case let .event(e) = b, e.id == id { return (p.id, NodeType.event) }
+            }
+        }
+        return nil
     }
 
     /// Adds a block to a page, after `afterIndex` or at the end. Mints an id for tasks and ink.
@@ -68,11 +85,11 @@ public final class WorkspaceWriter {
         case NodeType.numbered: block = .numbered(text, indent: indent)
         default: block = .prose(text, indent: indent)
         }
-        // A task's page is created lazily when it first holds a block. If the target is a task with
-        // no page yet, make one under its home page.
+        // A task's page is created lazily when it first holds a block. If the target is a task (or
+        // an event) with no page yet, make one under its home page.
         if store.readPage(pageId) == nil {
-            guard let (home, _) = locate(taskId: pageId) else { throw ReadOnly(formatVersion: -2) }
-            ensurePage(pageId, parent: home)
+            guard let (home, kind) = locateLine(pageId) else { throw ReadOnly(formatVersion: -2) }
+            ensurePage(pageId, parent: home, type: kind)
         }
         var index = -1
         try editPage(pageId, change: .structural) { page in
@@ -101,8 +118,8 @@ public final class WorkspaceWriter {
                                          reminderMin: reminderMin, labels: labels, attendees: attendees,
                                          priority: priority, indent: indent))
         if store.readPage(pageId) == nil {
-            guard let (home, _) = locate(taskId: pageId) else { throw ReadOnly(formatVersion: -2) }
-            ensurePage(pageId, parent: home)
+            guard let (home, kind) = locateLine(pageId) else { throw ReadOnly(formatVersion: -2) }
+            ensurePage(pageId, parent: home, type: kind)
         }
         try editPage(pageId, change: .structural) { page in
             var p = page
@@ -398,35 +415,70 @@ public final class WorkspaceWriter {
         try guardWritable(); store.writeSmartList(def); onChange(.structural)
     }
 
-    /// Adds a name to the label registry if it is new — `LabelRepository.getOrCreate`.
+    /// `WorkspaceReconciler.idFor`: a label's id is its workspace and its lowercased name, minted
+    /// here and nowhere else, and recomputed on read — the id in the file is a cache of this.
+    public static func labelId(workspace: String, name: String) -> String { "\(workspace):label:\(name.lowercased())" }
+
+    /// `LabelCanon.key`: one tag whatever its case or padding.
+    static func labelKey(_ name: String) -> String { KText.trim(name).lowercased() }
+
+    /// `WorkspaceWriter.upsertLabel`: whatever entry has this id **or this name** goes, and the new
+    /// one is appended at the end. By name as well as id because one workspace cannot hold two
+    /// definitions of one tag, and a registry that carries both cannot say which colour it means.
+    /// Moving to the end on every write is Android's, and so are the bytes it produces.
+    public func upsertLabel(_ label: LabelDef) throws {
+        try guardWritable()
+        let kept = store.readLabels().filter { $0.id != label.id && $0.name.lowercased() != label.name.lowercased() }
+        store.writeLabels(kept + [label]); onChange(.edit)
+    }
+
+    /// Registers a name if the registry does not know it yet — `LabelRepository.getOrCreate`. A
+    /// name it already knows (in any case, with any padding) is left exactly as it is: the
+    /// registry's spelling and colour win, so this writes nothing.
     ///
     /// A new label is written **with** the colour its name seeds to, not with none. On Android a
     /// stored nil is a choice — the neutral chip somebody picked — so a label this device made
     /// without a colour came out grey on every other device while it was coloured here.
     public func upsertLabel(_ name: String, color: Int64? = nil) throws {
-        try guardWritable()
-        var labels = store.readLabels()
-        if let i = labels.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
-            if let color, labels[i].color != color { labels[i].color = color } else { return }
-        } else {
-            labels.append(LabelDef(id: "\(store.id):label:\(name.lowercased())", name: name,
-                                   color: color ?? LabelPalette.defaultFor(name)))
-        }
-        store.writeLabels(labels); onChange(.edit)
+        let trimmed = KText.trim(name)
+        if store.readLabels().contains(where: { Self.labelKey($0.name) == Self.labelKey(trimmed) }) { return }
+        try upsertLabel(LabelDef(id: Self.labelId(workspace: store.id, name: trimmed), name: trimmed,
+                                 color: color ?? LabelPalette.defaultFor(trimmed)))
     }
 
-    /// Recolours a label wherever it appears — `LabelRepository.setColor`. Nil is the neutral chip,
-    /// never "pick one for me". A label the registry has not heard of yet is added with the colour.
+    /// Recolours a label — `LabelRepository.setColor`, which writes `upsertLabel` with the label's
+    /// own id and the registry's spelling of its name. Nil is the neutral chip, never "pick one for
+    /// me". A tag the registry has not heard of yet (it is only on lines) is added with the colour.
     public func setLabelColor(_ name: String, _ color: Int64?) throws {
+        let existing = store.readLabels().first { Self.labelKey($0.name) == Self.labelKey(name) }
+        let spelled = existing?.name ?? name
+        try upsertLabel(LabelDef(id: Self.labelId(workspace: store.id, name: spelled), name: spelled, color: color))
+    }
+
+    /// Removes a label from the workspace **and** the tag from every task line carrying it —
+    /// `WorkspaceWriter.deleteLabel`. Both halves, or it comes back: the reconciler derives a label
+    /// from any `#tag` on a line, so forgetting the lines leaves a label that reappears on the next
+    /// reindex. Case-insensitive, like Android's. Returns how many lines it changed.
+    @discardableResult
+    public func deleteLabel(_ name: String) throws -> Int {
         try guardWritable()
-        var labels = store.readLabels()
-        if let i = labels.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
-            if labels[i].color == color { return }
-            labels[i].color = color
-        } else {
-            labels.append(LabelDef(id: "\(store.id):label:\(name.lowercased())", name: name, color: color))
+        func matches(_ s: String) -> Bool { s.lowercased() == name.lowercased() }
+        store.writeLabels(store.readLabels().filter { !matches($0.name) })
+        var stripped = 0
+        for page in store.readPages() {
+            var touched = false
+            var p = page
+            p.blocks = page.blocks.map { b in
+                guard case var .task(t) = b, t.labels.contains(where: matches) else { return b }
+                touched = true; stripped += 1
+                // Written from the block, not from the bytes it was read as — those still hold the tag.
+                t.labels.removeAll(where: matches); t.raw = nil
+                return .task(t)
+            }
+            if touched { p.modifiedAt = Date(); p.device = device; store.writePage(p) }
         }
-        store.writeLabels(labels); onChange(.edit)
+        onChange(.structural)
+        return stripped
     }
 
     // MARK: archive — finished tasks leave on a threshold, and can come back

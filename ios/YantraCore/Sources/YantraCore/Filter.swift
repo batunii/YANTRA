@@ -112,14 +112,10 @@ extension Filter: Codable {
     }
 }
 
-/// kotlinx-compatible JSON: compact, keys in declaration order (JSONEncoder does not promise order,
-/// so smart-list definitions written by iOS are re-read by Android fine but may not be byte-equal;
-/// the plan is to route them through `JSONValue` before the first shared write).
+/// `FilterJson`: kotlinx-compatible JSON — compact, keys in declaration order, defaults omitted,
+/// numbers as the JVM prints them. See `KotlinJSON`.
 public enum FilterJSON {
-    public static func encode<T: Encodable>(_ v: T) -> String {
-        let e = JSONEncoder(); e.outputFormatting = [.withoutEscapingSlashes]
-        return String(decoding: try! e.encode(v), as: UTF8.self)
-    }
+    public static func encode<T: Encodable>(_ v: T) -> String { KotlinJSON.encode(v) }
     public static func decode<T: Decodable>(_ t: T.Type, _ s: String) -> T? {
         try? JSONDecoder().decode(t, from: Data(s.utf8))
     }

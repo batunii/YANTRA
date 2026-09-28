@@ -1,0 +1,66 @@
+[
+    {
+        "name": "properties.json",
+        "json": "[{\"id\":\"builtin-priority\",\"name\":\"Priority\",\"kind\":\"select\",\"config\":\"{\\\"options\\\":[{\\\"name\\\":\\\"High\\\",\\\"color\\\":4294920735},{\\\"name\\\":\\\"Medium\\\",\\\"color\\\":4294946848},{\\\"name\\\":\\\"Low\\\",\\\"color\\\":4283076825}]}\"},{\"id\":\"builtin-due\",\"name\":\"Due\",\"kind\":\"date\"},{\"id\":\"builtin-deadline\",\"name\":\"Deadline\",\"kind\":\"date\"},{\"id\":\"builtin-assignee\",\"name\":\"Assignee\",\"kind\":\"text\"}]"
+    },
+    {
+        "name": "labels-empty.json",
+        "json": "[]"
+    },
+    {
+        "name": "labels.json",
+        "json": "[{\"id\":\":label:sync\",\"name\":\"sync\",\"color\":4284321618},{\"id\":\"ws:label:bare\",\"name\":\"bare\"},{\"id\":\"w:label:e\",\"name\":\"\\u001b\\t\\n\\r\\b\\f é /   😀 \\\\ \\\"\",\"color\":0},{\"id\":\"w:label:q\",\"name\":\"quo\\\"te\\\\ \\u0001 é /  \",\"color\":4294967295}]"
+    },
+    {
+        "name": "manifest-new.json",
+        "json": "{\"name\":\"v2-tasks\",\"createdAt\":1788177735338}"
+    },
+    {
+        "name": "manifest-upgraded.json",
+        "json": "{\"name\":\"old\",\"createdAt\":5}"
+    },
+    {
+        "name": "manifest-full.json",
+        "json": "{\"formatVersion\":3,\"name\":\"x\",\"createdAt\":1,\"epoch\":4,\"archive_after_days\":30}"
+    },
+    {
+        "name": "manifest-missing-version-reads-as",
+        "json": "2"
+    },
+    {
+        "name": "today.json",
+        "json": "{\"nodeId\":\"today-id\",\"filterJson\":\"{\\\"kind\\\":\\\"all\\\",\\\"filters\\\":[{\\\"kind\\\":\\\"type\\\",\\\"value\\\":\\\"task\\\"},{\\\"kind\\\":\\\"done\\\",\\\"value\\\":false},{\\\"kind\\\":\\\"any\\\",\\\"filters\\\":[{\\\"kind\\\":\\\"prop\\\",\\\"defId\\\":\\\"builtin-due\\\",\\\"op\\\":\\\"lte\\\",\\\"dateRel\\\":\\\"today_end\\\"},{\\\"kind\\\":\\\"prop\\\",\\\"defId\\\":\\\"builtin-deadline\\\",\\\"op\\\":\\\"lte\\\",\\\"dateRel\\\":\\\"today_end\\\"}]}]}\",\"sortJson\":\"[{\\\"by\\\":\\\"prop_date\\\",\\\"defId\\\":\\\"builtin-due\\\"}]\",\"homeParentId\":\"inbox-id\",\"applyOnCreateJson\":\"[{\\\"defId\\\":\\\"builtin-due\\\",\\\"bool\\\":false,\\\"dateRel\\\":\\\"today_start\\\"}]\"}"
+    },
+    {
+        "name": "high.json",
+        "json": "{\"nodeId\":\"high-id\",\"filterJson\":\"{\\\"kind\\\":\\\"all\\\",\\\"filters\\\":[{\\\"kind\\\":\\\"type\\\",\\\"value\\\":\\\"task\\\"},{\\\"kind\\\":\\\"done\\\",\\\"value\\\":false},{\\\"kind\\\":\\\"prop\\\",\\\"defId\\\":\\\"builtin-priority\\\",\\\"op\\\":\\\"eq\\\",\\\"text\\\":\\\"High\\\"}]}\",\"sortJson\":\"[{\\\"by\\\":\\\"created\\\",\\\"desc\\\":true}]\",\"homeParentId\":\"inbox-id\",\"applyOnCreateJson\":\"[{\\\"defId\\\":\\\"builtin-priority\\\",\\\"text\\\":\\\"High\\\"}]\"}"
+    },
+    {
+        "name": "filter-every-kind.json",
+        "json": "{\"kind\":\"all\",\"filters\":[{\"kind\":\"any\",\"filters\":[{\"kind\":\"not\",\"filter\":{\"kind\":\"in_progress\",\"value\":true}},{\"kind\":\"has_label\",\"labelId\":\":label:x\"},{\"kind\":\"in_workspace\",\"workspaceId\":\"w1\"}]},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"gte\",\"number\":5.0},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"lt\",\"number\":0.5},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"lt\",\"number\":1.0E7},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"lt\",\"number\":1.25E-4},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"neq\",\"number\":-3.0},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"eq\",\"date\":1788177735338},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"eq\",\"bool\":true},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"is_set\"},{\"kind\":\"prop\",\"defId\":\"d\",\"op\":\"not_set\",\"text\":\"t\"}]}"
+    },
+    {
+        "name": "sort-every-kind.json",
+        "json": "[{\"by\":\"prop_number\",\"defId\":\"n\",\"desc\":true,\"nullsLast\":false},{\"by\":\"prop_text\",\"defId\":\"t\"},{\"by\":\"title\"}]"
+    },
+    {
+        "name": "apply-every-kind.json",
+        "json": "[{\"defId\":\"a\",\"number\":2.0},{\"defId\":\"b\",\"date\":7},{\"defId\":\"c\",\"bool\":false,\"dateRel\":\"today_start\"}]"
+    },
+    {
+        "name": "select-empty.json",
+        "json": "{}"
+    },
+    {
+        "name": "select-bare-option.json",
+        "json": "{\"options\":[{\"name\":\"Just a word\"}]}"
+    },
+    {
+        "name": "smartlist-scoped.json",
+        "json": "{\"nodeId\":\"n\",\"scopeRootId\":\"r\",\"filterJson\":\"{\\\"kind\\\":\\\"done\\\",\\\"value\\\":true}\"}"
+    },
+    {
+        "name": "numbers.json",
+        "json": "[{\"defId\":\"n\",\"number\":0.0},{\"defId\":\"n\",\"number\":-0.0},{\"defId\":\"n\",\"number\":1.0},{\"defId\":\"n\",\"number\":0.1},{\"defId\":\"n\",\"number\":0.001},{\"defId\":\"n\",\"number\":9.999E-4},{\"defId\":\"n\",\"number\":9999999.0},{\"defId\":\"n\",\"number\":1.0E7},{\"defId\":\"n\",\"number\":1.23456789125E8},{\"defId\":\"n\",\"number\":1.0E21},{\"defId\":\"n\",\"number\":1.0E-7},{\"defId\":\"n\",\"number\":2.5E-10},{\"defId\":\"n\",\"number\":1.7976931348623157E308},{\"defId\":\"n\",\"number\":0.3333333333333333},{\"defId\":\"n\",\"number\":100.0},{\"defId\":\"n\",\"number\":12345.678}]"
+    }
+]

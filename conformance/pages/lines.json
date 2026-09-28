@@ -2,171 +2,1225 @@
     {
         "source": "Just some prose",
         "kind": "Prose",
-        "rendered": "Just some prose"
+        "rendered": "Just some prose",
+        "passthrough": "Just some prose"
     },
     {
         "source": "# A heading",
         "kind": "Heading",
-        "rendered": "# A heading"
+        "rendered": "# A heading",
+        "passthrough": "# A heading"
     },
     {
         "source": "- a bullet",
         "kind": "Bullet",
-        "rendered": "- a bullet"
+        "rendered": "- a bullet",
+        "passthrough": "- a bullet"
     },
     {
         "source": "3. a numbered item",
         "kind": "Numbered",
-        "rendered": "0. a numbered item"
+        "rendered": "0. a numbered item",
+        "passthrough": "0. a numbered item"
     },
     {
         "source": "» » indented prose",
         "kind": "Prose",
-        "rendered": "» » indented prose"
+        "rendered": "» » indented prose",
+        "passthrough": "» » indented prose"
     },
     {
         "source": "- [ ]",
         "kind": "TaskRef",
-        "rendered": "- [ ]"
+        "rendered": "- [ ]",
+        "passthrough": "- [ ]"
     },
     {
         "source": "- [ ] Open task",
         "kind": "TaskRef",
-        "rendered": "- [ ] Open task"
+        "rendered": "- [ ] Open task",
+        "passthrough": "- [ ] Open task"
     },
     {
         "source": "- [x] Done task ^t1 done:2026-09-11",
         "kind": "TaskRef",
-        "rendered": "- [x] Done task ^t1 done:2026-09-11"
+        "rendered": "- [x] Done task ^t1 done:2026-09-11",
+        "passthrough": "- [x] Done task ^t1 done:2026-09-11"
     },
     {
         "source": "- [~] Started ^t2",
         "kind": "TaskRef",
-        "rendered": "- [~] Started ^t2"
+        "rendered": "- [~] Started ^t2",
+        "passthrough": "- [~] Started ^t2"
     },
     {
         "source": "![[ink:i1]]",
         "kind": "InkRef",
-        "rendered": "![[ink:i1]]"
+        "rendered": "![[ink:i1]]",
+        "passthrough": "![[ink:i1]]"
     },
     {
         "source": "![[image:img1.jpg]]",
         "kind": "ImageRef",
-        "rendered": "![[image:img1.jpg]]"
+        "rendered": "![[image:img1.jpg]]",
+        "passthrough": "![[image:img1.jpg]]"
     },
     {
         "source": "- [ ] Buy #2 pencils",
         "kind": "TaskRef",
-        "rendered": "- [ ] Buy #2 pencils"
+        "rendered": "- [ ] Buy #2 pencils",
+        "passthrough": "- [ ] Buy #2 pencils"
     },
     {
         "source": "- [ ] Buy milk #groceries #urgent !High @sam",
         "kind": "TaskRef",
-        "rendered": "- [ ] Buy milk !High #groceries #urgent @sam"
+        "rendered": "- [ ] Buy milk !High #groceries #urgent @sam",
+        "passthrough": "- [ ] Buy milk #groceries #urgent !High @sam"
     },
     {
         "source": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15",
         "kind": "TaskRef",
-        "rendered": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15"
+        "rendered": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15",
+        "passthrough": "- [ ] Blocked out ^t3 due:2026-09-11T14:00:00Z/PT1H+r15"
     },
     {
         "source": "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30",
         "kind": "TaskRef",
-        "rendered": "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30"
+        "rendered": "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30",
+        "passthrough": "- [ ] Warned twice ^t7 due:2026-09-11T14:00:00Z+r1440,30"
     },
     {
         "source": "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r30,1440,30",
         "kind": "TaskRef",
-        "rendered": "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r1440,30"
+        "rendered": "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r1440,30",
+        "passthrough": "- [ ] Warned out of order ^t8 due:2026-09-11T14:00:00Z+r30,1440,30"
     },
     {
         "source": "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15",
         "kind": "TaskRef",
-        "rendered": "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15"
+        "rendered": "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15",
+        "passthrough": "- [ ] Warned after ^t9 due:2026-09-11T14:00:00Z+r-15"
     },
     {
         "source": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20",
         "kind": "TaskRef",
-        "rendered": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20"
+        "rendered": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20",
+        "passthrough": "- [ ] All day ^t4 due:2026-09-11 deadline:2026-09-20"
     },
     {
         "source": "- [ ] About a meeting ^t5 ext:abc123@google.com",
         "kind": "TaskRef",
-        "rendered": "- [ ] About a meeting ^t5 ext:abc123@google.com"
+        "rendered": "- [ ] About a meeting ^t5 ext:abc123@google.com",
+        "passthrough": "- [ ] About a meeting ^t5 ext:abc123@google.com"
     },
     {
         "source": "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00",
         "kind": "TaskRef",
-        "rendered": "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00"
+        "rendered": "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00",
+        "passthrough": "- [ ] One occurrence ^t6 ext:abc123@google.com@2026-10-28T09:00"
     },
     {
         "source": "- [ ] See [[Buy milk #2|^abc]] today",
         "kind": "TaskRef",
-        "rendered": "- [ ] See [[Buy milk #2|^abc]] today"
+        "rendered": "- [ ] See [[Buy milk #2|^abc]] today",
+        "passthrough": "- [ ] See [[Buy milk #2|^abc]] today"
     },
     {
         "source": "@ 2026-09-11 Birthday ^e1",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11 Birthday ^e1"
+        "rendered": "@ 2026-09-11 Birthday ^e1",
+        "passthrough": "@ 2026-09-11 Birthday ^e1"
     },
     {
         "source": "@ 2026-09-11/2026-09-13 Conference ^e2",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11/2026-09-13 Conference ^e2"
+        "rendered": "@ 2026-09-11/2026-09-13 Conference ^e2",
+        "passthrough": "@ 2026-09-11/2026-09-13 Conference ^e2"
     },
     {
         "source": "@ 2026-09-11T14:00 Reminder ^e3",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00 Reminder ^e3"
+        "rendered": "@ 2026-09-11T14:00 Reminder ^e3",
+        "passthrough": "@ 2026-09-11T14:00 Reminder ^e3"
     },
     {
         "source": "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO"
+        "rendered": "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO",
+        "passthrough": "@ 2026-09-11T14:00/PT1H Standup ^e4 rrule:FREQ=WEEKLY;BYDAY=MO"
     },
     {
         "source": "@ 2026-09-11T14:00/2026-09-11T15:30 Review ^e5",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H30M Review ^e5"
+        "rendered": "@ 2026-09-11T14:00/PT1H30M Review ^e5",
+        "passthrough": "@ 2026-09-11T14:00/2026-09-11T15:30 Review ^e5"
     },
     {
         "source": "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6"
+        "rendered": "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6",
+        "passthrough": "@ 2026-09-11T09:00[Europe/Dublin]/PT30M Call ^e6"
     },
     {
         "source": "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1"
+        "rendered": "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1",
+        "passthrough": "@ 2026-09-11T14:00/PT1H Sitting ^e7 for:t1"
     },
     {
         "source": "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00"
+        "rendered": "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00",
+        "passthrough": "@ 2026-09-11T14:00/PT1H Moved ^e8 series:s1@2026-10-28T09:00"
     },
     {
         "source": "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled"
+        "rendered": "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled",
+        "passthrough": "@ 2026-09-11T14:00/PT1H Skipped ^e9 series:s1 cancelled"
     },
     {
         "source": "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex"
+        "rendered": "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex",
+        "passthrough": "@ 2026-09-11T14:00/PT1H Lunch ^e10 loc:The%20Old%20Spot col:teal remind:10 !High #social @sam @alex"
     },
     {
         "source": "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00"
+        "rendered": "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00",
+        "passthrough": "@ 2026-09-11T14:00/PT1H Theirs ^e11 ext:abc123@google.com@2026-09-11T14:00"
     },
     {
         "source": "@ 2026-09-11T14:00 Coffee with #2",
         "kind": "EventRef",
-        "rendered": "@ 2026-09-11T14:00 Coffee with #2"
+        "rendered": "@ 2026-09-11T14:00 Coffee with #2",
+        "passthrough": "@ 2026-09-11T14:00 Coffee with #2"
     },
     {
         "source": "@ not-a-time at all",
         "kind": "Prose",
-        "rendered": "@ not-a-time at all"
+        "rendered": "@ not-a-time at all",
+        "passthrough": "@ not-a-time at all"
+    },
+    {
+        "source": "- [ ] x ^",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x",
+        "passthrough": "- [ ] x ^"
+    },
+    {
+        "source": "- [ ] x ^a ^",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^a",
+        "passthrough": "- [ ] x ^a ^"
+    },
+    {
+        "source": "- [ ]x",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x",
+        "passthrough": "- [ ]x"
+    },
+    {
+        "source": "- [ ]  two spaces",
+        "kind": "TaskRef",
+        "rendered": "- [ ] two spaces",
+        "passthrough": "- [ ]  two spaces"
+    },
+    {
+        "source": "- [ ] trailing  ",
+        "kind": "TaskRef",
+        "rendered": "- [ ] trailing",
+        "passthrough": "- [ ] trailing  "
+    },
+    {
+        "source": "- [X] upper",
+        "kind": "TaskRef",
+        "rendered": "- [x] upper",
+        "passthrough": "- [X] upper"
+    },
+    {
+        "source": "- [ ] tab\ttoken #a",
+        "kind": "TaskRef",
+        "rendered": "- [ ] tab\ttoken #a",
+        "passthrough": "- [ ] tab\ttoken #a"
+    },
+    {
+        "source": "- [x] Done ^t1 done:2026-09-11 due:2026-09-10",
+        "kind": "TaskRef",
+        "rendered": "- [x] Done ^t1 due:2026-09-10 done:2026-09-11",
+        "passthrough": "- [x] Done ^t1 done:2026-09-11 due:2026-09-10"
+    },
+    {
+        "source": "- [ ] open but done:2026-09-11",
+        "kind": "TaskRef",
+        "rendered": "- [ ] open but",
+        "passthrough": "- [ ] open but done:2026-09-11"
+    },
+    {
+        "source": "- [ ] x ext:",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ext:",
+        "passthrough": "- [ ] x ext:"
+    },
+    {
+        "source": "- [ ] x ext:@2026-09-11T09:00",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ext:@2026-09-11T09:00",
+        "passthrough": "- [ ] x ext:@2026-09-11T09:00"
+    },
+    {
+        "source": "- [ ] x ext:a%20b%25c",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ext:a%20b%25c",
+        "passthrough": "- [ ] x ext:a%20b%25c"
+    },
+    {
+        "source": "- [ ] x ext:abc@notadate",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ext:abc@notadate",
+        "passthrough": "- [ ] x ext:abc@notadate"
+    },
+    {
+        "source": "- [ ] x @",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x @",
+        "passthrough": "- [ ] x @"
+    },
+    {
+        "source": "- [ ] x #",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x #",
+        "passthrough": "- [ ] x #"
+    },
+    {
+        "source": "- [ ] x !",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x !",
+        "passthrough": "- [ ] x !"
+    },
+    {
+        "source": "- [ ] x !High !Low",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x !High",
+        "passthrough": "- [ ] x !High !Low"
+    },
+    {
+        "source": "- [ ] x @a @b",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x @a",
+        "passthrough": "- [ ] x @a @b"
+    },
+    {
+        "source": "- [ ] Contractor or employee  ^f40f",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Contractor or employee  ^f40f",
+        "passthrough": "- [ ] Contractor or employee  ^f40f"
+    },
+    {
+        "source": "- [ ]    lots   of   spacing   ^a1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] lots   of   spacing   ^a1",
+        "passthrough": "- [ ]    lots   of   spacing   ^a1"
+    },
+    {
+        "source": "- [ ] See [[Buy milk #2|^abc]] first ^t1 #real !High",
+        "kind": "TaskRef",
+        "rendered": "- [ ] See [[Buy milk #2|^abc]] first ^t1 !High #real",
+        "passthrough": "- [ ] See [[Buy milk #2|^abc]] first ^t1 #real !High"
+    },
+    {
+        "source": "- [ ] Ping [[ask @bob|^x]]",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Ping [[ask @bob|^x]]",
+        "passthrough": "- [ ] Ping [[ask @bob|^x]]"
+    },
+    {
+        "source": "- [ ] ping [[the @team page]] ^a1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] ping [[the @team page]] ^a1",
+        "passthrough": "- [ ] ping [[the @team page]] ^a1"
+    },
+    {
+        "source": "- [ ] pay rent due:not-a-date ^a1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] pay rent due:not-a-date ^a1",
+        "passthrough": "- [ ] pay rent due:not-a-date ^a1"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z+r30,x",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z+r30,x",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z+r30,x"
+    },
+    {
+        "source": "- [ ] Café résumé ^t1 #naïve",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Café résumé ^t1 #naïve",
+        "passthrough": "- [ ] Café résumé ^t1 #naïve"
+    },
+    {
+        "source": "- [ ] x #́",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x #́",
+        "passthrough": "- [ ] x #́"
+    },
+    {
+        "source": "- [ ] x !́",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x !́",
+        "passthrough": "- [ ] x !́"
+    },
+    {
+        "source": "- [ ] x @́",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x @́",
+        "passthrough": "- [ ] x @́"
+    },
+    {
+        "source": "- [ ] x ^́",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^́",
+        "passthrough": "- [ ] x ^́"
+    },
+    {
+        "source": "- [ ] a ́b ^t1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] a ́b ^t1",
+        "passthrough": "- [ ] a ́b ^t1"
+    },
+    {
+        "source": "- [ ] Buy milk ^t1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Buy milk ^t1",
+        "passthrough": "- [ ] Buy milk ^t1"
+    },
+    {
+        "source": "- [ ] x ^t1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^t1",
+        "passthrough": "- [ ] x ^t1"
+    },
+    {
+        "source": "- [ ] x  ^t1",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x  ^t1",
+        "passthrough": "- [ ] x  ^t1"
+    },
+    {
+        "source": "- [ ] Call 😀 #😀",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Call 😀 #😀",
+        "passthrough": "- [ ] Call 😀 #😀"
+    },
+    {
+        "source": "- [ ] x ^t1 #a #b #c @me",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^t1 #a #b #c @me",
+        "passthrough": "- [ ] x ^t1 #a #b #c @me"
+    },
+    {
+        "source": "- [~] Draft the doc on:sai by:sai ^t1 due:2026-10-01 @sai",
+        "kind": "TaskRef",
+        "rendered": "- [~] Draft the doc on:sai by:sai ^t1 due:2026-10-01 @sai",
+        "passthrough": "- [~] Draft the doc on:sai by:sai ^t1 due:2026-10-01 @sai"
+    },
+    {
+        "source": "- [ ] Added by:batunii ^t2",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Added by:batunii ^t2",
+        "passthrough": "- [ ] Added by:batunii ^t2"
+    },
+    {
+        "source": "- [ ] Fix login re:bug",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Fix login re:bug",
+        "passthrough": "- [ ] Fix login re:bug"
+    },
+    {
+        "source": "- [ ] Read https://example.com/a",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Read https://example.com/a",
+        "passthrough": "- [ ] Read https://example.com/a"
+    },
+    {
+        "source": "- [ ] Meet at 10:30",
+        "kind": "TaskRef",
+        "rendered": "- [ ] Meet at 10:30",
+        "passthrough": "- [ ] Meet at 10:30"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00+01:00",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T08:00:00Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00+01:00"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00-05:30:15",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T14:30:15Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00-05:30:15"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00+01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00+01",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00+01"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26t09:00:00z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26t09:00:00z",
+        "passthrough": "- [ ] x ^i due:2026-08-26t09:00:00z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00.5Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00.500Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00.5Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00.Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00.Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00.123Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00.123Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00.123Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T24:00:00Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-27T00:00:00Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T24:00:00Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T23:59:60Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T23:59:59Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T23:59:60Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T12:59:60Z",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T12:59:60Z",
+        "passthrough": "- [ ] x ^i due:2026-08-26T12:59:60Z"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26+r+5",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26+r5",
+        "passthrough": "- [ ] x ^i due:2026-08-26+r+5"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26+r٣",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26+r3",
+        "passthrough": "- [ ] x ^i due:2026-08-26+r٣"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26+r",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26+r",
+        "passthrough": "- [ ] x ^i due:2026-08-26+r"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26+r3000000000",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26+r3000000000",
+        "passthrough": "- [ ] x ^i due:2026-08-26+r3000000000"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26+r5,5,-5,0",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26+r5,0,-5",
+        "passthrough": "- [ ] x ^i due:2026-08-26+r5,5,-5,0"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26/PT1H",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26/PT1H",
+        "passthrough": "- [ ] x ^i due:2026-08-26/PT1H"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/pt30m",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT30M",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/pt30m"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/P1D",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT24H",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/P1D"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT1.5S",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT1.5S",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT1.5S"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT0S",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT0S",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT0S"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/-PT1H",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT-1H",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/-PT1H"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/PT"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-08-26T09:00:00Z/P1W",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-08-26T09:00:00Z/P1W",
+        "passthrough": "- [ ] x ^i due:2026-08-26T09:00:00Z/P1W"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-02-29",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-02-29",
+        "passthrough": "- [ ] x ^i due:2026-02-29"
+    },
+    {
+        "source": "- [ ] x ^i due:2028-02-29",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2028-02-29",
+        "passthrough": "- [ ] x ^i due:2028-02-29"
+    },
+    {
+        "source": "- [ ] x ^i due:+2026-01-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:+2026-01-01",
+        "passthrough": "- [ ] x ^i due:+2026-01-01"
+    },
+    {
+        "source": "- [ ] x ^i due:-2026-01-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:-2026-01-01",
+        "passthrough": "- [ ] x ^i due:-2026-01-01"
+    },
+    {
+        "source": "- [ ] x ^i due:+12026-01-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:+12026-01-01",
+        "passthrough": "- [ ] x ^i due:+12026-01-01"
+    },
+    {
+        "source": "- [ ] x ^i due:2026-1-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:2026-1-01",
+        "passthrough": "- [ ] x ^i due:2026-1-01"
+    },
+    {
+        "source": "- [ ] x ^i due:２０２６-01-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i due:２０２６-01-01",
+        "passthrough": "- [ ] x ^i due:２０２６-01-01"
+    },
+    {
+        "source": "- [ ] x ^i deadline:2026-13-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i deadline:2026-13-01",
+        "passthrough": "- [ ] x ^i deadline:2026-13-01"
+    },
+    {
+        "source": "- [ ] x ^i deadline:0000-01-01",
+        "kind": "TaskRef",
+        "rendered": "- [ ] x ^i deadline:0000-01-01",
+        "passthrough": "- [ ] x ^i deadline:0000-01-01"
+    },
+    {
+        "source": "#heading",
+        "kind": "Prose",
+        "rendered": "#heading",
+        "passthrough": "#heading"
+    },
+    {
+        "source": "## h2",
+        "kind": "Prose",
+        "rendered": "## h2",
+        "passthrough": "## h2"
+    },
+    {
+        "source": "# ",
+        "kind": "Heading",
+        "rendered": "# ",
+        "passthrough": "# "
+    },
+    {
+        "source": "#",
+        "kind": "Prose",
+        "rendered": "#",
+        "passthrough": "#"
+    },
+    {
+        "source": "- ",
+        "kind": "Bullet",
+        "rendered": "- ",
+        "passthrough": "- "
+    },
+    {
+        "source": "-",
+        "kind": "Prose",
+        "rendered": "-",
+        "passthrough": "-"
+    },
+    {
+        "source": " ",
+        "kind": "Prose",
+        "rendered": " ",
+        "passthrough": " "
+    },
+    {
+        "source": " ",
+        "kind": "Prose",
+        "rendered": " ",
+        "passthrough": " "
+    },
+    {
+        "source": "",
+        "kind": "Prose",
+        "rendered": "",
+        "passthrough": ""
+    },
+    {
+        "source": " ",
+        "kind": "Prose",
+        "rendered": " ",
+        "passthrough": " "
+    },
+    {
+        "source": "\t",
+        "kind": "Prose",
+        "rendered": " ",
+        "passthrough": "\t"
+    },
+    {
+        "source": "@ ",
+        "kind": "Prose",
+        "rendered": "@ ",
+        "passthrough": "@ "
+    },
+    {
+        "source": "@sam owes me",
+        "kind": "Prose",
+        "rendered": "@sam owes me",
+        "passthrough": "@sam owes me"
+    },
+    {
+        "source": "* star",
+        "kind": "Prose",
+        "rendered": "* star",
+        "passthrough": "* star"
+    },
+    {
+        "source": "> quote",
+        "kind": "Prose",
+        "rendered": "> quote",
+        "passthrough": "> quote"
+    },
+    {
+        "source": "# ́x",
+        "kind": "Heading",
+        "rendered": "# ́x",
+        "passthrough": "# ́x"
+    },
+    {
+        "source": "- ́x",
+        "kind": "Bullet",
+        "rendered": "- ́x",
+        "passthrough": "- ́x"
+    },
+    {
+        "source": "»́ x",
+        "kind": "Prose",
+        "rendered": "» ́ x",
+        "passthrough": "»́ x"
+    },
+    {
+        "source": "» » - [ ] deep ^a1",
+        "kind": "TaskRef",
+        "rendered": "» » - [ ] deep ^a1",
+        "passthrough": "» » - [ ] deep ^a1"
+    },
+    {
+        "source": "»» x",
+        "kind": "Prose",
+        "rendered": "» » x",
+        "passthrough": "»» x"
+    },
+    {
+        "source": "» ",
+        "kind": "Prose",
+        "rendered": "» ",
+        "passthrough": "» "
+    },
+    {
+        "source": "»",
+        "kind": "Prose",
+        "rendered": "» ",
+        "passthrough": "»"
+    },
+    {
+        "source": "1. item",
+        "kind": "Prose",
+        "rendered": "1. item",
+        "passthrough": "1. item"
+    },
+    {
+        "source": "1.\titem",
+        "kind": "Numbered",
+        "rendered": "0. item",
+        "passthrough": "0. item"
+    },
+    {
+        "source": "١. item",
+        "kind": "Prose",
+        "rendered": "١. item",
+        "passthrough": "١. item"
+    },
+    {
+        "source": "1. a b",
+        "kind": "Prose",
+        "rendered": "1. a b",
+        "passthrough": "1. a b"
+    },
+    {
+        "source": "99999999999. big",
+        "kind": "Numbered",
+        "rendered": "0. big",
+        "passthrough": "0. big"
+    },
+    {
+        "source": "3.  two spaces",
+        "kind": "Numbered",
+        "rendered": "0. two spaces",
+        "passthrough": "0. two spaces"
+    },
+    {
+        "source": "1.",
+        "kind": "Prose",
+        "rendered": "1.",
+        "passthrough": "1."
+    },
+    {
+        "source": "1. ",
+        "kind": "Numbered",
+        "rendered": "0. ",
+        "passthrough": "0. "
+    },
+    {
+        "source": "12. twelve",
+        "kind": "Numbered",
+        "rendered": "0. twelve",
+        "passthrough": "0. twelve"
+    },
+    {
+        "source": "0. zero",
+        "kind": "Numbered",
+        "rendered": "0. zero",
+        "passthrough": "0. zero"
+    },
+    {
+        "source": "1.x",
+        "kind": "Prose",
+        "rendered": "1.x",
+        "passthrough": "1.x"
+    },
+    {
+        "source": "![[ink:]]",
+        "kind": "Prose",
+        "rendered": "![[ink:]]",
+        "passthrough": "![[ink:]]"
+    },
+    {
+        "source": "![[ink:a]]b",
+        "kind": "Prose",
+        "rendered": "![[ink:a]]b",
+        "passthrough": "![[ink:a]]b"
+    },
+    {
+        "source": "![[ink:a]b]]",
+        "kind": "Prose",
+        "rendered": "![[ink:a]b]]",
+        "passthrough": "![[ink:a]b]]"
+    },
+    {
+        "source": "![[ink:a]]\r",
+        "kind": "InkRef",
+        "rendered": "![[ink:a]]",
+        "passthrough": "![[ink:a]]\r"
+    },
+    {
+        "source": "![[image:content://x/y]]",
+        "kind": "ImageRef",
+        "rendered": "![[image:content://x/y]]",
+        "passthrough": "![[image:content://x/y]]"
+    },
+    {
+        "source": "![[ink:a b]]",
+        "kind": "InkRef",
+        "rendered": "![[ink:a b]]",
+        "passthrough": "![[ink:a b]]"
+    },
+    {
+        "source": " ![[ink:a]]",
+        "kind": "Prose",
+        "rendered": " ![[ink:a]]",
+        "passthrough": " ![[ink:a]]"
+    },
+    {
+        "source": "» ![[ink:a]]",
+        "kind": "InkRef",
+        "rendered": "» ![[ink:a]]",
+        "passthrough": "» ![[ink:a]]"
+    },
+    {
+        "source": "![[image:pic-1]]",
+        "kind": "ImageRef",
+        "rendered": "![[image:pic-1]]",
+        "passthrough": "![[image:pic-1]]"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1H30M Meeting  with  gaps ^e1",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H30M Meeting with gaps ^e1",
+        "passthrough": "@ 2026-09-11T14:00/PT1H30M Meeting  with  gaps ^e1"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/pt1h x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00/pt1h x",
+        "passthrough": "@ 2026-09-11T14:00/pt1h x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT1.5S x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1.5S x",
+        "passthrough": "@ 2026-09-11T14:00/PT1.5S x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/P1D x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT24H x",
+        "passthrough": "@ 2026-09-11T14:00/P1D x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/P1DT2H30M x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT26H30M x",
+        "passthrough": "@ 2026-09-11T14:00/P1DT2H30M x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/-PT1H x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00/-PT1H x",
+        "passthrough": "@ 2026-09-11T14:00/-PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT0S x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00 x",
+        "passthrough": "@ 2026-09-11T14:00/PT0S x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/PT-0.5S x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00/PT-0.5S x",
+        "passthrough": "@ 2026-09-11T14:00/PT-0.5S x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[GMT+1]/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00[GMT+01:00]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[GMT+1]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[+1]/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00[+01:00]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[+1]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[+00:00]/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00[Z]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[+00:00]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[EST]/PT1H x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00[EST]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[EST]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[UTC]/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00[UTC]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[UTC]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[Z]/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00[Z]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[Z]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[europe/dublin]/PT1H x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00[europe/dublin]/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00[europe/dublin]/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00[Europe/Dublin x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00[Europe/Dublin x",
+        "passthrough": "@ 2026-09-11T14:00[Europe/Dublin x"
+    },
+    {
+        "source": "@ 2026-09-11[Europe/Dublin]/2026-09-12 two days",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11[Europe/Dublin]/2026-09-12 two days",
+        "passthrough": "@ 2026-09-11[Europe/Dublin]/2026-09-12 two days"
+    },
+    {
+        "source": "@ 2026-09-11T14:00:30.5/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00:30.500/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00:30.5/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00:30./PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00:30/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00:30./PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00:00/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00:00/PT1H x"
+    },
+    {
+        "source": "@ 2026-09-11T14:00:30/PT1H x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T14:00:30/PT1H x",
+        "passthrough": "@ 2026-09-11T14:00:30/PT1H x"
+    },
+    {
+        "source": "@ +12026-09-11 far",
+        "kind": "EventRef",
+        "rendered": "@ +12026-09-11 far",
+        "passthrough": "@ +12026-09-11 far"
+    },
+    {
+        "source": "@ 2026-09-11T24:00 x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T24:00 x",
+        "passthrough": "@ 2026-09-11T24:00 x"
+    },
+    {
+        "source": "@ 2026-09-11/2026-09-11 one day",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 one day",
+        "passthrough": "@ 2026-09-11/2026-09-11 one day"
+    },
+    {
+        "source": "@ 2026-09-11/2026-09-10 back",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 back",
+        "passthrough": "@ 2026-09-11/2026-09-10 back"
+    },
+    {
+        "source": "@ 2026-09-11T14:00/2026-09-11 x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11T14:00/2026-09-11 x",
+        "passthrough": "@ 2026-09-11T14:00/2026-09-11 x"
+    },
+    {
+        "source": "@ 2026-09-11/2026-09-12T10:00 x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11/2026-09-12 x",
+        "passthrough": "@ 2026-09-11/2026-09-12T10:00 x"
+    },
+    {
+        "source": "@ 2026-09-11 x remind:٣",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x remind:3",
+        "passthrough": "@ 2026-09-11 x remind:٣"
+    },
+    {
+        "source": "@ 2026-09-11 x remind:+5",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x remind:5",
+        "passthrough": "@ 2026-09-11 x remind:+5"
+    },
+    {
+        "source": "@ 2026-09-11 x remind:-5",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x remind:-5",
+        "passthrough": "@ 2026-09-11 x remind:-5"
+    },
+    {
+        "source": "@ 2026-09-11 x remind:3000000000",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x remind:3000000000",
+        "passthrough": "@ 2026-09-11 x remind:3000000000"
+    },
+    {
+        "source": "@ 2026-09-11 x remind:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x remind:",
+        "passthrough": "@ 2026-09-11 x remind:"
+    },
+    {
+        "source": "@ 2026-09-11 x by:a%20b",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x by:a%2520b",
+        "passthrough": "@ 2026-09-11 x by:a%20b"
+    },
+    {
+        "source": "@ 2026-09-11 x by:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x by:",
+        "passthrough": "@ 2026-09-11 x by:"
+    },
+    {
+        "source": "@ 2026-09-11 x loc:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x loc:",
+        "passthrough": "@ 2026-09-11 x loc:"
+    },
+    {
+        "source": "@ 2026-09-11 x col:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x col:",
+        "passthrough": "@ 2026-09-11 x col:"
+    },
+    {
+        "source": "@ 2026-09-11 x for:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x for:",
+        "passthrough": "@ 2026-09-11 x for:"
+    },
+    {
+        "source": "@ 2026-09-11 x rrule:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x rrule:",
+        "passthrough": "@ 2026-09-11 x rrule:"
+    },
+    {
+        "source": "@ 2026-09-11 x rrule:A rrule:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x rrule:A rrule:",
+        "passthrough": "@ 2026-09-11 x rrule:A rrule:"
+    },
+    {
+        "source": "@ 2026-09-11 x rrule: rrule:A",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x rrule:",
+        "passthrough": "@ 2026-09-11 x rrule: rrule:A"
+    },
+    {
+        "source": "@ 2026-09-23T11:00/PT30M Intro Call ^79d24109 ext:_60q30c1g by:batunii remind:15",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-23T11:00/PT30M Intro Call ^79d24109 ext:_60q30c1g by:batunii remind:15",
+        "passthrough": "@ 2026-09-23T11:00/PT30M Intro Call ^79d24109 ext:_60q30c1g by:batunii remind:15"
+    },
+    {
+        "source": "@ 2026-09-23T11:00/PT30M Intro Call: Napkin <> NVIDIA Inception  ^d753 loc:Microsoft%20Teams%20Meeting ext:0400",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-23T11:00/PT30M Intro Call: Napkin <> NVIDIA Inception ^d753 loc:Microsoft%20Teams%20Meeting ext:0400",
+        "passthrough": "@ 2026-09-23T11:00/PT30M Intro Call: Napkin <> NVIDIA Inception  ^d753 loc:Microsoft%20Teams%20Meeting ext:0400"
+    },
+    {
+        "source": "@ 2026-09-11 x series:",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x series:",
+        "passthrough": "@ 2026-09-11 x series:"
+    },
+    {
+        "source": "@ 2026-09-11 x series:@2026-09-11T09:00",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x series:@2026-09-11T09:00",
+        "passthrough": "@ 2026-09-11 x series:@2026-09-11T09:00"
+    },
+    {
+        "source": "@ 2026-09-11 x series:s1@bad",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x series:s1@bad",
+        "passthrough": "@ 2026-09-11 x series:s1@bad"
+    },
+    {
+        "source": "@ 2026-09-11T09:00/PT15M x ^s1x2 series:s1@2026-09-11T09:00",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11T09:00/PT15M x ^s1x2 series:s1",
+        "passthrough": "@ 2026-09-11T09:00/PT15M x ^s1x2 series:s1@2026-09-11T09:00"
+    },
+    {
+        "source": "@ 2026-09-11 x cancelled cancelled",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x cancelled",
+        "passthrough": "@ 2026-09-11 x cancelled cancelled"
+    },
+    {
+        "source": "@ 2026-09-11 x Cancelled",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x Cancelled",
+        "passthrough": "@ 2026-09-11 x Cancelled"
+    },
+    {
+        "source": "@ 2026-09-11 x #́ @́ !́",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x !́ #́ @́",
+        "passthrough": "@ 2026-09-11 x #́ @́ !́"
+    },
+    {
+        "source": "@ 2026-09-11 x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11 x",
+        "passthrough": "@ 2026-09-11 x"
+    },
+    {
+        "source": "@  2026-09-11 x",
+        "kind": "EventRef",
+        "rendered": "@ 2026-09-11 x",
+        "passthrough": "@  2026-09-11 x"
+    },
+    {
+        "source": "@ 2026-09-11 x",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11 x",
+        "passthrough": "@ 2026-09-11 x"
+    },
+    {
+        "source": "@ 2026-09-11\tx",
+        "kind": "Prose",
+        "rendered": "@ 2026-09-11\tx",
+        "passthrough": "@ 2026-09-11\tx"
     }
 ]

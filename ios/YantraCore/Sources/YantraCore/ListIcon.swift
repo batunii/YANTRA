@@ -26,10 +26,11 @@ public enum ListIcon {
     /// the lot would mean a field that silently does nothing. Taking the first is the reading that
     /// matches what the preview beside it is already showing them.
     public static func clean(_ input: String?) -> String? {
-        let text = (input ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // `input?.trim()` and `isNotBlank()` — Kotlin's whitespace, not Foundation's.
+        let text = KText.trim(input ?? "")
         guard let first = text.first else { return nil }
         let one = String(first)
-        return one.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : one
+        return KText.isBlank(one) ? nil : one
     }
 
     /// The grid, which is the whole of the choice for almost everybody.

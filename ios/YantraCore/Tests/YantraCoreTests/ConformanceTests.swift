@@ -102,26 +102,45 @@ extension ConformanceTests {
         }
     }
 
-    struct LineCase: Decodable { let source: String, kind: String, rendered: String }
+    /// `source` through 17d0beb's `decodeBlock`: the Kotlin class it became, `encodeBlock` of it with
+    /// `raw` stripped (the model, rebuilt), and `encodeBlock` of it as parsed (raw preservation).
+    /// Written by `conformance/tools/oracle.sh`, which runs the Kotlin in `app/` itself.
+    struct LineCase: Decodable { let source: String, kind: String, rendered: String, passthrough: String }
 
     func testPageLines() throws {
         let cases = try JSONDecoder().decode([LineCase].self, from: fixture("pages/lines.json"))
-        XCTAssertFalse(cases.isEmpty)
+        XCTAssertGreaterThan(cases.count, 150)
         for c in cases {
             let block = PageCodec.decodeBlock(c.source)
-            XCTAssertEqual(Self.kindName(block), c.kind, "kind of \(c.source)")
+            let where_ = c.source.debugDescription
+            XCTAssertEqual(Self.kindName(block), c.kind, "kind of \(where_)")
             // Without `raw` the emitter has to rebuild the line from the model, which is the half
-            // that pins token order, durations and escaped values.
-            XCTAssertEqual(PageCodec.encodeBlock(block.strippingRaw), c.rendered, "render of \(c.source)")
-            // And the source itself survives untouched when nothing about it changed. A numbered
-            // item is the exception by construction: its ordinal is positional and therefore not
-            // part of the model, so a line written `3.` cannot come back as one from a block that
-            // does not know it is third. Both platforms re-render it, which is what the fixture's
-            // `0.` records.
-            if case .numbered = block {} else {
-                XCTAssertEqual(PageCodec.encodeBlock(block), c.source.isEmpty ? " " : c.source, "passthrough of \(c.source)")
-            }
+            // that pins token order, durations and escaped values. Compared as bytes: Swift's `==`
+            // on strings is canonical equivalence, and a combining mark in the wrong place is
+            // exactly what it would forgive.
+            assertBytes(PageCodec.encodeBlock(block.strippingRaw), c.rendered, "render of \(where_)")
+            // And what raw preservation writes back — the source itself for everything but a
+            // numbered item, whose ordinal is positional and so cannot survive `encodeBlock`'s 0.
+            assertBytes(PageCodec.encodeBlock(block), c.passthrough, "passthrough of \(where_)")
         }
+    }
+
+    /// Whole pages through 17d0beb's `encode(decode(text))`: frontmatter order, `pinned`, unknown
+    /// and duplicate keys, precise `modified_at`, fences, CRLF, a BOM, blank-line layout.
+    func testWholePagesMatchKotlin() throws {
+        let dir = Self.root.appendingPathComponent("pages/roundtrip")
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("in").path).filter { $0.hasSuffix(".md") }.sorted()
+        XCTAssertGreaterThan(names.count, 20)
+        for n in names {
+            let input = try Data(contentsOf: dir.appendingPathComponent("in/\(n)"))
+            let expected = try Data(contentsOf: dir.appendingPathComponent("out/\(n)"))
+            let got = Data(PageCodec.encode(PageCodec.decode(WorkspaceStore.decodeText(input))).utf8)
+            XCTAssertEqual(got, expected, "\(n):\n\(String(decoding: got, as: UTF8.self))\n--- Kotlin ---\n\(String(decoding: expected, as: UTF8.self))")
+        }
+    }
+
+    func assertBytes(_ a: String, _ b: String, _ message: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(Array(a.utf8), Array(b.utf8), "\(message): \(a.debugDescription) vs \(b.debugDescription)", file: file, line: line)
     }
 
     func testPageFile() throws {

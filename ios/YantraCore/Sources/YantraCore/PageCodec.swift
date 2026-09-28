@@ -8,13 +8,60 @@ public struct LocalDate: Hashable, Comparable, Sendable, CustomStringConvertible
     public var year: Int, month: Int, day: Int
     public init(year: Int, month: Int, day: Int) { self.year = year; self.month = month; self.day = day }
 
+    /// `LocalDate.parse` — ISO_LOCAL_DATE, STRICT, exactly as `java.time` reads it: a year of
+    /// exactly four ASCII digits, or a signed one (`+` only when it needs more than four, `-` from
+    /// four up), then `-MM-dd`, and a day that exists. `2026-02-29` is not a date; neither is
+    /// `+2026-01-01`, `2026-1-01` or a year written in full-width digits.
     public init?(_ s: String) {
-        let p = s.split(separator: "-", omittingEmptySubsequences: false)
-        guard p.count == 3, p[0].count == 4, p[1].count == 2, p[2].count == 2,
-              let y = Int(p[0]), let m = Int(p[1]), let d = Int(p[2]), (1...12).contains(m), (1...31).contains(d) else { return nil }
-        var c = DateComponents(); c.year = y; c.month = m; c.day = d
-        guard Calendar(identifier: .gregorian).date(from: c) != nil, LocalDate.daysIn(month: m, year: y) >= d else { return nil }
+        let v = Array(s.unicodeScalars)
+        var i = 0, sign = 1, signed = false
+        if i < v.count, v[i] == "+" || v[i] == "-" { signed = true; sign = v[i] == "-" ? -1 : 1; i += 1 }
+        let ys = i
+        while i < v.count, KText.isAsciiDigit(v[i]) { i += 1 }
+        let yearDigits = i - ys
+        if signed {
+            if sign > 0 { guard yearDigits > 4, yearDigits <= 10 else { return nil } }
+            else { guard yearDigits >= 4, yearDigits <= 10 else { return nil } }
+        } else { guard yearDigits == 4 else { return nil } }
+        guard let yAbs = Int(String(String.UnicodeScalarView(v[ys..<i]))) else { return nil }
+        let y = sign * yAbs
+        guard abs(y) <= 999_999_999 else { return nil }
+        func two() -> Int? {
+            guard i + 2 <= v.count, KText.isAsciiDigit(v[i]), KText.isAsciiDigit(v[i + 1]) else { return nil }
+            defer { i += 2 }
+            return Int(v[i].value - 48) * 10 + Int(v[i + 1].value - 48)
+        }
+        guard i < v.count, v[i] == "-" else { return nil }
+        i += 1
+        guard let m = two(), i < v.count, v[i] == "-" else { return nil }
+        i += 1
+        guard let d = two(), i == v.count, (1...12).contains(m), d >= 1, LocalDate.daysIn(month: m, year: y) >= d else { return nil }
         self.init(year: y, month: m, day: d)
+    }
+
+    /// Days since 1970-01-01, proleptic Gregorian — `toEpochDay()`.
+    public var epochDay: Int {
+        // Howard Hinnant's days_from_civil.
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let mp = (month + 9) % 12
+        let doy = (153 * mp + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146_097 + doe - 719_468
+    }
+
+    /// `LocalDate.ofEpochDay`.
+    public init(epochDay: Int) {
+        let z = epochDay + 719_468
+        let era = (z >= 0 ? z : z - 146_096) / 146_097
+        let doe = z - era * 146_097
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        let mp = (5 * doy + 2) / 153
+        let d = doy - (153 * mp + 2) / 5 + 1
+        let m = mp < 10 ? mp + 3 : mp - 9
+        self.init(year: yoe + era * 400 + (m <= 2 ? 1 : 0), month: m, day: d)
     }
 
     public static func today(_ cal: Calendar = .current) -> LocalDate {
@@ -41,7 +88,16 @@ public struct LocalDate: Hashable, Comparable, Sendable, CustomStringConvertible
         cal.dateComponents([.day], from: startOfDay(cal), to: other.startOfDay(cal)).day ?? 0
     }
 
-    public var description: String { String(format: "%04d-%02d-%02d", year, month, day) }
+    /// `LocalDate.toString()`: four digits, a sign below year 0 and above 9999.
+    public var description: String {
+        let y: String
+        if abs(year) < 1000 {
+            y = (year < 0 ? "-" : "") + String(format: "%04d", abs(year))
+        } else {
+            y = (year > 9999 ? "+" : "") + String(year)
+        }
+        return y + String(format: "-%02d-%02d", month, day)
+    }
 
     public static func < (l: LocalDate, r: LocalDate) -> Bool {
         (l.year, l.month, l.day) < (r.year, r.month, r.day)
@@ -49,33 +105,21 @@ public struct LocalDate: Hashable, Comparable, Sendable, CustomStringConvertible
 
     public static func daysIn(month: Int, year: Int) -> Int {
         switch month {
-        case 2: return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 ? 29 : 28
+        case 2: return (year & 3 == 0 && year % 100 != 0) || year % 400 == 0 ? 29 : 28
         case 4, 6, 9, 11: return 30
         default: return 31
         }
     }
 }
 
-/// `java.time.Instant` text: `2026-08-25T14:22:31.402Z`, with the fraction omitted when it is
-/// zero and otherwise printed to milliseconds (which is all the app ever stores).
+/// `java.time.Instant` text for a `Date`: `2026-08-25T14:22:31.402Z`, seconds always, the
+/// fraction only when it is not zero. A `Date` is taken to the millisecond, which is the precision
+/// every stamp either app makes; text that carries more is kept exactly by `JavaInstant`.
 public enum InstantText {
-    public static func format(_ date: Date) -> String {
-        let ms = Int64((date.timeIntervalSince1970 * 1000).rounded())
-        let whole = ms / 1000, frac = ms % 1000
-        var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "UTC")!
-        let d = c.dateComponents([.year, .month, .day, .hour, .minute, .second], from: Date(timeIntervalSince1970: TimeInterval(whole)))
-        var s = String(format: "%04d-%02d-%02dT%02d:%02d:%02d", d.year!, d.month!, d.day!, d.hour!, d.minute!, d.second!)
-        if frac != 0 { s += String(format: ".%03d", frac) }
-        return s + "Z"
-    }
+    public static func format(_ date: Date) -> String { JavaInstant(date).description }
 
-    public static func parse(_ s: String) -> Date? {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
-    }
+    /// `Instant.parse`, Java's grammar — seconds required, `Z` or an offset. See `JavaInstant.parse`.
+    public static func parse(_ s: String) -> Date? { JavaInstant.parse(s)?.date }
 }
 
 // MARK: - model
@@ -168,7 +212,7 @@ public struct EventTime: Equatable, Sendable {
     public init(start: LocalDateTime, end: LocalDateTime, zone: String? = nil, allDay: Bool = false) {
         self.start = start; self.end = end; self.zone = zone; self.allDay = allDay
     }
-    public var duration: ISODuration { ISODuration(seconds: start.seconds(until: end)) }
+    public var duration: ISODuration { start.duration(until: end) }
     /// True for a moment rather than a span — a reminder-shaped event.
     public var isInstantaneous: Bool { start == end }
 }
@@ -189,6 +233,19 @@ public struct EventRef: Equatable, Sendable {
     /// it draws with the task's, because storing the name twice gives two places to rename from.
     public var forTaskId: String?
     public var external: ExternalRef?
+    /// Whose calendar this meeting came off — `by:<account>`, beside `ext:`.
+    ///
+    /// Android stamps an event made by tapping somebody's meeting with the calendar account it came
+    /// from, and indexes only the ones a workspace can claim. iOS carries it and gives it no meaning
+    /// yet; what matters here is that it is a token, so the scan does not stop at it and swallow the
+    /// `^id` and `ext:` written before it into the title.
+    ///
+    /// **Encoded on write and not decoded on read**, because that is what `PageCodec.kt` does: the
+    /// value is `encodeValue`d when rendered and taken verbatim when parsed. An author with a space
+    /// or a `%` in it therefore grows a layer of `%25` every time the line is rebuilt — an Android
+    /// bug, reproduced rather than fixed so the two apps write the same bytes (appendix 01 §4.2).
+    /// The accounts seen in practice are logins and email addresses, where it never triggers.
+    public var author: String?
     /// What colour it wears, by **name** — `col:teal`. A name, not a value, so the same word can be
     /// a slightly different ink on paper and at night.
     public var color: String?
@@ -207,11 +264,11 @@ public struct EventRef: Equatable, Sendable {
     public var raw: String?
 
     public init(id: String, title: String, time: EventTime, rrule: String? = nil, forTaskId: String? = nil,
-                external: ExternalRef? = nil, color: String? = nil, series: SeriesRef? = nil, cancelled: Bool = false,
+                external: ExternalRef? = nil, author: String? = nil, color: String? = nil, series: SeriesRef? = nil, cancelled: Bool = false,
                 location: String? = nil, reminderMin: Int? = nil, labels: [String] = [], attendees: [String] = [],
                 priority: String? = nil, indent: Int = 0, raw: String? = nil) {
         self.id = id; self.title = title; self.time = time; self.rrule = rrule; self.forTaskId = forTaskId
-        self.external = external; self.color = color; self.series = series; self.cancelled = cancelled
+        self.external = external; self.author = author; self.color = color; self.series = series; self.cancelled = cancelled
         self.location = location; self.reminderMin = reminderMin; self.labels = labels; self.attendees = attendees
         self.priority = priority; self.indent = indent; self.raw = raw
     }
@@ -232,13 +289,26 @@ public struct TaskRef: Equatable, Sendable {
     /// task *about* a meeting, not a copy of it: the day draws one block at the meeting's hours and
     /// the meeting's own details are read live rather than written here.
     public var external: ExternalRef? = nil
+    /// Tokens a newer Android build writes that this one gives no meaning — `by:<login>` (who added
+    /// the task), `on:<login>` (who is on it), and any other trailing `key:value` word — verbatim,
+    /// in the order they were written. PROMPT §1.2.
+    ///
+    /// Held as tokens rather than left in the title, because a reader that stops at the first word
+    /// it does not know reads everything to the left of it as title: an older Android build met
+    /// `on:batunii` at the end of a line, stopped, and took the task's `^id`, due date and assignee
+    /// for words. Saved, that task would have lost its id for everybody. iOS must not be that reader.
+    ///
+    /// Nothing is built on them: no ownership, no "added by". An unedited line is written back
+    /// byte-for-byte by raw-line preservation, so they stay exactly where they were; a rebuilt line
+    /// puts them straight after the title, which is where the current Android build writes them.
+    public var extras: [String] = []
     public var raw: String? = nil
     public init(id: String, title: String, status: TaskStatus = .open, indent: Int = 0, due: DueSpec? = nil, deadline: LocalDate? = nil,
                 priority: String? = nil, labels: [String] = [], assignee: String? = nil, doneAt: LocalDate? = nil,
-                external: ExternalRef? = nil, raw: String? = nil) {
+                external: ExternalRef? = nil, extras: [String] = [], raw: String? = nil) {
         self.id = id; self.title = title; self.status = status; self.indent = indent; self.due = due; self.deadline = deadline
         self.priority = priority; self.labels = labels; self.assignee = assignee; self.doneAt = doneAt
-        self.external = external; self.raw = raw
+        self.external = external; self.extras = extras; self.raw = raw
     }
 }
 
@@ -329,7 +399,15 @@ public struct PageDoc: Equatable, Sendable {
     /// Authoritative only when `parent` is nil.
     public var title: String?
     public var systemKey: String?
-    public var modifiedAt: Date
+    /// `modified_at` exactly as the file said it, to the nanosecond — see `JavaInstant`. An unedited
+    /// page is written back with these digits, not with a `Date`'s rounding of them.
+    public var modifiedInstant: JavaInstant
+    /// The same clock as a `Date`, for arithmetic. Setting it stamps to the millisecond, which is
+    /// what Android's `Instant.ofEpochMilli(System.currentTimeMillis())` stamps.
+    public var modifiedAt: Date {
+        get { modifiedInstant.date }
+        set { modifiedInstant = JavaInstant(newValue) }
+    }
     public var device: String?
     public var blocks: [Block]
     /// Frontmatter keys this version does not understand, in file order.
@@ -344,18 +422,36 @@ public struct PageDoc: Equatable, Sendable {
     /// The colour this list wears, as a palette **name** — in the file, because it is a choice
     /// somebody made and the file is where choices live.
     public var color: String?
+    /// Whether this list sits at the top of Home, or nil when the file has never said.
+    ///
+    /// Nullable rather than defaulting to false, because "never said" and "said no" have to be told
+    /// apart: every list written before pinning existed says nothing, and the section used to be
+    /// "every ungrouped smart list". Reading absence as *false* would empty Home's pinned section
+    /// for everybody. Absence means the old rule (`effectivePinned`); a value means somebody chose.
+    public var pinned: Bool?
 
     public init(id: String, type: String, parent: String?, title: String?, systemKey: String? = nil, modifiedAt: Date,
                 device: String?, blocks: [Block], unknownKeys: [(String, String)] = [],
-                icon: String? = nil, color: String? = nil) {
-        self.id = id; self.type = type; self.parent = parent; self.title = title; self.systemKey = systemKey
-        self.modifiedAt = modifiedAt; self.device = device; self.blocks = blocks; self.unknownKeys = unknownKeys
-        self.icon = icon; self.color = color
+                icon: String? = nil, color: String? = nil, pinned: Bool? = nil) {
+        self.init(id: id, type: type, parent: parent, title: title, systemKey: systemKey, modifiedInstant: JavaInstant(modifiedAt),
+                  device: device, blocks: blocks, unknownKeys: unknownKeys, icon: icon, color: color, pinned: pinned)
     }
+
+    public init(id: String, type: String, parent: String?, title: String?, systemKey: String? = nil, modifiedInstant: JavaInstant,
+                device: String?, blocks: [Block], unknownKeys: [(String, String)] = [],
+                icon: String? = nil, color: String? = nil, pinned: Bool? = nil) {
+        self.id = id; self.type = type; self.parent = parent; self.title = title; self.systemKey = systemKey
+        self.modifiedInstant = modifiedInstant; self.device = device; self.blocks = blocks; self.unknownKeys = unknownKeys
+        self.icon = icon; self.color = color; self.pinned = pinned
+    }
+
+    /// `pinned`, or the rule the section was before anybody could choose: an ungrouped smart list.
+    public var effectivePinned: Bool { pinned ?? (type == NodeType.smartList && parent == nil) }
 
     public static func == (l: PageDoc, r: PageDoc) -> Bool {
         l.id == r.id && l.type == r.type && l.parent == r.parent && l.title == r.title && l.systemKey == r.systemKey
-            && l.modifiedAt == r.modifiedAt && l.device == r.device && l.blocks == r.blocks && l.icon == r.icon && l.color == r.color
+            && l.modifiedInstant == r.modifiedInstant && l.device == r.device && l.blocks == r.blocks && l.icon == r.icon
+            && l.color == r.color && l.pinned == r.pinned
             && l.unknownKeys.count == r.unknownKeys.count && zip(l.unknownKeys, r.unknownKeys).allSatisfy { $0 == $1 }
     }
 }
@@ -368,20 +464,23 @@ public enum PageCodec {
     /// One level of visual indent — a guillemet, which means nothing to markdown.
     public static let indentMarker = "\u{00BB}"
     static let fence = "---"
-    static let known: Set<String> = ["id", "type", "parent", "title", "system_key", "icon", "color", "modified_at", "device"]
+    static let known: Set<String> = ["id", "type", "parent", "title", "system_key", "icon", "color", "pinned", "modified_at", "device"]
 
     public static func decode(_ text: String) -> PageDoc {
-        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = KText.split(text.replacingOccurrences(of: "\r\n", with: "\n", options: .literal), "\n")
         var i = 0
         var front: [(String, String)] = []
-        if lines.first?.trimmingCharacters(in: .whitespaces) == fence {
+        if let first = lines.first, KText.same(KText.trim(first), fence) {
             i = 1
-            while i < lines.count, lines[i].trimmingCharacters(in: .whitespaces) != fence {
+            while i < lines.count, !KText.same(KText.trim(lines[i]), fence) {
                 let line = lines[i]
-                if let colon = line.firstIndex(of: ":"), colon > line.startIndex {
-                    let k = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
-                    let v = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
-                    if let at = front.firstIndex(where: { $0.0 == k }) { front[at].1 = v } else { front.append((k, v)) }
+                // Split at the first colon; a colon at the very start, or none, drops the line.
+                let scalars = Array(line.unicodeScalars)
+                if let colon = scalars.firstIndex(of: ":"), colon > 0 {
+                    let k = KText.trim(String(String.UnicodeScalarView(scalars[..<colon])))
+                    let v = KText.trim(String(String.UnicodeScalarView(scalars[(colon + 1)...])))
+                    // A LinkedHashMap put: the last value wins and the first position stays.
+                    if let at = front.firstIndex(where: { KText.same($0.0, k) }) { front[at].1 = v } else { front.append((k, v)) }
                 }
                 i += 1
             }
@@ -393,81 +492,172 @@ public enum PageCodec {
             if !lines[i].isEmpty { blocks.append(parseBlock(lines[i])) }
             i += 1
         }
-        func f(_ k: String) -> String? { front.first { $0.0 == k }?.1 }
-        func nonBlank(_ s: String?) -> String? { (s?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) ? nil : s }
+        func f(_ k: String) -> String? { front.first { KText.same($0.0, k) }?.1 }
+        func nonBlank(_ s: String?) -> String? { s.flatMap { KText.isBlank($0) ? nil : $0 } }
+        // Only "true"/"false" count. Anything else is a file somebody edited by hand into a state
+        // this build does not understand, and the old rule is a better answer than a guess.
+        let pinned: Bool? = f("pinned").flatMap { v in
+            switch v.lowercased() { case "true": return true; case "false": return false; default: return nil }
+        }
         return PageDoc(
             id: f("id") ?? "", type: f("type") ?? "", parent: nonBlank(f("parent")), title: nonBlank(f("title")),
             systemKey: nonBlank(f("system_key")),
-            modifiedAt: f("modified_at").flatMap(InstantText.parse) ?? Date(timeIntervalSince1970: 0),
+            modifiedInstant: f("modified_at").flatMap(JavaInstant.parse) ?? .epoch,
             device: nonBlank(f("device")), blocks: blocks,
-            unknownKeys: front.filter { !known.contains($0.0) },
-            icon: nonBlank(f("icon")), color: nonBlank(f("color")))
+            unknownKeys: front.filter { k, _ in !known.contains(where: { KText.same($0, k) }) },
+            icon: nonBlank(f("icon")), color: nonBlank(f("color")), pinned: pinned)
     }
 
+    /// Peels indent markers off the front, returning the depth and what is left.
     static func splitIndent(_ line: String) -> (Int, String) {
-        var rest = Substring(line), depth = 0
-        while rest.hasPrefix(indentMarker) {
+        var rest = line, depth = 0
+        while KText.starts(rest, indentMarker) {
             depth += 1
-            rest = rest.dropFirst(indentMarker.count)
-            if rest.hasPrefix(" ") { rest = rest.dropFirst() }
+            rest = KText.removePrefix(KText.drop(rest, 1), " ")
         }
-        return (depth, String(rest))
+        return (depth, rest)
     }
 
     /// An event line. See `EventRef` for why it is not `* `.
     public static let eventMarker = "@ "
-    static let taskMarker = try! NSRegularExpression(pattern: #"^- \[([ xX~])] ?"#)
-    static let numbered = try! NSRegularExpression(pattern: #"^(\d+)\.\s+(.*)$"#, options: [.dotMatchesLineSeparators])
-    static let inkRef = try! NSRegularExpression(pattern: #"^!\[\[ink:([^\]]+)]]$"#)
-    static let imageRef = try! NSRegularExpression(pattern: #"^!\[\[image:([^\]]+)]]$"#)
+
+    /// `^!\[\[<kind>:([^\]]+)]]$`, as `Regex.find` runs it: the id is everything up to the closing
+    /// brackets, has no `]` in it and is not empty, and `$` may sit before one final line terminator.
+    static func sidecarRef(_ rest: String, _ kind: String) -> String? {
+        let open = "![[" + kind + ":"
+        guard KText.starts(rest, open) else { return nil }
+        var body = Array(KText.drop(rest, open.unicodeScalars.count).unicodeScalars)
+        // `$` matches before a final line terminator; `\r\n` counts as one.
+        if body.count >= 2, body[body.count - 2] == "\r", body[body.count - 1] == "\n" { body.removeLast(2) }
+        else if let last = body.last, KText.isLineTerminator(last) { body.removeLast() }
+        guard body.count >= 3, body[body.count - 1] == "]", body[body.count - 2] == "]" else { return nil }
+        let id = body[..<(body.count - 2)]
+        guard !id.isEmpty, !id.contains("]") else { return nil }
+        return String(String.UnicodeScalarView(id))
+    }
+
+    /// `^\d+\.\s+(.*)$` under `matches`, with Java's ASCII `\d`/`\s` and a `.` that stops at line
+    /// terminators. Returns the text after the whitespace run.
+    static func numberedText(_ rest: String) -> String? {
+        let v = Array(rest.unicodeScalars)
+        var i = 0
+        while i < v.count, KText.isAsciiDigit(v[i]) { i += 1 }
+        guard i > 0, i < v.count, v[i] == "." else { return nil }
+        i += 1
+        let ws = i
+        while i < v.count, KText.isRegexSpace(v[i]) { i += 1 }
+        guard i > ws else { return nil }
+        let text = v[i...]
+        // `.*` cannot cross a line terminator, so a whole-string match needs none after the run.
+        // (The run itself may have swallowed `\n` and `\r`, which `\s` includes.)
+        guard !text.contains(where: KText.isLineTerminator) else { return nil }
+        return String(String.UnicodeScalarView(text))
+    }
 
     public static func parseBlock(_ raw: String) -> Block {
         let (indent, rest) = splitIndent(raw)
-        let ns = rest as NSString
-        let all = NSRange(location: 0, length: ns.length)
-        if let m = inkRef.firstMatch(in: rest, range: all) { return .ink(id: ns.substring(with: m.range(at: 1)), indent: indent, raw: raw) }
-        if let m = imageRef.firstMatch(in: rest, range: all) { return .image(uri: ns.substring(with: m.range(at: 1)), indent: indent, raw: raw) }
+        // Deliberately not trimmed: an empty heading is written "# " and an empty bullet "- ", and
+        // the marker's trailing space is part of the marker.
+        if let id = sidecarRef(rest, "ink") { return .ink(id: id, indent: indent, raw: raw) }
+        if let uri = sidecarRef(rest, "image") { return .image(uri: uri, indent: indent, raw: raw) }
         // `@ ` cannot collide with the checkbox or with a bullet, so the order here is only for
         // reading. A `@ ` line whose time makes no sense is not an event and must not be silently
         // dropped: it falls through to prose holding exactly what was written.
-        if rest.hasPrefix(eventMarker), let e = parseEvent(String(rest.dropFirst(eventMarker.count)), indent: indent, raw: raw) {
+        if KText.starts(rest, eventMarker), let e = parseEvent(KText.drop(rest, 2), indent: indent, raw: raw) {
             return .event(e)
         }
-        if let m = taskMarker.firstMatch(in: rest, range: all) {
+        // `^- \[([ xX~])] ?` — the box, with or without anything after it.
+        let v = Array(rest.unicodeScalars)
+        if v.count >= 5, v[0] == "-", v[1] == " ", v[2] == "[", v[4] == "]", " xX~".unicodeScalars.contains(v[3]) {
             let status: TaskStatus
-            switch ns.substring(with: m.range(at: 1)) { case "x", "X": status = .done; case "~": status = .inProgress; default: status = .open }
-            return .task(parseTask(ns.substring(from: m.range.length), status: status, indent: indent, raw: raw))
+            switch v[3] { case "x", "X": status = .done; case "~": status = .inProgress; default: status = .open }
+            let markerLength = v.count > 5 && v[5] == " " ? 6 : 5
+            return .task(parseTask(KText.drop(rest, markerLength), status: status, indent: indent, raw: raw))
         }
-        if rest.hasPrefix("# ") { return .heading(String(rest.dropFirst(2)), indent: indent, raw: raw) }
-        if rest.hasPrefix("- ") { return .bullet(String(rest.dropFirst(2)), indent: indent, raw: raw) }
-        if let m = numbered.firstMatch(in: rest, range: all) { return .numbered(ns.substring(with: m.range(at: 2)), indent: indent, raw: raw) }
-        if rest.allSatisfy(\.isWhitespace) { return .prose("", indent: indent, raw: raw) }
+        if KText.starts(rest, "# ") { return .heading(KText.drop(rest, 2), indent: indent, raw: raw) }
+        if KText.starts(rest, "- ") { return .bullet(KText.drop(rest, 2), indent: indent, raw: raw) }
+        if let t = numberedText(rest) { return .numbered(t, indent: indent, raw: raw) }
+        if KText.isBlank(rest) { return .prose("", indent: indent, raw: raw) }
         return .prose(rest, indent: indent, raw: raw)
     }
 
-    /// Splits a task line into title and trailing tokens, scanning right to left and stopping at
-    /// the first word that is not a token.
+    /// The trailing tokens a newer Android build writes and this one keeps without meaning —
+    /// `by:<login>` and `on:<login>`. See `TaskRef.extras`.
+    static let ownershipKeys = ["by:", "on:"]
+
+    /// A word shaped like a token nobody here knows: `key:value`, the key lowercase ASCII letters,
+    /// digits, `_` or `-` starting with a letter, the value non-empty and not a path (so `https://…`
+    /// is never one). The keys this build does know are not unknown, and a known key with a value
+    /// that will not parse stops the scan exactly as it does on Android — `due:not-a-date` is title.
+    static func isUnknownToken(_ w: String) -> Bool {
+        let v = Array(w.unicodeScalars)
+        guard let colon = v.firstIndex(of: ":"), colon > 0, colon + 1 < v.count, v[colon + 1] != "/" else { return false }
+        guard v[0].value >= 0x61 && v[0].value <= 0x7A else { return false }
+        for u in v[..<colon] {
+            let ok = (u.value >= 0x61 && u.value <= 0x7A) || KText.isAsciiDigit(u) || u == "_" || u == "-"
+            if !ok { return false }
+        }
+        let key = String(String.UnicodeScalarView(v[...colon]))
+        return !["due:", "deadline:", "done:", "ext:"].contains(key)
+    }
+
+    /// Splits a task line into title and trailing tokens, scanning **right to left** and stopping
+    /// at the first word that is not a token.
+    ///
+    /// That direction is the whole trick. "Buy milk #groceries" tags the task; "Buy #2 pencils" does
+    /// not, because the scan hits `pencils` and stops, leaving `#2` where it belongs — in the title.
+    ///
+    /// Two additions over `PageCodec.kt` at 17d0beb, both about text a newer Android build writes
+    /// (PROMPT §1.2), and both inert on every line that does not carry such text:
+    ///
+    /// - `by:` and `on:` are tokens wherever they sit, kept verbatim in `extras`.
+    /// - Any other unknown `key:value` word is held back while the scan goes on, and becomes a token
+    ///   only if a known token turns up to its left — that is, only when it was standing between the
+    ///   title and tokens the scan would otherwise have lost. `Fix login re:bug` keeps its title
+    ///   whole, exactly as 17d0beb reads it; `X ^t1 foo:bar` keeps its id.
     static func parseTask(_ body: String, status: TaskStatus, indent: Int, raw: String) -> TaskRef {
-        var words = body.trimmingCharacters(in: .whitespaces).components(separatedBy: " ")
+        var words = KText.split(KText.trim(body), " ")
         var id = "", due: DueSpec? = nil, deadline: LocalDate? = nil, doneAt: LocalDate? = nil
         var priority: String? = nil, assignee: String? = nil, labels: [String] = [], external: ExternalRef? = nil
+        var extras: [String] = [], pending: [String] = [], author = false
         while let w = words.last {
-            var consumed = false
-            if w.contains(Links.close) { consumed = false }
-            else if w.hasPrefix("^"), id.isEmpty { id = String(w.dropFirst()); consumed = true }
-            else if w.hasPrefix("due:") { if let d = parseDue(String(w.dropFirst(4))) { due = d; consumed = true } }
-            else if w.hasPrefix("deadline:") { if let d = LocalDate(String(w.dropFirst(9))) { deadline = d; consumed = true } }
-            else if w.hasPrefix("done:") { if let d = LocalDate(String(w.dropFirst(5))) { doneAt = d; consumed = true } }
-            else if w.hasPrefix("ext:") { if let x = parseExternal(String(w.dropFirst(4))) { external = x; consumed = true } }
-            else if w.hasPrefix("!"), w.count > 1 { priority = String(w.dropFirst()); consumed = true }
-            else if w.hasPrefix("@"), w.count > 1 { assignee = String(w.dropFirst()); consumed = true }
-            else if w.hasPrefix("#"), w.count > 1 { labels.append(String(w.dropFirst())); consumed = true }
+            var consumed = false, known = true
+            if KText.contains(w, Links.close) { consumed = false }
+            else if KText.starts(w, "^"), id.isEmpty { id = KText.drop(w, 1); consumed = true }
+            else if KText.starts(w, "due:") { if let d = parseDue(KText.drop(w, 4)) { due = d; consumed = true } }
+            else if KText.starts(w, "deadline:") { if let d = LocalDate(KText.drop(w, 9)) { deadline = d; consumed = true } }
+            else if KText.starts(w, "done:") { if let d = LocalDate(KText.drop(w, 5)) { doneAt = d; consumed = true } }
+            else if KText.starts(w, "ext:") { if let x = parseExternal(KText.drop(w, 4)) { external = x; consumed = true } }
+            else if KText.starts(w, "!"), KText.length(w) > 1 { priority = KText.drop(w, 1); consumed = true }
+            else if KText.starts(w, "@"), KText.length(w) > 1 { assignee = KText.drop(w, 1); consumed = true }
+            else if KText.starts(w, "#"), KText.length(w) > 1 { labels.append(KText.drop(w, 1)); consumed = true }
+            // Newer Android: `by:` once (the leftmost is not a second author), `on:` any number.
+            else if KText.starts(w, "by:") { if KText.length(w) > 3, !author { author = true; extras.append(w); consumed = true } }
+            else if KText.starts(w, "on:"), KText.length(w) > 3 { extras.append(w); consumed = true }
+            else if isUnknownToken(w) { pending.append(w); known = false; consumed = true }
             if !consumed { break }
+            if known { extras += pending; pending.removeAll() }
             words.removeLast()
         }
+        // Held-back words that never found a known token to their left were title all along.
+        words += pending.reversed()
         return TaskRef(id: id, title: words.joined(separator: " "), status: status, indent: indent, due: due, deadline: deadline,
                        priority: priority, labels: labels.reversed(), assignee: assignee, doneAt: doneAt,
-                       external: external, raw: raw)
+                       external: external, extras: extras.reversed(), raw: raw)
+    }
+
+    /// Where a task line's title ends and its trailing tokens begin — `PageCodec.tokenStart`.
+    ///
+    /// Answered by running `parseTask` and measuring the title it kept, rather than by a second
+    /// scanner that agrees with it today. Returns the body's length (in UTF-16 units, the way a text
+    /// field counts) when nothing trails, so the caller's range is simply empty.
+    public static func tokenStart(_ body: String) -> Int {
+        let lead = KText.length(body) - KText.length(KText.trimStart(body))
+        let title = parseTask(body, status: .open, indent: 0, raw: body).title
+        let u = Array(body.utf16)
+        var at = min(lead + KText.length(title), u.count)
+        while at < u.count, u[at] == 0x20 { at += 1 }
+        return at
     }
 
     /// `2026-08-26`, `2026-08-26T09:00:00Z`, either optionally carrying a length and a reminder:
@@ -478,9 +668,10 @@ public enum PageCodec {
     /// A length on an all-day task is refused rather than kept: "all of Tuesday, for one hour" does
     /// not mean anything, and storing it would leave the timeline to decide what it meant.
     static func parseDue(_ token: String) -> DueSpec? {
+        let v = Array(token.unicodeScalars)
         var head = token, reminders: [Int] = []
-        if let at = token.range(of: "+r") {
-            head = String(token[..<at.lowerBound])
+        if let at = (0..<max(0, v.count - 1)).first(where: { v[$0] == "+" && v[$0 + 1] == "r" }) {
+            head = String(String.UnicodeScalarView(v[..<at]))
             // `+r30` and `+r30,15` are the same syntax with one and two reminders in it. The older
             // spelling is the new one with a single element, so every file written before this
             // parses unchanged and nothing needs converting.
@@ -488,20 +679,20 @@ public enum PageCodec {
             // All or nothing: a tail that is partly unreadable — `+r30,x` — is refused rather than
             // quietly kept as `+r30`, because a task that silently loses one of its two reminders
             // is the failure this whole feature exists to avoid.
-            let parts = token[at.upperBound...].split(separator: ",", omittingEmptySubsequences: false)
-                .map { Int($0.trimmingCharacters(in: .whitespaces)) }
+            let parts = KText.split(String(String.UnicodeScalarView(v[(at + 2)...])), ",").map { KText.toInt(KText.trim($0)) }
             if parts.isEmpty || parts.contains(where: { $0 == nil }) { return nil }
             reminders = DueSpec.reminders(parts.compactMap { $0 })
         }
         var body = head, duration: ISODuration? = nil
-        if let slash = head.firstIndex(of: "/") {
-            body = String(head[..<slash])
-            guard let d = ISODuration(String(head[head.index(after: slash)...])) else { return nil }
+        let hv = Array(head.unicodeScalars)
+        if let slash = hv.firstIndex(of: "/") {
+            body = String(String.UnicodeScalarView(hv[..<slash]))
+            guard let d = ISODuration(String(String.UnicodeScalarView(hv[(slash + 1)...]))) else { return nil }
             duration = d
         }
-        if body.contains("T") {
-            guard let d = InstantText.parse(body) else { return nil }
-            return DueSpec(.at(d), reminders: reminders, duration: duration)
+        if body.unicodeScalars.contains("T") {
+            guard let d = JavaInstant.parse(body) else { return nil }
+            return DueSpec(.at(d.date), reminders: reminders, duration: duration)
         }
         guard let d = LocalDate(body) else { return nil }
         if duration != nil { return nil }
@@ -519,39 +710,44 @@ public enum PageCodec {
     ///
     /// Returns nil for a when-slot that will not parse, so the caller can fall back to prose.
     static func parseEvent(_ body: String, indent: Int, raw: String) -> EventRef? {
-        let trimmed = body.trimmingCharacters(in: .whitespaces)
+        let trimmed = KText.trim(body)
         if trimmed.isEmpty { return nil }
-        let whenWord = String(trimmed.prefix(while: { $0 != " " }))
+        let tv = Array(trimmed.unicodeScalars)
+        let whenEnd = tv.firstIndex(of: " ") ?? tv.count
+        let whenWord = String(String.UnicodeScalarView(tv[..<whenEnd]))
         guard let time = parseWhen(whenWord) else { return nil }
 
-        var words = trimmed.dropFirst(whenWord.count).trimmingCharacters(in: .whitespaces)
-            .components(separatedBy: " ").filter { !$0.isEmpty }
+        // Unlike a task, empty words are dropped: event titles normalise runs of spaces.
+        var words = KText.split(KText.trim(String(String.UnicodeScalarView(tv[whenEnd...]))), " ").filter { !$0.isEmpty }
         var id = "", rrule: String? = nil, forTask: String? = nil, series: SeriesRef? = nil
-        var cancelled = false, location: String? = nil, color: String? = nil
+        var cancelled = false, location: String? = nil, color: String? = nil, author: String? = nil
         var external: ExternalRef? = nil, reminder: Int? = nil, priority: String? = nil
         var labels: [String] = [], attendees: [String] = []
 
+        func value(_ w: String, _ n: Int) -> String? { let v = KText.drop(w, n); return v.isEmpty ? nil : v }
         while let w = words.last {
             var consumed = false
-            if w.contains(Links.close) { consumed = false }
-            else if w.hasPrefix("^"), id.isEmpty { id = String(w.dropFirst()); consumed = true }
-            else if w.hasPrefix("rrule:") { let v = String(w.dropFirst(6)); if !v.isEmpty { rrule = v; consumed = true } }
-            else if w.hasPrefix("for:") { let v = String(w.dropFirst(4)); if !v.isEmpty { forTask = v; consumed = true } }
-            else if w.hasPrefix("series:") { if let x = parseSeries(String(w.dropFirst(7))) { series = x; consumed = true } }
-            else if w == "cancelled" { cancelled = true; consumed = true }
-            else if w.hasPrefix("loc:") { let v = String(w.dropFirst(4)); if !v.isEmpty { location = decodeValue(v); consumed = true } }
-            else if w.hasPrefix("col:") { let v = String(w.dropFirst(4)); if !v.isEmpty { color = v; consumed = true } }
-            else if w.hasPrefix("ext:") { if let x = parseExternal(String(w.dropFirst(4))) { external = x; consumed = true } }
-            else if w.hasPrefix("remind:") { if let r = Int(w.dropFirst(7)) { reminder = r; consumed = true } }
-            else if w.hasPrefix("!"), w.count > 1 { priority = String(w.dropFirst()); consumed = true }
-            else if w.hasPrefix("@"), w.count > 1 { attendees.append(String(w.dropFirst())); consumed = true }
-            else if w.hasPrefix("#"), w.count > 1 { labels.append(String(w.dropFirst())); consumed = true }
+            if KText.contains(w, Links.close) { consumed = false }
+            else if KText.starts(w, "^"), id.isEmpty { id = KText.drop(w, 1); consumed = true }
+            else if KText.starts(w, "rrule:") { rrule = value(w, 6); consumed = rrule != nil }
+            else if KText.starts(w, "for:") { forTask = value(w, 4); consumed = forTask != nil }
+            else if KText.starts(w, "series:") { if let x = parseSeries(KText.drop(w, 7)) { series = x; consumed = true } }
+            else if KText.same(w, "cancelled") { cancelled = true; consumed = true }
+            else if KText.starts(w, "loc:") { location = value(w, 4).map(decodeValue); consumed = location != nil }
+            else if KText.starts(w, "col:") { color = value(w, 4); consumed = color != nil }
+            else if KText.starts(w, "ext:") { if let x = parseExternal(KText.drop(w, 4)) { external = x; consumed = true } }
+            // Not decoded — see `EventRef.author`.
+            else if KText.starts(w, "by:") { author = value(w, 3); consumed = author != nil }
+            else if KText.starts(w, "remind:") { reminder = KText.toInt(KText.drop(w, 7)); consumed = reminder != nil }
+            else if KText.starts(w, "!"), KText.length(w) > 1 { priority = KText.drop(w, 1); consumed = true }
+            else if KText.starts(w, "@"), KText.length(w) > 1 { attendees.append(KText.drop(w, 1)); consumed = true }
+            else if KText.starts(w, "#"), KText.length(w) > 1 { labels.append(KText.drop(w, 1)); consumed = true }
             if !consumed { break }
             words.removeLast()
         }
 
         return EventRef(id: id, title: words.joined(separator: " "), time: time, rrule: rrule, forTaskId: forTask,
-                        external: external, color: color, series: series, cancelled: cancelled, location: location,
+                        external: external, author: author, color: color, series: series, cancelled: cancelled, location: location,
                         reminderMin: reminder, labels: labels.reversed(), attendees: attendees.reversed(),
                         priority: priority, indent: indent, raw: raw)
     }
@@ -563,13 +759,14 @@ public enum PageCodec {
     /// merely look untidy, it *ends the scan early* and swallows every token written before it into
     /// the title — including `^id`.
     static func decodeValue(_ raw: String) -> String {
-        raw.contains("%") ? raw.replacingOccurrences(of: "%20", with: " ").replacingOccurrences(of: "%25", with: "%") : raw
+        guard raw.unicodeScalars.contains("%") else { return raw }
+        return raw.replacingOccurrences(of: "%20", with: " ", options: .literal).replacingOccurrences(of: "%25", with: "%", options: .literal)
     }
 
     /// The inverse. Percent first, or encoding a space would then be re-encoded.
     static func encodeValue(_ raw: String) -> String {
-        guard raw.contains(" ") || raw.contains("%") else { return raw }
-        return raw.replacingOccurrences(of: "%", with: "%25").replacingOccurrences(of: " ", with: "%20")
+        guard raw.unicodeScalars.contains(" ") || raw.unicodeScalars.contains("%") else { return raw }
+        return raw.replacingOccurrences(of: "%", with: "%25", options: .literal).replacingOccurrences(of: " ", with: "%20", options: .literal)
     }
 
     /// `ext:<uid>` or `ext:<uid>@<occurrence>`.
@@ -579,20 +776,22 @@ public enum PageCodec {
     /// for an occurrence start and lose the identity of every Google event there is.
     static func parseExternal(_ token: String) -> ExternalRef? {
         if token.isEmpty { return nil }
-        guard let at = token.lastIndex(of: "@") else { return ExternalRef(decodeValue(token)) }
-        let tail = String(token[token.index(after: at)...])
+        let v = Array(token.unicodeScalars)
+        guard let at = v.lastIndex(of: "@") else { return ExternalRef(decodeValue(token)) }
+        let tail = String(String.UnicodeScalarView(v[(at + 1)...]))
         guard let occurrence = LocalDateTime(tail) else { return ExternalRef(decodeValue(token)) }  // an @ in the uid
-        let uid = String(token[..<at])
+        let uid = String(String.UnicodeScalarView(v[..<at]))
         return uid.isEmpty ? nil : ExternalRef(decodeValue(uid), occurrence: occurrence)
     }
 
     /// `s1` or `s1@2026-10-28T09:00`. The bare form means "the occurrence at this line's own start".
     static func parseSeries(_ token: String) -> SeriesRef? {
         if token.isEmpty { return nil }
-        guard let at = token.firstIndex(of: "@") else { return SeriesRef(token) }
-        let id = String(token[..<at])
+        let v = Array(token.unicodeScalars)
+        guard let at = v.firstIndex(of: "@") else { return SeriesRef(token) }
+        let id = String(String.UnicodeScalarView(v[..<at]))
         if id.isEmpty { return nil }
-        guard let original = LocalDateTime(String(token[token.index(after: at)...])) else { return nil }
+        guard let original = LocalDateTime(String(String.UnicodeScalarView(v[(at + 1)...]))) else { return nil }
         return SeriesRef(id, originalStart: original)
     }
 
@@ -614,17 +813,18 @@ public enum PageCodec {
     /// The split on `/` has to happen *outside* the zone brackets: `Europe/Dublin` contains one.
     static func parseWhen(_ token: String) -> EventTime? {
         guard let (head, zone) = splitZone(token) else { return nil }
-        let slash = head.firstIndex(of: "/")
-        let startText = slash.map { String(head[..<$0]) } ?? head
-        let tailText = slash.map { String(head[head.index(after: $0)...]) }
-        let allDay = !startText.contains("T")
+        let hv = Array(head.unicodeScalars)
+        let slash = hv.firstIndex(of: "/")
+        let startText = slash.map { String(String.UnicodeScalarView(hv[..<$0])) } ?? head
+        let tailText = slash.map { String(String.UnicodeScalarView(hv[($0 + 1)...])) }
+        let allDay = !startText.unicodeScalars.contains("T")
 
         guard let start = LocalDateTime(startText) else { return nil }
         let end: LocalDateTime
         if let tail = tailText {
-            if tail.hasPrefix("P") {
+            if KText.starts(tail, "P") {
                 guard let d = ISODuration(tail) else { return nil }
-                end = start.adding(seconds: d.seconds)
+                end = start.adding(d)
             } else {
                 guard let parsed = LocalDateTime(tail) else { return nil }
                 // Inclusive last day in the text, exclusive end in the model.
@@ -639,11 +839,12 @@ public enum PageCodec {
 
     /// Peels a trailing `[Zone/Id]`, returning the rest and the zone. Nil zone when absent.
     static func splitZone(_ token: String) -> (String, String?)? {
-        guard let open = token.firstIndex(of: "[") else { return (token, nil) }
-        guard let close = token[open...].firstIndex(of: "]") else { return nil }
-        let name = String(token[token.index(after: open)..<close])
-        guard TimeZone(identifier: name) != nil else { return nil }
-        return (String(token[..<open]) + String(token[token.index(after: close)...]), name)
+        let v = Array(token.unicodeScalars)
+        guard let open = v.firstIndex(of: "[") else { return (token, nil) }
+        guard let close = v[open...].firstIndex(of: "]") else { return nil }
+        // `ZoneId.of`, and the id it would print — which is what a rebuilt line writes.
+        guard let zone = JavaZone.normalize(String(String.UnicodeScalarView(v[(open + 1)..<close]))) else { return nil }
+        return (String(String.UnicodeScalarView(v[..<open])) + String(String.UnicodeScalarView(v[(close + 1)...])), zone)
     }
 
     // MARK: encode
@@ -664,7 +865,8 @@ public enum PageCodec {
         if let k = page.systemKey { s += "system_key: \(k)\n" }
         if let i = page.icon { s += "icon: \(i)\n" }
         if let c = page.color { s += "color: \(c)\n" }
-        s += "modified_at: \(InstantText.format(page.modifiedAt))\n"
+        if let p = page.pinned { s += "pinned: \(p)\n" }
+        s += "modified_at: \(page.modifiedInstant)\n"
         if let d = page.device { s += "device: \(d)\n" }
         for (k, v) in page.unknownKeys { s += "\(k): \(v)\n" }
         s += fence + "\n"
@@ -678,15 +880,25 @@ public enum PageCodec {
         return s
     }
 
-    static let numberedPrefix = try! NSRegularExpression(pattern: #"^(\d+)\."#)
-
+    /// Whether a block's original line still says exactly what the block now says.
+    ///
+    /// Re-parsing the source and comparing is what makes preservation safe. Having callers clear
+    /// `raw` whenever they change something works right up until somebody forgets, and then the
+    /// stale line is written back and the edit vanishes with no error anywhere.
+    ///
+    /// Numbered items need the extra check: their ordinal is positional and therefore not part of
+    /// the model, so a moved item compares equal to its own stale text. The leading number is read
+    /// as `^(\d+)\.` and `toIntOrNull` read it — ASCII digits, and a number too big for an `Int`
+    /// never matches.
     static func rawStillDescribes(_ block: Block, ordinal: Int) -> Bool {
         guard let raw = block.raw else { return false }
         if parseBlock(raw).strippingRaw != block.strippingRaw { return false }
         guard case .numbered = block else { return true }
-        let rest = splitIndent(raw).1
-        guard let m = numberedPrefix.firstMatch(in: rest, range: NSRange(location: 0, length: (rest as NSString).length)) else { return false }
-        return Int((rest as NSString).substring(with: m.range(at: 1))) == ordinal
+        let rest = Array(splitIndent(raw).1.unicodeScalars)
+        var i = 0
+        while i < rest.count, KText.isAsciiDigit(rest[i]) { i += 1 }
+        guard i > 0, i < rest.count, rest[i] == "." else { return false }
+        return KText.toInt(String(String.UnicodeScalarView(rest[..<i]))) == ordinal
     }
 
     static func ordinalOf(_ blocks: [Block], _ index: Int) -> Int {
@@ -715,6 +927,9 @@ public enum PageCodec {
         var s: String
         switch t.status { case .open: s = "- [ ]"; case .done: s = "- [x]"; case .inProgress: s = "- [~]" }
         if !t.title.isEmpty { s += " " + t.title }
+        // Tokens a newer build wrote, straight after the title as that build writes them. Only a
+        // rebuilt line comes through here; an unedited one keeps its own bytes and positions.
+        for x in t.extras { s += " " + x }
         if !t.id.isEmpty { s += " ^" + t.id }
         if let d = t.due { s += " due:" + renderDue(d) }
         if let d = t.deadline { s += " deadline:" + d.description }
@@ -754,6 +969,9 @@ public enum PageCodec {
             // instance, and writing its start twice would be two places to disagree.
             if let o = x.occurrence { s += "@" + renderLocal(o) }
         }
+        // Whose calendar this came off, beside `ext:`. Encoded here and not decoded on the way in —
+        // Android's asymmetry, kept; see `EventRef.author`.
+        if let a = e.author { s += " by:" + encodeValue(a) }
         if let r = e.reminderMin { s += " remind:\(r)" }
         if let p = e.priority { s += " !" + p }
         for l in e.labels { s += " #" + l }
@@ -799,7 +1017,9 @@ public enum PageCodec {
 /// `[[label|^id]]` — the one construct a task title may carry that needs a plain-text reading.
 public enum Links {
     public static let open = "[[", close = "]]"
-    static let link = try! NSRegularExpression(pattern: #"\[\[([^\[\]|\n]*)\|\^([^\[\]|\s]+)]]"#)
+    /// `\[\[([^\[\]|\n]*)\|\^([^\[\]|\s]+)]]` with Java's ASCII `\s` spelled out: ICU's `\s` would
+    /// also refuse a no-break space in an id that Android accepts.
+    static let link = try! NSRegularExpression(pattern: #"\[\[([^\[\]|\n]*)\|\^([^\[\]| \t\n\x{0B}\f\r]+)]]"#)
 
     public struct Link { public let label: String, targetId: String, range: NSRange }
 
@@ -848,8 +1068,14 @@ public enum Links {
     }
 
     public static func encode(label: String, targetId: String) -> String {
-        var safe = String(label.map { "[]|\n".contains($0) ? " " : $0 })
-        safe = safe.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        // Per UTF-16 char as Kotlin maps it, then Java's ASCII `\s+` to one space, then `trim()`.
+        var out = String.UnicodeScalarView(), inSpace = false
+        for u in label.unicodeScalars {
+            let c: Unicode.Scalar = "[]|\n".unicodeScalars.contains(u) ? " " : u
+            if KText.isRegexSpace(c) { if !inSpace { out.append(" ") }; inSpace = true }
+            else { out.append(c); inSpace = false }
+        }
+        let safe = KText.trim(String(out))
         return open + (safe.isEmpty ? "Untitled" : safe) + "|^" + targetId + close
     }
 }
