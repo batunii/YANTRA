@@ -281,29 +281,6 @@ fun HomeScreen(nav: NavHostController) {
                     )
                 }
 
-                // NEXT — HOME_UI.md §6. Above PINNED, today only, gone when there is nothing left.
-                //
-                // This gives Home the symmetry it lacked: NEXT at the top is what is coming, the
-                // now player at the bottom is what you are on. Both contextual, both vanish empty.
-                next?.let { event ->
-                    item(key = "next-header") { SectionHeader("Next") }
-                    item(key = "next-row") {
-                        NextRow(
-                            event = event,
-                            // Neutral while a session runs — HOME_UI.md §7. Two accented things at
-                            // opposite ends of the screen signal two kinds of urgency at once, and
-                            // the one you are *in* should win. The row stays, because what is
-                            // coming is exactly what you need while overrunning.
-                            accented = live == null,
-                            // The task, not the sitting — see EventWithTitle.displayTarget.
-                            // A sitting has no page worth opening, and this opened one:
-                            // a header reading "Untitled" for the thing the row above it
-                            // had just named correctly.
-                            onClick = { nav.navigate(Routes.node(event.displayTarget)) },
-                        )
-                    }
-                }
-
                 // The session used to be reported twice on this screen — a card up here and,
                 // now, the bar at the bottom. One running task, one treatment: the card goes, and
                 // what it alone could show (a commitment's countdown and how much of it is spent)
@@ -332,6 +309,35 @@ fun HomeScreen(nav: NavHostController) {
                         )
                     }
                 }
+                // NEXT — HOME_UI.md §6. Above PINNED, today only, gone when there is nothing left.
+                //
+                // **Under the views, not over them.** It sat between the greeting and Inbox, and the
+                // views have no header of their own — so Inbox and Today read as more rows of NEXT,
+                // and every time an event came up they moved down a row to make room for it. The
+                // views are the fixed part of Home and hold the top; the contextual part comes after
+                // them, where its own header is what separates the two.
+                //
+                // This gives Home the symmetry it lacked: NEXT at the top is what is coming, the
+                // now player at the bottom is what you are on. Both contextual, both vanish empty.
+                next?.let { event ->
+                    item(key = "next-header") { SectionHeader("Next") }
+                    item(key = "next-row") {
+                        NextRow(
+                            event = event,
+                            // Neutral while a session runs — HOME_UI.md §7. Two accented things at
+                            // opposite ends of the screen signal two kinds of urgency at once, and
+                            // the one you are *in* should win. The row stays, because what is
+                            // coming is exactly what you need while overrunning.
+                            accented = live == null,
+                            // The task, not the sitting — see EventWithTitle.displayTarget.
+                            // A sitting has no page worth opening, and this opened one:
+                            // a header reading "Untitled" for the thing the row above it
+                            // had just named correctly.
+                            onClick = { nav.navigate(Routes.node(event.displayTarget)) },
+                        )
+                    }
+                }
+
                 if (pinned.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty() && views.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty(
@@ -741,8 +747,10 @@ private fun NextRow(
             Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // A clock, not the calendar: this row is a time, and the calendar mark is Today's. Two
+            // accented calendars a row apart read as one thing listed twice.
             Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                YantraIcon(YantraMark.Calendar, tint = ink)
+                YantraIcon(YantraMark.Clock, tint = ink)
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
