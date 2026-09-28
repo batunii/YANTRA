@@ -18,6 +18,11 @@ class Workspaces(
     private val device: String?,
     /** Where deferred index rebuilds run. Null keeps every write's rebuild inline. */
     private val scope: kotlinx.coroutines.CoroutineScope? = null,
+    /**
+     * Who a new task in a workspace is by — see [ie.shoonya.yantra.data.format.TaskRef.author].
+     * Null for a workspace whose tasks should carry no author, which is Personal.
+     */
+    private val authorOf: (workspaceId: String) -> String? = { null },
     /** Told about every write, with the workspace it belongs to, so commits can be scheduled. */
     private val onChange: (String, ie.shoonya.yantra.data.sync.Change) -> Unit = { _, _ -> },
 ) {
@@ -41,7 +46,9 @@ class Workspaces(
             store.ensureGitignore()
         }
         stores[id] = store
-        writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
+        writers[id] = WorkspaceWriter(store, db, indexer, device, scope, author = { authorOf(id) }) {
+            onChange(id, it)
+        }
         return fresh
     }
 

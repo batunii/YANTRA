@@ -216,6 +216,7 @@ object PageCodec {
         var doneAt: LocalDate? = null
         var priority: String? = null
         var assignee: String? = null
+        var author: String? = null
         val labels = ArrayList<String>()
 
         while (words.isNotEmpty()) {
@@ -237,6 +238,8 @@ object PageCodec {
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { assignee = w.drop(1); true }
                 w.startsWith("#") && w.length > 1 -> { labels += w.drop(1); true }
+                w.startsWith("by:") && w.length > 3 && author == null ->
+                    { author = decodeValue(w.removePrefix("by:")); true }
                 else -> false
             }
             if (!consumed) break
@@ -255,6 +258,7 @@ object PageCodec {
             assignee = assignee,
             doneAt = doneAt,
             external = external,
+            author = author,
             raw = raw,
         )
     }
@@ -620,6 +624,8 @@ object PageCodec {
         t.priority?.let { append(" !").append(it) }
         t.labels.forEach { append(" #").append(it) }
         t.assignee?.let { append(" @").append(it) }
+        // Last, because it is the one token nobody edits: a line's own properties read first.
+        t.author?.let { append(" by:").append(encodeValue(it)) }
     }
 
     private fun renderEvent(e: EventRef): String = buildString {

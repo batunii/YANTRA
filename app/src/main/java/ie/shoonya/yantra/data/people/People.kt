@@ -248,3 +248,20 @@ class People(
         const val KEY_PREFIX = "collaborators:"
     }
 }
+
+/**
+ * Who added each task, by id, keeping only the ones somebody other than you added.
+ *
+ * A row says "by @sai" and says nothing for your own: on a list you share, the news is the task
+ * that came from someone else, and your own name on half the rows would bury it. "You" is per
+ * workspace — the login you are signed in to *that* repository with — because it is the one the
+ * stamp was written with. Compared without case, as GitHub compares logins.
+ */
+fun addedByOthers(
+    rows: List<ie.shoonya.yantra.data.db.NodeAuthor>,
+    loginFor: (workspaceId: String) -> String?,
+): Map<String, String> =
+    rows.filterNot { isYou(it, loginFor) }.associate { it.nodeId to it.login }
+
+fun isYou(row: ie.shoonya.yantra.data.db.NodeAuthor, loginFor: (workspaceId: String) -> String?): Boolean =
+    loginFor(row.workspaceId)?.equals(row.login, ignoreCase = true) == true

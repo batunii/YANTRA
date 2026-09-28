@@ -588,3 +588,25 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
         db.execSQL("ALTER TABLE `event` ADD COLUMN `author` TEXT")
     }
 }
+
+/**
+ * A task remembers who added it: `node.author` from the file's `by:`, and the history's answer for
+ * every task whose line has none.
+ *
+ * The column only has to exist, as with 20→21 and 21→22: the next rebuild fills it from the files.
+ * The two tables start empty and are filled by reading the repository's history, which is where
+ * that answer lives.
+ */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `author` TEXT")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `task_origin` (`workspace_id` TEXT NOT NULL, `node_id` TEXT NOT NULL, " +
+                "`login` TEXT, PRIMARY KEY(`workspace_id`, `node_id`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `origin_scan` (`workspace_id` TEXT NOT NULL, `head` TEXT NOT NULL, " +
+                "PRIMARY KEY(`workspace_id`))"
+        )
+    }
+}

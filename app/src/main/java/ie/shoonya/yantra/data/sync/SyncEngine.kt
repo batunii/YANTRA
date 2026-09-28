@@ -62,6 +62,18 @@ class SyncEngine(
      * what it announces.
      */
     private val activity: NetworkActivity = NetworkActivity(),
+    /**
+     * The login this workspace is signed in with, asked for at each commit.
+     *
+     * Commits used to be signed "Yantra" from every device, which made the history a record of
+     * *what* changed and never of who: two people on one repository were indistinguishable in it.
+     * Signed with the login, a commit says who made it, and [TaskOrigins] can read that back for a
+     * task whose line has no `by:`. Null keeps the old signature, for a workspace nobody is signed in
+     * to — there is no one to name.
+     */
+    private val author: () -> String? = { null },
+    /** Reads who added each task out of the history after every pass. Null in tests that do not care. */
+    private val origins: TaskOrigins? = null,
 ) {
     /**
      * One pass at a time per workspace.
@@ -165,7 +177,14 @@ class SyncEngine(
 
         try {
             repo.open().use { git ->
-                committed = repo.commitAll(git, commitMessage, "Yantra", "yantra@shoonya.ie")
+                val who = author()
+                committed = repo.commitAll(
+                    git, commitMessage,
+                    who ?: "Yantra",
+                    // GitHub's own no-reply form, which it attributes to the account without
+                    // publishing an address, and which TaskOrigins reads the login back out of.
+                    who?.let { "$it@users.noreply.github.com" } ?: "yantra@shoonya.ie",
+                )
 
                 if (!hasRemote(git)) {
                     // A workspace with nowhere to push is still a workspace; committing locally is
@@ -262,7 +281,13 @@ class SyncEngine(
 
     private fun branchOf(git: Git): String = git.repository.branch
 
-    private suspend fun reindex(): List<String> = indexer.rebuild(store)
+    private suspend fun reindex(): List<String> {
+        val problems = indexer.rebuild(store)
+        // Asked for, not waited on: attribution is a nicety, and neither a history it cannot read
+        // nor a long first read of one may become part of how long a sync takes.
+        origins?.request(store.id, repo)
+        return problems
+    }
 
     /**
      * Decides every conflicted file and stages the answer, then continues the rebase.

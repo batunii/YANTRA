@@ -180,6 +180,17 @@ data class TaskRef(
      * again — a title, a time and this identity.
      */
     val external: ExternalRef? = null,
+    /**
+     * Who added this, as the login they were signed in with — written `by:<login>`, the token an
+     * event already uses for whose calendar it came off.
+     *
+     * Stamped once, when the line is first made, and only in a shared workspace: in Personal it is
+     * always you, and a token that can only ever say one thing is noise in a file people read. Never
+     * rewritten afterwards — editing, moving or converting a task does not change who added it.
+     * Null for every task written before this existed, and for one somebody typed by hand; those
+     * fall back to the repository's history, see [ie.shoonya.yantra.data.sync.TaskOrigins].
+     */
+    val author: String? = null,
     override val raw: String? = null,
 ) : Block
 

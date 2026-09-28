@@ -209,6 +209,8 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
     val allBlocks by vm.blocks.collectAsStateWithLifecycle()
     val chips by vm.chips.collectAsStateWithLifecycle()
     val pageEvents by vm.events.collectAsStateWithLifecycle()
+    val addedBy by vm.addedBy.collectAsStateWithLifecycle()
+    val author by vm.author.collectAsStateWithLifecycle()
     val ownEvent by vm.ownEvent.collectAsStateWithLifecycle()
     val meeting by vm.meeting.collectAsStateWithLifecycle()
     // The sheet this page's own event opens in — CALENDAR_PLAN.md §28. Null while closed; holds the
@@ -567,6 +569,19 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                         onOpen = { id -> nav.navigate(Routes.node(id)) },
                         modifier = Modifier.padding(top = 10.dp),
                     )
+                    // Who added it. Not in Personal, where it could only ever say you — and here
+                    // "you" as readily as a name, because on the task's own page the question is
+                    // being asked directly. Read, not tapped: it is a fact about the line.
+                    val by = author
+                    if (by != null && node?.workspaceId?.isNotEmpty() == true) {
+                        Text(
+                            if (by.second) "Added by you" else "Added by @${by.first}",
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.caption,
+                            color = y.textMuted,
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
+                    }
                 }
             },
         )
@@ -829,6 +844,7 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                 drag = drag,
                 vm = vm,
                 actions = rowActions,
+                addedBy = addedBy[child.id],
             )
         }
 
@@ -1668,6 +1684,7 @@ private fun LazyItemScope.PageRow(
     drag: BlockDrag,
     vm: NodePageViewModel,
     actions: PageRowActions,
+    addedBy: String? = null,
 ) {
     val y = Yantra.colors
     // Tasks, sketches and images are carried; prose is not. A handle on every paragraph
@@ -1816,6 +1833,7 @@ private fun LazyItemScope.PageRow(
         replaceWith = replaceWith,
         onReplaced = { actions.replaced() },
         onOpen = { actions.open(child) },
+        addedBy = addedBy,
     )
     }
     }
@@ -1848,6 +1866,7 @@ private fun BlockRow(
     onDraft: (TextFieldValue) -> Unit = {},
     replaceWith: TextFieldValue? = null,
     onReplaced: () -> Unit = {},
+    addedBy: String? = null,
 ) {
     when (child.type) {
         // Task, note and heading all go through the SAME composable so that converting between
@@ -1869,6 +1888,7 @@ private fun BlockRow(
                 onDraft = onDraft,
                 replaceWith = replaceWith,
                 onReplaced = onReplaced,
+                addedBy = addedBy,
             )
         NodeType.IMAGE -> ImageBlockRow(child, active, onActivate, vm)
         else -> TextualBlockRow(
@@ -1883,6 +1903,7 @@ private fun BlockRow(
             onDraft = onDraft,
             replaceWith = replaceWith,
             onReplaced = onReplaced,
+            addedBy = addedBy,
         )
     }
 }
@@ -2162,6 +2183,12 @@ internal fun TextualBlockRow(
     /** A value the screen wants this field to take — the link just picked from that strip. */
     replaceWith: TextFieldValue? = null,
     onReplaced: () -> Unit = {},
+    /**
+     * Who added this task, when it was somebody other than you — null for your own and for one
+     * nobody can name. On a list you share that is the news; your own name on every row would
+     * bury it.
+     */
+    addedBy: String? = null,
 ) {
     val y = Yantra.colors
     val isTask = child.type == NodeType.TASK
@@ -2347,7 +2374,8 @@ internal fun TextualBlockRow(
      * column — the ragged pile DESIGN.md §6 already fixed once, in a different axis.
      */
     val quietMeta = isTask && !editable &&
-        plan.tags.isEmpty() && plan.props.isEmpty() && !plan.unassigned && plan.place == null
+        plan.tags.isEmpty() && plan.props.isEmpty() && !plan.unassigned && plan.place == null &&
+        addedBy == null
     // A row on a list is two lines, always — the grammar both handoffs specify. It used to be
     // whatever its contents made it: one chip rode up onto the title line, two or three sat in a
     // wrapping cloud beneath it, and a long title took a second line of its own. Five tasks in a
@@ -2742,6 +2770,13 @@ internal fun TextualBlockRow(
                 plan.props.forEach { chip ->
                     sep()
                     withStyle(SpanStyle(color = propInks[chip] ?: y.textMuted)) { append(chip.label) }
+                }
+                // Who added it: after what it is about, before where it lives. Structure ink — a
+                // person is not a property of the task, and giving one a hue would open a layer
+                // the colour law has no room for.
+                addedBy?.let { login ->
+                    sep()
+                    withStyle(SpanStyle(color = y.textMuted)) { append("by @$login") }
                 }
                 // The list last, because it is the least urgent of what is left — and so the first
                 // thing that should pay when the line runs out of room.

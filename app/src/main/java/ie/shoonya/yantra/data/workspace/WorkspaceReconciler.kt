@@ -122,6 +122,7 @@ object WorkspaceReconciler {
                     rank = line.rank,
                     extUid = line.extUid,
                     extStart = line.extStart,
+                    author = line.author,
                 )
             }
 
