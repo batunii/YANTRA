@@ -10,7 +10,14 @@ detail-level** — the same wording, the same metrics, the same ordering rules, 
 the odd cases. If Android draws a mark, iOS draws that mark, not an SF Symbol that means roughly the
 same thing.
 
-Branch: `feature/ios-parity-format`. Android's `main` has been merged in.
+Branch: `feature/ios-parity-format`. **Android is pinned at `17d0beb`** ("Next sits under the views,
+and wears a clock"): `app/` and `web/` are byte-identical to that commit, and the only Android file
+this branch adds is test code (`app/src/androidTest/.../InkInteropFixturesTest.kt`).
+
+**The spec is the iOS brief** in `ios.zip` beside the repo (`PROMPT.md` + four appendices extracted
+from the Android code). Where the brief and an appendix disagree the brief wins; where either
+disagrees with the Kotlin at 17d0beb, the Kotlin wins. It says: don't build ownership (`by:`,
+`on:`, a ninth focus-log field) — but read and preserve those bytes when newer Android writes them.
 
 ---
 
@@ -204,63 +211,53 @@ so it must be deleted by hand or after `gh auth refresh -h github.com -s delete_
 
 ## 5. Where the iOS port stands
 
-**Done, with tests and checked on a simulator:** page format (events, `ext:`, page colour, due
-durations, `LocalDateTime`/`ISODuration`); calendar (bucketer, timeline layout, month/week/day, event
-sheet, EventKit read-only); LabelPalette (Java `String.hashCode` reproduced over UTF-16); the drawn
-icon language (48 marks, 28-unit space, 1.6 stroke — `grep -c systemName:` in the app is **0**, keep
-it that way); ink (PenKit, shape recognition, snap, undo/redo); the smart list builder; the
-now-playing bar; App Store compliance (scanner critical 1 → 0).
+Audited against the brief on 2026-09-28 (four audits, one per appendix). The brief's milestones are
+the order: format → sync → Home/lists/pages → focus → calendar → ink → widgets → settings.
 
-**Two pieces worth understanding before you touch them:**
+### Done this pass, with tests
 
-- **`SmartListRule.decode/encode` carries `extras`.** Today's seeded rule is "open AND (due ≤ today OR
-  deadline ≤ today)". There is no UI for an OR of two properties, so that branch is carried through
-  untouched and re-emitted. Opening the builder on a rule it cannot fully express must edit what it
-  can and leave the rest exactly as it was — dropping it would silently rewrite a working smart list
-  the first time anyone looked. A test asserts the round trip on the actual seeded rule.
-- **`RunningStack.stack` ordering** — timed card first, then whatever is scheduled now, then the rest
-  newest-first, **stably** (Swift's `sorted` is not stable; rank carries the original index). The
-  selected card is held **by id, not position**, because the list re-sorts when a clock starts and a
-  positional index would make the play button act on whatever slid underneath it.
+- **Ink is Android's format** (`InkBlob`, `InkSidecar`). YNK1 is gone. Proven both ways against the
+  real androidx.ink on an emulator: `scripts/ink-interop.sh` regenerates `conformance/ink/`. The
+  encoder reproduces androidx.ink **1.0.0**, which differs from google/ink `main` in small float
+  details — see the comments in `InkProto.encodeBatch`. Don't "fix" them toward main.
+- **The canvas never rewrites a stroke it did not touch** (`InkLedger` in `InkView.swift`). Checked
+  on the simulator: an Android sketch with an unreadable v1 stroke, opened and backgrounded, stays
+  byte-identical. PencilKit gotchas that each hid a stroke: it keeps a path date at float precision
+  (so the identity is whole seconds after 2001), it inverts colours in a dark style (so the canvas is
+  always `.light` and Yantra swaps graphite/chalk itself), and it records a tip 3.14× (pen) / 1.47×
+  (highlighter) the tool width (`InkBridge.tipPerWidth`; monoline unmeasured).
+- **Sync data safety** (branch `ios/sync-data-safety`, merged): `mergePage` ported line for line,
+  manifest keeps local, `.gitignore` synced, tree writes re-checked under a `flock` and atomic,
+  atomic base snapshot, one pass per workspace (`SyncGate`), one token renewal (`TokenKeeper`),
+  "keep both" adds a linked workspace, `CommitScheduler` on Android's timings. The REST transport
+  stays — the audit found nothing appendix 03 needs that it cannot do.
+- Sittings are not list rows. Colour tokens match `yantraColors`. The network pill is still.
+  No SF Symbols in any target (marks live in `Shared/YantraMarks.swift`).
 
-**Outstanding, roughly in dependency order:**
+### Outstanding, in the brief's order
 
-1. **Widgets** — iOS has Focus + List + Live Activity. Missing: Calendar, QuickAdd, Bhupura widgets,
-   and widget configuration (Android has `WidgetSettingsActivity`/`WidgetConfigActivity`/
-   `WidgetTargetPicker`).
-2. **Node page depth** — `PropertySheet` (deadline, assignee, and the props chip on the task page
-   block bar, which is deliberately **not** faked today), `AssigneeSheet` + People/roster,
-   `InlineText` (inline markdown editing, ~351 lines), links & backlinks, `ListSuggestions` /
-   `LinkSuggestions` (~330).
-   *Note:* Android's `setValue` only persists the four built-ins (priority, assignee, deadline, due)
-   and silently drops custom property kinds. Do not build storage iOS alone has — match Android.
-3. **Ink** — viewport pan/zoom is **done**: the document is a stack of A4-proportioned pages,
-   `PKCanvasView` is a `UIScrollView` so the pan, the clamp and the pinch-about-a-focal-point are
-   already correct, and only the policy is ported (`YantraCore/InkPages` — 0.4×–8×, pages from the
-   ink plus one to grow into, the per-cent readout). The fold and its number are drawn outside the
-   zoom by `InkPageFurniture`, as `InkCanvas.onDraw` does. **Lasso selection/move is still missing.**
-4. **Sync depth** — the joining-device bug is **fixed**; see `YantraCore/…/WorkspaceLink.swift`.
-   A device now decides *before* its first merge whether to **adopt** the repository's workspace,
-   **push** its own, or **ask**. "Pristine" is decided by the `device:` stamp, which is exact rather
-   than a heuristic: `WorkspaceSeeder` writes none and `WorkspaceWriter` stamps one on every write,
-   so a page carrying a device is a page a person caused. Proven live
-   (`testAJoiningDeviceAdoptsTheRepositoryInsteadOfDoublingIt`). Still to do here: the **ask** case
-   has no UI yet — `SyncSettings.connect` returns `.ask` and nothing presents the choice — plus
-   multi-device auth, the add-workspace screen, and background sync.
-
-   *Historical note, kept because it explains the design:* before the fix, a second device
-   connecting to a populated repository
-   **merged its own freshly-seeded starter set in** rather than adopting what was there: two Today,
-   two High Priority, two Getting started and two Inbox — and both Inbox pages carried
-   `system_key: inbox`, so
-   `index.node(systemKey:)` picked one arbitrarily and quick-add could land in either — reported as
-   the reassuring-sounding `Synced · 2 conflicts resolved`. The merge was not wrong; it had been
-   asked the question too late. Android's `data/sync/WorkspaceLinker.kt` is the reference.
-5. **iPad** — `Panes.kt` two-pane shell, pull-to-sync, network pulse, salience.
-6. **MeetingDetails** (~400 lines), stats depth, archive worker.
-7. **A wording/metrics audit pass** — Android's exact strings and spacing, not approximations.
-
----
+1. **Format** — (in flight on `ios/format-parity-agentA` at the time of writing) event `by:`,
+   frontmatter `pinned`, task `by:`/`on:`/unknown tokens preserved, priority colour 0xFFFF4A1F,
+   manifest defaults omitted and missing = 2, a kotlinx-exact JSON writer, `.gitignore`/upkeep on
+   open, the differential round-trip runner over a real clone.
+2. **Sync, still** — the writer's other writes don't take the lock yet; the app syncs on "opened"
+   (Android doesn't); reminders are task-only (no event/sitting reminders, no re-plan after sync).
+3. **Home** — no views block (Inbox, Today, smart lists, open-count badge), no **Next** under them
+   with the Clock mark, no Pinned (needs `pinned`), no workspace sections, lists and groups not in
+   one rank order, no rename/delete/move/colour on rows.
+4. **Lists and pages** — row geometry (card radius 14, glyph 26, gap 6, sub-line order), the
+   settled "Done · N" section, drag reorder, document mode (markdown shortcuts, Enter splits,
+   Backspace joins, `[[` suggestions in blocks), property pills (Deadline, Priority dropdown, Alarm
+   mark not 🔔), capture live highlighting, `[[Name]]` resolved on capture.
+5. **Focus** — Stats week/all-time and cuts; Live Activity shows a bar, not the arc.
+6. **Calendar** — pinch compounds (`DayTimeline.swift:101`), a sitting cannot be saved from the
+   event sheet (needs a title), block move/resize, the "What is this time for?" sheet.
+7. **Ink UI** — lasso bar and scale handle, pen kit slider/recents, shape modes, dock.
+8. **Widgets** — the list widget's "+" drops its target list (`YantraApp.swift:113`), widgets
+   ignore the theme, calendar widget rows/ticks. App Groups need a paid account — see memory.
+9. **Glyph choreography** (`Bhupura.swift`): the frame un-draw / ring / bindu-THUD sequence.
+10. Brief §6 open questions for the owner: Low priority's blue frame, chip radius 4 vs 5, sheet
+    radius 28 vs 18. Matching the code (the brief's default) until told otherwise.
 
 ## 6. How to work here
 
