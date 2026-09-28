@@ -30,6 +30,10 @@ import java.time.ZoneId
  */
 class CalendarViewModel(private val container: AppContainer) : ViewModel() {
 
+    /** The last overlay line said, so the same sentence is not repeated every frame. */
+    private var lastOverlay: String? = null
+
+
     private val zone: ZoneId = ZoneId.systemDefault()
 
     private val device = ie.shoonya.yantra.data.device.DeviceCalendarSource(container.app)
@@ -159,11 +163,18 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                 val mine = e.count { it.nodeExtUid != null } + t.count { it.extUid != null }
                 if (d.isNotEmpty() || mine > 0) {
                     val unidentified = d.count { it.uid == null }
-                    Trace.log(
-                        "overlay",
-                        "theirs=${d.size} ours=$mine" +
-                            if (unidentified > 0) " unidentified=$unidentified" else "",
-                    )
+                    // Only when the answer changes. This sits in a `combine` that re-runs on every
+                    // emission of four flows, so it was saying the same sentence hundreds of times
+                    // a minute — 1287 identical lines against 14 useful ones in one two-minute
+                    // recording, which is a log that buries the thing you opened it for. The line
+                    // is worth keeping and worth saying once: what it answers is "why are there two
+                    // of this meeting", and that is a question about a state, not about a frame.
+                    val said = "theirs=${d.size} ours=$mine" +
+                        if (unidentified > 0) " unidentified=$unidentified" else ""
+                    if (said != lastOverlay) {
+                        lastOverlay = said
+                        Trace.log("overlay", said)
+                    }
                 }
                 CalendarBucketer.bucket(
                     // The repository as a hue, by the same rule the smart lists and the widget
@@ -218,7 +229,11 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
         for (row in ours) {
             val d = match(row.nodeExtUid, row.nodeExtStart) ?: continue
             val (start, end) = deviceLocalSpan(d, zone)
-            if (d.title == row.title &&
+            // The event's *own* words, deliberately: this is deciding whether the file still
+            // describes the meeting the device calendar holds. A sitting never reaches here —
+            // it has no external uid — and if one did, comparing the task's title to a
+            // meeting's would rewrite the file on every pass.
+            if (d.title == row.ownTitle &&
                 row.event.startLocal == start.toString() &&
                 row.event.endLocal == end.toString()
             ) continue
@@ -301,6 +316,12 @@ class CalendarViewModel(private val container: AppContainer) : ViewModel() {
                         allDay = item.allDay,
                     ),
                     location = item.location,
+                    // The calendar itself, as the account names it — `shrey@napkin.ie`. Not the
+                    // GitHub login this device signs in with: those are two different identities,
+                    // and the question a row has to answer is *which calendar*, not *which
+                    // account pushed the file*. One person may keep a work calendar and a personal
+                    // one, and telling those apart is worth as much as telling two people apart.
+                    author = item.account,
                     external = ie.shoonya.yantra.data.format.ExternalRef(
                         uid = uid,
                         // Named only when the meeting repeats, so a page about this Monday does not

@@ -20,6 +20,11 @@ import android.util.Log
  * Nothing private goes in. A meeting's title is somebody's day and an attendee list is somebody's
  * address book; ids and counts say everything a bug needs and nothing a person would mind being in
  * a log file.
+ *
+ * Every line also goes to [Diagnostics], which keeps it on disk. Logcat is a ring buffer that the
+ * system overwrites, any app can flood and `adb logcat -c` wipes outright — so "it crashed earlier"
+ * had nothing behind it by the time anyone looked. Same lines, same rule about what goes in them;
+ * the only difference is that the file is still there tomorrow.
  */
 object Trace {
 
@@ -28,11 +33,27 @@ object Trace {
     /** One thing that happened, in the area it happened in. */
     fun log(area: String, message: String) {
         Log.i(TAG, "$area: $message")
+        Diagnostics.record('I', area, message)
     }
 
     /** Something that went wrong but did not stop the app — the interesting kind. */
     fun warn(area: String, message: String) {
         Log.w(TAG, "$area: $message")
+        Diagnostics.record('W', area, message)
+    }
+
+    /**
+     * Something that failed, with the throwable that says why.
+     *
+     * For the failures the app *handles* — a sync that could not push, a token that would not
+     * renew. Those are the ones that never reach a crash reporter and so were only ever visible to
+     * somebody holding the phone with logcat attached at the right moment. A caught exception is
+     * still an exception, and its stack is still the fastest route to the cause: today's sync
+     * failure was diagnosed from one, after two wrong guesses made without it.
+     */
+    fun error(area: String, message: String, error: Throwable? = null) {
+        if (error != null) Log.w(TAG, "$area: $message", error) else Log.w(TAG, "$area: $message")
+        Diagnostics.record('E', area, message, error)
     }
 
     /** An id, shortened to something a person can compare at a glance without being a UUID. */

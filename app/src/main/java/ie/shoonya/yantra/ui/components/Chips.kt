@@ -38,10 +38,10 @@ fun buildChips(
 
 /** Turns label attachments into displayable chips, grouped by node id — merges with [buildChips]. */
 fun buildLabelChips(
-    labels: List<LabelEntity>,
+    /** Every row's id to the label that speaks for its tag — `LabelRepository.byAnyId`. */
+    labelById: Map<String, LabelEntity>,
     nodeLabels: List<NodeLabelEntity>,
 ): Map<String, List<ChipData>> {
-    val labelById = labels.associateBy { it.id }
     return nodeLabels
         .mapNotNull { nl -> labelById[nl.labelId]?.let { nl.nodeId to labelChipFor(it) } }
         .groupBy({ it.first }, { it.second })

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,6 +73,7 @@ import ie.shoonya.yantra.ui.components.YantraButton
 import ie.shoonya.yantra.ui.components.YantraField
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
 import ie.shoonya.yantra.ui.theme.YantraText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -436,8 +438,15 @@ fun SignInScreen(nav: NavHostController) {
             Modifier
                 .fillMaxWidth()
                 .nestedScroll(fold.connection)
+                // Edge to edge, the window no longer shrinks for the keyboard. imePadding sits on the
+                // viewport, before the scroll, so a focused field's bring-into-view has somewhere to
+                // move it and the Connect button under it is not left behind the keys. The nav-bar
+                // inset goes inside, so the content still scrolls under the bar and only its end
+                // is lifted clear.
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(horizontal = PAGE_MARGIN)
                 .padding(top = 8.dp, bottom = 40.dp),
         ) {
             if (account != null) {
@@ -653,7 +662,7 @@ fun SignInScreen(nav: NavHostController) {
                         // somebody who never opens the picker still reads what they are agreeing to.
                         Text(
                             method.summary,
-                            color = y.textDim,
+                            color = y.textMuted,
                             fontSize = YantraType.caption,
                         )
 
@@ -865,7 +874,7 @@ internal fun SignedIn(
             Spacer(Modifier.height(10.dp))
             Text(
                 "This screen notices when you come back.",
-                color = y.textDim,
+                color = y.textMuted,
                 fontSize = YantraType.caption,
             )
         }
@@ -942,7 +951,7 @@ internal fun SignedIn(
                             "Made private, here, without opening GitHub. Nobody else can see it " +
                                 "until you invite them."
                     },
-                    color = y.textDim,
+                    color = y.textMuted,
                     fontSize = YantraType.caption,
                 )
             }
@@ -976,7 +985,7 @@ internal fun SignedIn(
                 "$dependents workspaces sync through this sign-in and will stop until you sign " +
                     "in again. A workspace with a token of its own carries on."
         },
-        color = y.textDim,
+        color = y.textMuted,
         fontSize = YantraType.caption,
     )
 }
@@ -1006,7 +1015,7 @@ private fun DeviceCodePanel(
             Text(
                 code.userCode,
                 color = y.textPrimary,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = YantraMono,
                 fontWeight = FontWeight.W700,
                 fontSize = YantraType.hero,
                 letterSpacing = 4.sp,
@@ -1032,7 +1041,7 @@ private fun DeviceCodePanel(
     Text(
         "The code is copied when you open GitHub, so it is there to paste. GitHub asks for it "
             + "once and then remembers this phone.",
-        color = y.textDim,
+        color = y.textMuted,
         fontSize = YantraType.caption,
     )
     Spacer(Modifier.height(12.dp))
@@ -1040,7 +1049,7 @@ private fun DeviceCodePanel(
         if (struggling == null) "Come back here once you have approved it — this screen picks it " +
             "up as soon as you do."
         else "Having trouble reaching GitHub — still trying. Your code is still good.",
-        color = if (struggling == null) y.textMuted else y.warning,
+        color = if (struggling == null) y.textMuted else y.textSecondary,
         fontSize = YantraType.meta,
     )
 }

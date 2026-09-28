@@ -7,8 +7,6 @@ import ie.shoonya.yantra.data.repo.SelectConfig
 import ie.shoonya.yantra.data.repo.SelectOption
 import ie.shoonya.yantra.data.format.PageCodec
 import ie.shoonya.yantra.data.format.PageDoc
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -18,24 +16,10 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 
-/**
- * `.yantra/manifest.json`.
- *
- * [formatVersion] is what makes an older app go read-only on a newer repo: a build refuses to write
- * into a workspace whose version is above [WorkspaceStore.FORMAT_VERSION], see [readable]. For that
- * to work the number has to be *in the file* — with `encodeDefaults = false` the default value was
- * being omitted, so every manifest said nothing and every reader assumed its own version. Hence
- * [EncodeDefault], which is the one thing here that is not optional — and a default of 1, not the
- * current version, because a manifest that lacks the field was written before it existed.
- *
- * History: 1 — the original layout; 2 — ink sidecars carry Yantra's own stroke envelope
- * (`YNK1`, see [ie.shoonya.yantra.data.ink.StrokeEnvelope]) instead of androidx.ink's bytes.
- */
-@OptIn(ExperimentalSerializationApi::class)
+/** `.yantra/manifest.json`. [formatVersion] is what makes an older app go read-only on a newer repo. */
 @Serializable
 data class Manifest(
-    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
-    val formatVersion: Int = 1,
+    val formatVersion: Int = WorkspaceStore.FORMAT_VERSION,
     val name: String,
     val createdAt: Long,
     /** Bumped when history is rewritten, so other devices know to reclone rather than merge. */
@@ -52,10 +36,7 @@ data class Manifest(
      * worst possible moment to do that unasked.
      */
     @SerialName("archive_after_days") val archiveAfterDays: Int = 0,
-) {
-    /** False when this repository was written by a newer app than the one reading it. */
-    val readable: Boolean get() = formatVersion <= WorkspaceStore.FORMAT_VERSION
-}
+)
 
 @Serializable
 data class LabelDef(val id: String, val name: String, val color: Long? = null)
@@ -91,10 +72,7 @@ class WorkspaceStore(
 
     companion object {
         /**
-         * The newest workspace format this build reads and writes. See [Manifest].
-         *
-         * 2 since ink coordinates became document units ([ie.shoonya.yantra.data.ink.PAGE_WIDTH_DU])
-         * and strokes moved into Yantra's own envelope ([ie.shoonya.yantra.data.ink.StrokeEnvelope]).
+         * 2 since ink coordinates became document units. See [ie.shoonya.yantra.data.ink.PAGE_WIDTH_DU].
          *
          * The bump is deliberately coarse — it makes an older build read-only for the whole
          * workspace, not just for its ink — because the format version is the only per-workspace
@@ -103,8 +81,15 @@ class WorkspaceStore(
          */
         const val FORMAT_VERSION = 2
 
-        /** The manifest's path inside the workspace, as git names it. */
-        const val MANIFEST_PATH = ".yantra/manifest.json"
+        /**
+         * What a workspace's `.gitignore` must say — see [ensureGitignore].
+         *
+         * One entry, and it is the suffix every atomic write uses on its way to the real name. The
+         * comment goes in the file because the file is in the repository: somebody reading the repo
+         * on GitHub should not have to guess what `*.tmp` is doing there.
+         */
+        val GITIGNORE = listOf("# Half-written files, mid-rename. Never a real edit.", "*.tmp")
+
         private const val META = ".yantra"
         private const val PAGES = "pages"
         private const val ARCHIVE = "archive"
@@ -142,6 +127,24 @@ class WorkspaceStore(
     private val pageCache = java.util.concurrent.ConcurrentHashMap<String, Cached<PageDoc>>()
     private val inkCache = java.util.concurrent.ConcurrentHashMap<String, Cached<List<ByteArray>>>()
 
+    /**
+     * Every other file a rebuild reads, parsed once per change to it: the label and property
+     * registries, each smart list, each month of the focus ledger.
+     *
+     * They were read and decoded in full on every rebuild — every debounced keystroke, every tick,
+     * every sync — and the focus ledger is append-only, so that cost grew for as long as anyone used
+     * the app. Same stamp as the page cache, and dropped on any write that goes through this class,
+     * so a change made within the stamp's resolution is never missed from here.
+     */
+    private val fileCache = java.util.concurrent.ConcurrentHashMap<String, Cached<Any?>>()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> File.parsedOnce(parse: (File) -> T): T {
+        val stamp = Stamp(lastModified(), length())
+        fileCache[path]?.takeIf { it.stamp == stamp }?.let { return it.value as T }
+        return parse(this).also { fileCache[path] = Cached(stamp, it) }
+    }
+
     private val metaDir get() = File(root, META)
     private val pagesDir get() = File(root, PAGES)
     private val manifestFile get() = File(metaDir, "manifest.json")
@@ -164,9 +167,42 @@ class WorkspaceStore(
     fun scaffold(name: String, now: Long) {
         pagesDir.mkdirs()
         smartDir.mkdirs()
-        writeManifest(Manifest(formatVersion = FORMAT_VERSION, name = name, createdAt = now))
+        ensureGitignore()
+        writeManifest(Manifest(name = name, createdAt = now))
         writeProperties(builtInProperties())
         writeLabels(emptyList())
+    }
+
+    /**
+     * Tells git to ignore the half-second a file spends being written.
+     *
+     * Every file here is written the same way: bytes to `<name>.tmp`, then a rename onto the real
+     * name, so a reader sees the old file or the new one and never a partial one. The rename is the
+     * point and it works. What it does not survive is somebody *walking the directory* in that
+     * half-second — and that is exactly what `git add .` does. jgit's tree walk listed the `.tmp`,
+     * went to open it, and by then the rename had taken it away:
+     *
+     *     java.io.FileNotFoundException: …/pages/fe8741a9-….md.tmp: ENOENT
+     *         at org.eclipse.jgit.api.AddCommand.call(AddCommand.java:271)
+     *
+     * The whole sync failed on that, and the only thing that had happened was that somebody was
+     * typing while it ran. There is no lock to take: the writer and the sync engine hold different
+     * mutexes on purpose, because making a keystroke wait on a push is the worse trade.
+     *
+     * So the transient name is declared transient, in the repository, where both git and a person
+     * reading the repo can see it. Written on scaffold and ensured on open, because every workspace
+     * made before this — including the ones already on GitHub — has a directory git will walk.
+     *
+     * Appends rather than replaces: the file is in the repository, so it is the user's to add to.
+     */
+    fun ensureGitignore(): Boolean {
+        val f = File(root, ".gitignore")
+        val lines = if (f.exists()) f.readLines() else emptyList()
+        val missing = GITIGNORE.filterNot { want -> lines.any { it.trim() == want } }
+        if (missing.isEmpty()) return false
+        val body = (lines + missing).joinToString("\n", postfix = "\n")
+        f.writeText(body)
+        return true
     }
 
     /**
@@ -223,7 +259,10 @@ class WorkspaceStore(
         return true
     }
 
-    fun readManifest(): Manifest? =
+    /** The manifest, from the cache while the file is unchanged — see [cachedManifest]. */
+    fun readManifest(): Manifest? = cachedManifest()
+
+    private fun parseManifest(): Manifest? =
         manifestFile.takeIf { it.exists() }
             ?.let { runCatching { FilterJson.decodeFromString(Manifest.serializer(), it.readText()) }.getOrNull() }
 
@@ -252,7 +291,7 @@ class WorkspaceStore(
         }
         val stamp = Stamp(f.lastModified(), f.length())
         manifestCache?.takeIf { it.stamp == stamp }?.let { return it.value }
-        val parsed = readManifest() ?: return null
+        val parsed = parseManifest() ?: return null
         manifestCache = Cached(stamp, parsed)
         return parsed
     }
@@ -293,25 +332,6 @@ class WorkspaceStore(
         manifestFile.write(FilterJson.encodeToString(Manifest.serializer(), m))
         manifestCache = null    // our own write, so evict rather than trust the timestamp
     }
-
-    /**
-     * Whether this build may write here. A workspace whose manifest names a format this build does
-     * not know is left exactly as it is: it can still be read, indexed and pulled, so the user sees
-     * the newer device's work, but nothing here rewrites a file it might not fully understand.
-     * A missing or unreadable manifest is *not* read-only — that is the pre-workspaces local store.
-     */
-    val isReadOnly: Boolean get() = readManifest()?.readable == false
-
-    /** Raises the manifest's format version to [version] if it is lower. Never lowers it. */
-    fun ensureFormatVersion(version: Int) {
-        val m = readManifest() ?: return
-        if (m.formatVersion < version) writeManifest(m.copy(formatVersion = version))
-    }
-
-    /** Every ink block that has a sidecar, by block id. */
-    fun inkIds(): List<String> =
-        pagesDir.listFiles { f -> f.isFile && f.name.endsWith(".ink") }
-            ?.map { it.name.removeSuffix(".ink") }?.sorted() ?: emptyList()
 
     // ---- pages ----
 
@@ -487,8 +507,8 @@ class WorkspaceStore(
      */
     private fun refuseWhenAhead(what: String): Boolean {
         if (!isAhead) return false
-        android.util.Log.w(
-            "Yantra.workspace",
+        ie.shoonya.yantra.Trace.error(
+            "workspace",
             "refusing $what: workspace '$id' is format $formatVersion, this build reads $FORMAT_VERSION",
         )
         return true
@@ -600,6 +620,7 @@ class WorkspaceStore(
         val f = File(focusDir, "$month.log")
         f.parentFile?.mkdirs()
         f.appendText(line.trimEnd('\n') + "\n")
+        fileCache.remove(f.path)
     }
 
     /**
@@ -613,8 +634,7 @@ class WorkspaceStore(
         listOf(focusDir, legacyFocusDir)
             .flatMap { it.listFiles { f -> f.name.endsWith(".log") }.orEmpty().asIterable() }
             .sortedBy { it.name }
-            .flatMap { it.readLines() }
-            .filter { it.isNotBlank() }
+            .flatMap { log -> log.parsedOnce { f -> f.readLines().filter { it.isNotBlank() } } }
 
     /**
      * Moves `pomodoro/` to `focus/` once, in place.
@@ -636,6 +656,8 @@ class WorkspaceStore(
             dest.parentFile?.mkdirs()
             if (dest.exists()) dest.appendText(old.readText()) else old.copyTo(dest, overwrite = true)
             old.delete()
+            fileCache.remove(dest.path)
+            fileCache.remove(old.path)
         }
         // Only if it emptied: anything unexpected in there is left alone rather than discarded.
         legacy.listFiles()?.takeIf { it.isEmpty() }?.let { legacy.delete() }
@@ -655,8 +677,10 @@ class WorkspaceStore(
 
     fun readSmartLists(): List<SmartListDef> =
         smartDir.listFiles { f -> f.name.endsWith(".json") }.orEmpty().sortedBy { it.name }
-            .mapNotNull {
-                runCatching { FilterJson.decodeFromString(SmartListDef.serializer(), it.readText()) }.getOrNull()
+            .mapNotNull { file ->
+                file.parsedOnce {
+                    runCatching { FilterJson.decodeFromString(SmartListDef.serializer(), it.readText()) }.getOrNull()
+                }
             }
 
     fun writeSmartList(def: SmartListDef) =
@@ -665,15 +689,16 @@ class WorkspaceStore(
 
     fun deleteSmartList(nodeId: String) {
         if (refuseWhenAhead("deleteSmartList($nodeId)")) return
-        File(smartDir, "$nodeId.json").delete()
+        File(smartDir, "$nodeId.json").also { fileCache.remove(it.path) }.delete()
     }
 
     // ---- io ----
 
     private fun <T> File.readList(ser: kotlinx.serialization.KSerializer<T>): List<T> =
-        takeIf { it.exists() }
-            ?.let { runCatching { FilterJson.decodeFromString(ListSerializer(ser), it.readText()) }.getOrNull() }
-            .orEmpty()
+        if (!exists()) emptyList()
+        else parsedOnce { f ->
+            runCatching { FilterJson.decodeFromString(ListSerializer(ser), f.readText()) }.getOrNull().orEmpty()
+        }
 
     /**
      * Write to a sibling and rename over the target.
@@ -685,6 +710,7 @@ class WorkspaceStore(
     private fun File.write(text: String) = writeBytesAtomically(text.toByteArray())
 
     private fun File.writeBytesAtomically(bytes: ByteArray) {
+        fileCache.remove(path)
         // The read-only gate for everything that puts bytes on disk — pages, ink, images, the
         // manifest and the metadata alike. It is not the *only* gate: deleting and moving a file
         // destroy data without writing any bytes and never come through here, so they carry their

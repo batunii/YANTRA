@@ -57,6 +57,43 @@ class SyncErrorWordsTest {
         assertTrue(said, said.contains("Could not reach GitHub"))
     }
 
+    /**
+     * The shape JGit really produces, from the phone on 2026-09-25: the transport error names the
+     * repo and "connection failed", and the reason is only in the causes' class names.
+     */
+    private fun transportFailure(cause: Throwable) = org.eclipse.jgit.api.errors.TransportException(
+        "https://github.com/batunii/yantra-tasks.git: connection failed",
+        org.eclipse.jgit.errors.TransportException(
+            "https://github.com/batunii/yantra-tasks.git: connection failed", cause,
+        ),
+    )
+
+    @Test
+    fun `a failed lookup reads as offline, not as a raw resolver message`() {
+        val said = SyncEngine.readable(
+            transportFailure(
+                java.net.UnknownHostException(
+                    "Unable to resolve host \"github.com\": No address associated with hostname"
+                )
+            )
+        )
+        assertTrue(said, said.contains("Could not reach GitHub"))
+    }
+
+    @Test
+    fun `a network with no way to GitHub says to reconnect`() {
+        val said = SyncEngine.readable(transportFailure(java.net.NoRouteToHostException("Host unreachable")))
+        assertTrue(said, said.contains("turn Wi-Fi off and on"))
+    }
+
+    @Test
+    fun `a refused connection reads as offline`() {
+        val said = SyncEngine.readable(
+            transportFailure(java.net.ConnectException("Failed to connect to github.com/4.208.26.197:443"))
+        )
+        assertTrue(said, said.contains("Could not reach GitHub"))
+    }
+
     @Test
     fun `losing a race is described as ordinary, because it is`() {
         val said = SyncEngine.readable(addFailure("rejected - non-fast-forward"))

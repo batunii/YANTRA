@@ -135,8 +135,42 @@ object WorkspaceReconciler {
             events += m.events
         }
 
+        // **Two nodes cannot share a system key.** `node` carries a unique index on
+        // (workspace_id, system_key) and the insert is REPLACE, so a second `today` does not fail
+        // loudly — SQLite deletes the first one mid-insert and everything that pointed at it is
+        // left dangling. `smart_list_def` is the row that then refuses, because its key onto `node`
+        // takes no action on delete, and the rebuild dies with FOREIGN KEY constraint failed (787)
+        // inside the transaction the sync is waiting on. Nothing is ever pushed again, and the only
+        // sign is a toast.
+        //
+        // A workspace earns duplicates honestly: a fresh install scaffolds its own `today` and
+        // `inbox` before the repository's copies have been pulled, and then both exist. Resolve it
+        // here, where the index is assembled and the whole set is in hand, rather than leaving it
+        // to a conflict strategy that resolves it by destroying a row.
+        //
+        // The newer page wins because it is the one the device has been writing to. The loser is
+        // reported rather than deleted — its file is untouched on disk, and the reconciler's job is
+        // to say what it could not use, not to throw it away.
+        val superseded = HashSet<String>()
+        val bySystemKey = HashMap<String, NodeEntity>()
+        nodes.forEach { n ->
+            val key = n.systemKey ?: return@forEach
+            val prev = bySystemKey[key]
+            if (prev == null) {
+                bySystemKey[key] = n
+                return@forEach
+            }
+            val winner = if (n.updatedAt >= prev.updatedAt) n else prev
+            val loser = if (winner === n) prev else n
+            bySystemKey[key] = winner
+            superseded += loser.id
+            problems += "two pages claim the system key '$key' (${winner.id} and ${loser.id}); " +
+                "kept the newer and ignored the other"
+        }
+        val nodeRows = if (superseded.isEmpty()) nodes else nodes.filterNot { it.id in superseded }
+
         val labels = resolveLabels(store, links, stamp, ws)
-        val knownNodes = nodes.mapTo(HashSet()) { it.id }
+        val knownNodes = nodeRows.mapTo(HashSet()) { it.id }
         // Checked against the rows that are emitted, not the map they came from. The two agree only
         // because one is built out of the other, and that is precisely the kind of agreement an edit
         // breaks without noticing: appending a label to this list and not to the map is how the
@@ -144,8 +178,12 @@ object WorkspaceReconciler {
         val labelRows = labels.values.sortedBy { it.name }
         val knownLabels = labelRows.mapTo(HashSet()) { it.id }
         return WorkspaceIndex(
-            nodes = nodes,
-            values = values,
+            nodes = nodeRows,
+            // Every list below is filtered to the nodes actually emitted. `nodeLabels` and `focus`
+            // already were; `values`, `ink`, `events` and `smartLists` were not, and each one is a
+            // foreign key onto `node` that fails the whole rebuild if it names a row that is not
+            // there. `smartLists` is how this was found.
+            values = values.filter { it.nodeId in knownNodes },
             labels = labelRows,
             nodeLabels = links
                 .mapNotNull { l ->
@@ -159,15 +197,17 @@ object WorkspaceReconciler {
                     isBuiltIn = true, createdAt = stamp, updatedAt = stamp,
                 )
             },
-            smartLists = store.readSmartLists().map {
-                SmartListDefEntity(
-                    nodeId = it.nodeId, workspaceId = ws, scopeRootId = it.scopeRootId, filterJson = it.filterJson,
-                    sortJson = it.sortJson, homeParentId = it.homeParentId,
-                    applyOnCreateJson = it.applyOnCreateJson,
-                )
-            },
-            ink = ink,
-            events = events,
+            smartLists = store.readSmartLists()
+                .filter { it.nodeId in knownNodes }
+                .map {
+                    SmartListDefEntity(
+                        nodeId = it.nodeId, workspaceId = ws, scopeRootId = it.scopeRootId, filterJson = it.filterJson,
+                        sortJson = it.sortJson, homeParentId = it.homeParentId,
+                        applyOnCreateJson = it.applyOnCreateJson,
+                    )
+                },
+            ink = ink.filter { it.nodeId in knownNodes },
+            events = events.filter { it.nodeId in knownNodes },
             // Every node, not only the pages. A session belongs to whatever you focused on, and
             // most tasks never own a page — a page exists only once a task holds something. Checking
             // against page ids therefore threw away the sessions of every plain task: appended to the
@@ -318,15 +358,27 @@ object WorkspaceReconciler {
     ): Map<String, LabelEntity> {
         val byName = LinkedHashMap<String, LabelEntity>()
         store.readLabels().forEach {
-            byName[it.name.lowercase()] = LabelEntity(it.id, ws, it.name, it.color, now, now)
+            val key = it.name.lowercase()
+            // **The id comes from the workspace and the name, never from the file.**
+            //
+            // The registry entry is a colour for a tag; the id written beside it is a cache of
+            // this expression and nothing more. Honouring it let a *foreign* id into this
+            // workspace's rows — and `label`'s primary key is the id, its insert is REPLACE, and
+            // `node_label` cascades from it. So a v2-tasks label id sitting in Personal's registry
+            // meant rebuilding Personal deleted the real v2-tasks row and took every attachment of
+            // that tag with it, in a repo that had not changed and so was not going to be rebuilt.
+            // One tap on a colour swatch and the tag was off the task until the next cold start.
+            //
+            // `LabelRepository.setColor` is what put it there and no longer does. This is the
+            // floor under it: a file cannot name a row outside the workspace it belongs to, so no
+            // future writer can reopen the hole, and files already poisoned heal on the next read.
+            byName[key] = LabelEntity(idFor(ws, key), ws, it.name, it.color, now, now)
         }
         links.forEach { link ->
             val key = link.name.lowercase()
             if (key !in byName) {
                 byName[key] = LabelEntity(
-                    // Scoped: two repos may both use #sync without meaning one tag, and an
-                    // unscoped id would silently merge them into the same row.
-                    id = "$ws:label:$key",
+                    id = idFor(ws, key),
                     workspaceId = ws,
                     name = link.name,
                     color = LabelPalette.defaultFor(link.name),
@@ -336,4 +388,33 @@ object WorkspaceReconciler {
         }
         return byName
     }
+
+    /**
+     * What a label is called by, in one place.
+     *
+     * Scoped to the workspace: two repos may both use `#sync` without meaning one tag, and an
+     * unscoped id would silently merge them into the same row. Shared with
+     * `LabelRepository.getOrCreate`, which mints the same id when it registers a colour — they have
+     * to agree, or a recolour writes a definition the reindex will not recognise as the same label.
+     */
+    fun idFor(workspaceId: String, name: String) = "$workspaceId$LABEL_MARK${name.lowercase()}"
+
+    /**
+     * The workspace a label id belongs to, or null if it is not one of ours.
+     *
+     * The inverse of [idFor], and the reason a recolour can find its way home: `workspace_id` on the
+     * row is derived and can be rewritten by whichever workspace was indexed last, but the id is
+     * minted once and carries its owner with it.
+     */
+    fun ownerOf(labelId: String): String? =
+        if (LABEL_MARK in labelId) labelId.substringBefore(LABEL_MARK) else null
+
+    /**
+     * The tag a label id spells, lowercased — the other half of [idFor], or null if the id is not
+     * one of ours. Two workspaces' ids for `#sync` differ in their owner and agree here.
+     */
+    fun nameKeyOf(labelId: String): String? =
+        if (LABEL_MARK in labelId) labelId.substringAfter(LABEL_MARK) else null
+
+    private const val LABEL_MARK = ":label:"
 }

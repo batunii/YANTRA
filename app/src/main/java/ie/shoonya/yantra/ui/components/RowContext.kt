@@ -1,5 +1,6 @@
 package ie.shoonya.yantra.ui.components
 
+import ie.shoonya.yantra.data.label.LabelCanon
 import androidx.compose.runtime.staticCompositionLocalOf
 import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.filter.Field
@@ -97,7 +98,7 @@ private fun isDate(f: Field) = f == DUE || f == DEADLINE
  * property whose id happened to match a label id would otherwise resolve to the wrong thing.
  */
 fun resolve(field: Field, chips: List<ChipData>, origin: Origin?): ChipData? = when (field) {
-    is Field.Label -> chips.firstOrNull { it.isLabel && it.defId == field.labelId }
+    is Field.Label -> chips.firstOrNull { it.isLabel && LabelCanon.sameTag(it.defId, field.labelId) }
     is Field.Prop -> chips.firstOrNull { !it.isLabel && it.defId == field.defId }
     // Resolved by the caller as a [PlaceRun] instead: the list keeps `LabelPalette.display`
     // untouched, where a chip's ink is lerped toward the paper. Two inks for one hue is exactly
@@ -159,8 +160,8 @@ fun planRow(
     // Tags lead the line, and the matched one leads the tags — by position only. No ink change, no
     // weight, no marker glyph: a task must not change *shape* between two screens, only content.
     val tags = chips
-        .filter { it.isLabel && Field.Label(it.defId) !in grammar.pinned }
-        .sortedByDescending { Field.Label(it.defId) in grammar.branched }
+        .filter { it.isLabel && !LabelCanon.namesTag(grammar.pinned, it.defId) }
+        .sortedByDescending { LabelCanon.namesTag(grammar.branched, it.defId) }
 
     // The slot's own field is a candidate down here too. It is not usually one — the slot took it
     // — but an override can displace it, and then it has to land somewhere. Without this a real

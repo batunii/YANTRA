@@ -1,12 +1,7 @@
 package ie.shoonya.yantra.data.sync
 
-import ie.shoonya.yantra.data.filter.FilterJson
 import ie.shoonya.yantra.data.format.PageCodec
 import ie.shoonya.yantra.data.workspace.WorkspaceStore
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.intOrNull
 
 /**
  * What to do when git cannot decide — GIT_WORKSPACES_PLAN.md §4.
@@ -60,12 +55,6 @@ object ConflictResolver {
 
         if (isLog(path)) return Resolution(path, mergeLog(local, remote), "merged an append-only log")
 
-        if (path == WorkspaceStore.MANIFEST_PATH) {
-            mergeManifest(base, local, remote, device, otherDevice)?.let {
-                return Resolution(path, it, "merged the manifest field by field")
-            }
-        }
-
         if (path.endsWith(".md")) {
             mergePage(base, local, remote)?.let {
                 return Resolution(path, it, "merged the page around the disagreement")
@@ -113,32 +102,69 @@ object ConflictResolver {
         val l = decode(local) ?: return null
         val r = decode(remote) ?: return null
 
-        val localNewer = l.modifiedAt >= r.modifiedAt
+        // **Which side comes first, decided from the pages and never from which one is "local".**
+        //
+        // Every choice below is made with this one value, and that is the point. `local` and
+        // `remote` are opposite labels on the two machines — my local is your remote — so a rule
+        // phrased in those terms answers differently on each, and two devices that resolve the same
+        // conflict differently have not merged anything: they have made a new conflict, and they
+        // will make it again on the next pull, forever.
+        //
+        // `modified_at` decides it, and a tie falls to the device name, which is a fact about the
+        // pages rather than about who is asking. It replaced a `>=` on the timestamps alone: that
+        // is fine while the stamps differ and silently picks *your own side* when they do not, so
+        // two saves in the same millisecond — which is exactly what an offline pair syncing on
+        // reconnection produces — left each device keeping its own block and its own frontmatter.
+        val localFirst = when {
+            l.modifiedAt != r.modifiedAt -> l.modifiedAt > r.modifiedAt
+            else -> l.device.orEmpty() >= r.device.orEmpty()
+        }
         val bk = keyed(b.blocks)
         val lk = keyed(l.blocks)
         val rk = keyed(r.blocks)
 
-        val order = lk.keys.toMutableList()
-        rk.keys.forEach { if (it !in lk) order += it }
+        // The order the blocks come out in is decided the same way everything else here is, because
+        // it has to be. Walking the local side first and appending what only the remote has reads
+        // naturally and is wrong for the same reason "keep mine" is wrong: I walk my page first and
+        // you walk yours, so my new subtask lands above yours and yours lands above mine. Same
+        // blocks, different bytes, and the merge is a conflict again on the next pull.
+        val (lead, follow) = if (localFirst) lk.keys to rk.keys else rk.keys to lk.keys
+        val order = lead.toMutableList()
+        follow.forEach { if (it !in lead) order += it }
 
-        val merged = order.mapNotNull { key ->
+        val merged = order.flatMap { key ->
             val bb = bk[key]
             val ll = lk[key]
             val rr = rk[key]
             when {
-                ll == null && rr == null -> null
+                ll == null && rr == null -> emptyList()
                 // A side dropping a block only wins if the other side left it alone. An edit
                 // always outlives a delete.
-                ll == null -> if (rr == bb) null else rr
-                rr == null -> if (ll == bb) null else ll
-                ll == rr -> ll
-                bb == ll -> rr          // only the remote touched it
-                bb == rr -> ll          // only the local touched it
-                else -> if (localNewer) ll else rr   // both did; someone has to lose
+                ll == null -> if (rr == bb) emptyList() else listOfNotNull(rr)
+                rr == null -> if (ll == bb) emptyList() else listOfNotNull(ll)
+                ll == rr -> listOfNotNull(ll)
+                bb == ll -> listOfNotNull(rr)          // only the remote touched it
+                bb == rr -> listOfNotNull(ll)          // only the local touched it
+
+                // **Both added something here. That is two additions, not a disagreement.**
+                //
+                // A block with no id of its own — prose, a heading, a bullet — is keyed by kind and
+                // position, so a paragraph you wrote and a paragraph somebody else wrote land on
+                // the same key without being the same block. The base has neither, and that is
+                // exactly what tells this apart from an edit: nothing was changed, two things were
+                // written. Last-writer-wins then threw one away silently, with the only trace in a
+                // git history nobody was going to read.
+                //
+                // Two notes on one task is the ordinary case for two people working on it, so both
+                // are kept.
+                bb == null -> if (localFirst) listOfNotNull(ll, rr) else listOfNotNull(rr, ll)
+
+                // Both edited the *same* block; someone still has to lose.
+                else -> listOfNotNull(if (localFirst) ll else rr)
             }
         }
 
-        val header = if (localNewer) l else r
+        val header = if (localFirst) l else r
         return PageCodec.encode(
             header.copy(blocks = merged.map { stripRaw(it) })
         ).toByteArray()
@@ -194,54 +220,6 @@ object ConflictResolver {
     private fun modifiedAt(bytes: ByteArray): Long =
         runCatching { PageCodec.decode(bytes.decodeToString()).modifiedAt.toEpochMilli() }
             .getOrDefault(0L)
-
-    /**
-     * The manifest, one field at a time.
-     *
-     * It used to fall under "unmergeable, keep local", and that was the wrong rule for the one file
-     * that coordinates the others. A device that raised `formatVersion` and a device that set
-     * `archive_after_days` in the same window were not disagreeing about anything — yet whichever
-     * rebased second threw the other's change away, and if it was the version bump that lost, a
-     * repository full of new-format ink went on claiming the old version. The fields are
-     * independent, so merge them independently:
-     *
-     *  - a field only one side touched takes that side;
-     *  - `formatVersion` and `epoch` are monotonic — both raised means the higher one, because the
-     *    higher one describes what is actually in the tree by now;
-     *  - anything else both changed goes to the device that sorts higher, the same symmetric rule
-     *    LWW uses, so both machines land on identical bytes without talking.
-     *
-     * Needs the base: without a common ancestor there is no way to tell "changed" from "kept".
-     * Returns null when any side is not a JSON object, and the caller falls through to keep-local.
-     */
-    private fun mergeManifest(
-        base: ByteArray?, local: ByteArray, remote: ByteArray, device: String, otherDevice: String,
-    ): ByteArray? {
-        val b = jsonObject(base ?: return null) ?: return null
-        val l = jsonObject(local) ?: return null
-        val r = jsonObject(remote) ?: return null
-        val keys = LinkedHashSet<String>().apply { addAll(l.keys); addAll(r.keys); addAll(b.keys) }
-        val out = LinkedHashMap<String, JsonElement>()
-        keys.forEach { k ->
-            val bv = b[k]; val lv = l[k]; val rv = r[k]
-            val v: JsonElement? = when {
-                lv == rv -> lv
-                lv == bv -> rv                     // only the remote touched it (or removed it)
-                rv == bv -> lv                     // only the local touched it
-                k in MONOTONIC && lv is JsonPrimitive && rv is JsonPrimitive ->
-                    if ((lv.intOrNull ?: 0) >= (rv.intOrNull ?: 0)) lv else rv
-                device > otherDevice -> lv ?: rv   // both changed; a removal on the winning side stands
-                else -> rv ?: lv
-            }
-            if (v != null) out[k] = v
-        }
-        return FilterJson.encodeToString(JsonObject.serializer(), JsonObject(out)).toByteArray()
-    }
-
-    private val MONOTONIC = setOf("formatVersion", "epoch")
-
-    private fun jsonObject(bytes: ByteArray): JsonObject? =
-        runCatching { FilterJson.parseToJsonElement(bytes.decodeToString()) as? JsonObject }.getOrNull()
 
     /**
      * Both sides' lines, with the last line for any repeated id winning.

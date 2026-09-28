@@ -40,6 +40,9 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
@@ -172,7 +175,7 @@ internal fun MeetingHeader(
                     color = y.accentText,
                     modifier = Modifier.weight(1f),
                 )
-                Text("\u203a", fontSize = YantraType.card, color = y.accentText)
+                YantraIcon(YantraMark.Forward, size = YantraIcons.Small, tint = y.accentText, contentDescription = null)
             }
         }
 
@@ -185,55 +188,20 @@ internal fun MeetingHeader(
             Spacer(Modifier.height(12.dp))
             Field("Where", it)
         }
-        if (expanded) {
-            details?.organiser?.let { Field("Organiser", it) }
-            if (guests.isNotEmpty()) {
-                // Capped even when expanded: a company-wide invite runs to three hundred, and the
-                // page is for writing.
-                Field(
-                    "Guests",
-                    guests.take(12).joinToString(", ") +
-                        if (guests.size > 12) "  +${guests.size - 12} more" else "",
-                )
-            }
-        }
-
         // Unwrapped, because Google's web client writes HTML and a description drawn raw is a wall
         // of `<br>`s. See MeetingText.readable.
         val description = MeetingText.readable(details?.description)
-        if (expanded && description.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                description,
-                fontSize = YantraType.meta,
-                lineHeight = 18.sp,
-                color = y.textSecondary,
-            )
-            // Every other link in it, as things you can press. An invitation routinely carries the
-            // agenda, the deck and a dial-in page, and a URL you have to select and copy is a URL
-            // nobody follows from a phone.
-            val others = MeetingText.linksIn(description).filter { it != conference?.url }
-            if (others.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                others.take(4).forEach { url ->
-                    Text(
-                        shortUrl(url),
-                        fontSize = YantraType.section,
-                        color = y.accent,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(YantraRadius.block))
-                            .clickable { open(context, url) }
-                            .padding(vertical = 3.dp),
-                    )
-                }
-            }
-        }
 
         // The header's own controls: how much of itself to show, and — on your own event — the way
         // to change it. "More details" is hidden entirely when there is nothing more behind it, so
         // it is never a button that does nothing.
+        //
+        // **Above what it reveals, not below it.** These sat after the guests and the description,
+        // which meant that once expanded the only way back was to scroll past the entire invitation
+        // — a Teams blurb runs to forty lines of boilerplate — to reach a "Less" sitting at the
+        // bottom of it. A control that collapses a block cannot live at the end of the block: you
+        // have to travel through the thing you are trying to put away. Here it stays a thumb's
+        // reach from the title whether the header is open or shut.
         val more = details != null &&
             (details.organiser != null || guests.isNotEmpty() || description.isNotBlank())
         if (more || onEdit != null) {
@@ -262,6 +230,49 @@ internal fun MeetingHeader(
                             .clip(RoundedCornerShape(YantraRadius.block))
                             .clickable(onClick = edit)
                             .padding(vertical = 4.dp, horizontal = 2.dp),
+                    )
+                }
+            }
+        }
+
+        if (expanded) {
+            details?.organiser?.let { Field("Organiser", it) }
+            if (guests.isNotEmpty()) {
+                // Capped even when expanded: a company-wide invite runs to three hundred, and the
+                // page is for writing.
+                Field(
+                    "Guests",
+                    guests.take(12).joinToString(", ") +
+                        if (guests.size > 12) "  +${guests.size - 12} more" else "",
+                )
+            }
+        }
+
+        if (expanded && description.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                description,
+                fontSize = YantraType.meta,
+                lineHeight = 18.sp,
+                color = y.textSecondary,
+            )
+            // Every other link in it, as things you can press. An invitation routinely carries the
+            // agenda, the deck and a dial-in page, and a URL you have to select and copy is a URL
+            // nobody follows from a phone.
+            val others = MeetingText.linksIn(description).filter { it != conference?.url }
+            if (others.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                others.take(4).forEach { url ->
+                    Text(
+                        shortUrl(url),
+                        fontSize = YantraType.section,
+                        color = y.accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(YantraRadius.block))
+                            .clickable { open(context, url) }
+                            .padding(vertical = 3.dp),
                     )
                 }
             }
@@ -363,9 +374,9 @@ private fun Field(label: String, value: String) {
         Text(
             label.uppercase(),
             fontFamily = YantraMono,
-            fontSize = YantraType.dense,
+            fontSize = YantraType.caption,
             letterSpacing = 0.8.sp,
-            color = y.textDim,
+            color = y.textMuted,
             modifier = Modifier.width(74.dp).padding(top = 2.dp),
         )
         Text(value, fontSize = YantraType.meta, lineHeight = 17.sp, color = y.textPrimary, modifier = Modifier.weight(1f))

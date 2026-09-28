@@ -60,7 +60,7 @@ class TokenRenewal(
             // if that one still works, this was never needed.
             is DevicePoll.Offline -> Outcome.CouldNotAsk
             else -> {
-                Log.w(TAG, "could not renew the sign-in: $result")
+                ie.shoonya.yantra.Trace.error("token", "could not renew the sign-in: $result")
                 Outcome.NeedsSignIn
             }
         }

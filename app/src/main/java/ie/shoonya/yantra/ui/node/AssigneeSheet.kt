@@ -35,6 +35,9 @@ import ie.shoonya.yantra.data.people.Person
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.theme.YantraDisplay
 import ie.shoonya.yantra.ui.theme.YantraType
 
 /**
@@ -119,12 +122,19 @@ fun AssigneeSheet(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = PAGE_MARGIN)
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Assign to", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Assign to",
+                    fontFamily = YantraDisplay,
+                    fontSize = YantraType.sheetTitle,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = (-0.3).sp,
+                    color = y.textPrimary,
+                )
                 Spacer(Modifier.weight(1f))
                 if (refreshing) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -241,7 +251,7 @@ private fun PersonRow(
             YantraIcon(if (stranger) YantraMark.PersonOff else YantraMark.Person,
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.size(15.dp),
+                size = YantraIcons.Small,
             )
         }
         Spacer(Modifier.width(12.dp))

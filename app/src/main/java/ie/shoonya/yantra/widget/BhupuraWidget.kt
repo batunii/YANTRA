@@ -51,6 +51,9 @@ import ie.shoonya.yantra.domain.FocusTimer
 import ie.shoonya.yantra.widget.actions.FocusAction
 import ie.shoonya.yantra.domain.sessionClock
 import ie.shoonya.yantra.data.format.Markdown
+import ie.shoonya.yantra.ui.theme.YantraType
+import androidx.glance.semantics.contentDescription
+import androidx.glance.semantics.semantics
 
 /**
  * The mark itself, on the home screen.
@@ -142,7 +145,12 @@ private fun BhupuraContent(state: FocusTimer.State?, lastTitle: String?) {
     // colour, the enclosure drawn over it in the frame's ink, and effort's colour reserved for the
     // one thing you press.
     Box(
-        modifier = GlanceModifier.fillMaxSize().clickable(actionStartActivity(openFocus)),
+        // Labelled, because the whole tile is a button and TalkBack otherwise announces one with no
+        // name over the entire mark.
+        modifier = GlanceModifier
+            .fillMaxSize()
+            .clickable(actionStartActivity(openFocus))
+            .semantics { contentDescription = "Open focus" },
         contentAlignment = Alignment.Center,
     ) {
         Image(
@@ -212,7 +220,9 @@ private fun TaskName(title: String, side: androidx.compose.ui.unit.Dp) {
             color = ColorProvider(
                 GlanceTheme.colors.onSurface.getColor(context).copy(alpha = 0.65f)
             ),
-            fontSize = (side.value * 0.062f).coerceIn(9f, 13f).sp,
+            // Floored at the family's caption: at the default 2x2 the proportion alone came to 9sp,
+            // the smallest text anywhere in the app, on a ground next to wallpaper.
+            fontSize = (side.value * 0.062f).coerceIn(YantraType.caption.value, YantraType.label.value).sp,
             fontWeight = FontWeight.Medium,
         ),
         maxLines = 1,
@@ -293,10 +303,14 @@ private fun TransportBindu(state: FocusTimer.State?, side: androidx.compose.ui.u
     // Bigger when it is alone: with no clock above it the key is the whole content, and a small
     // dot in a large enclosure reads as an unfinished drawing rather than a control.
     val key = (side * (if (state == null) 0.26f else 0.20f)).coerceAtLeast(30.dp)
+    // The target can outgrow the drawing only when it is alone. The key sits inside a tile that is
+    // itself a button, so a 30dp target made a slightly-off press open the app instead; but with a
+    // session live the clock is right above it, and a wider target would take presses on the digits.
+    val target = if (state == null) maxOf(key, 48.dp) else key
 
     Box(
         modifier = GlanceModifier
-            .size(key)
+            .size(target)
             .clickable(
                 actionRunCallback<FocusAction>(actionParametersOf(FocusAction.Command to command))
             ),

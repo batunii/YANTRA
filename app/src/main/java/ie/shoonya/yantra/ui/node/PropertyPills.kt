@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -311,7 +312,11 @@ internal fun PropertyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        (set + unset).forEach { def ->
+        // Everything the task *has*, then everything it could. A label is a fact about the task
+        // exactly as a due date is, and it used to be drawn after every "+ Something" offer — so a
+        // task whose one property was a tag showed a row of empty offers and hid the tag past the
+        // fade, the one thing on the row worth reading.
+        val pill: @Composable (PropertyDefEntity) -> Unit = { def ->
             PropertyPill(
                 def = def,
                 value = values[def.id],
@@ -320,6 +325,7 @@ internal fun PropertyRow(
                 onRequest = onRequest,
             )
         }
+        set.forEach { pill(it) }
         attachedLabels.forEach { label ->
             LabelChip(
                 label = label,
@@ -327,6 +333,7 @@ internal fun PropertyRow(
                 onRecolour = { onRequest(PillRequest.Recolour(label)) },
             )
         }
+        unset.forEach { pill(it) }
         GhostPill(label = "+ Label", dashed = true, onClick = { onRequest(PillRequest.Label) })
         Spacer(Modifier.width(12.dp))
     }
@@ -455,7 +462,7 @@ private fun LabelChip(label: LabelEntity, onClick: () -> Unit, onRecolour: () ->
             .combinedClickable(onClick = onClick, onLongClick = onRecolour)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
-        YantraIcon(YantraMark.Label, tint = s.dot, contentDescription = null)
+        YantraIcon(YantraMark.Label, size = YantraIcons.Small, tint = s.dot, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label.name, fontSize = YantraType.caption, fontWeight = FontWeight.W600, color = s.text)
     }
@@ -519,8 +526,10 @@ internal fun LabelPickerDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onPick(label) }
-                                .padding(vertical = 10.dp),
+                                // The floor sets the height, not padding on top of it: with the
+                                // delete key's own 48dp inside, 10dp either side made a 68dp row.
+                                .heightIn(min = 48.dp)
+                                .clickable { onPick(label) },
                         ) {
                             Box(
                                 Modifier
@@ -541,7 +550,9 @@ internal fun LabelPickerDialog(
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .clickable { delete(label) }
-                                        .padding(6.dp),
+                                        // 16 + 2 × 16 = 48: a full target of its own, not a
+                                        // 28dp one pressed against the row's.
+                                        .padding(16.dp),
                                 )
                             }
                         }
@@ -721,7 +732,7 @@ private fun GhostPill(label: String, dashed: Boolean, onClick: () -> Unit) {
             drawRoundRect(
                 color = borderColor,
                 style = stroke,
-                cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx()),
+                cornerRadius = CornerRadius(YantraRadius.tiny.toPx(), YantraRadius.tiny.toPx()),
             )
         }
     } else {

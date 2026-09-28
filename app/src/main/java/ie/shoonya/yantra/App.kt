@@ -61,6 +61,9 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Before anything else that could throw, or the first crash of a session is the one crash
+        // with nowhere to be written down.
+        Diagnostics.install(this)
         // First line of every session, so a log somebody sends is anchored to a build. It also
         // proves the channel works: a trace that is stripped or retagged by R8 is worse than none,
         // because it reads as "nothing happened".
@@ -253,23 +256,30 @@ class AppContainer(val app: Application) {
      * not change. A second instance would start with that memory empty and rewrite everything on its
      * first pass — which, since the sync engine used to have its own, is what every sync did.
      */
+    /**
+     * The calendars this device owns, named the way their accounts name them.
+     *
+     * An event row is muted when it came off one of these and accented when it did not, which is
+     * the whole point of writing the calendar onto the line. It has to be compared against
+     * *calendars*, not against the GitHub login this device pushes with: those are different
+     * identities, and comparing a calendar address to a login makes every event on the device look
+     * like somebody else's.
+     *
+     * Cached because it is read once per row and changes about as often as somebody adds an
+     * account. Empty without the calendar permission, which mutes nothing and accents nothing.
+     */
+    private var calendarAccounts: Set<String>? = null
+
+    fun myCalendarAccounts(): Set<String> = calendarAccounts ?: runCatching {
+        ie.shoonya.yantra.data.device.DeviceCalendarSource(app).calendars()
+            .mapTo(HashSet()) { it.account }
+    }.getOrDefault(emptySet()).also { calendarAccounts = it }
+
     private val indexer = Indexer(db)
 
-    val workspaces = Workspaces(
-        db, indexer, device, appScope,
-        onChange = { id, change -> commits[id]?.record(change) },
-        // A refused write is the one thing that must never pass silently. A toast is blunt, but it
-        // is the only surface guaranteed to exist wherever the write was asked for — a widget, the
-        // share sheet, a notification action — and it says the one useful thing: update the app.
-        onRefused = { id, e ->
-            Log.w("Yantra", "Refused a write to ${id.ifEmpty { "Personal" }}: ${e.message}")
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(
-                    app, "Read-only: this workspace needs a newer Yantra", android.widget.Toast.LENGTH_LONG,
-                ).show()
-            }
-        },
-    )
+    val workspaces = Workspaces(db, indexer, device, appScope) { id, change ->
+        commits[id]?.record(change)
+    }
 
     /** One scheduler per workspace: each repo commits on its own rhythm. */
     private val commits = LinkedHashMap<String, CommitScheduler>()
@@ -415,24 +425,6 @@ class AppContainer(val app: Application) {
         // joins itself waits forever, and everything downstream waits with it — the splash screen
         // holds on this job, so the app never got past its own logo.
         sweep()
-
-        // Ink sidecars written before 0.4.0 hold androidx.ink's bytes, which nothing but this app
-        // on this platform could read. Carry them into the format the repository actually owns, once,
-        // here — where the process is already reading every workspace and nothing else is writing.
-        migrateInk()
-    }
-
-    /**
-     * Rewrites first-format ink in every writable workspace. Idempotent, and free once done.
-     * Failures are logged rather than raised: a sketch that would not convert is left as it was.
-     */
-    private suspend fun migrateInk() = withContext(Dispatchers.IO) {
-        workspaces.all.forEach { store ->
-            if (store.isReadOnly) return@forEach
-            runCatching { workspaces.writer(store.id)?.migrateLegacyInk() ?: 0 }
-                .onSuccess { n -> if (n > 0) Log.i("Yantra", "Rewrote $n ink sidecars in ${store.id.ifEmpty { "Personal" }}") }
-                .onFailure { Log.w("Yantra", "Ink migration skipped for ${store.id}", it) }
-        }
     }
 
     /**

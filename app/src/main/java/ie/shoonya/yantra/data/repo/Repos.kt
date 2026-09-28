@@ -14,6 +14,7 @@ import ie.shoonya.yantra.data.db.PropertyValueEntity
 import ie.shoonya.yantra.data.db.SmartListDefEntity
 import ie.shoonya.yantra.data.db.SystemKey
 import ie.shoonya.yantra.data.filter.ApplyOnCreate
+import ie.shoonya.yantra.data.label.LabelCanon
 import ie.shoonya.yantra.data.filter.Filter
 import ie.shoonya.yantra.data.filter.FilterCompiler
 import ie.shoonya.yantra.data.filter.completedVariant
@@ -32,7 +33,9 @@ import ie.shoonya.yantra.data.format.Numbered
 import ie.shoonya.yantra.data.format.Prose
 import ie.shoonya.yantra.data.format.TaskRef
 import ie.shoonya.yantra.data.format.TaskStatus
+import ie.shoonya.yantra.data.workspace.WorkspaceReconciler
 import ie.shoonya.yantra.data.workspace.Workspaces
+import ie.shoonya.yantra.Trace
 import ie.shoonya.yantra.data.sync.Change
 import ie.shoonya.yantra.data.workspace.LabelDef
 import ie.shoonya.yantra.data.workspace.SmartListDef
@@ -42,6 +45,7 @@ import ie.shoonya.yantra.data.time.localDateOf
 import ie.shoonya.yantra.data.time.localMidnight
 import ie.shoonya.yantra.data.label.LabelPalette
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
@@ -251,6 +255,23 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * [Change.STRUCTURAL] for the same reason as the colour: every row drawing this list is drawn
      * from the index, and a glyph that appeared a beat after the tap would read as a missed tap.
      */
+    /**
+     * Whether a list sits at the top of Home.
+     *
+     * Written explicitly either way — `pinned: true` *and* `pinned: false* both go in the file —
+     * because absence is not "no", it is "never asked", and that still means the old rule of every
+     * ungrouped smart list. Unpinning Today has to be recorded as a decision or the next reindex
+     * would put it straight back.
+     *
+     * [Change.STRUCTURAL] like the colour and the glyph: Home is drawn from the index, and a row
+     * that moved a beat after the tap would read as the tap having missed.
+     */
+    suspend fun setPinned(listId: String, pinned: Boolean) {
+        ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
+            it.copy(pinned = pinned)
+        }
+    }
+
     suspend fun setListIcon(listId: String, icon: String?) {
         val cleaned = ie.shoonya.yantra.data.format.ListIcon.clean(icon)
         ws.writerFor(listId).editPage(listId, ie.shoonya.yantra.data.sync.Change.STRUCTURAL) {
@@ -412,8 +433,20 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     suspend fun quickCaptureToInbox(title: String): String =
         create(inboxList(), NodeType.TASK, title)
 
-    suspend fun rename(id: String, title: String?) =
-        ws.writerFor(id).editBlock(id) { renamed(it, title.orEmpty()) }
+    /**
+     * Renames a node — except Today and Inbox, whose names are fixed.
+     *
+     * A top-level list is not a line on anyone's page; it *is* a page, and its name is that page's
+     * title. This only ever edited lines — it looked the node up as a line on its parent's page, and
+     * a list with no parent has no such line — so renaming a list from Home did nothing at all.
+     */
+    suspend fun rename(id: String, title: String?) {
+        val node = dao.byId(id) ?: return
+        if (SystemKey.isProtected(node.systemKey)) return
+        val writer = ws.writerFor(id)
+        if (node.parentId == null) writer.editPage(id) { it.copy(title = title.orEmpty()) }
+        else writer.editBlock(id) { renamed(it, title.orEmpty()) }
+    }
 
     suspend fun setDone(id: String, done: Boolean) = ws.writerFor(id).editTask(id, Change.STRUCTURAL) {
         // Completion supersedes being started: a finished task is not still being worked on, and
@@ -465,7 +498,11 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
     /** Returns the id the block ends up with — converting to a task mints it a real one. */
     suspend fun setType(id: String, type: String): String = ws.writerFor(id).convertBlock(id, type)
 
-    suspend fun delete(id: String) = ws.writerFor(id).removeBlock(id)
+    /** Deletes a node and everything under it — except Today and Inbox, which stay. */
+    suspend fun delete(id: String) {
+        if (SystemKey.isProtected(dao.byId(id)?.systemKey)) return
+        ws.writerFor(id).removeBlock(id)
+    }
 
     suspend fun moveUp(node: NodeEntity) = moveBy(node, -1)
 
@@ -598,8 +635,13 @@ class PropertyRepository(private val db: AppDatabase, private val ws: Workspaces
 class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
     private val dao = db.labelDao()
 
-    fun all() = dao.all()
-    suspend fun allOnce() = dao.allOnce()
+    /** One label per tag name — see [LabelCanon]. What every picker offers. */
+    fun all() = dao.all().map(LabelCanon::distinct)
+
+    /** Every row's id to the label that speaks for its tag. What chips resolve attachments with. */
+    fun byAnyId() = dao.all().map(LabelCanon::byId)
+
+    suspend fun allOnce() = LabelCanon.distinct(dao.allOnce())
     fun forNode(nodeId: String) = dao.forNode(nodeId)
     fun forChildrenOf(parentId: String) = dao.forChildrenOf(parentId)
     fun allNodeLabels() = dao.allNodeLabels()
@@ -612,9 +654,12 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
      */
     suspend fun getOrCreate(name: String, color: Long? = null): LabelEntity {
         val trimmed = name.trim()
-        dao.byName(trimmed)?.let { return it }
+        // Any workspace's row for the name will do, as the one that speaks for it: a tag that
+        // exists anywhere is reused rather than registered again beside itself.
+        LabelCanon.distinct(dao.allOnce()).firstOrNull { LabelCanon.key(it.name) == LabelCanon.key(trimmed) }
+            ?.let { return it }
         val store = ws.primaryStore()
-        val id = "${store.id}:label:${trimmed.lowercase()}"
+        val id = WorkspaceReconciler.idFor(store.id, trimmed)
         ws.primary().upsertLabel(
             LabelDef(id = id, name = trimmed, color = color ?: LabelPalette.defaultFor(trimmed))
         )
@@ -640,8 +685,14 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * Asked before the deletion rather than reported after it: "this is on 7 tasks" is a question
      * somebody can answer, and "that was on 7 tasks" is not.
      */
-    suspend fun usageCount(labelId: String): Int =
-        dao.countUsage(labelId)
+    suspend fun usageCount(labelId: String): Int = dao.countUsage(sameTagIds(labelId))
+
+    /** Every workspace's row id for the tag [labelId] names, [labelId] included. */
+    private suspend fun sameTagIds(labelId: String): List<String> {
+        val rows = dao.allOnce()
+        val name = rows.firstOrNull { it.id == labelId }?.name ?: return listOf(labelId)
+        return rows.filter { LabelCanon.key(it.name) == LabelCanon.key(name) }.map { it.id }
+    }
 
     /**
      * Deletes a label everywhere — the registry, and the tag on every task.
@@ -655,10 +706,40 @@ class LabelRepository(private val db: AppDatabase, private val ws: Workspaces) {
         return ws.all.sumOf { store -> ws.writer(store.id)?.deleteLabel(name) ?: 0 }
     }
 
-    /** Recolour a label. Null clears it back to the neutral chip. */
+    /**
+     * Recolour a label. Null clears it back to the neutral chip.
+     *
+     * **Into the workspace that owns the label, not into whichever one happens to be first.**
+     *
+     * This wrote through `primary()` whatever it was recolouring, so picking a colour for a tag on
+     * a task in another repo put *that repo's* label id into Personal's registry. Rebuilding
+     * Personal then read it as Personal's own definition of that name — and `label`'s primary key
+     * is the id, its insert is REPLACE, and `node_label` cascades from `label`. The real row was
+     * deleted to make room and every attachment of the tag went with it, in a repo that had not
+     * changed and so was not going to be rebuilt. On the phone: tap a swatch, and the tag is off
+     * the task, staying off until the next cold start rebuilds from the files. Nothing was ever
+     * lost — the tag is a word on a line in the page, and the page was never touched — but a chip
+     * that vanishes when you recolour it is indistinguishable from one that was.
+     *
+     * The id names its owner, which is the one part of a label row nobody else's file can rewrite.
+     * A workspace this device has not opened cannot be written to at all, so the colour is refused
+     * out loud rather than redirected somewhere it would do harm.
+     *
+     * **Every workspace that has the tag, each into its own registry.** A tag is one name however
+     * many repos it was typed in, so one colour: recolouring only the row that was tapped left the
+     * same tag in two colours side by side in any view that gathers across workspaces.
+     */
     suspend fun setColor(labelId: String, color: Long?) {
-        val existing = dao.allOnce().firstOrNull { it.id == labelId } ?: return
-        ws.primary().upsertLabel(LabelDef(id = labelId, name = existing.name, color = color))
+        val rows = dao.allOnce()
+        val existing = rows.firstOrNull { it.id == labelId } ?: return
+        rows.filter { LabelCanon.key(it.name) == LabelCanon.key(existing.name) }.forEach { row ->
+            val owner = WorkspaceReconciler.ownerOf(row.id) ?: row.workspaceId
+            val writer = ws.writer(owner) ?: run {
+                Trace.warn("label", "cannot recolour ${Trace.id(row.id)}: its workspace is not open")
+                return@forEach
+            }
+            writer.upsertLabel(LabelDef(id = row.id, name = row.name, color = color))
+        }
     }
 
 }

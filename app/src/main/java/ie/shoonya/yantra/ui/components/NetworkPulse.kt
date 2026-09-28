@@ -1,11 +1,6 @@
 package ie.shoonya.yantra.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,16 +77,11 @@ fun NetworkPulse(modifier: Modifier = Modifier) {
         modifier = modifier,
     ) {
         val y = Yantra.colors
-        // Breathing rather than spinning. A spinner is the shape of something you are waiting for,
-        // and you are not waiting for this — it is work the app took on by itself and you are free
-        // to keep typing through it.
-        val pulse = rememberInfiniteTransition(label = "network")
-        val glow by pulse.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-            label = "glow",
-        )
+        // Still rather than spinning or breathing. A spinner is the shape of something you are
+        // waiting for, and you are not waiting for this — it is work the app took on by itself and
+        // you are free to keep typing through it. A breathing dot was tried and broke the motion law
+        // (§2.2: nothing moves at rest): its arrival and departure already say that something began
+        // and ended, and the label says what.
         Row(
             Modifier
                 .clip(RoundedCornerShape(YantraRadius.block))
@@ -100,12 +89,12 @@ fun NetworkPulse(modifier: Modifier = Modifier) {
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(6.dp).alpha(glow).clip(CircleShape).background(y.accent))
+            Box(Modifier.size(6.dp).clip(CircleShape).background(y.accent))
             Spacer(Modifier.width(6.dp))
             Text(
                 shown.orEmpty(),
                 color = y.textMuted,
-                fontSize = YantraType.dense,
+                fontSize = YantraType.caption,
                 fontWeight = FontWeight.W600,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

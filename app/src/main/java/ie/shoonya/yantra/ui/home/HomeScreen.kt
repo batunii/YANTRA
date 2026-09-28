@@ -26,7 +26,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +100,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import ie.shoonya.yantra.data.db.SystemKey
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import androidx.compose.foundation.combinedClickable
@@ -149,11 +149,31 @@ fun HomeScreen(nav: NavHostController) {
     var deleting by remember { mutableStateOf<NodeEntity?>(null) }
     var movingNode by remember { mutableStateOf<NodeEntity?>(null) }
 
+    // Views — the top of Home, the way a mail app puts its inboxes above its folders. Inbox and
+    // Today first, then every other smart list. A view is somewhere you *look*, not somewhere tasks
+    // live, so it sits above the lists that own them instead of taking a card-sized row in among
+    // them — and it is always there, in the same place, without having to be pinned to get there.
+    //
+    // The local workspace's Inbox when there is one: that is where capture lands. Another repo's
+    // Inbox stays in that repo's section.
+    val inbox = allLists.firstOrNull { it.systemKey == SystemKey.INBOX && it.workspaceId == "" }
+        ?: allLists.firstOrNull { it.systemKey == SystemKey.INBOX }
+    val today = allLists.firstOrNull { it.systemKey == SystemKey.TODAY }
+    val views = listOfNotNull(inbox, today) +
+        allLists.filter { it.type == NodeType.SMART_LIST && it.id != today?.id }
+    val viewIds = views.mapTo(HashSet()) { it.id }
+
     val groups = nodes.filter { it.type == NodeType.GROUP }
-    val ungrouped = allLists.filter { it.parentId == null }
-    val ungroupedSmart = ungrouped.filter { it.type == NodeType.SMART_LIST }
+    val ungrouped = allLists.filter { it.parentId == null && it.id !in viewIds }
+    // Pinned is a choice now, not a type. It was "every ungrouped smart list", which meant the
+    // section held exactly the two lists the app scaffolds and nothing you put there — and the one
+    // thing you could not do to a pinned list was unpin it. A pinned list keeps its place in its
+    // repository: pinning moves a list to the top, it does not put a copy there.
+    val pinned = allLists.filter { it.pinned && it.id !in viewIds }
     val ungroupedLists = ungrouped.filter { it.type == NodeType.LIST }
-    val byGroup = allLists.filter { it.parentId != null }.groupBy { it.parentId!! }
+    // Pinned excluded here too, for the same reason it is excluded from the repository sections:
+    // a pinned list is at the top, and showing it again inside its group is the same list twice.
+    val byGroup = allLists.filter { it.parentId != null && !it.pinned && it.id !in viewIds }.groupBy { it.parentId!! }
     val allRegularLists = allLists.filter { it.type == NodeType.LIST }
     val y = Yantra.colors
 
@@ -188,7 +208,7 @@ fun HomeScreen(nav: NavHostController) {
         }
     }
 
-    val renderRow: @Composable (NodeEntity, Boolean) -> Unit = { node, closesRun ->
+    val renderRow: @Composable (NodeEntity) -> Unit = { node ->
         val smart = node.type == NodeType.SMART_LIST
         val c = counts[node.id]
         HomeRow(
@@ -201,12 +221,13 @@ fun HomeScreen(nav: NavHostController) {
             fraction = if (c == null || c.total == 0) 0f else c.doneCount.toFloat() / c.total,
             showCompass = (c?.total ?: 0) > 0,
             grouped = node.parentId != null,
+            pinned = node.pinned,
             onClick = { nav.navigate(if (smart) Routes.smart(node.id) else Routes.node(node.id)) },
+            onTogglePin = { vm.setPinned(node.id, !node.pinned) },
             onRename = { renaming = node },
             onDelete = { deleting = node },
             onMove = { movingNode = node },
             onColour = { colouring = node },
-            closesRun = closesRun,
         )
     }
 
@@ -260,7 +281,41 @@ fun HomeScreen(nav: NavHostController) {
                     )
                 }
 
+                // The session used to be reported twice on this screen — a card up here and,
+                // now, the bar at the bottom. One running task, one treatment: the card goes, and
+                // what it alone could show (a commitment's countdown and how much of it is spent)
+                // stays on the focus screen, one tap away through the bar.
+
+                // The app has an empty state, with its own mark and an action, and until now used it
+                // on one screen out of five — not this one, which is the first screen anyone sees.
+                if (views.isNotEmpty()) {
+                    items(views, key = { "view-" + it.id }) { node ->
+                        val c = counts[node.id]
+                        ViewRow(
+                            node = node,
+                            // Open work, the one number a view is looked at for. Nothing when
+                            // there is none: an empty view says so by having no badge.
+                            open = c?.let { (it.total - it.doneCount).coerceAtLeast(0) } ?: 0,
+                            onClick = {
+                                nav.navigate(
+                                    if (node.type == NodeType.SMART_LIST) Routes.smart(node.id)
+                                    else Routes.node(node.id)
+                                )
+                            },
+                            onColour = { colouring = node },
+                            // Today and Inbox are fixed: never renamed, never deleted — see SystemKey.
+                            onRename = if (SystemKey.isProtected(node.systemKey)) null else ({ renaming = node }),
+                            onDelete = if (SystemKey.isProtected(node.systemKey)) null else ({ deleting = node }),
+                        )
+                    }
+                }
                 // NEXT — HOME_UI.md §6. Above PINNED, today only, gone when there is nothing left.
+                //
+                // **Under the views, not over them.** It sat between the greeting and Inbox, and the
+                // views have no header of their own — so Inbox and Today read as more rows of NEXT,
+                // and every time an event came up they moved down a row to make room for it. The
+                // views are the fixed part of Home and hold the top; the contextual part comes after
+                // them, where its own header is what separates the two.
                 //
                 // This gives Home the symmetry it lacked: NEXT at the top is what is coming, the
                 // now player at the bottom is what you are on. Both contextual, both vanish empty.
@@ -274,19 +329,16 @@ fun HomeScreen(nav: NavHostController) {
                             // the one you are *in* should win. The row stays, because what is
                             // coming is exactly what you need while overrunning.
                             accented = live == null,
-                            onClick = { nav.navigate(Routes.node(event.event.nodeId)) },
+                            // The task, not the sitting — see EventWithTitle.displayTarget.
+                            // A sitting has no page worth opening, and this opened one:
+                            // a header reading "Untitled" for the thing the row above it
+                            // had just named correctly.
+                            onClick = { nav.navigate(Routes.node(event.displayTarget)) },
                         )
                     }
                 }
 
-                // The session used to be reported twice on this screen — a card up here and,
-                // now, the bar at the bottom. One running task, one treatment: the card goes, and
-                // what it alone could show (a commitment's countdown and how much of it is spent)
-                // stays on the focus screen, one tap away through the bar.
-
-                // The app has an empty state, with its own mark and an action, and until now used it
-                // on one screen out of five — not this one, which is the first screen anyone sees.
-                if (ungroupedSmart.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty()) {
+                if (pinned.isEmpty() && ungroupedLists.isEmpty() && groups.isEmpty() && views.isEmpty()) {
                     item(key = "empty") {
                         ComposedEmpty(
                             "Nothing here yet",
@@ -295,10 +347,10 @@ fun HomeScreen(nav: NavHostController) {
                         )
                     }
                 }
-                if (ungroupedSmart.isNotEmpty()) {
+                if (pinned.isNotEmpty()) {
                     item(key = "smart-header") { SectionHeader("Pinned") }
-                    items(ungroupedSmart, key = { it.id }) { node ->
-                        renderRow(node, node.id == ungroupedSmart.last().id)
+                    items(pinned, key = { "pinned-" + it.id }) { node ->
+                        renderRow(node)
                     }
                 }
                 // Lists under the repository they belong to, and groups nested inside it.
@@ -326,8 +378,30 @@ fun HomeScreen(nav: NavHostController) {
                     // place was thrown away on the way to the screen. A group is a sibling of a
                     // top-level list: `topLevel()` already returns both in rank order, and the only
                     // thing that had to change is not taking them apart again.
+                    // Smart lists are in here now, which they were not before.
+                    //
+                    // They used to live only under Pinned, and Pinned used to be "every ungrouped
+                    // smart list" — so the two were the same set and nothing was lost. Now that
+                    // pinning is a choice, an unpinned smart list needs somewhere to be or the act
+                    // of unpinning would delete it from the screen. It sits under the repository it
+                    // was made in, which is the one its `workspace_id` names.
+                    //
+                    // The old note here said a smart list has no repository to sit under, because
+                    // its rule may span all of them. True of what it *matches*, and not of where it
+                    // *is*: the page is a file in one repo, it syncs with that repo, and it goes
+                    // when that repo is forgotten. Pinned stays ungrouped on top, which is the part
+                    // of that argument that was about the reach of a rule.
+                    // **Pinned lists are not repeated here.** They were, briefly, on the reasoning
+                    // that a pinned message is still in its thread — so Today and High Priority
+                    // appeared under PINNED and again under PERSONAL, two rows apart, identical
+                    // down to the count. On a screen this short that does not read as "also filed
+                    // here", it reads as the app showing you the same list twice. Pinning moves a
+                    // list to the top; it does not clone it.
                     val entries = nodes.filter {
-                        (it.type == NodeType.LIST || it.type == NodeType.GROUP) &&
+                        (it.type == NodeType.LIST || it.type == NodeType.GROUP ||
+                            it.type == NodeType.SMART_LIST) &&
+                            !it.pinned &&
+                            it.id !in viewIds &&
                             (id == null || it.workspaceId == id)
                     }
                     if (entries.isEmpty()) return@forEach
@@ -340,15 +414,10 @@ fun HomeScreen(nav: NavHostController) {
                                 ?.let { Color(LabelPalette.display(it.light, y.isDark)) },
                         )
                     }
-                    entries.forEachIndexed { i, node ->
+                    entries.forEach { node ->
                         if (node.type != NodeType.GROUP) {
-                            // A loose row closes its run when a group — or the end of the
-                            // repository — comes next.
-                            val next = entries.getOrNull(i + 1)
-                            item(key = node.id) {
-                                renderRow(node, next == null || next.type == NodeType.GROUP)
-                            }
-                            return@forEachIndexed
+                            item(key = node.id) { renderRow(node) }
+                            return@forEach
                         }
                         item(key = "g-${node.id}") {
                             GroupBanner(
@@ -363,7 +432,7 @@ fun HomeScreen(nav: NavHostController) {
                         if (!node.collapsed) {
                             val kids = byGroup[node.id].orEmpty()
                             items(kids, key = { it.id }) { kid ->
-                                renderRow(kid, kid.id == kids.last().id)
+                                renderRow(kid)
                             }
                         }
                     }
@@ -678,13 +747,19 @@ private fun NextRow(
             Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // A clock, not the calendar: this row is a time, and the calendar mark is Today's. Two
+            // accented calendars a row apart read as one thing listed twice.
             Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                YantraIcon(YantraMark.Calendar, tint = ink)
+                YantraIcon(YantraMark.Clock, tint = ink)
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    event.title.orEmpty().ifBlank { "Untitled" },
+                    // A sitting borrows its task's words — see EventWithTitle.displayTitle. This
+                    // row read the event's own title, and a sitting has none, so the one place on
+                    // Home that says what you are next expected at said "Untitled" for a task that
+                    // was perfectly well named.
+                    event.displayTitle.orEmpty().ifBlank { "Untitled" },
                     fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
                     color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -705,7 +780,6 @@ private fun NextRow(
                 )
             }
         }
-        HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 
@@ -797,6 +871,76 @@ private fun SectionHeader(text: String, ink: Color? = null) {
     )
 }
 
+/**
+ * A view at the top of Home: one line, its mark, its name, and how much is open in it.
+ *
+ * Deliberately lighter than a list row. A list row carries "4 of 11 done" because a list is where
+ * the work lives and its progress is the point; a view is a way of looking at work that lives
+ * elsewhere, and what you want from it before opening it is only whether there is anything there.
+ */
+@Composable
+private fun ViewRow(
+    node: NodeEntity,
+    open: Int,
+    onClick: () -> Unit,
+    onColour: () -> Unit,
+    /** Both null for Today and Inbox, which cannot be renamed or deleted. */
+    onRename: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val y = Yantra.colors
+    val mark = when (node.systemKey) {
+        SystemKey.INBOX -> YantraMark.List
+        SystemKey.TODAY -> YantraMark.Calendar
+        else -> YantraMark.SmartList
+    }
+    val tint = node.color?.let { LabelPalette.byName(it) }
+        ?.let { Color(LabelPalette.display(it.light, y.isDark)) }
+        ?: y.accent
+    Column {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(YantraRadius.control))
+            .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+            .padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        YantraIcon(mark, tint = tint, contentDescription = null, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(
+            node.title.orEmpty().ifBlank { "Untitled" },
+            fontFamily = YantraDisplay, fontSize = YantraType.row, fontWeight = FontWeight.W500,
+            color = y.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (open > 0) {
+            Box(
+                Modifier
+                    .clip(CircleShape)
+                    .background(y.tileWarm)
+                    .padding(horizontal = 9.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("$open", fontFamily = YantraMono, fontSize = YantraType.caption, color = y.textMuted)
+            }
+        }
+        Box {
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (onRename != null) {
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+                }
+                DropdownMenuItem(text = { Text("Colour…") }, onClick = { menu = false; onColour() })
+                if (onDelete != null) {
+                    DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
+                }
+            }
+        }
+    }
+    }
+}
+
 @Composable
 private fun HomeRow(
     node: NodeEntity,
@@ -805,21 +949,14 @@ private fun HomeRow(
     fraction: Float,
     showCompass: Boolean,
     grouped: Boolean,
+    /** Whether this list currently sits at the top of Home, so the menu can offer the other one. */
+    pinned: Boolean,
     onClick: () -> Unit,
+    onTogglePin: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onMove: () -> Unit,
     onColour: () -> Unit,
-    /**
-     * Whether to close the run with a hairline.
-     *
-     * **A line ends a run; it does not separate two rows inside one.** Every row used to carry one,
-     * which drew four rules through a four-row screen and read as padding — and it was saying what
-     * the heading above already said, since a heading and the space under it is what groups these
-     * rows in the first place. Now the only rule is the one under the last row before the next
-     * heading, which is a boundary and therefore worth a mark.
-     */
-    closesRun: Boolean = true,
 ) {
     var menu by remember { mutableStateOf(false) }
     val y = Yantra.colors
@@ -888,6 +1025,10 @@ private fun HomeRow(
             // but no ring while its neighbours carried both.
             Box {
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (pinned) "Unpin from top" else "Pin to top") },
+                        onClick = { menu = false; onTogglePin() },
+                    )
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(
                         text = { Text("Icon & colour…") },
@@ -901,7 +1042,6 @@ private fun HomeRow(
                 }
             }
         }
-        if (closesRun) HorizontalDivider(color = y.hairline, thickness = 1.dp)
     }
 }
 

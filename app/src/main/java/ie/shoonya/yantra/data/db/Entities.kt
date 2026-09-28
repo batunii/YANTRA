@@ -51,6 +51,20 @@ object SystemKey {
      * lookup miss and quietly created a second one beside it.
      */
     const val INBOX = "inbox"
+
+    /**
+     * The two views everything else leans on, which nobody can delete or rename.
+     *
+     * Quick-add, the widgets and every capture without a list land in Inbox; Today is what the app
+     * opens on and what the Today widget draws. Both used to be deletable like any list, and deleting
+     * either left the app quietly making a new one the next time it needed it — a copy with none of
+     * the old one's tasks or rules, which reads as the app losing your work.
+     *
+     * Nor renamed. The key is what the code finds them by, but the name is what people find them by
+     * — on Home, in the widgets, in "lands in Inbox" — and an Inbox called something else is one
+     * nobody on a shared workspace recognises as the place their captures went.
+     */
+    fun isProtected(key: String?): Boolean = key == TODAY || key == INBOX
 }
 
 @Entity(
@@ -134,6 +148,13 @@ data class NodeEntity(
     @ColumnInfo(name = "canvas_w") val canvasW: Double? = null,
     @ColumnInfo(name = "canvas_h") val canvasH: Double? = null,
     @ColumnInfo(name = "system_key") val systemKey: String? = null,  // see [SystemKey]
+    /**
+     * Sits at the top of Home, above the repositories.
+     *
+     * Resolved rather than stored raw: a page that has never said anything about pinning falls back
+     * to the rule the section used to be — an ungrouped smart list. See [ie.shoonya.yantra.data.format.PageDoc.pinned].
+     */
+    @ColumnInfo(name = "pinned", defaultValue = "0") val pinned: Boolean = false,
     /**
      * The meeting in somebody else's calendar this line is about — CALENDAR_PLAN.md §22.
      *
@@ -422,6 +443,14 @@ data class EventEntity(
      */
     @ColumnInfo(name = "ext_uid") val extUid: String? = null,
     @ColumnInfo(name = "ext_start") val extStart: String? = null,
+    /**
+     * Whose calendar this meeting came off — see [ie.shoonya.yantra.data.format.EventRef.author].
+     *
+     * Indexed rather than only written to the file, because the row is what a list draws from and
+     * the attribution has to be visible there: two people who each tapped the same meeting have two
+     * entries, and without this they are indistinguishable.
+     */
+    @ColumnInfo(name = "author") val author: String? = null,
     @ColumnInfo(name = "series_id") val seriesId: String? = null,
     @ColumnInfo(name = "series_original") val seriesOriginal: String? = null,
     val cancelled: Boolean = false,

@@ -1,5 +1,6 @@
 package ie.shoonya.yantra.ui.smart
 
+import ie.shoonya.yantra.data.label.LabelCanon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +71,14 @@ import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.components.YantraButton
+import ie.shoonya.yantra.ui.components.ButtonTone
+import ie.shoonya.yantra.ui.components.chipStyleFor
+import ie.shoonya.yantra.ui.components.labelChipFor
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 
 private enum class ShowMode(val label: String) {
     OPEN("Open"),
@@ -195,7 +204,9 @@ fun SmartListBuilderSheet(
     var pickingLabelsForIndex by remember { mutableStateOf<Int?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val defsById = defs.associateBy { it.id }
-    val labelsById = labels.associateBy { it.id }
+    // A saved rule may name another workspace's row for a tag the picker lists once, under the id
+    // of the row that speaks for it — so a remembered id is matched by the tag it spells.
+    fun labelFor(id: String) = labels.firstOrNull { LabelCanon.sameTag(it.id, id) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = y.cardBg) {
         Column(
@@ -281,7 +292,7 @@ fun SmartListBuilderSheet(
                 conds.forEachIndexed { i, c ->
                     if (c.isLabelCond) {
                         LabelConditionCard(
-                            labelNames = c.labelIds.mapNotNull { labelsById[it]?.name },
+                            labels = c.labelIds.mapNotNull { labelFor(it) }.distinctBy { it.name },
                             match = c.labelMatch,
                             onEdit = { pickingLabelsForIndex = i },
                             onModeChange = { mode -> conds[i] = c.copy(labelMatch = mode) },
@@ -299,7 +310,7 @@ fun SmartListBuilderSheet(
                     }
                 }
                 Box {
-                    GhostButton("+ Add condition") { addMenu = true }
+                    YantraButton(label = "Add condition", onClick = { addMenu = true }, tone = ButtonTone.Quiet, mark = YantraMark.Add)
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                         if (defs.isEmpty()) {
                             DropdownMenuItem(text = { Text("No properties yet") }, enabled = false, onClick = {})
@@ -328,12 +339,12 @@ fun SmartListBuilderSheet(
                     Text(
                         "This view also uses a rule that can't be edited here — it is kept as it " +
                             "is. Choosing a starting point above replaces it.",
-                        fontSize = YantraType.section, color = y.textDim,
+                        fontSize = YantraType.section, color = y.textMuted,
                     )
                 } else if (conds.isEmpty()) {
                     Text(
                         "No conditions — this list will show every ${if (show == ShowMode.DONE) "completed" else "open"} task.",
-                        fontSize = YantraType.section, color = y.textDim,
+                        fontSize = YantraType.section, color = y.textMuted,
                     )
                 }
             }
@@ -355,30 +366,19 @@ fun SmartListBuilderSheet(
                             }
                         }
                     }
-                    Text("Quick-add here auto-tags new tasks to match this view.", fontSize = YantraType.caption, color = y.textDim)
+                    Text("Quick-add here auto-tags new tasks to match this view.", fontSize = YantraType.section, color = y.textMuted)
                 }
             }
 
             // Create
             val valid = name.isNotBlank()
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(if (valid) y.accentFill else y.neutralChipBg, RoundedCornerShape(YantraRadius.card))
-                    .then(if (valid) Modifier.border(1.dp, y.accentBorder, RoundedCornerShape(YantraRadius.card)) else Modifier)
-                    .clickable(enabled = valid) {
-                        onCreate(name.trim(), buildFilter(show, conds, extras, reach), buildSort(conds), homeId)
-                    }
-                    .padding(vertical = 15.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    if (editing != null) "Save changes" else "Create smart list",
-                    fontWeight = FontWeight.W800,
-                    fontSize = YantraType.row,
-                    color = if (valid) y.accentText else y.textDim,
-                )
-            }
+            YantraButton(
+                label = if (editing != null) "Save changes" else "Create smart list",
+                onClick = { onCreate(name.trim(), buildFilter(show, conds, extras, reach), buildSort(conds), homeId) },
+                modifier = Modifier.fillMaxWidth(),
+                tone = ButtonTone.Soft,
+                enabled = valid,
+            )
         }
     }
 
@@ -387,7 +387,7 @@ fun SmartListBuilderSheet(
         if (current != null) {
             LabelChecklistDialog(
                 allLabels = labels,
-                initiallyChecked = current.labelIds.toSet(),
+                initiallyChecked = current.labelIds.map { labelFor(it)?.id ?: it }.toSet(),
                 onCreateLabel = onCreateLabel,
                 onDismiss = {
                     // A freshly-added card that's cancelled before picking anything is just noise.
@@ -514,7 +514,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
         Modifier
             .fillMaxWidth()
             .background(y.tileWarm2, RoundedCornerShape(YantraRadius.card))
-            .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 14.dp, end = 0.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -568,7 +568,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
                 }
             }
         }
-        Box(Modifier.size(28.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
+        Box(Modifier.offset(y = (-10).dp).size(48.dp).clip(CircleShape).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
             YantraIcon(YantraMark.Close, tint = y.textDim, contentDescription = "Remove condition")
         }
     }
@@ -581,7 +581,7 @@ private fun ConditionRow(def: PropertyDefEntity, cond: Cond, onChange: (Cond) ->
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LabelConditionCard(
-    labelNames: List<String>,
+    labels: List<LabelEntity>,
     match: LabelMatchMode,
     onEdit: () -> Unit,
     onModeChange: (LabelMatchMode) -> Unit,
@@ -592,37 +592,39 @@ private fun LabelConditionCard(
         Modifier
             .fillMaxWidth()
             .background(y.tileWarm2, RoundedCornerShape(YantraRadius.card))
-            .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 14.dp, end = 0.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f).clickable(onClick = onEdit), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Labels", fontWeight = FontWeight.W700, fontSize = YantraType.body, color = y.textPrimary)
-            if (labelNames.isEmpty()) {
+            if (labels.isEmpty()) {
                 Text("Tap to choose labels…", fontSize = YantraType.section, color = y.textDim)
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (labelNames.size > 1) {
+                    if (labels.size > 1) {
                         SelectChip("Any", match == LabelMatchMode.ANY, size = ChipSize.Small) { onModeChange(LabelMatchMode.ANY) }
                         SelectChip("All", match == LabelMatchMode.ALL, size = ChipSize.Small) { onModeChange(LabelMatchMode.ALL) }
                     }
-                    labelNames.forEach { name -> LabelNameChip(name) }
+                    labels.forEach { label -> LabelNameChip(label) }
                 }
             }
         }
-        Box(Modifier.size(28.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
+        Box(Modifier.offset(y = (-10).dp).size(48.dp).clip(CircleShape).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
             YantraIcon(YantraMark.Close, tint = y.textDim, contentDescription = "Remove condition")
         }
     }
 }
 
 
+/** The same #name in the same hue it wears on a task — the rule that selects a tag should not
+ * be the one place it turns grey. Resolved through the one chip resolver, never picked here. */
 @Composable
-private fun LabelNameChip(name: String) {
-    val y = Yantra.colors
+private fun LabelNameChip(label: LabelEntity) {
+    val s = chipStyleFor(labelChipFor(label))
     Box(
-        Modifier.background(y.cardBg, RoundedCornerShape(YantraRadius.block)).padding(horizontal = 9.dp, vertical = 5.dp),
+        Modifier.background(s.bg, RoundedCornerShape(YantraRadius.block)).padding(horizontal = 9.dp, vertical = 5.dp),
     ) {
-        Text(name, fontSize = YantraType.section, fontWeight = FontWeight.W600, color = y.textSecondary)
+        Text("#${label.name}", fontSize = YantraType.section, fontWeight = FontWeight.W600, color = s.text)
     }
 }
 
@@ -668,6 +670,8 @@ private fun LabelChecklistDialog(
                                 onCheckedChange = { toggle(label.id) },
                             )
                             Spacer(Modifier.width(4.dp))
+                            Box(Modifier.size(10.dp).background(chipStyleFor(label.color?.let { Color(it) }).dot, CircleShape))
+                            Spacer(Modifier.width(10.dp))
                             Text(label.name, color = y.textPrimary)
                         }
                     }
@@ -706,7 +710,7 @@ private fun LabelChecklistDialog(
 
 @Composable
 private fun MaterialThemeTitle() = TextStyle(
-    fontFamily = YantraDisplay, fontWeight = FontWeight.W700, fontSize = YantraType.title, letterSpacing = (-0.3).sp,
+    fontFamily = YantraDisplay, fontWeight = FontWeight.W700, fontSize = YantraType.sheetTitle, letterSpacing = (-0.3).sp,
 )
 
 @Composable
@@ -749,22 +753,6 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) =
         // then edited underneath; the shared chip's coral alone reads as decoration here.
         mark = if (selected) YantraMark.Check else null,
     )
-
-@Composable
-private fun GhostButton(label: String, onClick: () -> Unit) {
-    val y = Yantra.colors
-    val shape = RoundedCornerShape(YantraRadius.control)
-    Row(
-        Modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        YantraIcon(YantraMark.Add, tint = y.accent, contentDescription = null)
-        Spacer(Modifier.width(6.dp))
-        Text(label.removePrefix("+ "), fontSize = YantraType.label, fontWeight = FontWeight.W700, color = y.accentText)
-    }
-}
 
 @Composable
 private fun Field(value: String, onValue: (String) -> Unit, placeholder: String, y: YantraColors) {

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +37,7 @@ import ie.shoonya.yantra.data.sync.GitHubAuth
 import ie.shoonya.yantra.data.sync.RepoCheck
 import ie.shoonya.yantra.data.sync.RepoRef
 import ie.shoonya.yantra.ui.appContainer
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
 import ie.shoonya.yantra.ui.components.NavCircle
 import ie.shoonya.yantra.ui.components.rememberHeaderFold
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -121,8 +124,12 @@ fun AddWorkspaceScreen(nav: NavHostController) {
             Modifier
                 .fillMaxWidth()
                 .nestedScroll(fold.connection)
+                // The keyboard inset on the viewport and the nav-bar inset inside the scroll, for the
+                // reason SignInScreen gives: three fields sit above the one button that uses them.
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(horizontal = PAGE_MARGIN)
                 .padding(top = 8.dp, bottom = 40.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -158,15 +165,15 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                     Text(
                         resolved?.let { "Will use ${it.slug}" }
                             ?: "No repository in that — paste its address, or type owner/name",
-                        color = if (resolved != null) y.textSecondary else y.textDim,
-                        fontSize = YantraType.section,
+                        color = if (resolved != null) y.textSecondary else y.textMuted,
+                        fontSize = YantraType.meta,
                     )
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "Tasks are kept on a branch called yantra-tasks. Your code is never downloaded "
                         + "and never changed — the two never share a commit.",
-                    color = y.textDim,
+                    color = y.textMuted,
                     fontSize = YantraType.caption,
                 )
             } else {
@@ -186,7 +193,7 @@ fun AddWorkspaceScreen(nav: NavHostController) {
                                 "existing repo."
                         else -> "Made private, here. Invite people to it once it exists."
                     },
-                    color = y.textDim,
+                    color = y.textMuted,
                     fontSize = YantraType.caption,
                 )
             }

@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.workspace
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.sync.withLock
 import ie.shoonya.yantra.data.db.AppDatabase
 
 /**
@@ -27,7 +28,18 @@ class Indexer(private val db: AppDatabase) {
      * per table, every flow in the app woke up. The drawing previews on a page re-decoded every
      * stroke on it because someone renamed a task.
      */
-    private val last = HashMap<String, WorkspaceIndex>()
+    private val last = java.util.concurrent.ConcurrentHashMap<String, WorkspaceIndex>()
+
+    /**
+     * One rebuild at a time, across every caller.
+     *
+     * Writers rebuild under their own lock and sync rebuilds under the engine's, so nothing else
+     * kept two of them apart — and with writes now on IO threads they genuinely overlap. [mapped]
+     * and the reconciler's page cache are plain maps mutated outside the Room transaction, and
+     * [last] is read and written around it; two passes interleaving could leave either describing
+     * rows the other wrote.
+     */
+    private val lock = kotlinx.coroutines.sync.Mutex()
 
     /**
      * Removes every row a workspace owns.
@@ -42,7 +54,7 @@ class Indexer(private val db: AppDatabase) {
      * foreign key on `node.parent_id` refuses. [reindexAll] cannot do this job: it rebuilds the
      * workspaces that are *open*, and the whole point here is one that is not.
      */
-    suspend fun purge(workspaceId: String) {
+    suspend fun purge(workspaceId: String) = lock.withLock {
         last.remove(workspaceId)
         db.labelDao().clearNodeLabels(workspaceId)
         db.labelDao().clearLabels(workspaceId)
@@ -54,23 +66,25 @@ class Indexer(private val db: AppDatabase) {
     }
 
     /** Per workspace, the mapping of each page — reused while the page's file is untouched. */
-    private val mapped = HashMap<String, MutableMap<String, Pair<
+    private val mapped = java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, Pair<
         ie.shoonya.yantra.data.format.PageDoc, MappedPage>>>()
 
     /** Reads every file and rebuilds the whole index. Returns whatever could not be resolved. */
     suspend fun rebuild(
         store: WorkspaceStore,
         now: Long = System.currentTimeMillis(),
-    ): List<String> {
+    ): List<String> = lock.withLock {
         val index = WorkspaceReconciler.read(
             store, now,
             mapCache = mapped.getOrPut(store.id) { HashMap() },
         )
-        apply(index, store.id)
-        return index.problems
+        write(index, store.id)
+        index.problems
     }
 
-    suspend fun apply(index: WorkspaceIndex, workspaceId: String) = db.withTransaction {
+    suspend fun apply(index: WorkspaceIndex, workspaceId: String) = lock.withLock { write(index, workspaceId) }
+
+    private suspend fun write(index: WorkspaceIndex, workspaceId: String) = db.withTransaction {
         val nodes = db.nodeDao()
         val props = db.propertyDao()
         val labels = db.labelDao()
@@ -92,6 +106,13 @@ class Indexer(private val db: AppDatabase) {
         // writing them. A single indexed count is a cheap price for an optimisation that cannot
         // silently produce an empty index.
         val was = last[workspaceId]?.takeIf { it.nodes.size == nodes.countNodes(workspaceId) }
+        // With a trusted memory, write only the rows that changed. The wholesale path below is for
+        // the first rebuild of a workspace, when there is nothing to compare against.
+        if (was != null) {
+            applyChanges(was, index, workspaceId)
+            last[workspaceId] = index
+            return@withTransaction
+        }
         val nodesChanged = was?.nodes != index.nodes
         val valuesChanged = was?.values != index.values
         val labelsChanged = was?.labels != index.labels
@@ -128,8 +149,21 @@ class Indexer(private val db: AppDatabase) {
         // node is emptied beneath them, which SQLite rejects the moment it happens — unless the
         // constraint is deferred to the end of the transaction, by which point the same node ids are
         // back and it holds again.
+        //
+        // **Every** table with a foreign key onto `node` belongs in this list, not only the ones
+        // that cascade. `smart_list_def` was missing from it, and it is the one dependent an
+        // ordinary day leaves alone: you edit tasks, so nodes, values, ink and focus all move,
+        // while the smart lists themselves sit still. With every other dependent rewritten this
+        // expression came out `false`, no deferral was asked for, and `clearNodes()` then deleted
+        // rows that `smart_list_def` still pointed at — FOREIGN KEY constraint failed (787), raised
+        // inside the transaction, which loses the whole rebuild and with it the sync that asked for
+        // one. The rule is the edge, not the table: a key onto `node` with no `ON DELETE` action is
+        // precisely the kind that refuses rather than cascades, so it must either be rewritten in
+        // the same pass or have its check deferred. Guarded by
+        // [ie.shoonya.yantra.ReindexSurvivesUnchangedSmartListsTest].
         val leavingDependents = nodesChanged &&
-            !(valuesChanged && linksChanged && inkChanged && focusChanged && eventsChanged)
+            !(valuesChanged && linksChanged && inkChanged && focusChanged && eventsChanged &&
+                smartChanged)
         if (leavingDependents) {
             db.openHelper.writableDatabase.execSQL("PRAGMA defer_foreign_keys = TRUE")
         }
@@ -161,6 +195,123 @@ class Indexer(private val db: AppDatabase) {
         if (focusChanged) db.focusDao().insertAll(index.focus)
 
         last[workspaceId] = index
+    }
+
+    /**
+     * Brings a workspace's rows from [was] to [index] by touching only the rows that differ.
+     *
+     * **Why not clear and refill.** The wholesale path deletes every node in the workspace and
+     * inserts them again whenever any node changed — and a keystroke changes a title, so every
+     * keystroke did it. `node_label` and `event` cascade from `node`, so they had to be rewritten
+     * too; and every property value on the edited page carries the page's modified time, so a page
+     * with any dated or prioritised task rewrote `property_value` as well. Four whole tables per
+     * keystroke, each of which wakes every flow that watches it.
+     *
+     * Here a renamed task is one UPDATE (plus the page's other rows, which share its modified time),
+     * and the tables whose rows did not change are not written at all, so their observers stay
+     * asleep. The small tables — labels, definitions, smart lists, ink, focus — keep the wholesale
+     * treatment: they change rarely, and label rows are what `node_label` cascades from a second way.
+     *
+     * Order is what the constraints ask for:
+     *  - Foreign-key *checks* are deferred to the end of the transaction, so a removed node and the
+     *    rows pointing at it can leave in any order, and a moved child can be written before or
+     *    after its new parent.
+     *  - Cascades are not deferred — they fire at the delete — so rows that leave go before the
+     *    nodes they belong to, and nothing that stays is ever deleted.
+     *  - Removed nodes go before changed ones are written, and a node whose `system_key` changes is
+     *    first written without one: `(workspace_id, system_key)` is unique, and an Inbox that moved
+     *    to a new id would otherwise collide with the row it is replacing — which an upsert takes as
+     *    "exists, update it" and then fails.
+     */
+    private suspend fun applyChanges(was: WorkspaceIndex, index: WorkspaceIndex, workspaceId: String) {
+        val nodes = db.nodeDao()
+        val props = db.propertyDao()
+        val labels = db.labelDao()
+        val events = db.eventDao()
+        db.openHelper.writableDatabase.execSQL("PRAGMA defer_foreign_keys = TRUE")
+
+        val labelsChanged = was.labels != index.labels
+        val defsChanged = was.defs != index.defs
+        val smartChanged = was.smartLists != index.smartLists
+        val inkChanged = !sameInk(was.ink, index.ink)
+        val focusChanged = was.focus != index.focus
+
+        // Equal lists first: most rebuilds leave most tables exactly as they were, and a list
+        // comparison is far cheaper than keying every row to find that nothing moved.
+        val nodesSame = was.nodes == index.nodes
+        val wasNodes = if (nodesSame) emptyMap() else was.nodes.associateBy { it.id }
+        val nowNodes = if (nodesSame) emptyList() else inParentOrder(index)
+        val nowIds = nowNodes.mapTo(HashSet()) { it.id }
+        val changedNodes = nowNodes.filter { wasNodes[it.id] != it }
+        val removedNodes = if (nodesSame) emptyList() else was.nodes.filter { it.id !in nowIds }
+
+        // A value's `updatedAt` is the page's modified time and nothing reads it; comparing it
+        // would rewrite every value on a page whenever any line on that page changed.
+        val values = if (was.values == index.values) RowDiff.none()
+        else rowDiff(was.values, index.values, { it.nodeId to it.defId }) { a, b ->
+            a == b.copy(updatedAt = a.updatedAt)
+        }
+        val links = if (was.nodeLabels == index.nodeLabels) RowDiff.none()
+        else rowDiff(was.nodeLabels, index.nodeLabels, { it.nodeId to it.labelId })
+        val eventRows = if (was.events == index.events) RowDiff.none()
+        else rowDiff(was.events, index.events, { it.nodeId })
+
+        // Leaving, dependents first.
+        if (labelsChanged) labels.clearNodeLabels(workspaceId)
+        else if (links.removed.isNotEmpty()) labels.detachAll(links.removed)
+        if (labelsChanged) labels.clearLabels(workspaceId)
+        if (values.removed.isNotEmpty()) props.deleteValues(values.removed)
+        if (eventRows.removed.isNotEmpty()) events.deleteAll(eventRows.removed)
+        if (smartChanged) db.smartListDao().clearSmartLists(workspaceId)
+        if (inkChanged) db.inkDao().clearStrokes(workspaceId)
+        if (focusChanged) db.focusDao().clearSessions(workspaceId)
+        if (removedNodes.isNotEmpty()) nodes.deleteAll(removedNodes)
+
+        // Arriving or changed.
+        if (defsChanged) props.insertDefs(index.defs)
+        if (changedNodes.isNotEmpty()) {
+            // Both sides of a key that moves: the row taking it and the row giving it up. Uniqueness
+            // is checked per statement, not at commit, so neither may hold it while the other is
+            // written.
+            val rekeyed = changedNodes.filter { n ->
+                val before = wasNodes[n.id]
+                before != null && before.systemKey != n.systemKey || before == null && n.systemKey != null
+            }
+            if (rekeyed.isNotEmpty()) nodes.upsertAll(rekeyed.map { it.copy(systemKey = null) })
+            nodes.upsertAll(changedNodes)
+        }
+        if (values.changed.isNotEmpty()) props.upsertValues(values.changed)
+        if (labelsChanged) {
+            labels.insertAll(index.labels)
+            labels.attachAll(index.nodeLabels)
+        } else if (links.changed.isNotEmpty()) labels.attachAll(links.changed)
+        if (smartChanged) db.smartListDao().insertAll(index.smartLists)
+        if (inkChanged) db.inkDao().insertAll(index.ink)
+        if (eventRows.changed.isNotEmpty()) events.upsertAll(eventRows.changed)
+        if (focusChanged) db.focusDao().insertAll(index.focus)
+    }
+
+    /** Rows of [now] that are new or differ from [was] by [key], and rows of [was] that are gone. */
+    private class RowDiff<T>(val changed: List<T>, val removed: List<T>) {
+        companion object {
+            fun <T> none() = RowDiff<T>(emptyList(), emptyList())
+        }
+    }
+
+    private fun <T, K> rowDiff(
+        was: List<T>,
+        now: List<T>,
+        key: (T) -> K,
+        same: (T, T) -> Boolean = { a, b -> a == b },
+    ): RowDiff<T> {
+        val before = was.associateBy(key)
+        val nowKeys = HashSet<K>(now.size)
+        val changed = now.filter { row ->
+            nowKeys += key(row)
+            val old = before[key(row)]
+            old == null || !same(old, row)
+        }
+        return RowDiff(changed, was.filter { key(it) !in nowKeys })
     }
 
     /**

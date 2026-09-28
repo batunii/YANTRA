@@ -60,7 +60,7 @@ object PageCodec {
             i++ // closing fence
         }
 
-        val known = setOf("id", "type", "parent", "title", "system_key", "icon", "color", "modified_at", "device")
+        val known = setOf("id", "type", "parent", "title", "system_key", "icon", "color", "pinned", "modified_at", "device")
         val blocks = ArrayList<Block>()
         while (i < lines.size) {
             val line = lines[i]
@@ -80,6 +80,10 @@ object PageCodec {
             systemKey = front["system_key"]?.takeIf { it.isNotBlank() },
             icon = front["icon"]?.takeIf { it.isNotBlank() },
             color = front["color"]?.takeIf { it.isNotBlank() },
+            // Only "true"/"false" count. Anything else is a file somebody edited by hand into a
+            // state this build does not understand, and the old rule is a better answer than a
+            // guess.
+            pinned = front["pinned"]?.lowercase()?.let { if (it == "true") true else if (it == "false") false else null },
             modifiedAt = front["modified_at"]?.let { runCatching { Instant.parse(it) }.getOrNull() }
                 ?: Instant.EPOCH,
             device = front["device"]?.takeIf { it.isNotBlank() },
@@ -173,6 +177,36 @@ object PageCodec {
      * A left-to-right scan would have to guess, and would guess wrong on anything containing a hash
      * or an at-sign, which is most of how people write.
      */
+    /**
+     * Where a task line's title ends and its trailing tokens begin.
+     *
+     * For a field that is being typed into, so it can show that `@sai` at the end of a line is
+     * about to *stop being part of the title*. The same argument capture makes in the quick-add
+     * bar: "buy milk tomorrow" quietly losing its last word is alarming, and a word tinted as you
+     * type says what became of it while it can still be edited away.
+     *
+     * Answered by running [parseTask] and measuring the title it kept, rather than by a second
+     * scanner that agrees with it today. The right-to-left rule has edge cases worth having only
+     * once — `Buy #2 pencils` tags nothing, a word carrying `]]` is never a token — and a highlight
+     * that draws a different boundary from the parser is worse than no highlight, because it
+     * promises the wrong thing confidently.
+     *
+     * Returns the body's length when nothing trails, so the caller's range is simply empty.
+     */
+    fun tokenStart(body: String): Int {
+        val lead = body.length - body.trimStart().length
+        val title = parseTask(body, TaskStatus.OPEN, 0, body).title
+        // The title is the surviving words joined by single spaces, and the scan only ever drops
+        // from the right — so it is a literal prefix of the trimmed body, and its length is the
+        // boundary. Nothing is re-derived from the token text.
+        //
+        // Past the separating space, so the run starts at the `@` rather than at the gap before it.
+        // A highlight that begins on whitespace reads as a stray indent, not as a mark on a word.
+        var at = (lead + title.length).coerceAtMost(body.length)
+        while (at < body.length && body[at] == ' ') at++
+        return at
+    }
+
     private fun parseTask(body: String, status: TaskStatus, indent: Int, raw: String): TaskRef {
         val words = body.trim().split(" ").toMutableList()
         var id = ""
@@ -254,6 +288,7 @@ object PageCodec {
         var location: String? = null
         var color: String? = null
         var external: ExternalRef? = null
+        var author: String? = null
         var reminder: Int? = null
         var priority: String? = null
         val labels = ArrayList<String>()
@@ -272,6 +307,7 @@ object PageCodec {
                     { location = w.removePrefix("loc:").takeIf { it.isNotEmpty() }?.let(::decodeValue); location != null }
                 w.startsWith("col:") -> { color = w.removePrefix("col:").takeIf { it.isNotEmpty() }; color != null }
                 w.startsWith("ext:") -> parseExternal(w.removePrefix("ext:"))?.also { external = it } != null
+                w.startsWith("by:") -> { author = w.removePrefix("by:").takeIf { it.isNotEmpty() }; author != null }
                 w.startsWith("remind:") -> { reminder = w.removePrefix("remind:").toIntOrNull(); reminder != null }
                 w.startsWith("!") && w.length > 1 -> { priority = w.drop(1); true }
                 w.startsWith("@") && w.length > 1 -> { attendees += w.drop(1); true }
@@ -293,6 +329,7 @@ object PageCodec {
             location = location,
             color = color,
             external = external,
+            author = author,
             reminderMin = reminder,
             labels = labels.reversed(),      // scanned right to left
             attendees = attendees.reversed(),
@@ -472,6 +509,7 @@ object PageCodec {
         page.systemKey?.let { append("system_key: ").append(it).append('\n') }
         page.icon?.let { append("icon: ").append(it).append('\n') }
         page.color?.let { append("color: ").append(it).append('\n') }
+        page.pinned?.let { append("pinned: ").append(it).append('\n') }
         append("modified_at: ").append(page.modifiedAt).append('\n')
         page.device?.let { append("device: ").append(it).append('\n') }
         page.unknownKeys.forEach { (k, v) -> append(k).append(": ").append(v).append('\n') }
@@ -609,6 +647,9 @@ object PageCodec {
             // instance, and writing its start twice would be two places for two devices to disagree.
             x.occurrence?.let { append('@').append(renderLocal(it)) }
         }
+        // Whose calendar this came off. Beside `ext:` because the two are the same fact from two
+        // sides: that one names the meeting in somebody's calendar, this one names the somebody.
+        e.author?.let { append(" by:").append(encodeValue(it)) }
         e.reminderMin?.let { append(" remind:").append(it) }
         e.priority?.let { append(" !").append(it) }
         e.labels.forEach { append(" #").append(it) }

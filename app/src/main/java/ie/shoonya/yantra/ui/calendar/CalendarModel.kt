@@ -2,6 +2,7 @@ package ie.shoonya.yantra.ui.calendar
 
 import ie.shoonya.yantra.data.db.DueRow
 import ie.shoonya.yantra.data.db.EventEntity
+import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.data.label.LabelPalette
 import java.time.Instant
 import java.time.LocalDate
@@ -76,6 +77,8 @@ sealed interface DayItem {
         val end: LocalDateTime,
         val allDay: Boolean,
         val location: String?,
+        /** Which calendar it is on — see [ie.shoonya.yantra.data.device.DeviceEvent.account]. */
+        val account: String? = null,
         /** The owning calendar's own colour, drawn as-is: it is that calendar's identity, not ours. */
         val color: Int?,
         /**
@@ -330,7 +333,7 @@ object CalendarBucketer {
                 if (!day.isBefore(from) && day.isBefore(toExclusive)) {
                     out.getOrPut(day) { ArrayList() } += DayItem.Event(
                         nodeId = e.nodeId,
-                        title = titles[e.nodeId].orEmpty().ifEmpty { "Event" },
+                        title = shown(titles[e.nodeId]).ifEmpty { "Event" },
                         start = start,
                         end = end,
                         allDay = e.allDay,
@@ -365,6 +368,7 @@ object CalendarBucketer {
                 if (!day.isBefore(from) && day.isBefore(toExclusive)) {
                     out.getOrPut(day) { ArrayList() } += DayItem.Device(
                         nodeId = "device:${d.instanceId}",
+                        account = d.account,
                         // One node, not two: the line about this meeting *is* the task.
                         noteId = noteFor(d)?.nodeId,
                         taskId = noteFor(d)?.nodeId,
@@ -396,7 +400,7 @@ object CalendarBucketer {
             if (day.isBefore(from) || !day.isBefore(toExclusive)) continue
             out.getOrPut(day) { ArrayList() } += DayItem.Task(
                 nodeId = t.nodeId,
-                title = t.title.orEmpty().ifEmpty { "Untitled" },
+                title = shown(t.title).ifEmpty { "Untitled" },
                 at = at,
                 hasTime = t.hasTime,
                 done = t.done,
@@ -412,6 +416,21 @@ object CalendarBucketer {
         }
     }
 
+    /**
+     * A title as a person should read it.
+     *
+     * A link is stored as `[[Call Bob|^9f1e…]]`, which is the right thing to keep in a file and the
+     * wrong thing to put on a block two centimetres wide. Every other surface collapses it — the
+     * page, the archive, the stats, the focus screen, the reminder — and the calendar was the one
+     * that did not, so a task with a reference on it read as a caret and a UUID on the day, in the
+     * rail, and in the month cell.
+     *
+     * Collapsed without a resolver, so it shows the label the file carries rather than the target's
+     * current title. That is what the rest of the app does off the page, and it is the honest
+     * answer here: the bucketer is handed the day's rows, not the index, and a link may point into
+     * a workspace this device has not added.
+     */
+    private fun shown(title: String?) = Links.plain(title.orEmpty())
 }
 
 /** The six-week grid a month is drawn on: the Monday on or before the 1st, then 42 days. */

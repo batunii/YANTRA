@@ -6,8 +6,10 @@ import androidx.ink.brush.InputToolType
 import androidx.ink.brush.StockBrushes
 import androidx.ink.strokes.MutableStrokeInputBatch
 import androidx.ink.strokes.Stroke
+import androidx.ink.strokes.StrokeInput
 import androidx.ink.strokes.StrokeInputBatch
 import androidx.ink.storage.decode
+import androidx.ink.storage.encode
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
@@ -25,12 +27,11 @@ import kotlin.math.sin
 enum class ShapeKind { LINE, RECTANGLE, ELLIPSE, ARROW, TRIANGLE }
 
 /**
- * Ink stays ink: the payload is every input point of the stroke (never a picture of it), behind a
- * tiny JSON header describing the brush, so the stroke can be rebuilt deterministically as
- * Stroke(brush, inputs). The layout is [StrokeEnvelope]'s and is Yantra's own.
+ * Ink stays ink: the payload is the Ink API's own serialized StrokeInputBatch (never text),
+ * prefixed with a tiny JSON header describing the brush so the stroke can be rebuilt
+ * deterministically as Stroke(brush, inputs).
  *
- * Until 0.3.0 the payload after the header was androidx.ink's serialised StrokeInputBatch. Those
- * bytes are still read — [decode] and [upgrade] both understand them — but never written again.
+ * Layout: [int32 header length][header JSON utf-8][StrokeInputBatch bytes]
  */
 object StrokeCodec {
 
@@ -105,127 +106,86 @@ object StrokeCodec {
         stroke.brush.family == StockBrushes.highlighter() ||
             ((stroke.brush.colorIntArgb ushr 24) and 0xFF) < 0xFF
 
-    /** A stroke this build cannot read: newer than it, or not a stroke at all. Skip it, keep the bytes. */
-    class UnsupportedStrokeFormat(kind: StrokeEnvelope.Kind) : IllegalArgumentException("stroke format $kind")
-
-    private fun toolCode(t: InputToolType): Int = when (t) {
-        InputToolType.MOUSE -> StrokeEnvelope.TOOL_MOUSE
-        InputToolType.TOUCH -> StrokeEnvelope.TOOL_TOUCH
-        InputToolType.STYLUS -> StrokeEnvelope.TOOL_STYLUS
-        else -> StrokeEnvelope.TOOL_UNKNOWN
-    }
-
-    private fun toolType(code: Int): InputToolType = when (code) {
-        StrokeEnvelope.TOOL_MOUSE -> InputToolType.MOUSE
-        StrokeEnvelope.TOOL_TOUCH -> InputToolType.TOUCH
-        StrokeEnvelope.TOOL_STYLUS -> InputToolType.STYLUS
-        else -> InputToolType.UNKNOWN
-    }
-
-    /** The envelope for a live stroke: brush header plus every input point, in Yantra's own layout. */
-    private fun envelope(stroke: Stroke, familyName: String): StrokeEnvelope.Envelope {
-        val inputs = stroke.inputs
-        val tool = if (inputs.size > 0) toolCode(inputs[0].toolType) else StrokeEnvelope.TOOL_UNKNOWN
-        val points = ArrayList<StrokeEnvelope.Point>(inputs.size)
-        for (i in 0 until inputs.size) {
-            val p = inputs[i]
-            points += StrokeEnvelope.Point(
-                x = p.x, y = p.y,
-                elapsedMillis = p.elapsedTimeMillis.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
-                pressure = p.pressure,
-                tiltRadians = p.tiltRadians,
-                orientationRadians = p.orientationRadians,
-                strokeUnitLengthCm = p.strokeUnitLengthCm,
-            )
-        }
-        return StrokeEnvelope.Envelope(
-            header = StrokeEnvelope.Header(
-                family = familyName,
-                color = stroke.brush.colorIntArgb.toLong() and 0xFFFFFFFFL,
-                size = stroke.brush.size,
-                epsilon = stroke.brush.epsilon,
-            ),
-            tool = tool,
-            points = points,
+    fun encode(stroke: Stroke, familyName: String): ByteArray {
+        val header = Header(
+            family = familyName,
+            color = stroke.brush.colorIntArgb.toLong() and 0xFFFFFFFFL,
+            size = stroke.brush.size,
+            epsilon = stroke.brush.epsilon,
+            v = VERSION_DU,
+            unit = UNIT_DU,
         )
-    }
-
-    private fun stroke(e: StrokeEnvelope.Envelope): Stroke {
-        val batch = MutableStrokeInputBatch()
-        val tool = toolType(e.tool)
-        e.points.forEach { p ->
-            batch.add(
-                tool, p.x, p.y, p.elapsedMillis.toLong(),
-                p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
-            )
+        val headerBytes = json.encodeToString(Header.serializer(), header).encodeToByteArray()
+        val out = ByteArrayOutputStream()
+        DataOutputStream(out).use { dos ->
+            dos.writeInt(headerBytes.size)
+            dos.write(headerBytes)
+            stroke.inputs.encode(dos)
         }
-        val h = e.header
-        return Stroke(brush = brush(h.family, h.color, h.size, h.epsilon), inputs = batch.toImmutable())
+        return out.toByteArray()
     }
-
-    /** The brush header of a legacy blob, without decoding the payload behind it. */
-    private fun legacyHeader(data: ByteArray): Header =
-        DataInputStream(ByteArrayInputStream(data)).use { dis ->
-            val headerBytes = ByteArray(dis.readInt())
-            dis.readFully(headerBytes)
-            json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
-        }
-
-    /**
-     * Reads either generation into the envelope. Legacy bytes go through androidx.ink's decoder one
-     * last time — that is the only place the old payload is still understood, and it exists so that
-     * a sketch drawn before the format changed can be carried across rather than lost.
-     */
-    private fun read(data: ByteArray): StrokeEnvelope.Envelope = when (val k = StrokeEnvelope.kind(data)) {
-        StrokeEnvelope.Kind.YANTRA -> StrokeEnvelope.decode(data)
-        StrokeEnvelope.Kind.LEGACY -> DataInputStream(ByteArrayInputStream(data)).use { dis ->
-            val headerBytes = ByteArray(dis.readInt())
-            dis.readFully(headerBytes)
-            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
-            // A v1 stroke is not corrupt — it is unplaceable. Its numbers are pixels on a screen
-            // whose width nobody recorded, so there is no scale that turns them back into a
-            // position on the page. Carrying it into the envelope would label pixel coordinates as
-            // document units: it would look portable and be wrong everywhere but the screen that
-            // drew it, which is the bug the document-unit format replaced.
-            if (header.v < VERSION_DU) throw UnsupportedStrokeFormat(StrokeEnvelope.Kind.LEGACY)
-            val inputs = StrokeInputBatch.decode(dis)
-            val legacy = Stroke(
-                brush = brush(header.family, header.color, header.size, header.epsilon),
-                inputs = inputs,
-            )
-            envelope(legacy, header.family)
-        }
-        StrokeEnvelope.Kind.UNKNOWN -> throw UnsupportedStrokeFormat(k)
-    }
-
-    /** Always writes the current format. */
-    fun encode(stroke: Stroke, familyName: String): ByteArray =
-        StrokeEnvelope.encode(envelope(stroke, familyName))
 
     /**
      * The same stroke, shifted.
      *
-     * Goes through the envelope rather than through a re-tessellated [Stroke], so the brush comes out
-     * the far side exactly what it was: family, colour, size and epsilon are copied across untouched.
-     * A stroke that has been moved is the same ink in a different place, and nothing about how it was
-     * drawn should change because it was picked up.
+     * Goes through the header rather than through a decoded [Stroke], so the brush comes out the
+     * far side byte-for-byte what it was: family, colour, size and epsilon are copied across
+     * untouched. A stroke that has been moved is the same ink in a different place, and nothing
+     * about how it was drawn should change because it was picked up.
      */
-    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray =
-        StrokeEnvelope.encode(read(data).translated(dx, dy))
+    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray = transform(data, 1f, 0f, 0f, dx, dy)
+
+    /**
+     * Scales a stored stroke by [scale] about ([anchorX], [anchorY]) and then moves it by [dx], [dy],
+     * all in document units — resizing a lasso'd catch.
+     *
+     * The brush size scales with it. Handwriting made bigger should look like handwriting written
+     * bigger, not like the same thin line stretched over a larger shape — which is also what every
+     * app that resizes ink does.
+     */
+    fun transform(data: ByteArray, scale: Float, anchorX: Float, anchorY: Float, dx: Float = 0f, dy: Float = 0f): ByteArray {
+        DataInputStream(ByteArrayInputStream(data)).use { dis ->
+            val headerBytes = ByteArray(dis.readInt())
+            dis.readFully(headerBytes)
+            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
+            // Same bar as [decode]. This re-encodes through [encode], which stamps the current
+            // version unconditionally — so a v1 blob coming through here would come out *labelled*
+            // as document units with its pixel coordinates untouched, which is worse than being
+            // refused: it would look portable and be wrong everywhere but the screen that drew it.
+            require(header.v >= VERSION_DU) {
+                "ink stroke is v${header.v} (${header.unit}) — pixel coordinates cannot be moved"
+            }
+            val inputs = StrokeInputBatch.decode(dis)
+            val moved = MutableStrokeInputBatch()
+            for (i in 0 until inputs.size) {
+                val p = inputs[i]
+                moved.add(
+                    p.toolType,
+                    anchorX + (p.x - anchorX) * scale + dx,
+                    anchorY + (p.y - anchorY) * scale + dy,
+                    p.elapsedTimeMillis,
+                    p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
+                )
+            }
+            val stroke = Stroke(
+                brush = brush(header.family, header.color, header.size * scale, header.epsilon),
+                inputs = moved.toImmutable(),
+            )
+            return encode(stroke, header.family)
+        }
+    }
 
     /**
      * The version a blob claims, read without decoding its geometry.
      *
-     * Ours are document units by construction — the envelope has no other kind — so a [Kind.YANTRA]
-     * blob is [VERSION_DU] without being asked. A legacy blob is whatever its header says, which is
-     * [VERSION_PX] when it says nothing. Anything unreadable is 0, so a corrupt blob and a blob from
-     * the future are both "not something to draw" without needing to be told apart.
+     * Returns 0 for anything unreadable, so a corrupt blob and a blob from the future are both
+     * "not something to draw" without needing to be told apart.
      */
     fun version(data: ByteArray): Int = runCatching {
-        when (StrokeEnvelope.kind(data)) {
-            StrokeEnvelope.Kind.YANTRA -> VERSION_DU
-            StrokeEnvelope.Kind.LEGACY -> legacyHeader(data).v
-            StrokeEnvelope.Kind.UNKNOWN -> 0
+        DataInputStream(ByteArrayInputStream(data)).use { dis ->
+            val headerBytes = ByteArray(dis.readInt())
+            dis.readFully(headerBytes)
+            json.decodeFromString(Header.serializer(), headerBytes.decodeToString()).v
         }
     }.getOrDefault(0)
 
@@ -233,35 +193,32 @@ object StrokeCodec {
     fun isPortable(data: ByteArray): Boolean = version(data) >= VERSION_DU
 
     /**
-     * Decodes, or null for a blob that cannot be placed — malformed, newer than this build, or v1
-     * pixel coordinates.
+     * Decodes, or null for a blob that cannot be placed — malformed, or v1 pixel coordinates.
      *
      * The callers that read from the index want exactly this: a stroke they cannot position is not
      * an error to report, it is a stroke that is not there.
      */
     fun decodeOrNull(data: ByteArray): Stroke? = runCatching { decode(data) }.getOrNull()
 
-    /** Throws [UnsupportedStrokeFormat] for bytes this build cannot read; callers skip those strokes. */
-    fun decode(data: ByteArray): Stroke = stroke(read(data))
-
-    /**
-     * True when the bytes are the first format's and would be rewritten by [upgrade].
-     *
-     * v1 legacy bytes are *not* upgradable and do not answer true here: their coordinates are pixels
-     * on a screen whose width nobody recorded, so there is no scale that turns them into a position
-     * on the page. Only a v2 legacy blob — document units behind the old payload — can be carried
-     * across into the envelope.
-     */
-    fun isLegacy(data: ByteArray): Boolean =
-        StrokeEnvelope.kind(data) == StrokeEnvelope.Kind.LEGACY && isPortable(data)
-
-    /**
-     * Legacy bytes become current bytes; anything else is returned as it came, including strokes
-     * newer than this build and v1 strokes, which must round-trip untouched through a sidecar
-     * rewrite rather than be "repaired" into a position they never had.
-     */
-    fun upgrade(data: ByteArray): ByteArray =
-        if (isLegacy(data)) StrokeEnvelope.encode(read(data)) else data
+    fun decode(data: ByteArray): Stroke {
+        DataInputStream(ByteArrayInputStream(data)).use { dis ->
+            val headerBytes = ByteArray(dis.readInt())
+            dis.readFully(headerBytes)
+            val header = json.decodeFromString(Header.serializer(), headerBytes.decodeToString())
+            // A v1 stroke is not corrupt — it is unplaceable. Its numbers are pixels on a screen
+            // whose width nobody recorded, so there is no scale that turns them back into a
+            // position on the page. Drawing it anyway would put it roughly right on the device that
+            // made it and twice too big somewhere else, which is the bug this format replaced.
+            require(header.v >= VERSION_DU) {
+                "ink stroke is v${header.v} (${header.unit}) — pixel coordinates cannot be placed"
+            }
+            val inputs = StrokeInputBatch.decode(dis)
+            return Stroke(
+                brush = brush(header.family, header.color, header.size, header.epsilon),
+                inputs = inputs,
+            )
+        }
+    }
 
     /**
      * Builds a clean vector shape as a StrokeInputBatch spanning the drag box (x0,y0)-(x1,y1).
@@ -403,13 +360,89 @@ object StrokeCodec {
      */
     fun containedFraction(path: StrokePath, px: FloatArray, py: FloatArray): Float {
         if (px.size < 3) return 0f
-        val pts = resample(path, RESAMPLE_DU)
+        return containedFraction(path, LoopIndex(px, py))
+    }
+
+    private fun containedFraction(path: StrokePath, loop: LoopIndex): Float {
+        val pts = samplesOf(path)
         if (pts.isEmpty()) return 0f
         var inside = 0
         for (i in pts.indices step 2) {
-            if (pointInPolygon(pts[i], pts[i + 1], px, py)) inside++
+            if (loop.contains(pts[i], pts[i + 1])) inside++
         }
         return inside.toFloat() / (pts.size / 2).toFloat()
+    }
+
+    /**
+     * A stroke's points spaced [RESAMPLE_DU] apart along its length, worked out once per stroke.
+     *
+     * The lasso scores its catch on every few pixels of finger movement, and it used to resample
+     * every candidate stroke from scratch each time — into a list of boxed floats — so drawing a
+     * loop around a paragraph of handwriting re-did the same arithmetic hundreds of times a second.
+     * A path's points never change, so its samples are kept against the path's own arrays.
+     */
+    private fun samplesOf(path: StrokePath): FloatArray {
+        synchronized(samples) { samples[path.xs]?.let { return it } }
+        return resample(path, RESAMPLE_DU).also { synchronized(samples) { samples[path.xs] = it } }
+    }
+
+    // Identity-keyed through the array: a FloatArray does not override equals.
+    private val samples = java.util.WeakHashMap<FloatArray, FloatArray>()
+
+    /**
+     * A lasso loop, ready to answer "is this point inside" quickly.
+     *
+     * The even-odd test counts the loop edges a horizontal ray from the point crosses, and only an
+     * edge that spans the point's height can be crossed. Filing every edge under the horizontal
+     * bands it spans means a point only has to look at the handful of edges in its own band instead
+     * of every edge of the loop — the answer is exactly the same, and a loop of a few hundred
+     * vertices stops multiplying the cost of every sample of every stroke inside it.
+     */
+    internal class LoopIndex(private val px: FloatArray, private val py: FloatArray) {
+        private val minX: Float
+        private val maxX: Float
+        private val minY: Float
+        private val maxY: Float
+        private val rows: Int
+        private val rowHeight: Float
+        private val edges: Array<IntArray>
+
+        init {
+            var l = Float.MAX_VALUE; var r = -Float.MAX_VALUE
+            var t = Float.MAX_VALUE; var b = -Float.MAX_VALUE
+            for (i in px.indices) {
+                if (px[i] < l) l = px[i]; if (px[i] > r) r = px[i]
+                if (py[i] < t) t = py[i]; if (py[i] > b) b = py[i]
+            }
+            minX = l; maxX = r; minY = t; maxY = b
+            rows = (px.size / 4).coerceIn(1, 256)
+            rowHeight = ((b - t) / rows).coerceAtLeast(1e-3f)
+            val lists = Array(rows) { ArrayList<Int>() }
+            var j = px.size - 1
+            for (i in px.indices) {
+                val lo = rowOf(minOf(py[i], py[j]))
+                val hi = rowOf(maxOf(py[i], py[j]))
+                for (row in lo..hi) lists[row] += i
+                j = i
+            }
+            edges = Array(rows) { lists[it].toIntArray() }
+        }
+
+        private fun rowOf(y: Float): Int = ((y - minY) / rowHeight).toInt().coerceIn(0, rows - 1)
+
+        fun contains(x: Float, y: Float): Boolean {
+            if (x < minX || x > maxX || y < minY || y > maxY) return false
+            var hit = false
+            val n = px.size
+            for (i in edges[rowOf(y)]) {
+                val j = if (i == 0) n - 1 else i - 1
+                val yi = py[i]; val yj = py[j]
+                if ((yi > y) != (yj > y)) {
+                    if ((x - px[i]) < (px[j] - px[i]) * (y - yi) / (yj - yi)) hit = !hit
+                }
+            }
+            return hit
+        }
     }
 
     /**
@@ -460,13 +493,14 @@ object StrokeCodec {
             if (py[i] > lassoB) lassoB = py[i]
         }
 
+        val loop = LoopIndex(px, py)
         val scored = ArrayList<Pair<Int, Float>>()
         for ((index, path) in candidates.withIndex()) {
             // Bounding-box cull before any arc-length work: this runs on every few pixels of finger
             // movement now that the catch is previewed live.
             val b = path.bbox() ?: continue
             if (b[0] > lassoR || b[0] + b[2] < lassoL || b[1] > lassoB || b[1] + b[3] < lassoT) continue
-            val f = containedFraction(path, px, py)
+            val f = containedFraction(path, loop)
             if (f > 0f) scored += index to f
         }
         if (scored.isEmpty()) return emptyList()
@@ -483,11 +517,54 @@ object StrokeCodec {
             .map { candidates[it.first].id }
     }
 
-    /** A stroke's path, extracted once so the geometry can be done without it. */
+    /**
+     * A stroke's path, extracted once so the geometry can be done without it — and **once per
+     * stroke, not once per call**.
+     *
+     * Reading a point crosses into the ink library's native code, and `inputs[i]` allocates a fresh
+     * object each time. The canvas asked for every stroke's path and box again whenever one stroke
+     * was added, so a page got slower to draw on with every stroke it held: on the tablet's
+     * 273-stroke, 75,000-point sketch that was a third of a second on the main thread per stroke.
+     * A stroke's points never change after it is built, so its path is remembered against the
+     * stroke itself; the map is weak, so a stroke that is gone takes its path with it.
+     */
     fun path(stroke: Stroke, id: String = ""): StrokePath {
+        val xy = synchronized(paths) { paths[stroke] }
+            ?: extract(stroke).also { synchronized(paths) { paths[stroke] = it } }
+        return if (xy.id == id) xy else StrokePath(id, xy.xs, xy.ys)
+    }
+
+    /** A stroke's `[x, y, width, height]`, remembered like its [path]. Callers must not write to it. */
+    fun bbox(stroke: Stroke): FloatArray? {
+        synchronized(boxes) { if (boxes.containsKey(stroke)) return boxes[stroke] }
+        return path(stroke).bbox().also { b -> synchronized(boxes) { boxes[stroke] = b } }
+    }
+
+    /**
+     * Hands [from]'s remembered geometry to [to], a copy with the same points — a theme recolour.
+     * Nothing to hand over is fine; [to] is then measured when first asked, as any stroke is.
+     */
+    fun shareGeometry(from: Stroke, to: Stroke) {
+        synchronized(paths) { paths[from]?.let { paths[to] = it } }
+        synchronized(boxes) { if (boxes.containsKey(from)) boxes[to] = boxes[from] }
+    }
+
+    // Keyed by identity: Stroke does not override equals, and must not be compared by content here.
+    private val paths = java.util.WeakHashMap<Stroke, StrokePath>()
+    private val boxes = java.util.WeakHashMap<Stroke, FloatArray?>()
+
+    private fun extract(stroke: Stroke): StrokePath {
         val inputs = stroke.inputs
         val n = inputs.size
-        return StrokePath(id, FloatArray(n) { inputs[it].x }, FloatArray(n) { inputs[it].y })
+        val xs = FloatArray(n)
+        val ys = FloatArray(n)
+        val p = StrokeInput()
+        for (i in 0 until n) {
+            inputs.populate(i, p)
+            xs[i] = p.x
+            ys[i] = p.y
+        }
+        return StrokePath("", xs, ys)
     }
 
     /**
@@ -533,8 +610,8 @@ object StrokeCodec {
     /** Below this, the loop caught nothing worth calling a catch — an empty loop on blank paper. */
     private const val ABSOLUTE_FLOOR = 0.02f
 
-    /** Envelope of the raw input points — good enough for future canvas culling / hit-tests. */
-    private fun pointInPolygon(x: Float, y: Float, px: FloatArray, py: FloatArray): Boolean {
+    /** The plain even-odd test, edge by edge — the reference [LoopIndex] must agree with. */
+    internal fun pointInPolygon(x: Float, y: Float, px: FloatArray, py: FloatArray): Boolean {
         var hit = false
         var j = px.size - 1
         for (i in px.indices) {
@@ -554,8 +631,10 @@ object StrokeCodec {
         var minY = Float.MAX_VALUE
         var maxX = -Float.MAX_VALUE
         var maxY = -Float.MAX_VALUE
+        // One scratch point, filled in place: `inputs[i]` would allocate one per point.
+        val p = StrokeInput()
         for (i in 0 until inputs.size) {
-            val p = inputs[i]
+            inputs.populate(i, p)
             if (p.x < minX) minX = p.x
             if (p.y < minY) minY = p.y
             if (p.x > maxX) maxX = p.x

@@ -52,7 +52,9 @@ Each of these defines light and dark twins correctly, which is why none of them 
 
 §1 counted six of these as half the original problem. A mark drawn locally cannot be restyled, resized or retinted with the rest.
 
-Clean.
+```
+  app/src/main/java/ie/shoonya/yantra/ui/ink/StrokeViews.kt:259
+```
 
 ## Material icons
 
@@ -69,14 +71,14 @@ Clean.
 Not all of these are page margins — a chip has its own inset — but a screen-level one that is not PAGE_MARGIN is drift.
 
 ```
-  20dp × 15
-  8dp × 14
-  12dp × 12
-  10dp × 11
-  14dp × 11
+  8dp × 13
+  10dp × 12
+  12dp × 11
   16dp × 10
+  14dp × 10
   4dp × 8
-  6dp × 6
+  6dp × 7
+  20dp × 5
 ```
 
 ## Ways of asking a question

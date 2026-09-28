@@ -66,6 +66,50 @@ class CalendarBucketTest {
         hasTime = hasTime,
     )
 
+    /**
+     * A link is stored as `[[Call Bob|^9f1e…]]` and must not be *shown* that way on a day. Every
+     * other surface collapses it; the calendar did not, so a task carrying a reference read as a
+     * caret and a UUID on the block, in the rail and in the month cell.
+     */
+    @Test
+    fun `a reference on a task reads as its words, not its id`() {
+        val task = DueRow(
+            nodeId = "t",
+            title = "Prep for [[Call Bob|^9f1e2d3c-0000-0000-0000-000000000001]] on Friday",
+            done = false,
+            dueMillis = LocalDateTime.parse("2026-09-11T09:00").atZone(dublin).toInstant().toEpochMilli(),
+            hasTime = true,
+        )
+        val item = bucket(tasks = listOf(task)).values.single().single()
+        assertEquals("Prep for Call Bob on Friday", item.title)
+    }
+
+    /** The same on an event's title, which comes off the node the same way a task's does. */
+    @Test
+    fun `a reference on an event reads as its words too`() {
+        val days = bucket(
+            events = listOf(event("e", "2026-09-11T10:00", "2026-09-11T11:00")),
+            titles = mapOf("e" to "Review [[the spec|^9f1e2d3c-0000-0000-0000-000000000002]]"),
+        )
+        assertEquals("Review the spec", days.values.single().single().title)
+    }
+
+    /** A title with no link in it is left exactly alone — brackets included. */
+    @Test
+    fun `an ordinary title is untouched`() {
+        val task = DueRow(
+            nodeId = "t",
+            title = "Read [draft] and [[not a link]]",
+            done = false,
+            dueMillis = LocalDateTime.parse("2026-09-11T09:00").atZone(dublin).toInstant().toEpochMilli(),
+            hasTime = true,
+        )
+        assertEquals(
+            "Read [draft] and [[not a link]]",
+            bucket(tasks = listOf(task)).values.single().single().title,
+        )
+    }
+
     @Test
     fun `a one-day all-day event lands on exactly one day`() {
         // The end is exclusive — 00:00 on the 12th — and must not put anything on the 12th.

@@ -139,6 +139,12 @@ object PageMapper {
                 systemKey = page.systemKey,
                 icon = page.icon,
                 color = page.color,
+                // Absence is the old rule, not "no". Pinned used to mean "an ungrouped smart list"
+                // and nothing else, so every file written before pinning existed says nothing about
+                // it — reading that as false would empty Home's Pinned section on upgrade for
+                // everybody. The first time somebody pins or unpins anything, the file says so and
+                // this fallback stops applying to it.
+                pinned = page.pinned ?: (page.type == NodeType.SMART_LIST && page.parent == null),
                 createdAt = ts,
                 updatedAt = ts,
             ),
@@ -195,6 +201,7 @@ object PageMapper {
             color = e.color,
             extUid = e.external?.uid,
             extStart = e.external?.occurrence?.toString(),
+            author = e.author,
             seriesId = e.series?.id,
             // The bare `series:s1` form means "the occurrence at this line's own start", so the
             // index writes that start rather than a null the reader would have to know to fill in.

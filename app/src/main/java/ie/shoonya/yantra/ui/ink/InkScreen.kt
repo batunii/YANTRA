@@ -60,6 +60,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -113,6 +116,14 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.theme.YantraDisplay
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -197,7 +208,13 @@ class InkViewModel(
                 if (drawnHere) return@collect
                 held.value = withContext(Dispatchers.Default) {
                     rows.mapNotNull { row ->
-                        StrokeCodec.decodeOrNull(row.data)?.let { Held(StrokeItem(row.id, it), row.data) }
+                        StrokeCodec.decodeOrNull(row.data)?.let { stroke ->
+                            // Measured here, off the main thread, while it is being decoded anyway:
+                            // the canvas needs every stroke's box and path the moment it is handed
+                            // the page, and on a full page that is a fifth of a second of points.
+                            StrokeCodec.bbox(stroke)
+                            Held(StrokeItem(row.id, stroke), row.data)
+                        }
                     }
                 }
             }
@@ -314,18 +331,35 @@ class InkViewModel(
      */
     fun moveStrokes(ids: Collection<String>, dx: Float, dy: Float) {
         if (ids.isEmpty() || (dx == 0f && dy == 0f)) return
+        rewrite(ids) { StrokeCodec.translate(it, dx, dy) }
+    }
+
+    /**
+     * Resizes a lasso'd group by [k] about ([ax], [ay]), in document units, brush widths included.
+     * Rewritten like a move — the points are the stroke — and off the main thread for the same reason.
+     */
+    fun scaleStrokes(ids: Collection<String>, k: Float, ax: Float, ay: Float) {
+        if (ids.isEmpty() || k == 1f) return
+        rewrite(ids) { StrokeCodec.transform(it, k, ax, ay) }
+    }
+
+    private fun rewrite(ids: Collection<String>, change: (ByteArray) -> ByteArray) {
         val moving = ids.toSet()
-        held.update { list ->
-            list.map { h ->
-                if (h.item.id !in moving) h
-                else {
-                    val data = StrokeCodec.translate(h.data, dx, dy)
-                    Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
+        val snapshot = held.value.filter { it.item.id in moving }
+        // Re-encoding and decoding a big catch is real work — seventy strokes of handwriting is a
+        // visible hitch on the frame the finger lifts — so it happens off the main thread and lands
+        // by id, onto whatever the page holds by then.
+        viewModelScope.launch {
+            val moved = withContext(Dispatchers.Default) {
+                snapshot.associate { h ->
+                    val data = change(h.data)
+                    h.item.id to Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
                 }
             }
+            held.update { list -> list.map { moved[it.item.id] ?: it } }
+            redoable.value = emptyList()
+            touch()
         }
-        redoable.value = emptyList()
-        touch()
     }
 
     fun clear() {
@@ -413,8 +447,24 @@ private val DrawingColors = listOf(
  * original palette deliberately carried side by side. A wrong heuristic that silently removes a
  * colour someone wanted is worse than two swatches that happen to be neighbours.
  */
-private fun inkPresets(accent: Color): List<Long> =
-    listOf(accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+internal fun inkPresets(accent: Color, dark: Boolean): List<Long> =
+    // The paper's own ink first — white on dark paper, graphite on light, and swapping with the
+    // theme because it is stored as that pair. It is what every pen starts with, and it was not on
+    // offer: pick any other colour and there was no way back to it.
+    listOf(InkTheme.defaultPen(dark), accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+
+/** The same ink as far as a swatch is concerned: equal, or the two halves of the paper's own ink. */
+internal fun sameInk(a: Long, b: Long): Boolean =
+    a == b || (isPaperInk(a) && isPaperInk(b))
+
+private fun isPaperInk(c: Long) = c == InkTheme.BLACK_INK || c == InkTheme.WHITE_INK
+
+/**
+ * The ring that marks the swatch in use. The accent, except on the accent's own swatch, where an
+ * accent ring on an accent disc is no ring at all and the selection simply vanished.
+ */
+internal fun ringFor(swatch: Long, accent: Color, other: Color): Color =
+    if (Color(swatch.toInt()).toArgb() == accent.toArgb()) other else accent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -460,6 +510,22 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
      */
     var leftHanded by rememberSaveable { mutableStateOf(false) }
     var kitFolded by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    var penButton by remember { mutableStateOf(InkPrefs.penButton(context)) }
+    // A tablet gets a dock along an edge; a phone keeps the floating kit, which is all it has room for.
+    val tablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    var dock by remember { mutableStateOf(InkPrefs.dock(context, tablet)) }
+    val docked = dock != KitDock.FLOAT
+    fun placeKit(next: KitDock) {
+        dock = next
+        panel = null
+        InkPrefs.setDock(context, next)
+    }
+    // Which pen a custom colour is for. The floating kit opens it from a pen's panel; the dock from
+    // whichever pen is in hand, which has no panel to ask.
+    var colorTarget by remember { mutableIntStateOf(0) }
+    // The tool the pen is being held as — side button down, or eraser end — while it is.
+    var heldTool by remember { mutableStateOf<EditorTool?>(null) }
     var selection by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectionAt by remember { mutableStateOf(Offset.Zero) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
@@ -532,12 +598,27 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 value = title,
                 onValueChange = { title = it; vm.rename(it) },
                 singleLine = true,
-                textStyle = TextStyle(fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textPrimary),
+                textStyle = TextStyle(
+                    fontFamily = YantraDisplay,
+                    fontSize = YantraType.sheetTitle,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = (-0.3).sp,
+                    color = y.textPrimary,
+                ),
                 cursorBrush = SolidColor(y.accent),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box {
-                        if (title.isEmpty()) Text(placeholder, fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textMuted.copy(alpha = 0.6f))
+                        if (title.isEmpty()) Text(
+                            placeholder,
+                            fontFamily = YantraDisplay,
+                            fontSize = YantraType.sheetTitle,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = (-0.3).sp,
+                            color = y.textDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         inner()
                     }
                 },
@@ -581,11 +662,8 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
         // The page and everything that floats over it. The kit and the undo pair are *on* the
         // canvas rather than in a tray beneath it, because a tray takes a strip of paper away for
         // as long as the screen is open and the page is the reason you are here.
-        Box(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .onSizeChanged { canvasSize = it },
+        val pageArea: @Composable (Modifier) -> Unit = { area -> Box(
+            area.onSizeChanged { canvasSize = it },
         ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -606,11 +684,13 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                             }
                         }
                         onZoomChanged = { zoomPercent = it }
+                        onHeldToolChanged = { heldTool = it }
                         onLassoSelection = { ids, cx, bottom ->
                             selection = ids
                             selectionAt = Offset(cx, bottom)
                         }
                         onMoveSelection = { ids, dx, dy -> vm.moveStrokes(ids, dx, dy) }
+                        onScaleSelection = { ids, k, ax, ay -> vm.scaleStrokes(ids, k, ax, ay) }
                         canvasRef = this
                     }
                 },
@@ -638,6 +718,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                     // Recognition belongs to the freehand pen. While you are dragging a shape out
                     // on purpose there is nothing to recognise.
                     canvas.recognizeShapes = snap && mode == InkMode.DRAW
+                    canvas.buttonTool = penButton.tool
                     // Pixels, not document units: the eraser is the size of the thing in your hand,
                     // so it stays that size on screen while the page zooms beneath it. In du it
                     // would swallow half a page once you zoomed out.
@@ -651,6 +732,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 },
             )
 
+            if (!docked) {
             // Strokes fade out under the controls; the controls do not. Above the ink and below
             // the kit, so writing that runs to the bottom of the screen stops competing with the
             // things sitting on top of it without either of them moving.
@@ -667,7 +749,9 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
             PenKit(
                 slots = slots,
                 active = active,
-                mode = mode,
+                // While the button is held the key that is really working lights, so the page never
+                // looks like it is drawing with a pen that is erasing.
+                mode = heldTool?.asMode() ?: mode,
                 snap = snap,
                 // Everything except undo dims while the pen is down.
                 dimmed = drawing,
@@ -689,6 +773,11 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         drawingShapes = mode == InkMode.SHAPE,
                         shapeKind = shapeKind,
                         leftHanded = leftHanded,
+                        penButton = penButton.takeIf { stylusMode },
+                        onPenButton = {
+                            penButton = penButton.next()
+                            InkPrefs.setPenButton(context, penButton)
+                        },
                         onSlotChange = { next -> (open as? KitPanel.Slot)?.let { setSlot(it.index) { next } } },
                         onEraserSize = { eraserSize = it },
                         onShapeMode = { picked ->
@@ -699,14 +788,19 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                             }
                         },
                         onShapeKind = { shapeKind = it },
-                        onCustomColor = { colorSheet = true },
+                        onCustomColor = {
+                            colorTarget = (open as? KitPanel.Slot)?.index ?: active
+                            colorSheet = true
+                        },
                         onHanded = { leftHanded = !leftHanded },
+                        onDock = if (tablet) ({ placeKit(KitDock.BOTTOM) }) else null,
                     )
                 },
                 modifier = Modifier
                     .align(if (leftHanded) Alignment.BottomStart else Alignment.BottomEnd)
-                    .padding(22.dp),
+                    .padding(PAGE_MARGIN),
             )
+            }
 
             // The bar that acts on a catch, placed under it rather than in a corner: it is about
             // *those* strokes, and a menu that appears somewhere fixed reads as a menu about the
@@ -728,16 +822,20 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 )
             }
 
+            // Bottom-centre, the one stretch of the bottom edge the kit and the undo pair leave free:
+            // this is the way back from a pinch you did not mean, so it goes where the thumb is,
+            // not in the corner at the top that the hand has to leave the page to reach.
             if (zoomPercent != 100) {
                 Row(
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = PAGE_MARGIN)
+                        .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(YantraRadius.panel))
                         .background(y.cardBg)
                         .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
                         .clickable { canvasRef?.fitWidth() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -745,36 +843,114 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         fontFamily = YantraMono,
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
-                        color = y.textDim,
+                        color = y.textMuted,
                     )
                     Text(
                         "fit",
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
-                        color = y.accent,
+                        color = y.accentText,
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
             }
 
-            UndoPair(
+            if (!docked) UndoPair(
                 canUndo = canUndo,
                 canRedo = canRedo,
                 onUndo = vm::undo,
                 onRedo = vm::redo,
                 modifier = Modifier
                     .align(if (leftHanded) Alignment.BottomEnd else Alignment.BottomStart)
-                    .padding(18.dp),
+                    .padding(PAGE_MARGIN),
             )
+        } }
+
+        val dockBar: @Composable (Modifier) -> Unit = { bar ->
+            // The settings on show are the ones of the tool in hand; the shape key's panel only when
+            // it was asked for, since recognising shapes is something a pen does, not a pen.
+            val shown: KitPanel? = panel ?: when (mode) {
+                InkMode.DRAW -> KitPanel.Slot(active)
+                InkMode.ERASE -> KitPanel.Eraser
+                InkMode.SHAPE -> KitPanel.Shape
+                InkMode.LASSO -> null
+            }
+            InkDock(
+                edge = dock,
+                slots = slots,
+                active = active,
+                shownMode = heldTool?.asMode() ?: mode,
+                snap = snap,
+                canUndo = canUndo,
+                canRedo = canRedo,
+                onUndo = vm::undo,
+                onRedo = vm::redo,
+                onSlot = { active = it; mode = InkMode.DRAW; panel = null },
+                onLasso = { mode = if (mode == InkMode.LASSO) InkMode.DRAW else InkMode.LASSO; panel = null },
+                onShapes = {
+                    if (!snap && mode != InkMode.SHAPE) snap = true
+                    panel = KitPanel.Shape
+                },
+                onEraser = { mode = InkMode.ERASE; panel = null },
+                controls = { vertical ->
+                    DockControls(
+                        panel = shown,
+                        slot = (shown as? KitPanel.Slot)?.let { slots[it.index] },
+                        recents = recents,
+                        eraserSize = eraserSize,
+                        snap = snap,
+                        drawingShapes = mode == InkMode.SHAPE,
+                        shapeKind = shapeKind,
+                        vertical = vertical,
+                        onSlotChange = { next -> (shown as? KitPanel.Slot)?.let { setSlot(it.index) { next } } },
+                        onEraserSize = { eraserSize = it },
+                        onShapeMode = { picked ->
+                            when (picked) {
+                                ShapeMode.OFF -> { snap = false; if (mode == InkMode.SHAPE) mode = InkMode.DRAW; panel = null }
+                                ShapeMode.RECOGNISE -> { snap = true; if (mode == InkMode.SHAPE) mode = InkMode.DRAW }
+                                ShapeMode.DRAW -> { snap = false; mode = InkMode.SHAPE }
+                            }
+                        },
+                        onShapeKind = { shapeKind = it },
+                        onCustomColor = { colorTarget = active; colorSheet = true },
+                    )
+                },
+                penButton = penButton.takeIf { stylusMode },
+                onPenButton = { penButton = it; InkPrefs.setPenButton(context, it) },
+                onEdge = { placeKit(it) },
+                modifier = bar,
+            )
+        }
+
+        // The dock takes its own strip beside the page rather than standing on it, so the paper ends
+        // where the dock begins and nothing under it is ever hidden.
+        when (dock) {
+            KitDock.FLOAT -> pageArea(Modifier.weight(1f).fillMaxWidth())
+            KitDock.BOTTOM -> {
+                pageArea(Modifier.weight(1f).fillMaxWidth())
+                dockBar(Modifier)
+            }
+            KitDock.TOP -> {
+                dockBar(Modifier)
+                pageArea(Modifier.weight(1f).fillMaxWidth())
+            }
+            KitDock.LEFT -> Row(Modifier.weight(1f).fillMaxWidth()) {
+                dockBar(Modifier)
+                pageArea(Modifier.weight(1f).fillMaxHeight())
+            }
+            KitDock.RIGHT -> Row(Modifier.weight(1f).fillMaxWidth()) {
+                pageArea(Modifier.weight(1f).fillMaxHeight())
+                dockBar(Modifier)
+            }
         }
     }
 
     if (colorSheet) {
         ColorPickerSheet(
-            initial = slot.color,
+            initial = slots[colorTarget].color,
             onDismiss = { colorSheet = false },
             onPick = { picked ->
-                (panel as? KitPanel.Slot)?.let { at -> setSlot(at.index) { it.copy(color = picked) } }
+                setSlot(colorTarget) { it.copy(color = picked) }
                 recents = (listOf(picked) + recents).distinct().take(6)
                 colorSheet = false
             },
@@ -801,12 +977,17 @@ private fun KitControls(
     drawingShapes: Boolean,
     shapeKind: ShapeKind,
     leftHanded: Boolean,
+    /** Null until a pen has touched the page — a phone with no pen has no button to configure. */
+    penButton: PenButton?,
+    onPenButton: () -> Unit,
     onSlotChange: (PenSlot) -> Unit,
     onEraserSize: (Float) -> Unit,
     onShapeMode: (ShapeMode) -> Unit,
     onShapeKind: (ShapeKind) -> Unit,
     onCustomColor: () -> Unit,
     onHanded: () -> Unit,
+    /** Offered on a tablet only: puts the kit back in a dock along an edge. */
+    onDock: (() -> Unit)? = null,
 ) {
     val y = Yantra.colors
     Column(
@@ -816,9 +997,92 @@ private fun KitControls(
             // costs you the thing you opened it to fix.
             .padding(bottom = 78.dp)
             .width(232.dp)
-            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.panel))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        KitControlsBody(
+            panel = panel, slot = slot, recents = recents, eraserSize = eraserSize, snap = snap,
+            drawingShapes = drawingShapes, shapeKind = shapeKind, horizontal = false,
+            onSlotChange = onSlotChange, onEraserSize = onEraserSize, onShapeMode = onShapeMode,
+            onShapeKind = onShapeKind, onCustomColor = onCustomColor,
+        )
+        KitSettingRow(
+            label = if (leftHanded) "Kit on the left" else "Kit on the right",
+            value = "Swap",
+            onClick = onHanded,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        if (penButton != null) {
+            // Stepped in place rather than opened as a list: three choices, and the one you want is
+            // at most two taps away without anything covering the page.
+            KitSettingRow(label = "Pen button, held", value = penButton.label, onClick = onPenButton)
+        }
+        if (onDock != null) KitSettingRow(label = "Kit floating", value = "Dock", onClick = onDock)
+    }
+}
+
+/** One line of the kit's own settings: what it is, and the word that changes it. */
+@Composable
+internal fun KitSettingRow(label: String, value: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val y = Yantra.colors
+    Row(
+        modifier
+            .clip(RoundedCornerShape(YantraRadius.control))
+            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, fontSize = YantraType.meta, color = y.textMuted, modifier = Modifier.weight(1f))
+        Text(value, fontSize = YantraType.meta, fontWeight = FontWeight.W700, color = y.accentText)
+    }
+}
+
+/**
+ * What a tool lets you set — a pen's width and ink, the eraser's width, the shape key's two jobs —
+ * without the card around it, so the floating kit's panel and the tablet dock show the same thing.
+ *
+ * [horizontal] lays a pen's width and ink side by side, for a dock along the top or bottom edge
+ * where height is the scarce thing.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun KitControlsBody(
+    panel: KitPanel,
+    slot: PenSlot?,
+    recents: List<Long>,
+    eraserSize: Float,
+    snap: Boolean,
+    drawingShapes: Boolean,
+    shapeKind: ShapeKind,
+    horizontal: Boolean,
+    onSlotChange: (PenSlot) -> Unit,
+    onEraserSize: (Float) -> Unit,
+    onShapeMode: (ShapeMode) -> Unit,
+    onShapeKind: (ShapeKind) -> Unit,
+    onCustomColor: () -> Unit,
+) {
+    val y = Yantra.colors
+    if (horizontal && panel is KitPanel.Slot && slot != null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.width(180.dp)) {
+                SectionLabel(slot.label)
+                WidthRow(slot.width, 1f..24f) { onSlotChange(slot.copy(width = it)) }
+            }
+            Box(Modifier.width(190.dp)) {
+                InkSwatches(
+                    current = slot.color,
+                    recents = recents,
+                    onPick = { onSlotChange(slot.copy(color = it)) },
+                    onCustom = onCustomColor,
+                )
+            }
+        }
+        return
+    }
+    Column(
+        if (horizontal) Modifier.width(260.dp) else Modifier,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         when (panel) {
@@ -826,7 +1090,7 @@ private fun KitControls(
                 if (slot == null) return@Column
                 SectionLabel(slot.label)
                 WidthRow(slot.width, 1f..24f) { onSlotChange(slot.copy(width = it)) }
-                Text("Ink", fontSize = YantraType.caption, color = y.textMuted, modifier = Modifier.padding(top = 6.dp))
+                SectionLabel("Ink", Modifier.padding(top = 6.dp))
                 InkSwatches(
                     current = slot.color,
                     recents = recents,
@@ -855,8 +1119,8 @@ private fun KitControls(
                 Text(
                     if (drawingShapes) "Drag to place the shape."
                     else "Draw freehand; it settles into a shape when you lift.",
-                    fontSize = YantraType.caption,
-                    color = y.textDim,
+                    fontSize = YantraType.meta,
+                    color = y.textMuted,
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 if (drawingShapes) {
@@ -874,28 +1138,12 @@ private fun KitControls(
                 }
             }
         }
-        Row(
-            Modifier
-                .padding(top = 10.dp)
-                .clip(RoundedCornerShape(YantraRadius.control))
-                .clickable(onClick = onHanded)
-                .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                if (leftHanded) "Kit on the left" else "Kit on the right",
-                fontSize = YantraType.meta,
-                color = y.textMuted,
-                modifier = Modifier.weight(1f),
-            )
-            Text("Swap", fontSize = YantraType.meta, fontWeight = FontWeight.W700, color = y.accentText)
-        }
     }
 }
 
 /** A width, shown as the line it draws rather than as a number nobody can picture. */
 @Composable
-private fun WidthRow(value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+internal fun WidthRow(value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
     val y = Yantra.colors
     Canvas(Modifier.fillMaxWidth().height(18.dp)) {
         drawLine(
@@ -920,7 +1168,7 @@ private fun WidthRow(value: Float, range: ClosedFloatingPointRange<Float>, onCha
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun InkSwatches(
+internal fun InkSwatches(
     current: Long,
     recents: List<Long>,
     onPick: (Long) -> Unit,
@@ -931,14 +1179,18 @@ private fun InkSwatches(
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        (inkPresets(y.accent) + recents).distinct().take(8).forEach { c ->
+        (inkPresets(y.accent, y.isDark) + recents).distinct().take(9).forEach { c ->
             Box(
                 Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color(c.toInt()))
-                    .then(if (c == current) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
-                    .clickable { onPick(c) },
+                    .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
+                    .then(if (sameInk(c, current)) Modifier.border(2.dp, ringFor(c, y.accent, y.textPrimary), CircleShape) else Modifier)
+                    .clickable { onPick(c) }
+                    .semantics {
+                        contentDescription = "Ink colour"
+                        selected = sameInk(c, current)
+                    },
             )
         }
         Box(
@@ -948,7 +1200,7 @@ private fun InkSwatches(
                 .border(1.dp, y.tileBorder, CircleShape)
                 .clickable(onClick = onCustom),
             contentAlignment = Alignment.Center,
-        ) { Text("+", fontSize = YantraType.body, color = y.textMuted) }
+        ) { YantraIcon(YantraMark.Add, size = YantraIcons.Small, tint = y.textMuted, contentDescription = "Custom colour") }
     }
 }
 
@@ -966,12 +1218,20 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
     var value by remember { mutableFloatStateOf(hsv[2]) }
     val current = Color.hsv(hue, sat, value)
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.railBg) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.cardBg) {
         Column(
-            Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 20.dp),
+            Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Custom color", fontSize = YantraType.card, fontWeight = FontWeight.W800, color = y.textPrimary)
+            // A sheet title, as the due, assignee and property sheets set theirs.
+            Text(
+                "Custom colour",
+                fontFamily = YantraDisplay,
+                fontSize = YantraType.sheetTitle,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.3).sp,
+                color = y.textPrimary,
+            )
 
             // saturation / value square
             Box(
@@ -1072,10 +1332,9 @@ private fun BoxScope.SelectionBar(
     ) {
         Text(
             "$count",
-            fontFamily = YantraMono,
-            fontSize = YantraType.caption,
+            fontSize = YantraType.section,
             fontWeight = FontWeight.W700,
-            color = y.textDim,
+            color = y.textMuted,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         Text(
@@ -1092,32 +1351,28 @@ private fun BoxScope.SelectionBar(
 @Composable
 private fun BarAction(
     label: String,
-    accent: Boolean = false,
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val y = Yantra.colors
     Box(
         Modifier
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(YantraRadius.control))
-            .background(if (accent) y.accentFill else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 10.dp),
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontSize = YantraType.meta,
             fontWeight = FontWeight.W700,
-            color = when {
-                accent -> y.accentText
-                danger -> y.overdue
-                else -> y.textMuted
-            },
+            color = if (danger) y.overdue else y.textMuted,
         )
     }
 }
 
-private val SHAPE_NAMES = listOf(
+internal val SHAPE_NAMES = listOf(
     ShapeKind.LINE to "Line", ShapeKind.RECTANGLE to "Box",
     ShapeKind.ELLIPSE to "Oval", ShapeKind.ARROW to "Arrow",
 )

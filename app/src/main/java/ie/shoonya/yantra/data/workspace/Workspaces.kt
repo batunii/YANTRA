@@ -1,6 +1,7 @@
 package ie.shoonya.yantra.data.workspace
 
 import ie.shoonya.yantra.data.db.AppDatabase
+import ie.shoonya.yantra.Trace
 import java.io.File
 
 /**
@@ -19,8 +20,6 @@ class Workspaces(
     private val scope: kotlinx.coroutines.CoroutineScope? = null,
     /** Told about every write, with the workspace it belongs to, so commits can be scheduled. */
     private val onChange: (String, ie.shoonya.yantra.data.sync.Change) -> Unit = { _, _ -> },
-    /** Told when a write is refused because a workspace is newer than this build. */
-    private val onRefused: (String, WorkspaceWriter.WorkspaceReadOnly) -> Unit = { _, _ -> },
 ) {
     private val stores = LinkedHashMap<String, WorkspaceStore>()
     private val writers = LinkedHashMap<String, WorkspaceWriter>()
@@ -36,13 +35,13 @@ class Workspaces(
         else {
             store.ensureBuiltInProperties()
             store.upgradeFormat()
+            // Every workspace made before the `.tmp` suffix was declared to git has a directory
+            // `git add .` will walk while a keystroke is mid-rename, and one of those is how a sync
+            // dies with ENOENT on a file that was never an edit. See WorkspaceStore.ensureGitignore.
+            store.ensureGitignore()
         }
         stores[id] = store
-        writers[id] = WorkspaceWriter(
-            store, db, indexer, device, scope,
-            onChange = { onChange(id, it) },
-            onRefused = { onRefused(id, it) },
-        )
+        writers[id] = WorkspaceWriter(store, db, indexer, device, scope) { onChange(id, it) }
         return fresh
     }
 
@@ -116,21 +115,36 @@ class Workspaces(
      * is not.
      */
     suspend fun moveAcross(nodeId: String, newParent: String) {
-        val from = db.nodeDao().byId(nodeId)?.workspaceId ?: return
-        val to = db.nodeDao().byId(newParent)?.workspaceId ?: return
+        // **Asked again rather than given up on.** Every lookup below used to be `?: return`, so a
+        // move that arrived while the index was being rebuilt did nothing at all — no line written,
+        // no file touched, nothing said. From the outside that is "moving an event to a list does
+        // not work the first time", because the second attempt lands after the rebuild and works.
+        // See [awaitPresent] for why a miss is not the same as an absence.
+        //
+        // And every failure says so now. A move that cannot happen is worth a line in the log even
+        // when nothing crashes: silence is what made this one cost a bug report rather than a
+        // glance.
+        val from = awaitPresent { db.nodeDao().byId(nodeId) }?.workspaceId
+            ?: return Trace.warn("move", "no node ${Trace.id(nodeId)} to move")
+        val to = awaitPresent { db.nodeDao().byId(newParent) }?.workspaceId
+            ?: return Trace.warn("move", "no list ${Trace.id(newParent)} to move into")
         if (from == to) {
-            writers[from]?.reparent(nodeId, newParent)
+            val writer = writers[from]
+                ?: return Trace.warn("move", "no writer for workspace '${from}'")
+            writer.reparent(nodeId, newParent)
             return
         }
-        val source = stores[from] ?: return
-        val dest = stores[to] ?: return
-        val sourceWriter = writers[from] ?: return
-        val destWriter = writers[to] ?: return
+        val source = stores[from] ?: return Trace.warn("move", "no store for '${from}'")
+        val dest = stores[to] ?: return Trace.warn("move", "no store for '${to}'")
+        val sourceWriter = writers[from] ?: return Trace.warn("move", "no writer for '${from}'")
+        val destWriter = writers[to] ?: return Trace.warn("move", "no writer for '${to}'")
 
-        dest.adopt(source, nodeId)
+        // A subtree's files, copied byte for byte — off the main thread, where the move is asked for.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { dest.adopt(source, nodeId) }
         // Null only if the line is not where the index says it is, which is a workspace already
         // disagreeing with itself. The copy above is then a harmless orphan rather than a deletion.
-        val line = sourceWriter.takeLine(nodeId) ?: return
+        val line = sourceWriter.takeLine(nodeId)
+            ?: return Trace.warn("move", "no line for ${Trace.id(nodeId)}; left a copy in '${to}'")
         destWriter.putLine(line, newParent, nodeId)
         sourceWriter.dropFiles(nodeId)
     }

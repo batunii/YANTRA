@@ -334,7 +334,7 @@ class NodePageViewModel(
         combine(
             properties.defs(),
             properties.valuesUnder(nodeId),
-            labels.all(),
+            labels.byAnyId(),
             labels.forChildrenOf(nodeId),
             container.people.rosters(),
         ) { d, v, allLabels, nodeLabels, rosters ->
@@ -373,9 +373,8 @@ class NodePageViewModel(
 
     /** Labels attached to any given node, resolved from the join table. */
     fun labelsFor(childId: String): Flow<List<LabelEntity>> =
-        combine(labels.forNode(childId), labels.all()) { nodeLabels, allLabels ->
-            val byId = allLabels.associateBy { it.id }
-            nodeLabels.mapNotNull { byId[it.labelId] }
+        combine(labels.forNode(childId), labels.byAnyId()) { nodeLabels, byId ->
+            nodeLabels.mapNotNull { byId[it.labelId] }.distinctBy { it.id }
         }
 
     val childCounts: StateFlow<Map<String, SubtreeTaskCount>> =
@@ -389,14 +388,32 @@ class NodePageViewModel(
             .map { list -> list.associate { it.nodeId to it.count } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    /** Decoded strokes for every ink block on this page, keyed by ink node id. */
+    /**
+     * Decoded strokes for every ink block on this page, keyed by ink node id — **decoded once per
+     * change to that sketch**, not once per change to the page.
+     *
+     * The query watches `node` as well as `ink_stroke`, so it runs again on every keystroke anywhere
+     * on the page, and it hands back fresh copies of every blob. Decoding them each time rebuilt every
+     * stroke of every sketch here — and new `Stroke` objects miss every per-stroke cache, so each
+     * preview was re-measured and redrawn as well — because somebody renamed a task. A sketch whose
+     * rows are the same as last time now gets back the very list it had.
+     */
+    private val decodedInk = java.util.concurrent.ConcurrentHashMap<String, Pair<List<Long>, List<Stroke>>>()
+
     val inkPreviews: StateFlow<Map<String, List<Stroke>>> =
         ink.strokesUnder(nodeId)
             .map { rows ->
-                rows.groupBy { it.nodeId }.mapValues { (_, list) ->
-                    list.mapNotNull { row -> StrokeCodec.decodeOrNull(row.data) }
+                val byNode = rows.groupBy { it.nodeId }
+                decodedInk.keys.retainAll(byNode.keys)
+                byNode.mapValues { (id, list) ->
+                    // Position and content, per row: the same strokes in the same order.
+                    val key = list.map { (it.rank.hashCode().toLong() shl 32) xor it.data.contentHashCode().toLong() }
+                    decodedInk[id]?.takeIf { it.first == key }?.second
+                        ?: list.mapNotNull { row -> StrokeCodec.decodeOrNull(row.data) }
+                            .also { decodedInk[id] = key to it }
                 }
             }
+            .distinctUntilChanged()
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 

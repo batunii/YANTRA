@@ -16,6 +16,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.components.ButtonTone
+import ie.shoonya.yantra.ui.components.YantraButton
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -113,7 +121,6 @@ fun SettingsScreen(nav: NavHostController) {
                         id = store.id,
                         name = store.readManifest()?.name ?: "Workspace",
                         slug = container.slugOf(store.id),
-                        readOnly = store.isReadOnly,
                         color = container.registry.colorOf(store.id),
                     )
                 }
@@ -140,7 +147,10 @@ fun SettingsScreen(nav: NavHostController) {
                 .fillMaxWidth()
                 .nestedScroll(fold.connection)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                // Inside the scroll, so the list still runs under a three-button bar and only its
+                // last card is lifted clear of it: nothing else on this screen absorbs that inset.
+                .navigationBarsPadding()
+                .padding(horizontal = PAGE_MARGIN)
                 .padding(top = 12.dp, bottom = 40.dp),
         ) {
             SectionLabel("Theme")
@@ -177,12 +187,7 @@ fun SettingsScreen(nav: NavHostController) {
             spaces.forEach { space ->
                 SettingRow(
                     title = space.name,
-                    subtitle = when {
-                        // Another device moved this repository to a format this build does not know.
-                        // Everything still shows; nothing here may change it until the app is updated.
-                        space.readOnly -> "Read-only here — update Yantra to edit"
-                        else -> space.slug ?: "On this device only"
-                    },
+                    subtitle = space.slug ?: "On this device only",
                     // The colour this workspace wears, and the one place it can be changed.
                     //
                     // It is seeded from the name — the same hash a label's colour starts from — and
@@ -201,7 +206,10 @@ fun SettingsScreen(nav: NavHostController) {
                                     swatch?.let { Color(LabelPalette.display(it.light, y.isDark)) }
                                         ?: y.checkOutline
                                 )
-                                .clickable { colouring = space },
+                                .clickable(onClickLabel = "Change colour", role = Role.Button) {
+                                    colouring = space
+                                }
+                                .semantics { contentDescription = "${space.name} colour" },
                         )
                     },
                     // Nothing to open yet — the switcher is Phase 5. Showing where each workspace
@@ -246,13 +254,14 @@ fun SettingsScreen(nav: NavHostController) {
                                         .padding(if (on) 4.dp else 0.dp)
                                         .clip(CircleShape)
                                         .background(Color(LabelPalette.display(swatch.light, y.isDark)))
-                                        .clickable {
+                                        .selectable(selected = on, role = Role.RadioButton) {
                                             container.registry.setColor(space.id, swatch.name)
                                             spaces = spaces.map {
                                                 if (it.id == space.id) it.copy(color = swatch.name) else it
                                             }
                                             colouring = null
-                                        },
+                                        }
+                                        .semantics { contentDescription = swatch.name },
                                 )
                             }
                         }
@@ -305,11 +314,12 @@ fun SettingsScreen(nav: NavHostController) {
                 fontSize = YantraType.meta,
             )
             Spacer(Modifier.height(12.dp))
-            SelectChip(
+            // A button, not a chip: a chip is a switch, and this one sat under the theme switches
+            // looking like a fifth option rather than something that happens once.
+            YantraButton(
                 "Sync now",
-                selected = false,
+                tone = ButtonTone.Quiet,
                 modifier = Modifier.fillMaxWidth(),
-                stretch = true,
                 onClick = { container.syncNow("asked to sync") },
             )
 
@@ -343,21 +353,21 @@ fun SettingsScreen(nav: NavHostController) {
 
             if (archiveDays > 0) {
                 Spacer(Modifier.height(12.dp))
-                SelectChip(
-                    if (busy) "Working…" else "Archive finished tasks now",
-                    selected = false,
+                // busy disables the button for the round trip, which is what the old !busy guard and
+                // the "Working…" label were imitating.
+                YantraButton(
+                    "Archive finished tasks now",
+                    tone = ButtonTone.Quiet,
                     modifier = Modifier.fillMaxWidth(),
-                    stretch = true,
+                    busy = busy,
                     onClick = {
-                        if (!busy) {
-                            busy = true
-                            container.appScope.launch {
-                                val moved = container.archiveNow()
-                                archived = container.archivedCount()
-                                said = if (moved == 0) "Nothing was old enough yet"
-                                else "$moved moved out of your lists"
-                                busy = false
-                            }
+                        busy = true
+                        container.appScope.launch {
+                            val moved = container.archiveNow()
+                            archived = container.archivedCount()
+                            said = if (moved == 0) "Nothing was old enough yet"
+                            else "$moved moved out of your lists"
+                            busy = false
                         }
                     },
                 )
@@ -390,6 +400,7 @@ fun SettingsScreen(nav: NavHostController) {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 AccentColor.entries.forEach { option ->
                     AccentSwatch(
+                        name = option.label,
                         color = option.ink(y.isDark),
                         selected = theme.accent == option,
                         onClick = {
@@ -452,14 +463,15 @@ fun SettingsScreen(nav: NavHostController) {
 
 /** An accent option. Bigger than a label swatch, because this one repaints the whole app. */
 @Composable
-private fun AccentSwatch(color: Color, selected: Boolean, onClick: () -> Unit) {
+private fun AccentSwatch(name: String, color: Color, selected: Boolean, onClick: () -> Unit) {
     val y = Yantra.colors
     Box(
         // clickable before the insets: the target is the whole swatch, not the drawn circle.
         Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = name }
             .then(if (selected) Modifier.border(2.dp, y.textPrimary, CircleShape) else Modifier)
             .padding(if (selected) 6.dp else 3.dp)
             .background(color, CircleShape),
@@ -517,8 +529,6 @@ private data class WorkspaceRow(
     val slug: String?,
     /** The colour it wears, seeded from the name until somebody changes it. */
     val color: String?,
-    /** True when another device moved the repository past [WorkspaceStore.FORMAT_VERSION]. */
-    val readOnly: Boolean = false,
 )
 
 /**

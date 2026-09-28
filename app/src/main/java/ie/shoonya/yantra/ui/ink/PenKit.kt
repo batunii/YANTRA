@@ -200,7 +200,7 @@ private fun KitColumn(
             YantraIcon(if (folded) YantraMark.Up else YantraMark.Down,
                 contentDescription = if (folded) "Show the whole kit" else "Fold the kit",
                 tint = y.textDim,
-                modifier = Modifier.size(20.dp),
+                size = YantraIcons.Medium,
             )
         }
 
@@ -238,7 +238,7 @@ private fun KitColumn(
                 Text(
                     slot.label,
                     fontFamily = YantraMono,
-                    fontSize = YantraType.dense,
+                    fontSize = YantraType.section,
                     letterSpacing = 0.8.sp,
                     fontWeight = FontWeight.W700,
                     color = if (on) y.accentText else y.textMuted,
@@ -302,7 +302,7 @@ private fun KitColumn(
 
 /** A slot drawn as the stroke it makes — the label is a name, the drawing is the answer. */
 @Composable
-private fun SlotStroke(slot: PenSlot, modifier: Modifier) {
+internal fun SlotStroke(slot: PenSlot, modifier: Modifier) {
     val color = Color(slot.color.toInt())
     val translucent = slot.family == StrokeCodec.FAMILY_HIGHLIGHTER
     Canvas(modifier) {
@@ -326,7 +326,7 @@ private fun SlotStroke(slot: PenSlot, modifier: Modifier) {
 }
 
 @Composable
-private fun KitTool(
+internal fun KitTool(
     label: String,
     on: Boolean,
     onClick: () -> Unit,
@@ -392,7 +392,7 @@ private fun UndoKey(mark: YantraMark, label: String, enabled: Boolean, onClick: 
             mark,
             contentDescription = label,
             tint = if (enabled) y.textSecondary else y.textDim.copy(alpha = 0.4f),
-            modifier = Modifier.size(22.dp),
+            size = YantraIcons.Large,
         )
     }
 }

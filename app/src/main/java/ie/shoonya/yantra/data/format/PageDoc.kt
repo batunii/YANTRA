@@ -64,6 +64,15 @@ data class PageDoc(
      * Last in the list, because PageDoc is built positionally in places.
      */
     val color: String? = null,
+    /**
+     * Whether this list sits at the top of Home, or `null` when the file has never said.
+     *
+     * Nullable rather than defaulting to false, because "never said" and "said no" have to be told
+     * apart: every list written before pinning existed says nothing, and the section used to be
+     * "every ungrouped smart list". Reading absence as *false* would have emptied Home's Pinned
+     * section for everybody on upgrade. Absence means the old rule; a value means somebody chose.
+     */
+    val pinned: Boolean? = null,
 )
 
 /** How a task line renders its glyph. Mirrors `done` + `in_progress`, which are never both set. */
@@ -253,6 +262,21 @@ data class EventRef(
     val id: String,
     val title: String,
     val time: EventTime,
+    /**
+     * Whose calendar this meeting came off, when it came off one at all.
+     *
+     * An event node made by tapping a meeting is a note about *your* day: it exists because your
+     * phone's calendar has that meeting on it, and the times and the title are read live from the
+     * calendar that owns it. Somebody else pulling the repository has no such calendar entry — the
+     * line would be a meeting they cannot see, cannot open and did not put there.
+     *
+     * So it is stamped with the login of the person whose calendar it is, and a workspace only
+     * indexes the ones it can claim. The file still syncs, deliberately: it follows you to your own
+     * second device, and the day it turns out somebody *should* see it, nothing has to be
+     * recovered. Null means nobody claimed it, which is every event written before this and every
+     * event somebody typed by hand — those belong to the list, and everyone sees them.
+     */
+    val author: String? = null,
     /** RFC 5545 subset — see CALENDAR_PLAN.md §4. Stored verbatim, including rules we cannot expand. */
     val rrule: String? = null,
     /**

@@ -42,7 +42,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.data.db.RailTask
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
 import ie.shoonya.yantra.ui.theme.YantraType
@@ -99,12 +103,13 @@ fun TaskRail(
                         .clip(RoundedCornerShape(YantraRadius.block))
                         .then(if (on) Modifier.background(y.accentFill) else Modifier)
                         .clickable { onShelf(b) }
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // A tab is a control, not a column of data, so it reads at chip size.
                     Text(
                         b.label,
-                        fontSize = YantraType.dense,
+                        fontSize = YantraType.section,
                         fontWeight = if (on) FontWeight.W700 else FontWeight.W500,
                         color = if (on) y.accentText else y.textMuted,
                         maxLines = 1,
@@ -113,7 +118,7 @@ fun TaskRail(
                         Text(
                             count.toString(),
                             fontFamily = YantraMono,
-                            fontSize = YantraType.dense,
+                            fontSize = YantraType.section,
                             color = if (on) y.accentText.copy(alpha = 0.7f) else y.textDim,
                             modifier = Modifier.padding(start = 4.dp),
                         )
@@ -126,7 +131,7 @@ fun TaskRail(
             // The instruction only exists while it is true. A standing hint is furniture.
             Text(
                 "Tap a time on the day",
-                fontSize = YantraType.dense,
+                fontSize = YantraType.caption,
                 fontWeight = FontWeight.W700,
                 color = y.accent,
                 modifier = Modifier.padding(bottom = 4.dp),
@@ -233,7 +238,10 @@ private fun RailRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                task.title.orEmpty().ifEmpty { "Untitled" },
+                // Collapsed, like everywhere else a title is shown away from the page it is typed
+                // on — see CalendarBucketer.shown. A rail chip is two lines of a phone's width, and
+                // `[[Call Bob|^9f1e…]]` spends both of them on punctuation.
+                Links.plain(task.title.orEmpty()).ifEmpty { "Untitled" },
                 fontSize = YantraType.section,
                 fontWeight = FontWeight.W600,
                 color = if (armed) y.accentText else y.textPrimary,
@@ -260,7 +268,12 @@ private fun RailRow(
                     .testTag("open:${task.nodeId}"),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("›", fontSize = YantraType.row, color = if (armed) y.accentText else y.textDim)
+                YantraIcon(
+                    YantraMark.Forward,
+                    size = YantraIcons.Medium,
+                    tint = if (armed) y.accentText else y.textDim,
+                    contentDescription = "Open task",
+                )
             }
         }
     }

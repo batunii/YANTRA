@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.unit.dp
 import ie.shoonya.yantra.data.db.RailTask
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -235,7 +236,9 @@ fun DayWithRail(
                 dragged = null
                 finger = null
             },
-            modifier = mod.padding(horizontal = 8.dp),
+            // Stacked under the day on a phone it is a list of tasks like any other, so it takes the
+            // page margin and lines up with the heading above it. Beside the day it is a column.
+            modifier = mod.padding(horizontal = if (sideBySide) 8.dp else PAGE_MARGIN),
         )
     }
 

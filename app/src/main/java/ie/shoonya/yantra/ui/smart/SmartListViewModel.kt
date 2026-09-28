@@ -219,7 +219,7 @@ class SmartListViewModel(
         combine(
             properties.defs(),
             container.db.propertyDao().allValues(),
-            container.labels.all(),
+            container.labels.byAnyId(),
             container.labels.allNodeLabels(),
             container.people.rosters(),
         ) { d, v, labels, nodeLabels, rosters ->
@@ -253,7 +253,7 @@ class SmartListViewModel(
 
     /** e.g. "Open tasks · Priority = High · label: groceries · new tasks land in Inbox" */
     val description: StateFlow<String> =
-        combine(def, properties.defs(), container.labels.all()) { d, defs, labels -> describe(d, defs, labels) }
+        combine(def, properties.defs(), container.labels.byAnyId()) { d, defs, labels -> describe(d, defs, labels) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     /**
@@ -384,10 +384,9 @@ class SmartListViewModel(
         viewModelScope.launch { timing.toggle(id, title) }
     }
 
-    private suspend fun describe(d: SmartListDefEntity?, defs: List<PropertyDefEntity>, labels: List<LabelEntity>): String {
+    private suspend fun describe(d: SmartListDefEntity?, defs: List<PropertyDefEntity>, labelById: Map<String, LabelEntity>): String {
         if (d == null) return ""
         val defById = defs.associateBy { it.id }
-        val labelById = labels.associateBy { it.id }
         // Named from the workspace list, not the index: a rule may name a workspace this device
         // has since forgotten, and "from 93c907a5-…" is worse than nothing on a one-line pill.
         val wsById = container.openWorkspaces().associate { it.id to it.name }
