@@ -4,11 +4,17 @@ import YantraCore
 
 /// The ink screen on PencilKit: pen, marker (highlighter), eraser, lasso and undo come from the
 /// system tool picker; Apple Pencil pressure, tilt and azimuth are recorded per point. Strokes are
-/// stored as YNK1 envelopes — the same bytes the Android app writes — and rebuilt as PKStrokes on
-/// the way back, so a sketch from either phone is the same sketch on the other.
+/// stored in Android's own `.ink` format (`InkBlob`) and rebuilt as PKStrokes on the way back, so a
+/// sketch from either phone is the same sketch on the other.
+///
+/// **A stroke this screen did not touch is written back as the bytes it was read as.** PencilKit
+/// cannot hold a stroke's original inputs, so re-deriving one from its PKStroke would quantise it
+/// afresh, drop the channels PencilKit does not keep and rewrite every Android drawing the first
+/// time it was opened here. `InkLedger` remembers which PKStroke came from which blob.
 struct InkView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
+    @Environment(\.scenePhase) private var scenePhase
     @Binding var path: NavigationPath
     let inkId: String
 
@@ -36,6 +42,8 @@ struct InkView: View {
     @State private var fitToken = 0
     @State private var history: [PKDrawing] = []
     @State private var future: [PKDrawing] = []
+    /// What the file held when it was read, and which stroke on the canvas each blob became.
+    @State private var ledger = InkLedger()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -116,6 +124,9 @@ struct InkView: View {
             if !loaded { load() } else { redraw() }
         }
         .onDisappear { save() }
+        // Written when the app is put away, as Android writes on pause: a sketch left on screen
+        // must not wait for someone to press back.
+        .onChange(of: scenePhase) { _, phase in if phase != .active { save() } }
     }
 
     /// How many pages the document has: as many as the ink reaches onto, plus one to grow into.
@@ -139,10 +150,14 @@ struct InkView: View {
             return PKLassoTool()
         case .draw, .shape:
             let slot = slots.indices.contains(active) ? slots[active] : InkPalette.defaultSlots(dark: y.dark)[0]
-            let inkType: PKInkingTool.InkType = slot.family == StrokeCodec.familyHighlighter ? .marker : .pen
+            let inkType: PKInkingTool.InkType = slot.family == StrokeCodec.familyHighlighter ? .marker
+                : slot.family == StrokeCodec.familyMarker ? .monoline : .pen
+            // A slot's width is a brush size in document units, as on Android; the tool wants
+            // points on this canvas.
+            let width = canvasWidth > 0 ? DocumentUnits.toPoints(Double(slot.width), canvasWidth: Double(canvasWidth)) : Double(slot.width)
             return PKInkingTool(inkType,
                                 color: UIColor(Color(argb: InkPalette.display(slot.color, dark: y.dark))),
-                                width: slot.width)
+                                width: CGFloat(width))
         }
     }
 
@@ -183,16 +198,19 @@ struct InkView: View {
 
     /// Re-places what is stored at the current width, without touching the file.
     private func redraw() {
-        let strokes = model.storeFor(inkId).readInk(inkId).compactMap { try? StrokeEnvelope.decode($0) }
-        drawing = PKDrawing(strokes: strokes.map { InkBridge.stroke(from: $0, dark: y.dark, canvasWidth: canvasWidth) })
+        ledger = InkLedger(blobs: model.storeFor(inkId).readInk(inkId))
+        drawing = ledger.drawing(dark: y.dark, canvasWidth: canvasWidth)
     }
 
     private func save() {
         // Nothing is written before the canvas has been measured: converting at a width of zero
         // would put every stroke at the origin.
-        guard canvasWidth > 0 else { return }
-        let envelopes = drawing.strokes.map { InkBridge.envelope(from: $0, canvasWidth: canvasWidth) }
-        model.write { try model.writerFor(inkId).writeInk(inkId, envelopes.map { StrokeEnvelope.encode($0) }) }
+        guard canvasWidth > 0, loaded else { return }
+        let (blobs, next) = ledger.blobs(for: drawing, canvasWidth: canvasWidth)
+        // Opening a drawing and leaving it is not an edit, and must not look like one to sync.
+        guard blobs != ledger.original else { ledger = next; return }
+        model.write { try model.writerFor(inkId).writeInk(inkId, blobs) }
+        ledger = next
     }
 }
 
@@ -230,7 +248,11 @@ struct PencilCanvas: UIViewRepresentable {
         // finger draws and two pan and pinch.
         v.drawingPolicy = .anyInput
         v.delegate = context.coordinator
-        v.overrideUserInterfaceStyle = dark ? .dark : .light
+        // Always light. In a dark style PencilKit treats every ink as a light-mode colour and inverts
+        // it, so chalk drawn on dark paper came out dark on dark paper and vanished. The theme swap is
+        // Yantra's own — graphite and chalk trade places in `InkBridge`, and nothing else changes —
+        // so the canvas must draw each colour as it is given.
+        v.overrideUserInterfaceStyle = .light
         v.tool = tool
         // The document is taller than the glass and can be looked at from closer or further away.
         // The limits are Android's — see `InkPages`.
@@ -253,7 +275,6 @@ struct PencilCanvas: UIViewRepresentable {
         context.coordinator.parent = self
         if v.drawing != drawing, !context.coordinator.isEditing { v.drawing = drawing }
         v.backgroundColor = paper
-        v.overrideUserInterfaceStyle = dark ? .dark : .light
         v.tool = tool
         host.furniture.separator = separator
         host.furniture.label = pageLabel
@@ -365,6 +386,7 @@ struct PencilCanvas: UIViewRepresentable {
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
             isEditing = false
             snapLastStrokeIfAsked(canvasView)
+            keepHighlightersUnder(canvasView)
             parent.onEnd()
         }
 
@@ -432,6 +454,18 @@ struct PencilCanvas: UIViewRepresentable {
             syncContent()
         }
 
+        /// A highlighter just drawn goes under the pen strokes, where Android draws every highlighter:
+        /// it tints the ink, it never covers it.
+        private func keepHighlightersUnder(_ v: PKCanvasView) {
+            guard let last = v.drawing.strokes.last, InkBridge.isHighlighter(last),
+                  v.drawing.strokes.dropLast().contains(where: { !InkBridge.isHighlighter($0) }) else { return }
+            var next = v.drawing
+            next.strokes = InkBridge.highlightersFirst(next.strokes.map { (InkBridge.isHighlighter($0), $0) })
+            v.drawing = next
+            parent.drawing = next
+            parent.onChange()
+        }
+
         /// Replaces the stroke just drawn with the clean figure it reads as, if it reads as one.
         ///
         /// On lift rather than while drawing: a shape that formed under the pen would keep changing
@@ -451,57 +485,215 @@ struct PencilCanvas: UIViewRepresentable {
     }
 }
 
-/// PKStroke ↔ YNK1. Families map onto brush families; the two theme-native inks swap with the theme.
+/// Which stroke on the canvas came from which blob in the file.
+///
+/// Every stroke is known by its path's `creationDate`, which PencilKit carries untouched through
+/// undo, redo and the lasso. A stroke built from a blob is given a date that names its place in the
+/// file — whole seconds after the reference date, which nobody could have drawn at — and a stroke
+/// drawn here keeps the date it was drawn at. For each, the ledger holds its **base**: the blob of
+/// the stroke as it stands with no transform. On save a stroke becomes:
+///
+/// - **untransformed**: its base, byte for byte — so an Android stroke nobody touched is written
+///   back exactly as Android wrote it, and a stroke drawn here is encoded once, not on every save;
+/// - **moved or resized** by the lasso (a translate or a uniform scale): its base through
+///   `InkBlob.transform`, Android's own rule, so the brush comes through exactly. From the base
+///   every time, so a second save does not move it twice;
+/// - **bent any other way**, or new: encoded from the PKStroke.
+///
+/// Blobs this build cannot place — v1 pixel strokes, or a blob from a newer format — are never
+/// drawn and never dropped: they go back into the file where they were, as they came.
+///
+/// Everything keeps its place in the file, and new strokes follow. The canvas draws highlighters
+/// under pens, as Android does, which is a matter of drawing and not a reason to reorder the file.
+struct InkLedger {
+    private struct Entry {
+        var base: Data
+        var points: Int
+        /// Where it sits in the file: the index it was read at, or after everything for a new one.
+        var order: Int
+    }
+
+    /// The file as read, or as last written.
+    private(set) var original: [Data] = []
+    private var entries: [Double: Entry] = [:]
+    private var unplaced: [(order: Int, blob: Data)] = []
+    private var nextOrder = 0
+
+    init() {}
+
+    init(blobs: [Data]) {
+        original = blobs
+        nextOrder = blobs.count
+    }
+
+    /// PencilKit keeps a path's date at float precision, so an index is a whole number of seconds
+    /// after the reference date — exact in a float up to 2²⁴.
+    static func date(forIndex i: Int) -> Date { Date(timeIntervalSinceReferenceDate: Double(i)) }
+
+    mutating func drawing(dark: Bool, canvasWidth: CGFloat) -> PKDrawing {
+        entries = [:]
+        unplaced = []
+        var strokes: [(highlighter: Bool, stroke: PKStroke)] = []
+        for (i, blob) in original.enumerated() {
+            guard let s = InkBlob.decodeOrNull(blob), s.inputs.count > 0 else {
+                unplaced.append((i, blob)); continue
+            }
+            let pk = InkBridge.stroke(from: s, dark: dark, canvasWidth: canvasWidth, date: Self.date(forIndex: i))
+            entries[pk.path.creationDate.timeIntervalSinceReferenceDate] = Entry(base: blob, points: pk.path.count, order: i)
+            strokes.append((s.header.family == StrokeCodec.familyHighlighter, pk))
+        }
+        return PKDrawing(strokes: InkBridge.highlightersFirst(strokes))
+    }
+
+    /// The file for `drawing`, and the ledger that knows it — committed by the caller once written.
+    func blobs(for drawing: PKDrawing, canvasWidth: CGFloat) -> (blobs: [Data], ledger: InkLedger) {
+        let perPoint = Float(DocumentUnits.unitsPerPoint(canvasWidth: Double(canvasWidth)))
+        var next = self
+        next.entries = [:]
+        var out: [(order: Int, blob: Data)] = unplaced
+        for s in drawing.strokes {
+            let key = s.path.creationDate.timeIntervalSinceReferenceDate
+            guard next.entries[key] == nil else { continue }   // the same stroke twice is one stroke
+            var entry: Entry
+            if let known = entries[key], known.points == s.path.count {
+                entry = known
+            } else {
+                var flat = s
+                flat.transform = .identity
+                guard let base = try? InkBlob.encode(InkBridge.stroke(from: flat, canvasWidth: canvasWidth)) else { continue }
+                entry = Entry(base: base, points: s.path.count, order: entries[key]?.order ?? next.nextOrder)
+                if entries[key] == nil { next.nextOrder += 1 }
+            }
+            next.entries[key] = entry
+            let t = s.transform
+            let blob: Data?
+            if t == .identity {
+                blob = entry.base
+            } else if t.b == 0, t.c == 0, t.a == t.d, t.a > 0 {
+                blob = try? InkBlob.transform(entry.base, scale: Float(t.a),
+                                              dx: Float(t.tx) * perPoint, dy: Float(t.ty) * perPoint)
+            } else {
+                blob = try? InkBlob.encode(InkBridge.stroke(from: s, canvasWidth: canvasWidth))
+            }
+            if let blob { out.append((entry.order, blob)) }
+        }
+        let blobs = out.sorted { $0.order < $1.order }.map(\.blob)
+        next.original = blobs
+        return (blobs, next)
+    }
+}
+
+/// PKStroke ↔ `InkBlob.Stroke`. Families map onto brush families; the two theme-native inks swap
+/// with the theme at render time and are stored as drawn.
 enum InkBridge {
-    static let graphite: UInt32 = 0xFF23211C, chalk: UInt32 = 0xFFF1EEE7
+    /// Apple Pencil's `UITouch.maximumPossibleForce`. PencilKit reports a point's force on the same
+    /// scale; androidx.ink wants pressure from 0 to 1.
+    static let pencilMaxForce: CGFloat = 4.1666665
+    /// Points per inch of an iPhone or iPad screen, near enough for a physical stroke length.
+    static let pointsPerInch = 160.0
+
+    /// How much wider PencilKit records a point's tip than the tool's width — measured by drawing
+    /// with each tool on the simulator and reading the size back (a 1.05 pt pen records 3.29 pt;
+    /// a 3.62 pt highlighter 5.32 pt).
+    ///
+    /// A brush size is a line width on both platforms' tools, so this is the exchange rate between
+    /// the file and a PKStrokePoint. Without it an Android pen at its default 2.6 du arrived here as
+    /// a tip too small for PencilKit to draw at all, and an iPhone pen arrived on Android three
+    /// times too thick. Monoline has not been measured; it is assumed to draw at its tip.
+    static func tipPerWidth(_ inkType: PKInkingTool.InkType) -> CGFloat {
+        switch inkType {
+        case .pen: return 3.1437
+        case .marker: return 1.4697
+        default: return 1
+        }
+    }
+
+    static func family(_ inkType: PKInkingTool.InkType) -> String {
+        switch inkType {
+        case .marker: return StrokeCodec.familyHighlighter
+        case .monoline, .pencil, .crayon, .fountainPen: return StrokeCodec.familyMarker
+        default: return StrokeCodec.familyPressurePen
+        }
+    }
 
     /// Every conversion needs the width the canvas is laid out at, because that is the only thing
     /// that turns a point on this screen into a position on the page. See `DocumentUnits`.
-    static func envelope(from s: PKStroke, canvasWidth: CGFloat) -> StrokeEnvelope.Envelope {
-        let family: String
-        switch s.ink.inkType {
-        case .marker: family = "highlighter"
-        case .pencil, .crayon, .monoline, .fountainPen: family = "marker"
-        default: family = "pressure_pen"
-        }
+    static func stroke(from s: PKStroke, canvasWidth: CGFloat) -> InkBlob.Stroke {
+        let family = family(s.ink.inkType)
         var (r, g, b, a): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 1)
         s.ink.color.getRed(&r, green: &g, blue: &b, alpha: &a)
-        var argb = UInt32(a * 255) << 24 | UInt32(r * 255) << 16 | UInt32(g * 255) << 8 | UInt32(b * 255)
-        // Chalk on dark paper is graphite in the file, so a sketch reads right on either theme.
-        if argb & 0x00FFFFFF == chalk & 0x00FFFFFF { argb = graphite }
-        if family == "highlighter" { argb = (argb & 0x00FFFFFF) | 0x59000000 }
-        // The **stroke's width travels in document units too**, or a pen that looks right on a
-        // phone arrives on a tablet as a hairline: it is a measurement on the page, like everything
-        // else in the envelope.
-        let perPoint = DocumentUnits.unitsPerPoint(canvasWidth: Double(canvasWidth))
-        let width = Float(Double(s.path.first?.size.width ?? 2.6) * perPoint)
-        let t0 = s.path.first?.timeOffset ?? 0
-        let points = s.path.map { p in
-            StrokeEnvelope.Point(x: Float(DocumentUnits.toUnits(Double(p.location.x), canvasWidth: Double(canvasWidth))),
-                                 y: Float(DocumentUnits.toUnits(Double(p.location.y), canvasWidth: Double(canvasWidth))),
-                                 elapsedMillis: Int32(max(0, (p.timeOffset - t0) * 1000)),
-                                 pressure: Float(p.force), tiltRadians: Float(p.altitude), orientationRadians: Float(p.azimuth), strokeUnitLengthCm: 0)
+        func byte(_ v: CGFloat) -> UInt32 { UInt32(max(0, min(255, (v * 255).rounded()))) }
+        let argb = byte(a) << 24 | byte(r) << 16 | byte(g) << 8 | byte(b)
+        let width = Double(canvasWidth)
+        let perPoint = DocumentUnits.unitsPerPoint(canvasWidth: width)
+        // The stroke's width travels in document units too, or a pen that looks right on a phone
+        // arrives on a tablet as a hairline: it is a measurement on the page like everything else.
+        let size = Float(Double((s.path.first?.size.width ?? 1) / tipPerWidth(s.ink.inkType)) * perPoint)
+        let points = Array(s.path)
+        // A finger reports the flat defaults PencilKit fills in; a Pencil never holds them still.
+        let stylus = points.contains { abs($0.altitude - .pi / 2) > 0.001 || abs($0.force - 1) > 0.001 }
+        let t0 = points.first?.timeOffset ?? 0
+        var last: Float = 0
+        var x: [Float] = [], y: [Float] = [], t: [Float] = []
+        var pressure: [Float] = [], tilt: [Float] = [], orientation: [Float] = []
+        for p in points {
+            let at = p.location.applying(s.transform)
+            x.append(Float(DocumentUnits.toUnits(Double(at.x), canvasWidth: width)))
+            y.append(Float(DocumentUnits.toUnits(Double(at.y), canvasWidth: width)))
+            last = max(last, Float(max(0, p.timeOffset - t0)))
+            t.append(last)
+            pressure.append(Float(min(1, max(0, p.force / pencilMaxForce))))
+            // PencilKit's altitude is the angle up from the glass; Ink's tilt is the angle away
+            // from upright.
+            tilt.append(Float(min(.pi / 2, max(0, .pi / 2 - p.altitude))))
+            var az = p.azimuth.truncatingRemainder(dividingBy: 2 * .pi)
+            if az < 0 { az += 2 * .pi }
+            orientation.append(Float(az >= 2 * .pi ? 0 : az))
         }
-        return .init(header: .init(family: family, color: argb, size: width, epsilon: 0.1), tool: StrokeEnvelope.toolStylus, points: points)
+        let cmPerPoint = 2.54 / pointsPerInch
+        let inputs = InkBlob.Inputs(x: x, y: y, t: t,
+                                    pressure: stylus ? pressure : nil, tilt: stylus ? tilt : nil,
+                                    orientation: stylus ? orientation : nil,
+                                    toolType: stylus ? .stylus : .touch,
+                                    strokeUnitLengthCm: Float(cmPerPoint / perPoint))
+        return .init(header: .init(family: family, color: argb, size: size), inputs: inputs)
     }
 
-    static func stroke(from e: StrokeEnvelope.Envelope, dark: Bool, canvasWidth: CGFloat) -> PKStroke {
+    static func stroke(from e: InkBlob.Stroke, dark: Bool, canvasWidth: CGFloat, date: Date) -> PKStroke {
         var argb = e.header.color
-        if dark, argb == graphite { argb = chalk }
-        if !dark, argb == chalk { argb = graphite }
-        let inkType: PKInkingTool.InkType = e.header.family == "highlighter" ? .marker : e.header.family == "marker" ? .monoline : .pen
-        let color = UIColor(Color(argb: argb | (e.header.family == "highlighter" ? 0 : 0xFF000000)))
+        if dark, argb == StrokeCodec.graphite { argb = StrokeCodec.chalk }
+        if !dark, argb == StrokeCodec.chalk { argb = StrokeCodec.graphite }
+        let highlighter = e.header.family == StrokeCodec.familyHighlighter
+        let inkType: PKInkingTool.InkType = highlighter ? .marker
+            : e.header.family == StrokeCodec.familyMarker ? .monoline : .pen
+        // PencilKit's marker is translucent on its own; the stored 0x59 on top of it would draw a
+        // highlighter at a fraction of Android's strength.
+        let color = UIColor(Color(argb: highlighter ? argb | 0xFF00_0000 : argb))
         let ink = PKInk(inkType, color: color)
         let onePoint = DocumentUnits.toPoints(1, canvasWidth: Double(canvasWidth))
-        let drawn = CGFloat(Double(e.header.size) * onePoint)
+        let drawn = CGFloat(Double(e.header.size) * onePoint) * tipPerWidth(inkType)
         let size = CGSize(width: drawn, height: drawn)
-        let controls = e.points.map { p in
-            PKStrokePoint(location: CGPoint(x: DocumentUnits.toPoints(Double(p.x), canvasWidth: Double(canvasWidth)),
-                                            y: DocumentUnits.toPoints(Double(p.y), canvasWidth: Double(canvasWidth))),
-                          timeOffset: TimeInterval(p.elapsedMillis) / 1000, size: size,
-                          opacity: 1, force: CGFloat(p.pressure < 0 ? 1 : p.pressure), azimuth: CGFloat(p.orientationRadians < 0 ? 0 : p.orientationRadians),
-                          altitude: CGFloat(p.tiltRadians < 0 ? .pi / 2 : p.tiltRadians))
+        let i = e.inputs
+        let width = Double(canvasWidth)
+        var controls: [PKStrokePoint] = []
+        controls.reserveCapacity(i.count)
+        for k in 0..<i.count {
+            let location = CGPoint(x: DocumentUnits.toPoints(Double(i.x[k]), canvasWidth: width),
+                                   y: DocumentUnits.toPoints(Double(i.y[k]), canvasWidth: width))
+            let force: CGFloat = i.pressure.map { CGFloat($0[k]) * pencilMaxForce } ?? 1
+            let azimuth: CGFloat = i.orientation.map { CGFloat($0[k]) } ?? 0
+            let altitude: CGFloat = i.tilt.map { CGFloat.pi / 2 - CGFloat($0[k]) } ?? CGFloat.pi / 2
+            controls.append(PKStrokePoint(location: location, timeOffset: TimeInterval(i.t[k]), size: size,
+                                          opacity: 1, force: force, azimuth: azimuth, altitude: altitude))
         }
-        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controls, creationDate: Date()))
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controls, creationDate: date))
     }
+
+    /// Highlighters sit under pens, whatever order they were drawn in — `StrokeCodec.isHighlighter`
+    /// and the two-pass draw in `InkCanvas`. Stable within each kind.
+    static func highlightersFirst(_ strokes: [(highlighter: Bool, stroke: PKStroke)]) -> [PKStroke] {
+        strokes.filter(\.highlighter).map(\.stroke) + strokes.filter { !$0.highlighter }.map(\.stroke)
+    }
+
+    static func isHighlighter(_ s: PKStroke) -> Bool { s.ink.inkType == .marker }
 }

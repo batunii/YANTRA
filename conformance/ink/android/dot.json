@@ -1,0 +1,28 @@
+{
+ "colorArgb": 4280492316,
+ "size": 2.5999999046325684,
+ "epsilon": 0.10000000149011612,
+ "toolType": "InputToolType.STYLUS",
+ "strokeUnitLengthCm": 0.01477499958127737,
+ "hasPressure": true,
+ "hasTilt": false,
+ "hasOrientation": false,
+ "x": [
+  500
+ ],
+ "y": [
+  707.0999755859375
+ ],
+ "tMillis": [
+  0
+ ],
+ "pressure": [
+  0.699951171875
+ ],
+ "tilt": [
+  -1
+ ],
+ "orientation": [
+  -1
+ ]
+}

@@ -490,7 +490,7 @@ struct InkBlockPreview: View {
     @Environment(\.y) private var y
     let inkId: String
     var body: some View {
-        let strokes = model.storeFor(inkId).readInk(inkId).compactMap { try? StrokeEnvelope.decode($0) }
+        let strokes = model.storeFor(inkId).readInk(inkId).compactMap(InkBlob.decodeOrNull).filter { $0.inputs.count > 0 }
         if strokes.isEmpty {
             HStack(spacing: 8) { YantraIcon(mark: .ink, size: YantraIcons.medium, tint: y.dim); Text("Tap to sketch").font(Face.text(13)) }.foregroundStyle(y.dim).padding(20)
         } else {
@@ -500,26 +500,30 @@ struct InkBlockPreview: View {
 }
 
 struct StrokeCanvas: View {
-    let strokes: [StrokeEnvelope.Envelope]
+    let strokes: [InkBlob.Stroke]
     let dark: Bool
     var body: some View {
         Canvas { ctx, size in
-            let pts = strokes.flatMap(\.points)
-            guard let minX = pts.map(\.x).min(), let maxX = pts.map(\.x).max(), let minY = pts.map(\.y).min(), let maxY = pts.map(\.y).max() else { return }
+            let xs = strokes.flatMap(\.inputs.x), ys = strokes.flatMap(\.inputs.y)
+            guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return }
             let w = max(maxX - minX, 1), h = max(maxY - minY, 1)
             let scale = min((size.width - 16) / CGFloat(w), (size.height - 16) / CGFloat(h), 1.5)
             let ox = (size.width - CGFloat(w) * scale) / 2, oy = (size.height - CGFloat(h) * scale) / 2
-            for s in strokes where !s.points.isEmpty {
+            // Highlighters first, so they sit under the pens — as Android draws them.
+            let ordered = strokes.filter { $0.header.family == StrokeCodec.familyHighlighter }
+                + strokes.filter { $0.header.family != StrokeCodec.familyHighlighter }
+            for s in ordered {
                 var path = Path()
-                for (i, p) in s.points.enumerated() {
-                    let pt = CGPoint(x: ox + CGFloat(p.x - minX) * scale, y: oy + CGFloat(p.y - minY) * scale)
-                    if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                for k in 0..<s.inputs.count {
+                    let pt = CGPoint(x: ox + CGFloat(s.inputs.x[k] - minX) * scale, y: oy + CGFloat(s.inputs.y[k] - minY) * scale)
+                    if k == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
                 }
-                var color = Color(argb: s.header.color)
+                var argb = s.header.color
                 // The two theme-native inks swap with the theme, as on Android.
-                if s.header.color == 0xFF23211C, dark { color = Color(argb: 0xFFF1EEE7) }
-                if s.header.color == 0xFFF1EEE7, !dark { color = Color(argb: 0xFF23211C) }
-                ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: CGFloat(s.header.size) * scale, lineCap: .round, lineJoin: .round))
+                if argb == StrokeCodec.graphite, dark { argb = StrokeCodec.chalk }
+                if argb == StrokeCodec.chalk, !dark { argb = StrokeCodec.graphite }
+                ctx.stroke(path, with: .color(Color(argb: argb)),
+                           style: StrokeStyle(lineWidth: max(CGFloat(s.header.size) * scale, 0.5), lineCap: .round, lineJoin: .round))
             }
         }
     }

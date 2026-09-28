@@ -327,10 +327,10 @@ final class WorkspaceTests: XCTestCase {
     func testInkIsWrittenBesideThePageAndReadBack() throws {
         let l = try list("L")
         let ink = try writer.addBlock(to: l, type: NodeType.ink, text: "")
-        let stroke = StrokeEnvelope.encode(.init(
-            header: .init(family: "pressure_pen", color: 0xFF000000, size: 3, epsilon: 0.1),
-            tool: StrokeEnvelope.toolStylus,
-            points: [.init(x: 1, y: 2, elapsedMillis: 0, pressure: 0.5, tiltRadians: -1, orientationRadians: -1, strokeUnitLengthCm: 0)]))
+        let stroke = try InkBlob.encode(.init(
+            header: .init(family: StrokeCodec.familyPressurePen, color: 0xFF23211C, size: 2.6),
+            inputs: .init(x: [1, 5], y: [2, 6], t: [0, 0.008], pressure: [0.5, 0.6], toolType: .stylus,
+                          strokeUnitLengthCm: 0.0147)))
         try writer.writeInk(ink, [stroke])
 
         XCTAssertEqual(store.readInk(ink).count, 1)

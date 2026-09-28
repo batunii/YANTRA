@@ -34,52 +34,7 @@ final class ConformanceTests: XCTestCase {
         }
     }
 
-    // MARK: stroke envelope
-
-    struct PointFixture: Decodable { let x: Float; let y: Float; let elapsedMillis: Int32; let pressure: Float; let tiltRadians: Float; let orientationRadians: Float; let strokeUnitLengthCm: Float }
-    struct StrokeFixture: Decodable { let family: String; let color: UInt32; let size: Float; let epsilon: Float; let tool: UInt8; let points: [PointFixture]; let file: String }
-
-    func testStrokeEnvelopeDecodesAndReencodesTheAndroidBytes() throws {
-        let f = try JSONDecoder().decode(StrokeFixture.self, from: fixture("ink/pen.json"))
-        let bytes = try fixture("ink/" + f.file)
-        XCTAssertEqual(StrokeEnvelope.kind(bytes), .yantra)
-
-        let e = try StrokeEnvelope.decode(bytes)
-        XCTAssertEqual(e.header, .init(family: f.family, color: f.color, size: f.size, epsilon: f.epsilon))
-        XCTAssertEqual(e.tool, f.tool)
-        XCTAssertEqual(e.points.count, f.points.count)
-        for (p, q) in zip(e.points, f.points) {
-            XCTAssertEqual(p.x, q.x); XCTAssertEqual(p.y, q.y); XCTAssertEqual(p.elapsedMillis, q.elapsedMillis)
-            XCTAssertEqual(p.pressure, q.pressure); XCTAssertEqual(p.tiltRadians, q.tiltRadians)
-            XCTAssertEqual(p.orientationRadians, q.orientationRadians); XCTAssertEqual(p.strokeUnitLengthCm, q.strokeUnitLengthCm)
-        }
-        // The contract: what Android wrote, Swift writes back byte for byte.
-        XCTAssertEqual(StrokeEnvelope.encode(e), bytes)
-    }
-
-    func testEmptyStrokeAndSidecarContainer() throws {
-        let empty = try fixture("ink/empty-highlighter.ynk1")
-        let e = try StrokeEnvelope.decode(empty)
-        XCTAssertEqual(e.points.count, 0)
-        XCTAssertEqual(e.header.family, "highlighter")
-        XCTAssertEqual(e.header.color, 0x59E0A83E)
-        XCTAssertEqual(StrokeEnvelope.encode(e), empty)
-
-        let sidecar = try fixture("ink/sidecar.ink")
-        let strokes = try InkSidecar.decode(sidecar)
-        XCTAssertEqual(strokes.count, 2)
-        XCTAssertEqual(strokes[0], try fixture("ink/pen.ynk1"))
-        XCTAssertEqual(strokes[1], empty)
-        XCTAssertEqual(InkSidecar.encode(strokes), sidecar)
-    }
-
-    func testLegacyAndUnknownAreSniffedNotDecoded() {
-        let legacy = Data([0, 0, 0, 43] + Array("{\"family\":\"marker\"}".utf8) + [9, 9])
-        XCTAssertEqual(StrokeEnvelope.kind(legacy), .legacy)
-        XCTAssertEqual(StrokeEnvelope.kind(Data("YNK2....".utf8)), .unknown)
-        XCTAssertEqual(StrokeEnvelope.kind(Data()), .unknown)
-        XCTAssertThrowsError(try StrokeEnvelope.decode(legacy))
-    }
+    // Ink lives in InkBlobTests, against blobs the real androidx.ink library wrote.
 
     // MARK: session clock
 
