@@ -171,6 +171,11 @@ data class NodeEntity(
      * when the line says nothing, which is where [TaskOriginEntity] takes over.
      */
     val author: String? = null,
+    /**
+     * Who is on this in-progress task, comma-joined — [ie.shoonya.yantra.data.format.TaskRef.startedBy].
+     * Null when nobody is named, which every player reads as "whoever is looking". See [startedByList].
+     */
+    @ColumnInfo(name = "started_by") val startedBy: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,    // LWW clock for sync
     @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,
@@ -202,6 +207,10 @@ data class OriginScanEntity(
     @PrimaryKey @ColumnInfo(name = "workspace_id") val workspaceId: String,
     val head: String,
 )
+
+/** [NodeEntity.startedBy] as the list it is. Logins cannot contain a comma, so the join is lossless. */
+val NodeEntity.startedByList: List<String>
+    get() = startedBy?.split(',')?.filter { it.isNotEmpty() }.orEmpty()
 
 object PropertyKind {
     const val SELECT = "select"
@@ -345,6 +354,12 @@ data class FocusSessionEntity(
      * there so the history can be read honestly, not so time can be filtered out of it.
      */
     val outcome: String = FocusOutcome.RAN_OUT,
+    /**
+     * Who timed this, as the login they were signed in to that workspace with. Null in Personal,
+     * and for every session written before it was recorded — both count as yours, because until
+     * now every session anybody could see on this phone was taken to be.
+     */
+    val by: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )

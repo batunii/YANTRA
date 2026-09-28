@@ -5,6 +5,8 @@ import ie.shoonya.yantra.data.db.FocusOutcome
 import ie.shoonya.yantra.data.db.FocusSessionEntity
 import ie.shoonya.yantra.data.workspace.WorkspaceReconciler
 import ie.shoonya.yantra.data.workspace.Workspaces
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -21,11 +23,38 @@ import java.util.UUID
  * Writing on start rather than only on completion is what lets the timer survive process death: the
  * in-flight session is on disk, so a reindex cannot forget it and [openSession] can find it again.
  */
-class FocusRepository(private val db: AppDatabase, private val ws: Workspaces) {
+class FocusRepository(
+    private val db: AppDatabase,
+    private val ws: Workspaces,
+    /**
+     * Which session *this device* has running, kept on the device.
+     *
+     * A session is written to the log the moment it starts, so it syncs while it is still running —
+     * and the log is shared. Restoring "the newest open session" after process death therefore
+     * resumed whatever anybody had open: a teammate's timer on a shared list, or your own from the
+     * tablet. The clock is this device's alone, so the answer to "what was I timing" is kept here.
+     * Null keeps the old rule, for tests that exercise the log rather than the device.
+     */
+    private val local: android.content.SharedPreferences? = null,
+    /** Every login you are signed in with, across workspaces — what makes a session yours. */
+    private val myLogins: () -> Set<String> = { emptySet() },
+) {
     private val dao = db.focusDao()
 
+    /** Everything given to one task, by anybody: a task's time is the time it has had. */
     fun forNode(nodeId: String) = dao.forNode(nodeId)
     fun all() = dao.all()
+
+    /**
+     * Your own sessions only — what Stats is about. A session nobody is named on counts as yours:
+     * Personal's, and every one written before sessions said whose they were.
+     */
+    fun mine() = dao.all().map { all -> all.filter { isMine(it) } }
+
+    private fun isMine(s: FocusSessionEntity): Boolean {
+        val by = s.by ?: return true
+        return myLogins().any { it.equals(by, ignoreCase = true) }
+    }
     fun perNode() = dao.perNode()
 
     /** Everything given to a task and its subtasks. Never summed across tasks — see the DAO. */
@@ -36,8 +65,19 @@ class FocusRepository(private val db: AppDatabase, private val ws: Workspaces) {
 
     /** Sessions in a window, newest first. */
     fun between(from: Long, to: Long) = dao.between(from, to)
-    suspend fun openSession() = dao.openSession()
-    suspend fun lastSession() = dao.lastSession()
+    /** The session this device was timing, if it is still open — see [local]. */
+    suspend fun openSession(): FocusSessionEntity? {
+        val prefs = local ?: return dao.openSession()
+        // The one-time bridge: a session already running when this build arrived was never
+        // recorded here. It is resumed if it is yours, and from then on the device knows.
+        if (!prefs.contains(OPEN_KEY)) return dao.openSession()?.takeIf { isMine(it) }
+        val id = prefs.getString(OPEN_KEY, null)?.takeIf { it.isNotEmpty() } ?: return null
+        return dao.byId(id)?.takeIf { it.endedAt == null }
+    }
+
+    /** Your last session, for "start the last thing again". Somebody else's is not yours to resume. */
+    suspend fun lastSession(): FocusSessionEntity? =
+        dao.lastSession()?.takeIf { isMine(it) } ?: dao.all().first().firstOrNull { isMine(it) }
     suspend fun nodeTitle(nodeId: String): String? = db.nodeDao().byId(nodeId)?.title
 
     private val month = DateTimeFormatter.ofPattern("yyyy-MM")
@@ -53,9 +93,12 @@ class FocusRepository(private val db: AppDatabase, private val ws: Workspaces) {
         append(
             FocusSessionEntity(
                 id = id, nodeId = nodeId, startedAt = ts, plannedSecs = plannedSecs,
+                // The same login a task's `by:` is stamped with, and null in the same places.
+                by = ws.writerFor(nodeId).signedIn(),
                 createdAt = ts, updatedAt = ts,
             )
         )
+        local?.edit()?.putString(OPEN_KEY, id)?.apply()
         return id
     }
 
@@ -81,5 +124,12 @@ class FocusRepository(private val db: AppDatabase, private val ws: Workspaces) {
             else outcome
         val ts = System.currentTimeMillis()
         append(session.copy(endedAt = ts, actualSecs = actualSecs, outcome = settled, updatedAt = ts))
+        // Written as empty, not removed — and `putString(key, null)` *is* a remove on Android. An
+        // absent key is the one-time bridge in openSession, and must stay absent only once.
+        if (local?.getString(OPEN_KEY, null) == sessionId) local.edit().putString(OPEN_KEY, "").apply()
+    }
+
+    private companion object {
+        const val OPEN_KEY = "open_session"
     }
 }

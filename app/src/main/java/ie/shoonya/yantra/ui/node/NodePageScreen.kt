@@ -1,5 +1,7 @@
 package ie.shoonya.yantra.ui.node
 
+import ie.shoonya.yantra.data.db.startedByList
+
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -580,6 +582,20 @@ fun NodePageScreen(nav: NavHostController, nodeId: String) {
                             fontSize = YantraType.caption,
                             color = y.textMuted,
                             modifier = Modifier.padding(top = 10.dp),
+                        )
+                    }
+                    // Who is on it, when that is somebody besides you. Your own is already said by
+                    // the glyph above and the player below.
+                    val n = node
+                    if (n != null && n.inProgress) {
+                        val me = vm.rowContext.expected.me(n.workspaceId)
+                        val others = n.startedByList.filterNot { me != null && it.equals(me, ignoreCase = true) }
+                        if (others.isNotEmpty()) Text(
+                            "On it: " + others.joinToString(", ") { "@$it" },
+                            fontFamily = YantraMono,
+                            fontSize = YantraType.caption,
+                            color = y.textMuted,
+                            modifier = Modifier.padding(top = 4.dp),
                         )
                     }
                 }
@@ -2373,9 +2389,15 @@ internal fun TextualBlockRow(
      * put the same fact top-right on one row and bottom-left on the next, diagonally across a
      * column — the ragged pile DESIGN.md §6 already fixed once, in a different axis.
      */
+    // Who else is on it. The ring on the glyph says somebody is; this says who, and says nothing
+    // when it is only you — the player is where your own started tasks already are.
+    val othersOn = if (isTask && child.inProgress) {
+        val me = rowContext.expected.me(child.workspaceId)
+        child.startedByList.filterNot { me != null && it.equals(me, ignoreCase = true) }
+    } else emptyList()
     val quietMeta = isTask && !editable &&
         plan.tags.isEmpty() && plan.props.isEmpty() && !plan.unassigned && plan.place == null &&
-        addedBy == null
+        addedBy == null && othersOn.isEmpty()
     // A row on a list is two lines, always — the grammar both handoffs specify. It used to be
     // whatever its contents made it: one chip rode up onto the title line, two or three sat in a
     // wrapping cloud beneath it, and a long title took a second line of its own. Five tasks in a
@@ -2774,6 +2796,14 @@ internal fun TextualBlockRow(
                 // Who added it: after what it is about, before where it lives. Structure ink — a
                 // person is not a property of the task, and giving one a hue would open a layer
                 // the colour law has no room for.
+                // Who is on it leads who added it: it is the one that is true right now.
+                if (othersOn.isNotEmpty()) {
+                    sep()
+                    withStyle(SpanStyle(color = y.textMuted)) {
+                        append("on @" + othersOn.first())
+                        if (othersOn.size > 1) append(" +${othersOn.size - 1}")
+                    }
+                }
                 addedBy?.let { login ->
                     sep()
                     withStyle(SpanStyle(color = y.textMuted)) { append("by @$login") }

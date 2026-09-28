@@ -1,5 +1,7 @@
 package ie.shoonya.yantra.data.workspace
 
+import ie.shoonya.yantra.data.db.startedByList
+
 import ie.shoonya.yantra.data.db.BuiltIns
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.NodeType
@@ -114,6 +116,7 @@ object PageMapper {
                 extStart = ((block as? TaskRef)?.external ?: (block as? EventRef)?.external)
                     ?.occurrence?.toString(),
                 author = (block as? TaskRef)?.author,
+                startedBy = (block as? TaskRef)?.startedBy?.takeIf { it.isNotEmpty() }?.joinToString(","),
                 createdAt = ts,
                 updatedAt = ts,
             )
@@ -310,6 +313,7 @@ object PageMapper {
             labels = labels,
             assignee = values.firstOrNull { it.defId == BuiltIns.ASSIGNEE_DEF_ID }?.vText,
             author = n.author,
+            startedBy = n.startedByList,
         )
         else -> Prose(n.title.orEmpty(), n.indent)
     }

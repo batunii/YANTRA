@@ -58,6 +58,14 @@ class RunningTask(
     /** Task id to its workspace's colour — what the spine carries. */
     workspaceColours: Flow<Map<String, String?>> = flowOf(emptyMap()),
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Whether a started task is *yours* — the player carries only those.
+     *
+     * In progress travels through the files, and on a shared list that meant a teammate picking
+     * something up put it in your player. The lists still show every ring; the player is the one
+     * surface that is about you. Defaulted to everything, which is Personal's answer anyway.
+     */
+    private val mine: (ie.shoonya.yantra.data.db.NodeEntity) -> Boolean = { true },
 ) {
     /**
      * One started task, as the bar draws it.
@@ -119,7 +127,7 @@ class RunningTask(
             val spans = core[2] as List<SittingSpan>
             val at = core[3] as Long
             stack(
-                started = started.map { it.id to Links.plain(it.title.orEmpty()) },
+                started = started.filter(mine).map { it.id to Links.plain(it.title.orEmpty()) },
                 timing = session?.takeIf { !it.isFinished }?.let { it.nodeId to it.elapsedSecs },
                 sittings = spans,
                 at = at,
@@ -305,3 +313,13 @@ class TimingRequest(private val running: RunningTask) {
         _occupied.value = null
     }
 }
+
+/**
+ * Whether a started task belongs in *your* player.
+ *
+ * Nobody named is everybody's: every `[~]` written before names were, and all of Personal. A task
+ * somebody else is on stays out of your player unless you are on it too. Signed in as nobody, you
+ * can only be "whoever is looking", so only an unclaimed task is yours.
+ */
+fun isMineToPlay(startedBy: List<String>, me: String?): Boolean =
+    startedBy.isEmpty() || (me != null && startedBy.any { it.equals(me, ignoreCase = true) })
