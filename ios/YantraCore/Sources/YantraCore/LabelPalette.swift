@@ -82,6 +82,16 @@ public enum LabelPalette {
     /// thing and a hand-edited file can hold either.
     public static func defaultNameFor(_ name: String) -> String { swatches[swatchIndex(for: name)].name }
 
+    /// What a label named `name` is painted, as a stored value, or nil for the neutral chip.
+    ///
+    /// A registry entry is the answer, **including an entry with no colour**: that is the neutral
+    /// somebody chose, and Android draws it grey. Only a label the registry has never heard of —
+    /// typed on a line by hand, say — falls back to the colour its name seeds to.
+    public static func stored(_ name: String, registry: [LabelDef]) -> Int64? {
+        if let def = registry.first(where: { $0.name.lowercased() == name.lowercased() }) { return def.color }
+        return defaultFor(name)
+    }
+
     /// The hues of the five light swatches, in HSV degrees: Moss 109, Teal 178, Blue 203,
     /// Violet 250, Plum 312. Measured from `swatches`, not chosen — they are the same arc.
     private static let hues: [Double] = [109, 178, 203, 250, 312]

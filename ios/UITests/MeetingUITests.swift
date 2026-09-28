@@ -71,6 +71,42 @@ final class MeetingUITests: YantraUITestCase {
                       "the meeting page has nothing to write in")
     }
 
+    /// From the month's list, not only the timeline — and the page it makes is on the Inbox.
+    ///
+    /// Two bugs met here. The month's day list opened a meeting only once a note about it already
+    /// existed, and the note is made by opening it, so from that list a meeting could never be
+    /// opened at all. And the note that the timeline *did* make was written to the Inbox and then
+    /// filtered off it, because a list page showed tasks and nothing else — the Inbox said "Empty"
+    /// with a meeting in it.
+    func testAMeetingOpenedFromTheMonthListLandsOnTheInbox() throws {
+        let event = try writeMeeting()
+        launch(route: "calendar", extra: ["-calmode", "month", "-uitest-calendars"])
+        let row = el("calendar.item.\(event.title!)")
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the meeting was not listed under the month")
+        row.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "FROM ")).firstMatch
+                        .waitForExistence(timeout: 8),
+                      "tapping the meeting in the month's list opened nothing")
+
+        launch(route: "open:fixture-inbox", reset: false)
+        XCTAssertTrue(el("event.row.\(event.title!)").waitForExistence(timeout: 8),
+                      "the meeting's page was not on the Inbox")
+    }
+
+    /// Whose calendar a meeting is in, on the block itself.
+    func testTheBlockNamesTheCalendarItIsIn() throws {
+        let event = try writeMeeting()
+        let name = try XCTUnwrap(event.calendar?.title)
+        launch(route: "calendar", extra: ["-calmode", "day", "-uitest-calendars"])
+        XCTAssertTrue(el(event.title).waitForExistence(timeout: 10), "the meeting was not drawn on the day")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@",
+                                                       event.title!, name)).firstMatch.exists,
+                      "the block does not say it is in \(name)")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "meeting-calendar-name"; shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     /// One page for one meeting: made on the first tap, found on every one after.
     func testTheSameMeetingOpensTheSamePage() throws {
         let event = try writeMeeting()

@@ -622,7 +622,10 @@ struct DayItemRow: View {
         Button {
             switch item {
             case let .event(e): onOpenEvent(e.nodeId)
-            case let .device(d): if let t = d.taskId { onOpenNode(t) }
+            // Their meeting opens as their meeting, here as on the timeline. This row used to open
+            // it only once a note of yours already existed — and the note is made by opening it, so
+            // from the month's list a meeting could never be opened at all.
+            case let .device(d): onOpenMeeting(d)
             case let .task(t): onOpenNode(t.nodeId)
             }
         } label: {
@@ -640,7 +643,14 @@ struct DayItemRow: View {
                             YantraIcon(mark: .repeatMark, size: 11, tint: y.dim)
                         }
                     }
-                    if let sub { Text(sub).font(Face.text(11.5)).foregroundStyle(y.dim).lineLimit(1) }
+                    if case let .device(d) = item, let name = d.calendarName {
+                        HStack(spacing: 6) {
+                            Text(name).font(Face.text(11.5, .semibold)).foregroundStyle(y.accentText).lineLimit(1)
+                            if let place = d.location {
+                                Text(place).font(Face.text(11.5)).foregroundStyle(y.dim).lineLimit(1)
+                            }
+                        }
+                    } else if let sub { Text(sub).font(Face.text(11.5)).foregroundStyle(y.dim).lineLimit(1) }
                 }
                 Spacer()
             }

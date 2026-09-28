@@ -281,6 +281,9 @@ final class AppModel: ObservableObject {
             let writer = writerFor(home)
             let id = try writer.addBlock(to: home, type: NodeType.task, text: t, due: due, priority: priority, labels: parsed.labels)
             if let who = parsed.assignee { try writer.setAssignee(id, who) }
+            // Every `#tag` becomes a label the workspace knows, as `captureTask` does on Android —
+            // or it has no colour of its own to change, and the other device draws it neutral.
+            for l in parsed.labels { try writer.upsertLabel(l) }
         }
     }
 

@@ -35,7 +35,11 @@ struct ListView: View {
     private var allRows: [Node] {
         guard let n = node else { return [] }
         if isSmart { return model.smartListRows(n) + model.completedRows(n) }
-        return model.index.children(of: n.id).filter { $0.type == NodeType.task }
+        // A list is a list of tasks **and events** — `NodePageScreen`'s rule. An event is written
+        // here deliberately: the calendar puts a new event and every meeting you open on the Inbox.
+        // Filtering them out made the page lie — an Inbox holding two meetings read "Empty", and the
+        // only way back to one was the day it happened to fall on.
+        return model.index.children(of: n.id).filter { $0.type == NodeType.task || $0.type == NodeType.event }
     }
     private var openRows: [Node] {
         allRows.filter { !$0.done || standing.contains($0.id) }
@@ -56,8 +60,12 @@ struct ListView: View {
                         ComposedEmpty(line: "All done here")
                     }
                     ForEach(openRows) { row in
-                        TaskRow(node: row, showOrigin: isSmart, grammar: grammar,
-                                onOpen: { path.append(Route.node(row.id)) })
+                        if row.type == NodeType.event {
+                            EventBlockRow(node: row) { path.append(Route.node(row.id)) }
+                        } else {
+                            TaskRow(node: row, showOrigin: isSmart, grammar: grammar,
+                                    onOpen: { path.append(Route.node(row.id)) })
+                        }
                     }
                     if !doneRows.isEmpty {
                         HStack {
@@ -134,7 +142,11 @@ struct ListView: View {
                 .background(Capsule().fill(y.page)).overlay(Capsule().stroke(y.tileBorder, lineWidth: 1))
             } else if let n = node {
                 let kids = model.index.children(of: n.id).filter { $0.type == NodeType.task }
-                Text(kids.isEmpty ? "Empty" : "\(kids.filter(\.done).count) of \(kids.count) done").font(Face.text(13)).foregroundStyle(y.muted)
+                // "Empty" only when it is: a page of meetings and no tasks has nothing to count, and
+                // saying it is empty is the lie the event rows exist to stop telling.
+                if !kids.isEmpty || allRows.isEmpty {
+                    Text(kids.isEmpty ? "Empty" : "\(kids.filter(\.done).count) of \(kids.count) done").font(Face.text(13)).foregroundStyle(y.muted)
+                }
             }
         }
         .padding(.horizontal, Layout.pageMargin).padding(.top, 8).padding(.bottom, 16)
@@ -270,7 +282,56 @@ struct TaskRow: View {
         }.lineLimit(1)
     }
 
-    private func labelColor(_ name: String) -> Color { LabelPalette.color(name, registry: model.index.labels, dark: y.dark) }
+    private func labelColor(_ name: String) -> Color { LabelPalette.color(name, registry: model.index.labels, dark: y.dark, neutral: y.secondary) }
+}
+
+/// An event, on the page it is written on — `EventBlockRow.kt`.
+///
+/// Not a task row: an event has no done state to tick, and its title is the least of it — the time
+/// is the thing, and a **sitting has no title at all**, so it borrows its task's words the way it
+/// does on the calendar. Read-only here; the row opens the event's own page.
+struct EventBlockRow: View {
+    let node: Node
+    let onOpen: () -> Void
+    @EnvironmentObject var model: AppModel
+    @Environment(\.y) private var y
+
+    var body: some View {
+        let e = node.event
+        let sitting = e?.forTaskId != nil
+        // The fill is what this thing is — the same colour its block wears on the day, because a
+        // line on a page and a block on a day are one object seen from two sides.
+        let tint = e?.color.flatMap { swatchColor($0, dark: y.dark) }
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 1.5).fill(tint ?? y.accent).frame(width: 3, height: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title(sitting: sitting)).font(Face.text(15, .semibold)).foregroundStyle(y.ink).lineLimit(1)
+                Text(EventWords.when(start: e?.time.start, end: e?.time.end,
+                                     allDay: e?.time.allDay ?? false, sitting: sitting))
+                    .font(Face.mono(11)).foregroundStyle(y.muted).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            YantraIcon(mark: .forward, size: YantraIcons.small, tint: y.dim)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 16).fill(tint?.opacity(0.16) ?? y.cardBg))
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpen)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("event.row.\(title(sitting: sitting))")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onOpen() }
+    }
+
+    private func title(sitting: Bool) -> String {
+        let own = inlinePlain(node.title ?? "")
+        if !own.isEmpty { return own }
+        if let task = node.event?.forTaskId, let words = model.index.nodes[task]?.title, !words.isEmpty {
+            return inlinePlain(words)
+        }
+        return sitting ? "Time set aside" : "Event"
+    }
 }
 
 struct QuickAddBar: View {
@@ -308,7 +369,7 @@ struct QuickAddBar: View {
             CaptureField(text: $text, caret: $caret, placeholder: placeholder, onSubmit: submit,
                          onHeight: { captureHeight = $0 },
                          lists: lists, people: people,
-                         labelColor: { UIColor(LabelPalette.color($0, registry: model.index.labels, dark: y.dark)) },
+                         labelColor: { UIColor(LabelPalette.color($0, registry: model.index.labels, dark: y.dark, neutral: y.secondary)) },
                          palette: .init(ink: UIColor(y.ink), dim: UIColor(y.dim), date: UIColor(y.due),
                                         priority: UIColor(y.crimson), list: UIColor(y.accentText),
                                         link: UIColor(y.accentText), assignee: UIColor(y.secondary)))

@@ -408,10 +408,15 @@ struct PropertyPills: View {
                 if let due = node.due { pill("Due · " + dueLabel(due) + (due.reminders.isEmpty ? "" : (due.reminders.count == 1 ? " · 🔔" : " · 🔔\(due.reminders.count)")), color: isOverdue(node) ? y.overdue : y.due, ghost: false, id: "task.due") { presented = .due } }
                 if let p = node.priority { pill("Priority · " + p, color: y.priority(p) ?? y.secondary, ghost: false) { cyclePriority() } }
                 ForEach(node.labels, id: \.self) { l in
-                    // Tap detaches, as on Android.
-                    pill("#\(l)", color: LabelPalette.color(l, registry: model.index.labels, dark: y.dark), ghost: false) {
+                    // Tap detaches, as on Android; a long press recolours — `LabelChip`'s
+                    // `onLongClick`. A context menu is iOS's long press: it cancels the tap, so
+                    // holding a label to recolour it cannot also take it off the task.
+                    pill("#\(l)", color: LabelPalette.color(l, registry: model.index.labels, dark: y.dark, neutral: y.secondary),
+                         ghost: false, id: "task.label.\(l)") {
                         model.write { try model.writerFor(node.id).editTask(node.id) { t in var x = t; x.labels.removeAll { $0 == l }; return x } }
                     }
+                    .accessibilityValue(colourName(l))
+                    .contextMenu { recolourMenu(l) }
                 }
                 if let who = node.assignee {
                     pill("@\(who)", color: y.accentText, ghost: false, id: "task.assignee") { presented = .assignee }
@@ -430,6 +435,37 @@ struct PropertyPills: View {
             }
         }
     }
+    /// The five palette colours and the neutral — Android's `SwatchStrip`, as a menu. A closed set,
+    /// and tapping one commits: there is nothing to confirm about a colour you can see.
+    @ViewBuilder
+    private func recolourMenu(_ label: String) -> some View {
+        let current = LabelPalette.stored(label, registry: model.index.labels)
+        Picker("Colour", selection: Binding(
+            get: { current },
+            set: { c in model.write { try model.writerFor(node.id).setLabelColor(label, c) } })) {
+            ForEach(LabelPalette.swatches, id: \.name) { sw in
+                Label { Text(sw.name) } icon: { Image(uiImage: dot(LabelPalette.display(sw.light, dark: y.dark))) }
+                    .tag(Optional(sw.light))
+            }
+            Label { Text("No colour") } icon: { Image(uiImage: dot(nil)) }.tag(Int64?.none)
+        }
+        .pickerStyle(.inline)
+    }
+
+    /// What a label is wearing, in words — the colour is otherwise the only way it is said.
+    private func colourName(_ label: String) -> String {
+        guard let stored = LabelPalette.stored(label, registry: model.index.labels) else { return "No colour" }
+        return LabelPalette.swatches.first { $0.light == stored || $0.dark == stored }?.name ?? "Custom colour"
+    }
+
+    /// A menu row's swatch. Drawn as original rendering, or the menu tints every dot the same.
+    private func dot(_ argb: Int64?) -> UIImage {
+        let colour = argb.map { UIColor(Color(argb: UInt32(truncatingIfNeeded: $0))) } ?? UIColor(y.dim)
+        return UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16)).image { _ in
+            colour.setFill(); UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: 14, height: 14)).fill()
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
     private func cyclePriority() {
         let order: [String?] = ["High", "Medium", "Low", nil]
         let i = order.firstIndex(of: node.priority) ?? 3

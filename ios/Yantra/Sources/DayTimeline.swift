@@ -155,9 +155,15 @@ struct DayTimeline: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(chips) { item in
-                            Text(inlinePlain(item.title) { model.index.title(of: $0) })
-                                .font(Face.text(11.5, .medium)).lineLimit(1)
-                                .foregroundStyle(y.ink)
+                            HStack(spacing: 5) {
+                                Text(inlinePlain(item.title) { model.index.title(of: $0) })
+                                    .font(Face.text(11.5, .medium)).lineLimit(1)
+                                    .foregroundStyle(y.ink)
+                                if case let .device(d) = item, let name = d.calendarName {
+                                    Text(name).font(Face.text(10.5, .semibold)).lineLimit(1)
+                                        .foregroundStyle(y.accentText)
+                                }
+                            }
                                 .padding(.horizontal, 9).padding(.vertical, 5)
                                 .background(RoundedRectangle(cornerRadius: 7).fill(y.surfaceHigh))
                                 .onTapGesture {
@@ -333,7 +339,18 @@ struct TimelineBlock: View {
             HStack(alignment: .top, spacing: 6) {
                 RoundedRectangle(cornerRadius: 1.5).fill(accent).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(Face.text(short ? 11 : 12, .medium)).foregroundStyle(y.ink).lineLimit(short ? 1 : 2)
+                    HStack(spacing: 4) {
+                        Text(title).font(Face.text(short ? 11 : 12, .medium)).foregroundStyle(y.ink).lineLimit(short ? 1 : 2)
+                        // A short block has one line to give, so whose calendar it is rides on it
+                        // and is the first thing to go when the title needs the room.
+                        if short, let calendarName {
+                            Text(calendarName).font(Face.text(10, .semibold)).foregroundStyle(y.accentText)
+                                .lineLimit(1).layoutPriority(-1)
+                        }
+                    }
+                    if !short, let calendarName {
+                        Text(calendarName).font(Face.text(10, .semibold)).foregroundStyle(y.accentText).lineLimit(1)
+                    }
                     if !short, let sub { Text(sub).font(Face.text(10)).foregroundStyle(y.dim).lineLimit(1) }
                 }
                 Spacer(minLength: 0)
@@ -349,6 +366,12 @@ struct TimelineBlock: View {
     private var title: String {
         if case let .device(d) = block.item { return d.taskTitle ?? d.title }
         return inlinePlain(block.item.title) { model.index.title(of: $0) }
+    }
+    /// Whose calendar a meeting is in. Only theirs: your own events are in your repository, and the
+    /// spine already says which one.
+    private var calendarName: String? {
+        if case let .device(d) = block.item { return d.calendarName }
+        return nil
     }
     private var sub: String? {
         switch block.item {

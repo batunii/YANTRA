@@ -124,7 +124,7 @@ struct LabelPicker: View {
                     ForEach(matches, id: \.self) { name in
                         Button { attach(name) } label: {
                             HStack(spacing: 12) {
-                                Circle().fill(LabelPalette.color(name, registry: model.index.labels, dark: y.dark)).frame(width: 10, height: 10)
+                                Circle().fill(LabelPalette.color(name, registry: model.index.labels, dark: y.dark, neutral: y.dim)).frame(width: 10, height: 10)
                                 Text(name).font(Face.text(15, .medium)).foregroundStyle(y.ink)
                                 Spacer()
                                 if node.labels.contains(name) { YantraIcon(mark: .check, size: YantraIcons.small, tint: y.accent) }
@@ -134,7 +134,7 @@ struct LabelPicker: View {
                     if canCreate {
                         Button { attach(query.trimmingCharacters(in: .whitespaces)) } label: {
                             HStack(spacing: 12) {
-                                Circle().fill(LabelPalette.color(query, registry: [], dark: y.dark)).frame(width: 10, height: 10)
+                                Circle().fill(LabelPalette.color(query, registry: [], dark: y.dark, neutral: y.dim)).frame(width: 10, height: 10)
                                 Text("Create \"\(query.trimmingCharacters(in: .whitespaces))\"").font(Face.text(15, .bold)).foregroundStyle(y.accentText)
                             }.padding(.vertical, 10)
                         }.buttonStyle(.plain)

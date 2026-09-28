@@ -144,8 +144,10 @@ enum Face {
 extension LabelPalette {
     /// What a label named `name` is painted, honouring a colour somebody chose for it in the
     /// registry and otherwise the one its name seeds to.
-    static func color(_ name: String, registry: [LabelDef], dark: Bool) -> Color {
-        let stored = registry.first { $0.name.lowercased() == name.lowercased() }?.color ?? defaultFor(name)
+    ///
+    /// `neutral` is what a label wearing no colour is drawn in — see `LabelPalette.stored`.
+    static func color(_ name: String, registry: [LabelDef], dark: Bool, neutral: Color) -> Color {
+        guard let stored = stored(name, registry: registry) else { return neutral }
         return Color(argb: UInt32(truncatingIfNeeded: display(stored, dark: dark)))
     }
 

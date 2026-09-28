@@ -20,11 +20,16 @@ public struct DeviceEvent: Equatable, Sendable {
     /// The owning calendar's own colour, as an ARGB value, drawn as-is: it is that calendar's
     /// identity, not ours.
     public var color: Int64?
+    /// Which of their calendars it is in, by the name that calendar goes by — for a synced
+    /// account's main calendar that is usually the account's own address. Drawn on the block,
+    /// because two accounts' meetings in one day are otherwise told apart by colour alone.
+    public var calendarName: String?
 
     public init(instanceId: String, uid: String?, eventId: String, title: String, beginUtc: Date, endUtc: Date,
-                allDay: Bool, location: String? = nil, color: Int64? = nil) {
+                allDay: Bool, location: String? = nil, color: Int64? = nil, calendarName: String? = nil) {
         self.instanceId = instanceId; self.uid = uid; self.eventId = eventId; self.title = title
         self.beginUtc = beginUtc; self.endUtc = endUtc; self.allDay = allDay; self.location = location; self.color = color
+        self.calendarName = calendarName
     }
 }
 
@@ -81,6 +86,7 @@ public enum DayItem: Identifiable, Equatable, Sendable {
         public var allDay: Bool
         public var location: String?
         public var color: Int64?
+        public var calendarName: String?
         /// The line of yours that links this meeting to a task — a line **about** their meeting,
         /// never a copy of it. Its presence is also what tells the note's own line to stand aside,
         /// which is how one meeting stays one block.
@@ -302,6 +308,7 @@ public enum CalendarBucketer {
                 nodeId: "device:\(d.instanceId)",
                 title: d.title,
                 start: start, end: end, allDay: d.allDay, location: d.location, color: d.color,
+                calendarName: d.calendarName,
                 // One node, not two: the line about this meeting *is* the task.
                 noteId: linked?.nodeId, taskId: linked?.nodeId,
                 taskTitle: linked?.title.flatMap { $0.isEmpty || $0 == d.title ? nil : $0 },

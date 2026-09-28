@@ -397,12 +397,31 @@ public final class WorkspaceWriter {
         try guardWritable(); store.writeSmartList(def); onChange(.structural)
     }
 
-    /// Adds a name to the label registry if it is new; colour stays nil until someone picks one.
+    /// Adds a name to the label registry if it is new — `LabelRepository.getOrCreate`.
+    ///
+    /// A new label is written **with** the colour its name seeds to, not with none. On Android a
+    /// stored nil is a choice — the neutral chip somebody picked — so a label this device made
+    /// without a colour came out grey on every other device while it was coloured here.
     public func upsertLabel(_ name: String, color: Int64? = nil) throws {
         try guardWritable()
         var labels = store.readLabels()
         if let i = labels.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
             if let color, labels[i].color != color { labels[i].color = color } else { return }
+        } else {
+            labels.append(LabelDef(id: "\(store.id):label:\(name.lowercased())", name: name,
+                                   color: color ?? LabelPalette.defaultFor(name)))
+        }
+        store.writeLabels(labels); onChange(.edit)
+    }
+
+    /// Recolours a label wherever it appears — `LabelRepository.setColor`. Nil is the neutral chip,
+    /// never "pick one for me". A label the registry has not heard of yet is added with the colour.
+    public func setLabelColor(_ name: String, _ color: Int64?) throws {
+        try guardWritable()
+        var labels = store.readLabels()
+        if let i = labels.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            if labels[i].color == color { return }
+            labels[i].color = color
         } else {
             labels.append(LabelDef(id: "\(store.id):label:\(name.lowercased())", name: name, color: color))
         }

@@ -47,7 +47,8 @@ enum DeviceEvents {
                 title: e.title ?? "Untitled",
                 beginUtc: e.startDate, endUtc: e.endDate, allDay: e.isAllDay,
                 location: e.location?.isEmpty == false ? e.location : nil,
-                color: e.calendar.cgColor.map(argb))
+                color: e.calendar.cgColor.map(argb),
+                calendarName: e.calendar.title.isEmpty ? nil : e.calendar.title)
         }
     }
 
