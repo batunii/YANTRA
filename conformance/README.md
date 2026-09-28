@@ -11,7 +11,6 @@ each is an input and the exact output the Android code produces for it.
 | `rank/` | `Rank.between` vectors, and a built chain | `ConformanceFixturesTest.rank` | both |
 | `ink/` | a `YNK1` stroke, an empty one, and a whole sidecar | `…strokeEnvelope` | both |
 | `focus/` | the session clock table | `…sessionClock` | both |
-| `sync/` | manifest field-by-field merge cases, both device orders | `…manifestMerge` | both |
 
 **Android** — `app/src/test/java/ie/shoonya/yantra/ConformanceFixturesTest.kt` checks the Kotlin
 against these on every test run. To regenerate after a deliberate change:

@@ -9,9 +9,10 @@ public final class WorkspaceWriter {
     public let store: WorkspaceStore
     public let device: String?
     public var onChange: (Change) -> Void = { _ in }
-    private let lock = NSLock()
+    /// Cross-process, and the one sync takes before swapping a file in: see `WorkspaceLock`.
+    private let lock: WorkspaceLock
 
-    public init(store: WorkspaceStore, device: String?) { self.store = store; self.device = device }
+    public init(store: WorkspaceStore, device: String?) { self.store = store; self.device = device; lock = WorkspaceLock(root: store.root) }
 
     private func guardWritable() throws {
         if store.isReadOnly { throw ReadOnly(formatVersion: store.readManifest()?.formatVersion ?? -1) }

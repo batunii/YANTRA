@@ -249,7 +249,11 @@ public protocol GitTransport {
     func blob(sha: String) async throws -> Data
     /// Writes a commit whose tree is `files` (path → content; nil deletes), parented on `parent`
     /// (nil for the first commit), and moves the branch to it. Returns the new commit sha, or nil
-    /// when the branch moved underneath and the caller should fetch and try again.
+    /// when — and only when — the branch moved underneath and the caller should fetch and try again.
+    ///
+    /// Any other refusal **throws** `SyncError.pushRefused` with the remote's reason. Going round
+    /// again cannot fix a protected branch or a token without write access; retrying would spend the
+    /// attempts and then report losing a race that never happened.
     func commit(branch: String, parent: String?, baseTree: String?, files: [String: Data?], message: String) async throws -> String?
 }
 
@@ -260,10 +264,27 @@ public struct RemoteHead: Equatable {
 }
 
 public struct GitHubTransport: GitTransport {
+    public typealias HTTP = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
     public let repo: RepoRef
     public let token: String
-    public init(repo: RepoRef, token: String) { self.repo = repo; self.token = token }
+    /// How a request reaches GitHub. Replaceable so the REST handling — the shapes GitHub answers
+    /// in, which a `GitTransport` fake cannot prove — can be tested without a network.
+    let http: HTTP
+    public init(repo: RepoRef, token: String, http: @escaping HTTP = { try await URLSession.shared.data(for: $0) }) {
+        self.repo = repo; self.token = token; self.http = http
+    }
     var api: String { repo.host == "github.com" ? "https://api.github.com" : "https://\(repo.host)/api/v3" }
+
+    /// Who every commit this app makes is by — `Yantra <yantra@shoonya.ie>`, author and committer
+    /// both, as `commitAll(message, "Yantra", "yantra@shoonya.ie")` signs them on Android. Never the
+    /// signed-in login: GitHub fills in the authenticated user for any field left out.
+    static let signature: [String: String] = ["name": "Yantra", "email": "yantra@shoonya.ie"]
+
+    /// GitHub's own sentence for a refusal, from the `message` field every error body carries.
+    static func message(_ data: Data) -> String? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["message"] as? String
+    }
 
     func request(_ method: String, _ path: String, body: Any? = nil) async throws -> (Int, Data) {
         var req = URLRequest(url: URL(string: api + path)!)
@@ -280,7 +301,7 @@ public struct GitHubTransport: GitTransport {
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         if let body { req.httpBody = try JSONSerialization.data(withJSONObject: body); req.setValue("application/json", forHTTPHeaderField: "Content-Type") }
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await http(req)
         return ((resp as? HTTPURLResponse)?.statusCode ?? 0, data)
     }
 
@@ -296,17 +317,51 @@ public struct GitHubTransport: GitTransport {
         let (c2, cdata) = try await request("GET", "/repos/\(repo.slug)/git/commits/\(sha)")
         guard c2 == 200, let commit = try JSONSerialization.jsonObject(with: cdata) as? [String: Any],
               let treeSha = (commit["tree"] as? [String: Any])?["sha"] as? String else { throw SyncError.http(c2, "commit") }
-        let (c3, tdata) = try await request("GET", "/repos/\(repo.slug)/git/trees/\(treeSha)?recursive=1")
-        guard c3 == 200, let tree = try JSONSerialization.jsonObject(with: tdata) as? [String: Any], let entries = tree["tree"] as? [[String: Any]] else { throw SyncError.http(c3, "tree") }
+        let (entries, truncated) = try await tree(treeSha, recursive: true)
         var files: [String: String] = [:]
-        for e in entries where (e["type"] as? String) == "blob" { if let p = e["path"] as? String, let s = e["sha"] as? String { files[p] = s } }
+        if truncated {
+            // GitHub cuts a recursive listing off past its limits and says so only in `truncated`.
+            // Reading the part it sent as the whole tree makes every path it left out look deleted on
+            // the remote — and the engine would dutifully delete them here, then push the deletions.
+            // Walked one directory at a time instead.
+            try await walk(treeSha, prefix: "", into: &files)
+        } else {
+            for e in entries where (e["type"] as? String) == "blob" { if let p = e["path"] as? String, let s = e["sha"] as? String { files[p] = s } }
+        }
         return RemoteHead(commit: sha, treeSha: treeSha, tree: files)
+    }
+
+    func tree(_ sha: String, recursive: Bool) async throws -> ([[String: Any]], Bool) {
+        let (code, data) = try await request("GET", "/repos/\(repo.slug)/git/trees/\(sha)" + (recursive ? "?recursive=1" : ""))
+        guard code == 200, let tree = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entries = tree["tree"] as? [[String: Any]] else { throw SyncError.http(code, "tree", message: Self.message(data)) }
+        return (entries, (tree["truncated"] as? Bool) ?? false)
+    }
+
+    func walk(_ sha: String, prefix: String, into files: inout [String: String]) async throws {
+        let (entries, truncated) = try await tree(sha, recursive: false)
+        // One directory too large for a single listing is not something a task workspace holds; if
+        // it ever does, failing the pass is honest and reading half of it is not.
+        if truncated { throw SyncError.http(200, "tree", message: "GitHub would not list all of \(prefix.isEmpty ? "the workspace" : prefix)") }
+        for e in entries {
+            guard let p = e["path"] as? String, let s = e["sha"] as? String else { continue }
+            switch e["type"] as? String {
+            case "blob": files[prefix + p] = s
+            case "tree": try await walk(s, prefix: prefix + p + "/", into: &files)
+            default: break   // a submodule's commit: nothing of ours
+            }
+        }
     }
 
     public func blob(sha: String) async throws -> Data {
         let (code, data) = try await request("GET", "/repos/\(repo.slug)/git/blobs/\(sha)")
-        guard code == 200, let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any], let content = obj["content"] as? String else { throw SyncError.http(code, "blob") }
-        return Data(base64Encoded: content.replacingOccurrences(of: "\n", with: "")) ?? Data()
+        guard code == 200, let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any], let content = obj["content"] as? String else { throw SyncError.http(code, "blob", message: Self.message(data)) }
+        // Refused rather than read as empty. An empty `Data()` here was written straight over the
+        // file and pushed as its new content on the next pass — a page emptied by a transport hiccup.
+        guard let bytes = Data(base64Encoded: content, options: .ignoreUnknownCharacters), gitBlobSha(bytes) == sha else {
+            throw SyncError.corrupt("GitHub sent a file that did not match its id")
+        }
+        return bytes
     }
 
     /// Whether this repository has no commits at all, which GitHub answers 409 to.
@@ -329,12 +384,17 @@ public struct GitHubTransport: GitTransport {
         let present = files.compactMap { path, content in content.map { (path, $0) } }
         guard let (path, content) = present.min(by: { $0.0 < $1.0 }) else { return nil }
         let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
-        let (code, _) = try await request("PUT", "/repos/\(repo.slug)/contents/\(encoded)", body: [
+        // Both named. The Contents API fills in the authenticated user for a missing committer, and the
+        // author defaults to the committer — so without these the first commit in every workspace
+        // carried the person's login, and nothing else in the history did.
+        let (code, data) = try await request("PUT", "/repos/\(repo.slug)/contents/\(encoded)", body: [
             "message": message,
             "content": content.base64EncodedString(),
             "branch": branch,
+            "committer": Self.signature,
+            "author": Self.signature,
         ])
-        guard code == 201 else { throw SyncError.http(code, "first commit") }
+        guard code == 201 else { throw SyncError.http(code, "first commit", message: Self.message(data)) }
         return try await head(branch: branch)
     }
 
@@ -351,7 +411,7 @@ public struct GitHubTransport: GitTransport {
         for (path, content) in files.sorted(by: { $0.key < $1.key }) {
             if let content {
                 let (c, d) = try await request("POST", "/repos/\(repo.slug)/git/blobs", body: ["content": content.base64EncodedString(), "encoding": "base64"])
-                guard c == 201, let obj = try JSONSerialization.jsonObject(with: d) as? [String: Any], let sha = obj["sha"] as? String else { throw SyncError.http(c, "blob write") }
+                guard c == 201, let obj = try JSONSerialization.jsonObject(with: d) as? [String: Any], let sha = obj["sha"] as? String else { throw SyncError.http(c, "blob write", message: Self.message(d)) }
                 entries.append(["path": path, "mode": "100644", "type": "blob", "sha": sha])
             } else if baseTree != nil {
                 entries.append(["path": path, "mode": "100644", "type": "blob", "sha": nil])
@@ -360,18 +420,42 @@ public struct GitHubTransport: GitTransport {
         var treeBody: [String: Any] = ["tree": entries.map { $0.mapValues { $0 ?? NSNull() } }]
         if let baseTree { treeBody["base_tree"] = baseTree }
         let (tc, td) = try await request("POST", "/repos/\(repo.slug)/git/trees", body: treeBody)
-        guard tc == 201, let t = try JSONSerialization.jsonObject(with: td) as? [String: Any], let treeSha = t["sha"] as? String else { throw SyncError.http(tc, "tree write") }
-        var commitBody: [String: Any] = ["message": message, "tree": treeSha, "author": ["name": "Yantra", "email": "yantra@shoonya.ie"]]
+        guard tc == 201, let t = try JSONSerialization.jsonObject(with: td) as? [String: Any], let treeSha = t["sha"] as? String else { throw SyncError.http(tc, "tree write", message: Self.message(td)) }
+        var commitBody: [String: Any] = ["message": message, "tree": treeSha, "author": Self.signature, "committer": Self.signature]
         if let parent { commitBody["parents"] = [parent] }
         let (cc, cd) = try await request("POST", "/repos/\(repo.slug)/git/commits", body: commitBody)
-        guard cc == 201, let cobj = try JSONSerialization.jsonObject(with: cd) as? [String: Any], let commitSha = cobj["sha"] as? String else { throw SyncError.http(cc, "commit write") }
+        guard cc == 201, let cobj = try JSONSerialization.jsonObject(with: cd) as? [String: Any], let commitSha = cobj["sha"] as? String else { throw SyncError.http(cc, "commit write", message: Self.message(cd)) }
         if parent == nil {
-            let (rc, _) = try await request("POST", "/repos/\(repo.slug)/git/refs", body: ["ref": "refs/heads/\(branch)", "sha": commitSha])
-            return rc == 201 ? commitSha : nil
+            let (rc, rd) = try await request("POST", "/repos/\(repo.slug)/git/refs", body: ["ref": "refs/heads/\(branch)", "sha": commitSha])
+            if rc == 201 { return commitSha }
+            // Another device started the branch between our look and our write: a race, like a
+            // non-fast-forward, and the next round sees their branch.
+            if rc == 422, Self.message(rd)?.localizedCaseInsensitiveContains("already exists") == true { return nil }
+            throw SyncError.pushRefused(Self.refusal(rc, rd))
         }
-        // Not a force: a 422 means the branch moved, and the caller rebases again.
-        let (rc, _) = try await request("PATCH", "/repos/\(repo.slug)/git/refs/heads/\(branch)", body: ["sha": commitSha, "force": false])
-        return rc == 200 ? commitSha : nil
+        // Not a force. What comes back is sorted the way Android sorts JGit's per-ref statuses: only a
+        // non-fast-forward is a race worth going round again for; anything else is reported as the
+        // refusal it is.
+        let (rc, rd) = try await request("PATCH", "/repos/\(repo.slug)/git/refs/heads/\(branch)", body: ["sha": commitSha, "force": false])
+        if rc == 200 { return commitSha }
+        if Self.isNonFastForward(rc, rd) { return nil }
+        throw SyncError.pushRefused(Self.refusal(rc, rd))
+    }
+
+    /// GitHub answers a ref update that would drop commits with `422 "Update is not a fast forward"`.
+    static func isNonFastForward(_ code: Int, _ data: Data) -> Bool {
+        code == 422 && (message(data)?.localizedCaseInsensitiveContains("fast forward") ?? false)
+    }
+
+    /// Why a push was refused, in GitHub's words where it gave some.
+    static func refusal(_ code: Int, _ data: Data) -> String {
+        if let m = message(data), !m.isEmpty { return m }
+        switch code {
+        case 401: return "the sign-in was not accepted"
+        case 403: return "this sign-in may not write to the repository"
+        case 404: return "the repository is not there, or this sign-in cannot see it"
+        default: return "GitHub answered \(code)"
+        }
     }
 
     /// `GET /user` — the login that becomes the device name on commits and lines.
@@ -397,14 +481,22 @@ public struct GitHubTransport: GitTransport {
     }
 }
 
-public enum SyncError: Error, CustomStringConvertible {
-    case http(Int, String), offline, noRemote, refused(String)
+public enum SyncError: Error, CustomStringConvertible, Equatable {
+    /// A status the call did not expect, with GitHub's own sentence when it sent one.
+    case http(Int, String, message: String? = nil)
+    case offline, noRemote, refused(String)
+    /// The remote refused a push for a reason another round cannot fix.
+    case pushRefused(String)
+    /// Bytes that do not match the id they were fetched by.
+    case corrupt(String)
     public var description: String {
         switch self {
-        case let .http(c, what): return "GitHub answered \(c) reading \(what)"
-        case .offline: return "Cannot reach GitHub"
+        case let .http(c, what, m): return "GitHub answered \(c) reading \(what)" + (m.map { ": \($0)" } ?? "")
+        case .offline: return "Could not reach GitHub — this will sync when the connection is back"
         case .noRemote: return "No repository is connected"
         case let .refused(r): return r
+        case let .pushRefused(r): return "the remote refused the push: \(r)"
+        case let .corrupt(r): return r
         }
     }
 }

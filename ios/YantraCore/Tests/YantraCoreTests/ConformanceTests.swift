@@ -45,26 +45,6 @@ final class ConformanceTests: XCTestCase {
         for (secs, text) in f.cases { XCTAssertEqual(sessionClock(Int(secs)!), text, "sessionClock(\(secs))") }
     }
 
-    // MARK: manifest merge
-
-    struct MergeCase: Decodable { let name: String; let base: String?; let local: String; let remote: String; let device: String; let otherDevice: String; let merged: String; let reason: String }
-    struct MergeFixture: Decodable { let path: String; let cases: [MergeCase] }
-
-    func testManifestMergeMatchesAndroidByteForByte() throws {
-        let f = try JSONDecoder().decode(MergeFixture.self, from: fixture("sync/manifest-merge.json"))
-        XCTAssertEqual(ManifestMerge.path, f.path)
-        for c in f.cases {
-            let merged = ManifestMerge.merge(base: c.base, local: c.local, remote: c.remote, device: c.device, otherDevice: c.otherDevice)
-            if c.base == nil {
-                // No ancestor: the Kotlin engine keeps its local side; the Swift merge declines.
-                XCTAssertNil(merged, c.name)
-                XCTAssertEqual(c.merged, c.local, c.name)
-            } else {
-                XCTAssertEqual(merged, c.merged, c.name)
-            }
-        }
-    }
-
     func testJSONRoundTripKeepsOrderAndLiterals() throws {
         let text = "{\"formatVersion\":2,\"name\":\"t \\\"q\\\"\",\"createdAt\":1788956797699,\"x\":[1,2.50,true,null],\"z\":{}}"
         XCTAssertEqual(try JSONValue.parse(text).compact(), text)

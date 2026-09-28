@@ -53,13 +53,47 @@ final class AppModel: ObservableObject {
     /// that made adding one feel broken even when the link itself had worked.
     private func openAll() {
         var stores: [String: WorkspaceStore] = [:], writers: [String: WorkspaceWriter] = [:]
+        var schedulers: [String: CommitScheduler] = [:]
         for (store, writer) in AppGroup.openWorkspaces() {
-            writer.onChange = { [weak self] _ in Task { @MainActor in self?.reindex() } }
+            // Kept across a re-open, so a batch of edits waiting to go is not forgotten because a
+            // workspace was added somewhere else.
+            let scheduler = self.schedulers[store.id] ?? makeScheduler(store)
+            writer.onChange = { [weak self] change in
+                // File first, index second, sync last — and sync on its own schedule (L4).
+                Task { @MainActor in self?.reindex() }
+                scheduler.record(change)
+            }
             stores[store.id] = store
             writers[store.id] = writer
+            schedulers[store.id] = scheduler
         }
         self.stores = stores
         self.writers = writers
+        self.schedulers = schedulers
+    }
+
+    /// One per workspace — `CommitScheduler.kt`: a finished, created or removed task goes at once,
+    /// because someone else may be waiting to see it; typing waits until you stop (20 s), drawing
+    /// until you lift the pen (8 s), and nothing waits longer than 15 or 20 minutes.
+    private var schedulers: [String: CommitScheduler] = [:]
+
+    private func makeScheduler(_ store: WorkspaceStore) -> CommitScheduler {
+        CommitScheduler(flush: { [weak self] message in
+            // Nowhere to push to. iOS keeps no local history — the file is already the record — so
+            // for an unconnected workspace there is nothing more to do.
+            guard SyncSettings.repo(for: store.id) != nil else { return SyncResult() }
+            let r = await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
+                await SyncSettings.syncNow(store: store, message: message)
+            }
+            if r.pulled { await self?.reindex() }
+            return r
+        })
+    }
+
+    /// A pass for one workspace, carrying whatever edits were waiting into its commit message.
+    private func flush(_ store: WorkspaceStore, _ reason: String) async -> SyncResult {
+        if let s = schedulers[store.id] { return await s.flush(reason) }
+        return await SyncSettings.syncNow(store: store, message: reason)
     }
 
     /// The writer that owns a node, found through the index.
@@ -153,26 +187,64 @@ final class AppModel: ObservableObject {
 
     /// Sync observes; it never participates in a write. Runs on open, on leaving, and on request.
     @Published private(set) var syncing = false
-    func syncInBackground(_ reason: String) {
-        let connected = allStores.filter { SyncSettings.repo(for: $0.id) != nil }
-        guard !connected.isEmpty, !syncing else { return }
-        syncing = true
-        Task {
-            // One at a time. They are independent repositories, but they share one credential and
-            // one token renewal, and three passes starting together is three refreshes racing to
-            // rotate the same refresh token — which GitHub answers by invalidating it.
-            var pulled = false
-            // Said out loud while it happens. This was the most silent thing in the app and the one
-            // most likely to leave somebody wondering whether anything was working — see
-            // `NetworkActivity`.
-            await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
-                for store in connected {
-                    let r = await SyncSettings.syncNow(store: store, message: reason)
-                    pulled = pulled || r.pulled
-                }
-            }
-            await MainActor.run { syncing = false; if pulled { reindex() } }
+    /// Sync work under way from this model: the background loop, or a pull-to-sync being waited on.
+    private var runs = 0 {
+        didSet {
+            syncing = runs > 0
+            if runs == 0 { let done = whenIdle; whenIdle = []; done.forEach { $0() } }
         }
+    }
+    private var looping = false
+    /// A flush asked for while the loop was running. Kept, not dropped: leaving the app mid-pass is
+    /// exactly when the edits made during that pass most need to go.
+    private var queuedReason: String?
+    private var whenIdle: [() -> Void] = []
+
+    func syncInBackground(_ reason: String) {
+        guard allStores.contains(where: { SyncSettings.repo(for: $0.id) != nil }) else { return }
+        if looping { queuedReason = reason; return }
+        looping = true
+        runs += 1
+        Task {
+            var pulled = false
+            var next: String? = reason
+            while let why = next {
+                // Read each round: a workspace may have been added or forgotten since.
+                let connected = allStores.filter { SyncSettings.repo(for: $0.id) != nil }
+                // One workspace after another. Each is also gated on its own (`SyncGate`), so a pass
+                // started from anywhere else waits rather than racing this one.
+                //
+                // Said out loud while it happens. This was the most silent thing in the app and the one
+                // most likely to leave somebody wondering whether anything was working — see
+                // `NetworkActivity`.
+                await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
+                    for store in connected {
+                        let r = await flush(store, why)
+                        pulled = pulled || r.pulled
+                    }
+                }
+                next = queuedReason
+                queuedReason = nil
+            }
+            looping = false
+            if pulled { reindex() }
+            runs -= 1
+        }
+    }
+
+    /// Leaving the app: flush now, and ask iOS for the time to finish.
+    ///
+    /// Without a background task the process is suspended within a second or two of leaving, which is
+    /// usually mid-request — the pass then either never reaches GitHub or reaches it and is frozen
+    /// before it records what it did. `beginBackgroundTask` buys roughly half a minute, and the task is
+    /// ended as soon as the passes (and any flush queued behind them) are done.
+    func flushOnLeaving() {
+        guard allStores.contains(where: { SyncSettings.repo(for: $0.id) != nil }) else { return }
+        let time = BackgroundTime()
+        time.begin()
+        // Android's words for this reason, so a commit made on leaving reads the same from either app.
+        syncInBackground("app went to the background")
+        if runs == 0 { time.end() } else { whenIdle.append { time.end() } }
     }
 
     /// A sync the person asked for by pulling the list down, and waited through.
@@ -189,7 +261,7 @@ final class AppModel: ObservableObject {
             refusal = SyncSettings.login == nil ? "Sign in to GitHub to sync" : "No repository connected yet"
             return
         }
-        syncing = true
+        runs += 1
         // **In a task of its own, awaited.** `.refreshable` runs its body in a task that SwiftUI
         // cancels when the view it is attached to rebuilds — and this very method rebuilds it, by
         // publishing `syncing`. The request was being cancelled mid-flight, and a cancelled
@@ -203,7 +275,7 @@ final class AppModel: ObservableObject {
             var pulled = false, failure: String?
             await NetworkActivity.shared.during(NetworkActivity.Words.syncing) {
                 for store in connected {
-                    let r = await SyncSettings.syncNow(store: store, message: "pulled to sync")
+                    let r = await self.flush(store, "pulled down to sync")
                     pulled = pulled || r.pulled
                     if failure == nil, let e = r.error { failure = e }
                 }
@@ -211,7 +283,7 @@ final class AppModel: ObservableObject {
             return (pulled, failure)
         }
         let (pulled, failure) = await work.value
-        syncing = false
+        runs -= 1
         if pulled { reindex() }
         refusal = failure.map { "Not synced: \($0)" } ?? SyncSettings.lastStatus
     }
@@ -557,6 +629,75 @@ final class AppModel: ObservableObject {
     /// Re-opens everything after the set of workspaces has changed, and rebuilds the index.
     func workspacesChanged() { openAll(); reindex() }
 
+    enum AddOutcome: Equatable {
+        case added(id: String, name: String, joined: Bool)
+        case refused(String)
+    }
+
+    /// Joins `ref` as a **new workspace of its own** — `AppContainer.addWorkspace` and
+    /// `WorkspaceLinker.link` on Android. Used by the add-workspace screen, and by "Keep both" when
+    /// the local workspace's repository turns out to hold tasks already.
+    ///
+    /// **Nothing is registered until the link has worked.** The directory is made and filled first;
+    /// only then is it given a repository and put in the registry, so no other sync — a flush on
+    /// leaving, the background refresh — can reach a half-made workspace and run an ordinary merge on
+    /// it. And a failure deletes the directory, so a second try is not mistaken for a workspace that
+    /// is already here. Android writes its registry entry at the same point, for the same reason.
+    ///
+    /// A repository that holds a workspace is adopted as it stands; one that does not is started with
+    /// a manifest and nothing else — no starter Inbox, which belongs to this device's own list and
+    /// would arrive in a shared repository as somebody else's clutter.
+    func addWorkspace(_ ref: RepoRef, token: String) async -> AddOutcome {
+        let id = UUID().uuidString.lowercased()
+        let dir = registry.dir(for: id)
+        let store = WorkspaceStore(root: dir, id: id)
+        let label = ref.name
+        func undo() {
+            SyncSettings.setRepo(nil, for: id)
+            try? FileManager.default.removeItem(at: dir)
+            try? FileManager.default.removeItem(at: AppGroup.container.appendingPathComponent("sync/\(id)", isDirectory: true))
+        }
+
+        let remoteHasWorkspace: Bool
+        do {
+            let head = try await GitHubTransport(repo: ref, token: token).head(branch: SyncEngine.branch)
+            remoteHasWorkspace = head.map { WorkspaceLink.looksLikeAWorkspace($0.tree.keys) } ?? false
+        } catch {
+            undo()
+            return .refused("Could not reach \(ref.slug): \(SyncEngine.readable(error))")
+        }
+
+        store.scaffold(name: label, now: Int64(Date().timeIntervalSince1970 * 1000))
+        let result = remoteHasWorkspace
+            ? await SyncSettings.adoptRepository(store: store, repo: ref)
+            : await SyncSettings.syncNow(store: store, repo: ref, message: "Start a Yantra workspace")
+        if let error = result.error {
+            undo()
+            return .refused(error)
+        }
+        SyncSettings.setRepo(ref, for: id)
+
+        // A workspace that was joined already has a name, chosen by whoever started it: taking ours
+        // over theirs would rename the same shared project on every device. That name can already be
+        // taken here — joining your own repository gives you a second "Personal" — so it is
+        // disambiguated as Android does: the slug first, then a number.
+        let theirs = store.readManifest()?.name
+        let named = (theirs?.isEmpty == false ? theirs! : label)
+        let unique = disambiguate(named, slug: ref.slug)
+        registry.add(WorkspaceEntry(id: id, name: unique, slug: ref.slug))
+        workspacesChanged()
+        Diagnostics.log("workspace.added", ["workspace": id, "joined": remoteHasWorkspace])
+        return .added(id: id, name: unique, joined: remoteHasWorkspace)
+    }
+
+    /// `AppContainer.disambiguate`: the name if it is free, else `name (slug)`, else `name 2`, `name 3`…
+    private func disambiguate(_ name: String, slug: String) -> String {
+        let taken = Set(allStores.map { workspaceName($0.id) })
+        if !taken.contains(name) { return name }
+        if !taken.contains("\(name) (\(slug))") { return "\(name) (\(slug))" }
+        return (2...).lazy.map { "\(name) \($0)" }.first { !taken.contains($0) }!
+    }
+
     /// Forgets a workspace: its files, its registration and which repository it pointed at.
     ///
     /// **Nothing on GitHub is touched.** The repository, and every task in it, stays exactly where
@@ -576,6 +717,27 @@ final class AppModel: ObservableObject {
     // MARK: focus
 
     func sessions(for nodeId: String) -> [FocusSession] { sessions.filter { $0.nodeId == nodeId && $0.actualSecs != nil } }
+}
+
+/// The half-minute iOS grants an app that has just left the screen, held and handed back once.
+@MainActor
+final class BackgroundTime {
+    private var task = UIBackgroundTaskIdentifier.invalid
+
+    func begin() {
+        task = UIApplication.shared.beginBackgroundTask(withName: "yantra.flush") { [weak self] in
+            // Out of time. The pass is frozen where it stands, which is safe: nothing it has not
+            // finished is recorded in the base, so the next pass starts from something still true.
+            Diagnostics.log("sync.flushExpired")
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
+    }
 }
 
 /// The live session — `FocusTimer.kt`, over the shared `LiveSession` record so the Live Activity and

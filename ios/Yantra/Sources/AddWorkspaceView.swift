@@ -198,66 +198,18 @@ struct AddWorkspaceView: View {
         case let .failed(e): note = ("Could not reach GitHub: \(e)", true); return
         }
 
-        let id = UUID().uuidString.lowercased()
-        let dir = model.registry.dir(for: id)
-        let store = WorkspaceStore(root: dir, id: id)
-        let label = ref.name
-        SyncSettings.setRepo(ref, for: id)
-
-        let transport = GitHubTransport(repo: ref, token: token)
-        let remoteHasWorkspace: Bool
-        do {
-            let head = try await transport.head(branch: SyncEngine.branch)
-            remoteHasWorkspace = head.map { WorkspaceLink.looksLikeAWorkspace($0.tree.keys) } ?? false
-        } catch {
-            // Nothing has been written but the directory and a preference, and both go: a half-made
-            // workspace coming back on every launch is worse than a failed button.
-            undo(id, dir)
-            note = ("Could not reach \(ref.slug): \(error)", true)
-            return
+        // Linked, filled and only then registered — see `AppModel.addWorkspace`. Registering first
+        // let a flush on leaving the app run an ordinary merge on the scaffold before the adoption.
+        switch await model.addWorkspace(ref, token: token) {
+        case let .refused(why):
+            note = ("Could not add it: \(why)", true)
+        case let .added(id, _, joined):
+            // The roster for the workspace just joined, for the same reason as on the GitHub screen.
+            await People.shared.refresh(workspaceId: id)
+            added = ref.slug
+            note = (joined ? "Joined \(ref.slug). Its tasks are on their way in."
+                           : "Started \(ref.slug). It is yours to fill.", false)
         }
-
-        // A workspace that is joining takes what is there. A workspace that is starting one gets a
-        // manifest and nothing else — no starter Inbox, which belongs to this device's own list and
-        // would arrive in a shared repository as somebody else's clutter.
-        store.scaffold(name: label, now: Int64(Date().timeIntervalSince1970 * 1000))
-        model.registry.add(WorkspaceEntry(id: id, name: label, slug: ref.slug))
-        model.workspacesChanged()
-
-        let result = remoteHasWorkspace
-            ? await SyncSettings.adoptRepository(store: store)
-            : await SyncSettings.syncNow(store: store, message: "start a workspace")
-        model.workspacesChanged()
-
-        if let error = result.error {
-            undo(id, dir)
-            model.workspacesChanged()
-            note = ("Could not add it: \(error)", true)
-            return
-        }
-        // A workspace that was joined already has a name, chosen by whoever started it: taking ours
-        // over theirs would rename the same shared project on every device. And that name can
-        // already be taken here — joining your own repository gives you a second "Personal", and two
-        // workspaces answering to one name are indistinguishable in every list that shows them — so
-        // the slug, which is what actually tells them apart, is what disambiguates.
-        let theirName = model.stores[id]?.readManifest()?.name
-        let chosen = (theirName?.isEmpty == false ? theirName! : label)
-        let taken = model.allStores.filter { $0.id != id }.map { model.workspaceName($0.id) }
-        model.registry.add(WorkspaceEntry(id: id, name: taken.contains(chosen) ? "\(chosen) · \(ref.slug)" : chosen, slug: ref.slug))
-        model.workspacesChanged()
-
-        // The roster for the workspace just joined, for the same reason as on the GitHub screen.
-        await People.shared.refresh(workspaceId: id)
-
-        added = ref.slug
-        note = (remoteHasWorkspace ? "Joined \(ref.slug). Its tasks are on their way in."
-                                   : "Started \(ref.slug). It is yours to fill.", false)
-    }
-
-    private func undo(_ id: String, _ dir: URL) {
-        SyncSettings.setRepo(nil, for: id)
-        model.registry.remove(id)
-        try? FileManager.default.removeItem(at: dir)
     }
 }
 

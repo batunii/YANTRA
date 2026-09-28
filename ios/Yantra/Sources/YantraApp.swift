@@ -131,7 +131,9 @@ struct RootView: View {
                 // run now rather than left on a timer this process may not live to fire.
                 Diagnostics.log("background")
                 model.flushFollowUp()
-                model.syncInBackground("leaving app")
+                // Queued behind a pass already running rather than dropped, and given the background
+                // time to finish — see `flushOnLeaving`.
+                model.flushOnLeaving()
                 // And ask to be woken to do it again, which is the only way somebody else's work
                 // arrives without this app being opened.
                 BackgroundSync.schedule()

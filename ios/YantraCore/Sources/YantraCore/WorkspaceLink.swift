@@ -82,15 +82,16 @@ public extension SyncEngine {
             return result
         }
 
+        // Everything is fetched **before** anything is written. Writing as it fetched meant a dropped
+        // connection halfway left a workspace that was part starter set, part repository, and no base
+        // to say so — and the next ordinary pass merged the two, which is the duplicate Inbox this
+        // whole path exists to prevent.
         var files: [String: Data] = [:]
-        for (path, sha) in remote.tree {
-            guard let data = try await transport.blob(sha: sha) as Data? else { continue }
-            files[path] = data
-            writeLocal(path, data)
-        }
+        for (path, sha) in remote.tree { files[path] = try await transport.blob(sha: sha) }
+        for (path, data) in files.sorted(by: { $0.key < $1.key }) { try writeLocal(path, data) }
         // Anything here that the repository does not have is part of the starter set being replaced.
         for path in localFiles().keys where files[path] == nil {
-            writeLocal(path, nil)
+            try writeLocal(path, nil)
         }
         try saveBase(commit: remote.commit, files: files)
         result.pulled = true
