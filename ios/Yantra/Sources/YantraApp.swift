@@ -30,6 +30,8 @@ struct RootView: View {
     @Environment(\.colorScheme) private var scheme
     @State private var path = NavigationPath()
     @State private var quickAdd = false
+    /// Where a quick add lands: the list a widget's "+" was on, when it still names one.
+    @State private var quickAddInto: String?
     @Environment(\.scenePhase) private var phase
 
     /// Opens a node, if it is one.
@@ -111,12 +113,17 @@ struct RootView: View {
                 let day = url.pathComponents.dropFirst().first.flatMap { LocalDate($0) }
                 path.append(Route.calendar(day?.description))
             case "quickadd":
+                // `yantra://quickadd/<list>` from a list widget. The id was ignored, so every task
+                // added from a list's own widget went to the Inbox instead. An id that names no
+                // list is dropped rather than trusted: this link can come from any app.
+                let id = url.pathComponents.dropFirst().first
+                quickAddInto = id.flatMap { model.index.nodes[$0] }.flatMap { $0.type == NodeType.list ? $0.id : nil }
                 quickAdd = true
             default:
                 break
             }
         }
-        .sheet(isPresented: $quickAdd) { CreateSheet(path: $path) }
+        .sheet(isPresented: $quickAdd) { CreateSheet(path: $path, into: quickAddInto) }
         .onChange(of: phase) { _, p in
             if p == .active {
                 Diagnostics.log("foreground")

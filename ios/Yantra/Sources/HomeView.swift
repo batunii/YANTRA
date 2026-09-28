@@ -298,6 +298,9 @@ struct CreateSheet: View {
     @Environment(\.y) private var y
     @Environment(\.dismiss) private var dismiss
     @Binding var path: NavigationPath
+    /// The list a new task goes into — a list widget's "+" names its own. Nil is capture's answer:
+    /// the Inbox.
+    var into: String? = nil
     @State private var text = ""
     @State private var kind = 0
     @State private var smart = false
@@ -352,8 +355,8 @@ struct CreateSheet: View {
         guard !t.isEmpty else { return }
         switch kind {
         case 0:
-            model.capture(t, into: nil)
-            if let inbox = model.index.node(systemKey: SystemKey.inbox) { path.append(Route.node(inbox.id)) }
+            model.capture(t, into: into.flatMap { model.index.nodes[$0] })
+            if let home = into ?? model.index.node(systemKey: SystemKey.inbox)?.id { path.append(Route.node(home)) }
         case 1:
             var id = ""
             model.write { id = try model.writerIn(workspace).createTopLevel(type: NodeType.list, title: t) }
