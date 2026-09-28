@@ -62,6 +62,9 @@ class WorkspaceWriter(
      */
     private val onChange: (Change) -> Unit = {},
 ) {
+    /** The login this writer stamps with, or null where it stamps nothing — see [author]. */
+    fun signedIn(): String? = author()
+
     /**
      * One writer at a time.
      *

@@ -217,6 +217,7 @@ object PageCodec {
         var priority: String? = null
         var assignee: String? = null
         var author: String? = null
+        val startedBy = ArrayList<String>()
         val labels = ArrayList<String>()
 
         while (words.isNotEmpty()) {
@@ -240,6 +241,7 @@ object PageCodec {
                 w.startsWith("#") && w.length > 1 -> { labels += w.drop(1); true }
                 w.startsWith("by:") && w.length > 3 && author == null ->
                     { author = decodeValue(w.removePrefix("by:")); true }
+                w.startsWith("on:") && w.length > 3 -> { startedBy += decodeValue(w.removePrefix("on:")); true }
                 else -> false
             }
             if (!consumed) break
@@ -259,6 +261,9 @@ object PageCodec {
             doneAt = doneAt,
             external = external,
             author = author,
+            // Scanned right to left, like the labels; a task in the old `[~]` with nobody named
+            // stays unclaimed. Only an in-progress line can carry anyone.
+            startedBy = if (status == TaskStatus.IN_PROGRESS) startedBy.reversed() else emptyList(),
             raw = raw,
         )
     }
@@ -624,6 +629,9 @@ object PageCodec {
         t.priority?.let { append(" !").append(it) }
         t.labels.forEach { append(" #").append(it) }
         t.assignee?.let { append(" @").append(it) }
+        // Only while it is in progress, as `done:` is only while it is done: a task that has been
+        // put down or finished carries no claim that somebody is still on it.
+        if (t.status == TaskStatus.IN_PROGRESS) t.startedBy.forEach { append(" on:").append(encodeValue(it)) }
         // Last, because it is the one token nobody edits: a line's own properties read first.
         t.author?.let { append(" by:").append(encodeValue(it)) }
     }

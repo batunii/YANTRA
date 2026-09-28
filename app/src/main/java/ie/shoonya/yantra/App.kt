@@ -1,5 +1,8 @@
 package ie.shoonya.yantra
 
+import ie.shoonya.yantra.data.db.startedByList
+
+
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -342,7 +345,14 @@ class AppContainer(val app: Application) {
     val properties = PropertyRepository(db, workspaces)
     val labels = LabelRepository(db, workspaces)
     val smartLists = SmartListRepository(db, workspaces)
-    val focus = FocusRepository(db, workspaces)
+    val focus = FocusRepository(
+        db, workspaces,
+        local = app.getSharedPreferences("focus_device", android.content.Context.MODE_PRIVATE),
+        myLogins = {
+            (openWorkspaces().map { it.id } + ie.shoonya.yantra.data.sync.Credentials.ACCOUNT)
+                .mapNotNullTo(HashSet()) { credentials.login(it) }
+        },
+    )
     val ink = InkRepository(db, workspaces)
     val timer = FocusTimer(focus, appScope)
     val running = RunningTask(
@@ -367,6 +377,14 @@ class AppContainer(val app: Application) {
                 val hues = workspaceColours()
                 rows.associate { it.id to hues[it.workspaceId] }
             },
+        // Yours, or nobody's in particular: a task somebody else is on stays in the lists, with
+        // their name on it, and out of your player.
+        mine = { n ->
+            ie.shoonya.yantra.domain.isMineToPlay(
+                n.startedByList,
+                credentials.login(n.workspaceId) ?: credentials.login(ie.shoonya.yantra.data.sync.Credentials.ACCOUNT),
+            )
+        },
     )
     val reminderScheduler = ReminderScheduler(app)
     val reminders = ReminderManager(db, reminderScheduler, appScope)

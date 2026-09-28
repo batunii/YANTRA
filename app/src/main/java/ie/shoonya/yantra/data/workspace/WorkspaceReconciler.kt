@@ -123,6 +123,7 @@ object WorkspaceReconciler {
                     extUid = line.extUid,
                     extStart = line.extStart,
                     author = line.author,
+                    startedBy = line.startedBy,
                 )
             }
 
@@ -282,6 +283,8 @@ object WorkspaceReconciler {
             // is a session that stopped — which is true, and is all the old field ever knew.
             outcome = f.getOrNull(7)?.takeIf { it.isNotEmpty() }
                 ?: if (f[6] == "1") FocusOutcome.RAN_OUT else FocusOutcome.STOPPED,
+            // Field 9, who timed it. Absent on every line written before, and on Personal's.
+            by = f.getOrNull(8)?.takeIf { it.isNotEmpty() },
             createdAt = started, updatedAt = f[3].toLongOrNull() ?: started,
         )
     }
@@ -297,7 +300,10 @@ object WorkspaceReconciler {
         // these lines correctly rather than skipping them.
         if (s.outcome == FocusOutcome.RAN_OUT) "1" else "0",
         s.outcome,
-    ).joinToString("\t")
+        // Last, so every older build — which reads up to field 8 and ignores the rest — still reads
+        // the line exactly as it did.
+        s.by.orEmpty(),
+    ).joinToString("\t").trimEnd('\t')
 
     private fun strokesFor(
         store: WorkspaceStore,

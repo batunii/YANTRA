@@ -191,6 +191,20 @@ data class TaskRef(
      * fall back to the repository's history, see [ie.shoonya.yantra.data.sync.TaskOrigins].
      */
     val author: String? = null,
+    /**
+     * Who is on this, as logins — written `on:<login>`, once per person.
+     *
+     * In progress is a fact about a *person*, and the file used to record it as a fact about the
+     * task: `- [~]` said somebody had picked it up, and every device reading the repository put it
+     * in its own player — so on a shared list, a teammate starting something put it in yours. Naming
+     * who lets each player carry only its own person's tasks while every list still shows the ring.
+     *
+     * A set, because two people can be on one task. Starting adds you, putting it down removes you
+     * and leaves the task in progress while anybody else is still on it, finishing clears it. Only
+     * written while the task is in progress. Empty for every `[~]` written before this, and in
+     * Personal, where it could only ever say you — both read as "whoever is looking".
+     */
+    val startedBy: List<String> = emptyList(),
     override val raw: String? = null,
 ) : Block
 

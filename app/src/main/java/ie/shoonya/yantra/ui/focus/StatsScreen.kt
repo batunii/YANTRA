@@ -238,7 +238,8 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** History screens = plain queries over focus_session (per-task, per-day, totals). */
-    val stats: StateFlow<Stats> = container.focus.all()
+    // Yours: Stats is about your time. A task's own total, on its page, is everybody's.
+    val stats: StateFlow<Stats> = container.focus.mine()
         .map { sessions -> build(sessions) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Stats())
 

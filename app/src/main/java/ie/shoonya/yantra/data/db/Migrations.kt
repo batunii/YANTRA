@@ -610,3 +610,17 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
         )
     }
 }
+
+/**
+ * In progress and focus time say whose they are: `node.started_by` from the line's `on:`, and
+ * `focus_session.by` from the log's ninth field. Both only have to exist; the next rebuild fills
+ * them from the files, which is where the answer lives.
+ *
+ * Its own number rather than folded into 23, because 23 has already run on a phone.
+ */
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `node` ADD COLUMN `started_by` TEXT")
+        db.execSQL("ALTER TABLE `focus_session` ADD COLUMN `by` TEXT")
+    }
+}

@@ -458,6 +458,8 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
         it.copy(
             status = if (done) TaskStatus.DONE else TaskStatus.OPEN,
             doneAt = if (done) java.time.LocalDate.now() else null,
+            // Finished is finished for everybody on it.
+            startedBy = emptyList(),
         )
     }
 
@@ -472,9 +474,28 @@ class NodeRepository(private val db: AppDatabase, private val ws: Workspaces) {
      * lie about. What there is only one of is the focus session — a clock you commit to — and that
      * limit lives where the clock does, in [ie.shoonya.yantra.domain.FocusTimer].
      */
-    suspend fun setInProgress(id: String, inProgress: Boolean) = ws.writerFor(id).editTask(id) {
-        if (it.status == TaskStatus.DONE) it
-        else it.copy(status = if (inProgress) TaskStatus.IN_PROGRESS else TaskStatus.OPEN)
+    suspend fun setInProgress(id: String, inProgress: Boolean) {
+        val writer = ws.writerFor(id)
+        // Null in Personal and wherever nobody is signed in: there, in progress is what it always
+        // was, one flag for whoever is looking.
+        val me = writer.signedIn()
+        writer.editTask(id) { t ->
+            if (t.status == TaskStatus.DONE) return@editTask t
+            val on = t.startedBy.takeIf { t.status == TaskStatus.IN_PROGRESS }.orEmpty()
+            if (inProgress) {
+                t.copy(
+                    status = TaskStatus.IN_PROGRESS,
+                    startedBy = if (me == null || on.any { it.equals(me, ignoreCase = true) }) on else on + me,
+                )
+            } else {
+                // Putting it down takes *you* off it. Somebody else still on it keeps it going.
+                val left = if (me == null) emptyList() else on.filterNot { it.equals(me, ignoreCase = true) }
+                t.copy(
+                    status = if (left.isEmpty()) TaskStatus.OPEN else TaskStatus.IN_PROGRESS,
+                    startedBy = left,
+                )
+            }
+        }
     }
 
     /**
