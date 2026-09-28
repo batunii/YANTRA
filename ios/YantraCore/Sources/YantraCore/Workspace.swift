@@ -2,31 +2,44 @@ import Foundation
 
 // MARK: - meta files
 
+/// `.yantra/manifest.json` — `data class Manifest` in `WorkspaceStore.kt`.
+///
+/// **Every field at its default is left out**, `formatVersion` included, because that is what
+/// `encodeDefaults = false` does: a current manifest is `{"name":…,"createdAt":…}` and nothing
+/// else, and a missing `formatVersion` reads as 2. That makes the version gate unable to fire for
+/// version 2 — an older Android build, whose default was 1, reads the same missing key as 1 — and
+/// matching it is still right: a manifest that says `"formatVersion":2` is a byte Android would
+/// rewrite. Only a version above 2 is ever written out, and that is the one the gate is for.
 public struct Manifest: Codable, Equatable, Sendable {
-    public var formatVersion: Int = 1
+    public var formatVersion: Int = WorkspaceStore.formatVersion
     public var name: String
     public var createdAt: Int64
+    /// Bumped when history is rewritten, so other devices know to reclone rather than merge.
     public var epoch: Int = 1
+    /// Days a finished task stays before it is archived. Zero is never.
     public var archiveAfterDays: Int = 0
     enum CodingKeys: String, CodingKey { case formatVersion, name, createdAt, epoch, archiveAfterDays = "archive_after_days" }
-    public init(formatVersion: Int = 1, name: String, createdAt: Int64, epoch: Int = 1, archiveAfterDays: Int = 0) {
+    public init(formatVersion: Int = WorkspaceStore.formatVersion, name: String, createdAt: Int64, epoch: Int = 1, archiveAfterDays: Int = 0) {
         self.formatVersion = formatVersion; self.name = name; self.createdAt = createdAt; self.epoch = epoch; self.archiveAfterDays = archiveAfterDays
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
-        formatVersion = try c.decodeIfPresent(Int.self, forKey: .formatVersion) ?? 1
+        formatVersion = try c.decodeIfPresent(Int.self, forKey: .formatVersion) ?? WorkspaceStore.formatVersion
         name = try c.decode(String.self, forKey: .name)
         createdAt = try c.decode(Int64.self, forKey: .createdAt)
         epoch = try c.decodeIfPresent(Int.self, forKey: .epoch) ?? 1
         archiveAfterDays = try c.decodeIfPresent(Int.self, forKey: .archiveAfterDays) ?? 0
     }
-    /// Written the way Kotlin writes it: formatVersion always, defaults omitted, this key order.
-    public func compact() -> String {
-        var s = "{\"formatVersion\":\(formatVersion),\"name\":\(JSONText.quote(name)),\"createdAt\":\(createdAt)"
-        if epoch != 1 { s += ",\"epoch\":\(epoch)" }
-        if archiveAfterDays != 0 { s += ",\"archive_after_days\":\(archiveAfterDays)" }
-        return s + "}"
+    public func encode(to e: Encoder) throws {
+        var c = e.container(keyedBy: CodingKeys.self)
+        if formatVersion != WorkspaceStore.formatVersion { try c.encode(formatVersion, forKey: .formatVersion) }
+        try c.encode(name, forKey: .name)
+        try c.encode(createdAt, forKey: .createdAt)
+        if epoch != 1 { try c.encode(epoch, forKey: .epoch) }
+        if archiveAfterDays != 0 { try c.encode(archiveAfterDays, forKey: .archiveAfterDays) }
     }
+    /// The bytes Kotlin writes: this key order, defaults omitted, no trailing newline.
+    public func compact() -> String { KotlinJSON.encode(self) }
     /// False when the repository was written by a newer app than this one.
     public var readable: Bool { formatVersion <= WorkspaceStore.formatVersion }
 }
@@ -48,6 +61,15 @@ public struct SelectOption: Codable, Equatable, Sendable {
 public struct SelectConfig: Codable, Equatable, Sendable {
     public var options: [SelectOption]
     public init(options: [SelectOption] = []) { self.options = options }
+    enum CodingKeys: String, CodingKey { case options }
+    public init(from d: Decoder) throws {
+        options = try d.container(keyedBy: CodingKeys.self).decodeIfPresent([SelectOption].self, forKey: .options) ?? []
+    }
+    /// `options = emptyList()` is the default, so an empty one is not written — `{}`.
+    public func encode(to e: Encoder) throws {
+        var c = e.container(keyedBy: CodingKeys.self)
+        if !options.isEmpty { try c.encode(options, forKey: .options) }
+    }
 }
 
 public extension PropertyDef {
@@ -109,17 +131,75 @@ public final class WorkspaceStore: @unchecked Sendable {
 
     public var exists: Bool { fm.fileExists(atPath: manifestFile.path) }
 
+    // MARK: lifecycle
+
+    /// What a workspace's `.gitignore` must say — `WorkspaceStore.GITIGNORE`.
+    ///
+    /// One entry, the suffix every atomic write uses on its way to the real name, and a comment
+    /// because the file is in the repository and somebody reading it on GitHub should not have to
+    /// guess what `*.tmp` is doing there. A walk of the directory in the half-second a page spends
+    /// as `<name>.tmp` is how Android's sync once died with ENOENT on a file that was never an edit.
+    public static let gitignore = ["# Half-written files, mid-rename. Never a real edit.", "*.tmp"]
+
+    /// Lays out an empty workspace: the directories, `.gitignore`, the manifest, the built-in
+    /// properties and an empty label registry. Seeds **no** content — that is gated on this having
+    /// just happened, never on an index being empty, or every clone would scaffold a second Inbox.
     public func scaffold(name: String, now: Int64) {
         try? fm.createDirectory(at: pagesDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: smartDir, withIntermediateDirectories: true)
-        writeManifest(Manifest(formatVersion: Self.formatVersion, name: name, createdAt: now))
+        ensureGitignore()
+        writeManifest(Manifest(name: name, createdAt: now))
         writeProperties(Self.builtInProperties())
         writeLabels([])
     }
 
-    /// The fixed fields every workspace has. Ids are literal strings shared by both apps.
+    /// `Workspaces.open`: scaffold a directory that is new, and bring one that is not up to date
+    /// with what this build writes — the built-in fields added since it was made, the manifest's
+    /// format version, the `.gitignore`. Returns true if it scaffolded.
+    @discardableResult
+    public func open(name: String, now: Int64) -> Bool {
+        if !exists { scaffold(name: name, now: now); return true }
+        upkeep()
+        return false
+    }
+
+    /// The three catch-ups Android runs every time it opens an existing workspace. Each writes only
+    /// when something is missing, so an up-to-date workspace is not touched.
+    public func upkeep() {
+        ensureBuiltInProperties()
+        upgradeFormat()
+        ensureGitignore()
+    }
+
+    /// Appends whichever `gitignore` lines are missing (compared trimmed), and says whether it wrote.
+    ///
+    /// Appends rather than replaces: the file is in the repository, so it is the user's to add to.
+    /// Rewritten as `lines.joinToString("\n", postfix = "\n")`, which also normalises the trailing
+    /// newline exactly as Android does — and, like Android's, this write is not refused on a
+    /// workspace from a newer build.
+    @discardableResult
+    public func ensureGitignore() -> Bool {
+        let f = root.appendingPathComponent(".gitignore")
+        let lines = (try? Data(contentsOf: f)).map { KText.readLines(Self.decodeText($0)) } ?? []
+        let missing = Self.gitignore.filter { want in !lines.contains { KText.same(KText.trim($0), want) } }
+        if missing.isEmpty { return false }
+        try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+        try? Data(((lines + missing).joined(separator: "\n") + "\n").utf8).write(to: f)
+        return true
+    }
+
+    /// The fixed fields every workspace has, and the only defs the app writes — `builtInProperties`.
+    ///
+    /// Priority carries its option colours in `config`, encoded the way Kotlin encodes a
+    /// `SelectConfig`: High `0xFFFF4A1F`, Medium `0xFFFFB020`, Low `0xFF4A90D9`. (This used to be a
+    /// hand-typed string whose High was `4294986271` — `0x1_0000_4A1F`, a number with a bit above the
+    /// alpha byte and no red in it, written into every workspace iOS scaffolded.)
     public static func builtInProperties() -> [PropertyDef] {
-        let cfg = #"{"options":[{"name":"High","color":4294986271},{"name":"Medium","color":4294946848},{"name":"Low","color":4283076825}]}"#
+        let cfg = FilterJSON.encode(SelectConfig(options: [
+            SelectOption(name: "High", color: 0xFFFF_4A1F),
+            SelectOption(name: "Medium", color: 0xFFFF_B020),
+            SelectOption(name: "Low", color: 0xFF4A_90D9),
+        ]))
         return [
             PropertyDef(id: BuiltIns.priority, name: "Priority", kind: "select", config: cfg),
             PropertyDef(id: BuiltIns.due, name: "Due", kind: "date"),
@@ -128,12 +208,39 @@ public final class WorkspaceStore: @unchecked Sendable {
         ]
     }
 
+    /// Adds any built-in this workspace's `properties.json` is missing, at the end. True if it wrote.
+    ///
+    /// Existing entries are left exactly as they are, including any a newer build wrote and this
+    /// one does not recognise. Nothing here overwrites; it only fills gaps.
+    @discardableResult
+    public func ensureBuiltInProperties() -> Bool {
+        let have = readProperties()
+        let known = Set(have.map(\.id))
+        let missing = Self.builtInProperties().filter { !known.contains($0.id) }
+        if missing.isEmpty { return false }
+        writeProperties(have + missing)
+        return true
+    }
+
+    /// Stamps an older workspace up to the current format. True if it wrote. Because the current
+    /// version is the default, the rewritten manifest carries no `formatVersion` at all.
+    @discardableResult
+    public func upgradeFormat() -> Bool {
+        guard var m = readManifest(), m.formatVersion < Self.formatVersion else { return false }
+        m.formatVersion = Self.formatVersion
+        writeManifest(m)
+        return true
+    }
+
     // manifest
     public func readManifest() -> Manifest? {
         guard let d = try? Data(contentsOf: manifestFile) else { return nil }
         return try? JSONDecoder().decode(Manifest.self, from: d)
     }
     public func writeManifest(_ m: Manifest) { write(manifestFile, Data(m.compact().utf8)) }
+    /// True when the files were written by a newer build than this one — `isAhead`. An unreadable or
+    /// absent manifest is the current version, not version zero: a workspace we cannot identify is
+    /// not a workspace from the future.
     public var isReadOnly: Bool { readManifest().map { !$0.readable } ?? false }
 
     // pages
@@ -148,22 +255,45 @@ public final class WorkspaceStore: @unchecked Sendable {
     /// starts with one has no frontmatter). `String(contentsOf:encoding:)` returned nil for a single
     /// bad byte, which made the page vanish from the index while Android went on showing it.
     public static func decodeText(_ d: Data) -> String { String(decoding: d, as: UTF8.self) }
+
+    /// Every page directly inside `pages/`, sorted by file name so two devices index in one order.
     public func readPages() -> [PageDoc] {
-        let names = ((try? fm.contentsOfDirectory(atPath: pagesDir.path)) ?? []).filter { $0.hasSuffix(".md") }.sorted()
+        let names = ((try? fm.contentsOfDirectory(atPath: pagesDir.path)) ?? []).filter { name in
+            var dir: ObjCBool = false
+            return name.hasSuffix(".md") && fm.fileExists(atPath: pagesDir.appendingPathComponent(name).path, isDirectory: &dir) && !dir.boolValue
+        }.sorted { Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }
         return names.compactMap { readPage(String($0.dropLast(3))) }
     }
     public func writePage(_ page: PageDoc) { write(pageFile(page.id), Data(PageCodec.encode(page).utf8)) }
+
+    /// Removes a page, the sidecars its blocks own, every task page beneath it, and — if it was a
+    /// smart list — its definition.
+    ///
+    /// Sidecars are named after the *ink block*, not after the page, so deleting only `<page>.ink`
+    /// would leave every stroke on disk with nothing referring to it. Child **task** pages go too
+    /// (event pages do not, as on Android). `seen` is the cycle guard: a malformed workspace can
+    /// name a page as its own descendant, and following it would recurse until the stack ran out.
     public func deletePage(_ id: String) {
-        // The page, its descendants' pages, and the sidecars its blocks own.
+        var seen = Set<String>()
+        deletePage(id, seen: &seen)
+    }
+
+    private func deletePage(_ id: String, seen: inout Set<String>) {
+        if isReadOnly { return }
+        guard seen.insert(id).inserted else { return }
         if let p = readPage(id) {
             for b in p.blocks {
-                if case let .task(t) = b, !t.id.isEmpty { deletePage(t.id) }
-                if case let .ink(inkId, _, _) = b { try? fm.removeItem(at: inkFile(inkId)) }
-                if case let .image(uri, _, _) = b { try? fm.removeItem(at: imageFile(uri)) }
+                switch b {
+                case let .ink(inkId, _, _): try? fm.removeItem(at: inkFile(inkId))
+                case let .image(uri, _, _): try? fm.removeItem(at: imageFile(uri))
+                case let .task(t): if fm.fileExists(atPath: pageFile(t.id).path) { deletePage(t.id, seen: &seen) }
+                default: break
+                }
             }
         }
         try? fm.removeItem(at: pageFile(id))
         try? fm.removeItem(at: inkFile(id))
+        deleteSmartList(id)
     }
 
     // ink and images
@@ -173,6 +303,7 @@ public final class WorkspaceStore: @unchecked Sendable {
         return (try? InkSidecar.decode(d)) ?? []
     }
     public func writeInk(_ id: String, _ strokes: [Data]) {
+        if isReadOnly { return }
         if strokes.isEmpty { try? fm.removeItem(at: inkFile(id)) } else { write(inkFile(id), InkSidecar.encode(strokes)) }
     }
     public func imageFile(_ id: String) -> URL { pagesDir.appendingPathComponent("\(id).jpg") }
@@ -187,8 +318,12 @@ public final class WorkspaceStore: @unchecked Sendable {
         let names = ((try? fm.contentsOfDirectory(atPath: smartDir.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
         return names.compactMap { n in (try? Data(contentsOf: smartDir.appendingPathComponent(n))).flatMap { try? JSONDecoder().decode(SmartListDef.self, from: $0) } }
     }
-    public func writeSmartList(_ def: SmartListDef) { write(smartDir.appendingPathComponent("\(def.nodeId).json"), Data(FilterJSON.encode(def).utf8)) }
-    public func deleteSmartList(_ nodeId: String) { try? fm.removeItem(at: smartDir.appendingPathComponent("\(nodeId).json")) }
+    public func smartListFile(_ nodeId: String) -> URL { smartDir.appendingPathComponent("\(nodeId).json") }
+    public func writeSmartList(_ def: SmartListDef) { write(smartListFile(def.nodeId), Data(FilterJSON.encode(def).utf8)) }
+    public func deleteSmartList(_ nodeId: String) {
+        if isReadOnly { return }
+        try? fm.removeItem(at: smartListFile(nodeId))
+    }
 
     // archive: one archived task LINE per line in archive/<pageId>.md; the task's own page moves to archive/pages/
     var archiveDir: URL { root.appendingPathComponent("archive") }
@@ -197,40 +332,82 @@ public final class WorkspaceStore: @unchecked Sendable {
     public func archivedPageIds() -> [String] {
         ((try? fm.contentsOfDirectory(atPath: archiveDir.path)) ?? []).filter { $0.hasSuffix(".md") }.map { String($0.dropLast(3)) }.sorted()
     }
+    /// `readLines().filter { it.isNotBlank() }`.
     public func readArchivedLines(_ pageId: String) -> [String] {
-        guard let s = try? String(contentsOf: archiveFile(pageId), encoding: .utf8) else { return [] }
-        return s.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let d = try? Data(contentsOf: archiveFile(pageId)) else { return [] }
+        return KText.readLines(Self.decodeText(d)).filter { !KText.isBlank($0) }
     }
     public func writeArchivedLines(_ pageId: String, _ lines: [String]) {
+        if isReadOnly { return }
         if lines.isEmpty { try? fm.removeItem(at: archiveFile(pageId)); return }
         write(archiveFile(pageId), Data((lines.joined(separator: "\n") + "\n").utf8))
     }
     public func moveToArchive(_ pageId: String) {
+        if isReadOnly { return }
         let from = pageFile(pageId); guard fm.fileExists(atPath: from.path) else { return }
         try? fm.createDirectory(at: archiveDir.appendingPathComponent("pages"), withIntermediateDirectories: true)
         try? fm.removeItem(at: archivedPageFile(pageId)); try? fm.moveItem(at: from, to: archivedPageFile(pageId))
     }
     public func restoreFromArchive(_ pageId: String) {
+        if isReadOnly { return }
         let from = archivedPageFile(pageId); guard fm.fileExists(atPath: from.path) else { return }
         try? fm.removeItem(at: pageFile(pageId)); try? fm.moveItem(at: from, to: pageFile(pageId))
     }
 
     // focus log
+
+    /// One line, appended in place — the one write that is not temp-and-rename, because two
+    /// devices appending offline produce two tails git takes both of. Refused on a workspace from a
+    /// newer build, and it moves a legacy `pomodoro/` first, as Android's `appendFocus` does.
     public func appendFocus(_ line: String, month: String) {
+        if isReadOnly { return }
+        migrateLegacyFocusDir()
         let dir = root.appendingPathComponent(Self.focusDir)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let f = dir.appendingPathComponent("\(month).log")
-        if let h = try? FileHandle(forWritingTo: f) { h.seekToEndOfFile(); h.write(Data((line + "\n").utf8)); try? h.close() }
-        else { try? Data((line + "\n").utf8).write(to: f) }
+        // `line.trimEnd('\n') + "\n"`: exactly one newline, whatever the caller handed in.
+        var body = line
+        while body.unicodeScalars.last == "\n" { body.unicodeScalars.removeLast() }
+        append(Data((body + "\n").utf8), to: f)
     }
+
+    /// Both directories, because a repository is shared and not every device renames at once — and
+    /// read as **one list of files sorted by name**, as Android's `readFocus` reads them, so a month
+    /// logged under both names comes out in one place rather than in two runs.
     public func readFocusLines() -> [String] {
-        var out: [String] = []
-        for dir in [Self.legacyFocusDir, Self.focusDir] {
+        var files: [(String, URL)] = []
+        for dir in [Self.focusDir, Self.legacyFocusDir] {   // this order breaks a tie on the name: focus/ first
             let d = root.appendingPathComponent(dir)
-            let names = ((try? fm.contentsOfDirectory(atPath: d.path)) ?? []).filter { $0.hasSuffix(".log") }.sorted()
-            for n in names { if let s = try? String(contentsOf: d.appendingPathComponent(n), encoding: .utf8) { out += s.split(separator: "\n").map(String.init) } }
+            for n in ((try? fm.contentsOfDirectory(atPath: d.path)) ?? []) where n.hasSuffix(".log") {
+                files.append((n, d.appendingPathComponent(n)))
+            }
         }
-        return out
+        // Stable, like Kotlin's sortedBy.
+        let ordered = files.enumerated().sorted { a, b in
+            let x = Array(a.element.0.utf16), y = Array(b.element.0.utf16)
+            return x == y ? a.offset < b.offset : x.lexicographicallyPrecedes(y)
+        }.map(\.element.1)
+        return ordered.flatMap { f in
+            (try? Data(contentsOf: f)).map { KText.readLines(Self.decodeText($0)).filter { !KText.isBlank($0) } } ?? []
+        }
+    }
+
+    /// Moves `pomodoro/` to `focus/`: each log appended to the same-named file there if one exists,
+    /// copied if not, then deleted; the directory goes once it is empty — and only then, so anything
+    /// unexpected in it is left alone. Run on every reindex, like Android's.
+    public func migrateLegacyFocusDir() {
+        let legacy = root.appendingPathComponent(Self.legacyFocusDir)
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: legacy.path, isDirectory: &isDir), isDir.boolValue else { return }
+        let focus = root.appendingPathComponent(Self.focusDir)
+        for n in ((try? fm.contentsOfDirectory(atPath: legacy.path)) ?? []) where n.hasSuffix(".log") {
+            let old = legacy.appendingPathComponent(n), dest = focus.appendingPathComponent(n)
+            guard let bytes = try? Data(contentsOf: old) else { continue }
+            try? fm.createDirectory(at: focus, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: dest.path) { append(bytes, to: dest) } else { try? bytes.write(to: dest) }
+            try? fm.removeItem(at: old)
+        }
+        if ((try? fm.contentsOfDirectory(atPath: legacy.path)) ?? ["?"]).isEmpty { try? fm.removeItem(at: legacy) }
     }
 
     // io
@@ -238,14 +415,39 @@ public final class WorkspaceStore: @unchecked Sendable {
         guard let d = try? Data(contentsOf: f) else { return [] }
         return (try? JSONDecoder().decode([T].self, from: d)) ?? []
     }
+
+    private func append(_ data: Data, to f: URL) {
+        if let h = try? FileHandle(forWritingTo: f) {
+            defer { try? h.close() }
+            _ = try? h.seekToEnd()
+            try? h.write(contentsOf: data)
+        } else {
+            try? data.write(to: f)
+        }
+    }
+
+    /// Write to `<name>.tmp` beside the target and rename it over the target, so a reader sees the
+    /// old file or the new one and never half of one. `rename(2)` replaces atomically; if it cannot
+    /// (it can fail across volumes, which a sibling never is), the fallback copies and then removes
+    /// the temporary file rather than leaving it behind — the old fallback wrote the target in place
+    /// and left the `.tmp` for the next sync to find.
+    ///
+    /// Refused on a workspace from a newer build, as `writeBytesAtomically` is: writing the previous
+    /// meaning of the format into files this build does not fully understand is the one thing worse
+    /// than declining.
     private func write(_ f: URL, _ data: Data) {
+        if isReadOnly { return }
         try? fm.createDirectory(at: f.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let tmp = f.appendingPathExtension("tmp")
+        let tmp = f.deletingLastPathComponent().appendingPathComponent(f.lastPathComponent + ".tmp")
         do {
             try data.write(to: tmp)
-            _ = try fm.replaceItemAt(f, withItemAt: tmp)
+            if Foundation.rename(tmp.path, f.path) != 0 {
+                try? fm.removeItem(at: f)
+                try fm.copyItem(at: tmp, to: f)
+                try? fm.removeItem(at: tmp)
+            }
         } catch {
-            try? data.write(to: f)
+            try? fm.removeItem(at: tmp)
         }
     }
 }
@@ -253,6 +455,28 @@ public final class WorkspaceStore: @unchecked Sendable {
 // MARK: - seeding
 
 public enum WorkspaceSeeder {
+    /// Today: open tasks due or with a deadline by the end of today, soonest first, and a task made
+    /// in it due today — exactly as `WorkspaceSeeder.kt` builds it, down to the bytes of each JSON.
+    public static func todayDef(nodeId: String, inbox: String) -> SmartListDef {
+        let todayFilter: Filter = .all([.type(NodeType.task), .done(false), .anyOf([
+            .prop(defId: BuiltIns.due, op: .lte, dateRel: .todayEnd),
+            .prop(defId: BuiltIns.deadline, op: .lte, dateRel: .todayEnd),
+        ])])
+        let apply = deriveApplyOnCreate(todayFilter)
+        return SmartListDef(nodeId: nodeId, filterJson: FilterJSON.encode(todayFilter),
+                            sortJson: FilterJSON.encode([SortSpec(by: .propDate, defId: BuiltIns.due)]), homeParentId: inbox,
+                            // `takeIf { it.isNotEmpty() }` — an empty list is no key at all.
+                            applyOnCreateJson: apply.isEmpty ? nil : FilterJSON.encode(apply))
+    }
+
+    /// High Priority: open tasks with priority exactly `High`, newest first.
+    public static func highPriorityDef(nodeId: String, inbox: String) -> SmartListDef {
+        SmartListDef(nodeId: nodeId,
+                     filterJson: FilterJSON.encode(Filter.all([.type(NodeType.task), .done(false), .prop(defId: BuiltIns.priority, op: .eq, text: "High")])),
+                     sortJson: FilterJSON.encode([SortSpec(by: .created, desc: true)]), homeParentId: inbox,
+                     applyOnCreateJson: FilterJSON.encode([ApplyOnCreate(defId: BuiltIns.priority, text: "High")]))
+    }
+
     /// Fresh local workspace content. Gated on having just scaffolded the directory, never on an
     /// empty index — otherwise every clone would make a second Inbox and Today.
     public static func seed(_ store: WorkspaceStore, now: Date = Date()) {
@@ -272,21 +496,12 @@ public enum WorkspaceSeeder {
             .task(TaskRef(id: id(), title: "Tasks can nest — this is a subtask")),
         ]))
 
-        let todayFilter: Filter = .all([.type(NodeType.task), .done(false), .anyOf([
-            .prop(defId: BuiltIns.due, op: .lte, dateRel: .todayEnd),
-            .prop(defId: BuiltIns.deadline, op: .lte, dateRel: .todayEnd),
-        ])])
         let today = id()
         store.writePage(PageDoc(id: today, type: NodeType.smartList, parent: nil, title: "Today", systemKey: SystemKey.today, modifiedAt: now, device: nil, blocks: []))
-        store.writeSmartList(SmartListDef(nodeId: today, filterJson: FilterJSON.encode(todayFilter),
-                                          sortJson: FilterJSON.encode([SortSpec(by: .propDate, defId: BuiltIns.due)]), homeParentId: inbox,
-                                          applyOnCreateJson: FilterJSON.encode(deriveApplyOnCreate(todayFilter))))
+        store.writeSmartList(todayDef(nodeId: today, inbox: inbox))
         let high = id()
         store.writePage(PageDoc(id: high, type: NodeType.smartList, parent: nil, title: "High Priority", modifiedAt: now, device: nil, blocks: []))
-        store.writeSmartList(SmartListDef(nodeId: high,
-                                          filterJson: FilterJSON.encode(Filter.all([.type(NodeType.task), .done(false), .prop(defId: BuiltIns.priority, op: .eq, text: "High")])),
-                                          sortJson: FilterJSON.encode([SortSpec(by: .created, desc: true)]), homeParentId: inbox,
-                                          applyOnCreateJson: FilterJSON.encode([ApplyOnCreate(defId: BuiltIns.priority, text: "High")])))
+        store.writeSmartList(highPriorityDef(nodeId: high, inbox: inbox))
     }
 }
 

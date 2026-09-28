@@ -72,6 +72,32 @@ fun main(args: Array<String>) {
                 File(out, f.name).writeText(PageCodec.encode(PageCodec.decode(f.readText())))
             }
         }
+        // workspace <clone> <out>: what 17d0beb makes of every page and registry in a clone, each
+        // written to <out> under its own path — the other half of RoundTripRunnerTests' output.
+        "workspace" -> {
+            val root = File(args[1]); val out = File(args[2])
+            fun put(rel: String, text: String) { File(out, rel).also { it.parentFile.mkdirs() }.writeText(text) }
+            listOf("pages", "archive/pages").forEach { dir ->
+                File(root, dir).listFiles { f -> f.isFile && f.name.endsWith(".md") }.orEmpty().forEach {
+                    put("$dir/${it.name}", PageCodec.encode(PageCodec.decode(it.readText())))
+                }
+            }
+            File(root, ".yantra/manifest.json").takeIf { it.exists() }?.let {
+                put(".yantra/manifest.json", FilterJson.encodeToString(Manifest.serializer(), FilterJson.decodeFromString(Manifest.serializer(), it.readText())))
+            }
+            File(root, ".yantra/meta/labels.json").takeIf { it.exists() }?.let {
+                val l = ListSerializer(LabelDef.serializer())
+                put(".yantra/meta/labels.json", FilterJson.encodeToString(l, FilterJson.decodeFromString(l, it.readText())))
+            }
+            File(root, ".yantra/meta/properties.json").takeIf { it.exists() }?.let {
+                val l = ListSerializer(PropertyDef.serializer())
+                put(".yantra/meta/properties.json", FilterJson.encodeToString(l, FilterJson.decodeFromString(l, it.readText())))
+            }
+            File(root, ".yantra/meta/smartlists").listFiles { f -> f.name.endsWith(".json") }.orEmpty().forEach {
+                put(".yantra/meta/smartlists/${it.name}",
+                    FilterJson.encodeToString(SmartListDef.serializer(), FilterJson.decodeFromString(SmartListDef.serializer(), it.readText())))
+            }
+        }
         // one page from a file, re-encoded, to stdout
         "page" -> print(PageCodec.encode(PageCodec.decode(File(args[1]).readText())))
         "json" -> {
@@ -83,6 +109,7 @@ fun main(args: Array<String>) {
                 JsonCase("labels-empty.json", FilterJson.encodeToString(ListSerializer(LabelDef.serializer()), emptyList())),
                 JsonCase("labels.json", FilterJson.encodeToString(ListSerializer(LabelDef.serializer()), listOf(
                     LabelDef(":label:sync", "sync", 0xFF5D8F52), LabelDef("ws:label:bare", "bare"),
+                    LabelDef("w:label:e", "\u001b\u007f\t\n\r\b\u000c é /   😀 \\ \"", 0),
                     LabelDef("w:label:q", "quo\"te\\ \u0001 é /  ", 4294967295)))),
                 JsonCase("manifest-new.json", FilterJson.encodeToString(Manifest.serializer(), Manifest(name = "v2-tasks", createdAt = 1788177735338))),
                 JsonCase("manifest-upgraded.json", FilterJson.encodeToString(Manifest.serializer(),
@@ -120,6 +147,17 @@ fun main(args: Array<String>) {
                     SortSpec(SortBy.PROP_NUMBER, "n", desc = true, nullsLast = false), SortSpec(SortBy.PROP_TEXT, "t"), SortSpec(SortBy.TITLE)))),
                 JsonCase("apply-every-kind.json", FilterJson.encodeToString(ListSerializer(ApplyOnCreate.serializer()), listOf(
                     ApplyOnCreate("a", number = 2.0), ApplyOnCreate("b", date = 7), ApplyOnCreate("c", bool = false, dateRel = DateRel.TODAY_START)))),
+                JsonCase("select-empty.json", FilterJson.encodeToString(SelectConfig.serializer(), SelectConfig())),
+                JsonCase("select-bare-option.json", FilterJson.encodeToString(SelectConfig.serializer(), SelectConfig(listOf(SelectOption("Just a word"))))),
+                JsonCase("smartlist-scoped.json", FilterJson.encodeToString(SmartListDef.serializer(),
+                    SmartListDef(nodeId = "n", scopeRootId = "r", filterJson = "{\"kind\":\"done\",\"value\":true}"))),
+                JsonCase("numbers.json", FilterJson.encodeToString(ListSerializer(ApplyOnCreate.serializer()), listOf(
+                    0.0, -0.0, 1.0, 0.1, 0.001, 0.0009999, 9999999.0, 10000000.0, 123456789.125, 1.0E21, 1.0E-7, 2.5E-10,
+                    // Not Double.MIN_VALUE: for a subnormal whose shortest form is one digit, the JVM
+                    // picks the closest *two*-digit decimal (4.9E-324, not 5.0E-324). No smart-list
+                    // number is ever that small, and the Swift side does not reproduce it.
+                    Double.MAX_VALUE, 1.0 / 3.0, 100.0, 12345.678,
+                ).map { ApplyOnCreate("n", number = it) })),
             )
             File(args[1]).writeText(kotlinx.serialization.json.Json { prettyPrint = true }.encodeToString(ListSerializer(JsonCase.serializer()), cases))
         }

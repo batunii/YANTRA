@@ -49,7 +49,7 @@ public enum LabelPalette {
 
     /// A palette name to its swatch, or nil if nothing is called that.
     public static func byName(_ name: String?) -> Swatch? {
-        guard let n = name?.trimmingCharacters(in: .whitespaces), !n.isEmpty else { return nil }
+        guard let n = name.map(KText.trim), !n.isEmpty else { return nil }
         return swatches.first { $0.name.caseInsensitiveCompare(n) == .orderedSame }
     }
 
@@ -65,7 +65,8 @@ public enum LabelPalette {
     }
 
     static func swatchIndex(for name: String) -> Int {
-        let h = Int(javaHash(name.trimmingCharacters(in: .whitespaces).lowercased()))
+        // `name.trim().lowercase()` — Kotlin's trim, which also takes line separators and NBSP.
+        let h = Int(javaHash(KText.trim(name).lowercased()))
         let n = swatches.count
         return ((h % n) + n) % n
     }

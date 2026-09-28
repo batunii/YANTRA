@@ -15,10 +15,17 @@ public enum AppGroup {
 
     public static var defaults: UserDefaults { UserDefaults(suiteName: id) ?? .standard }
 
-    /// The device string on commits and `device:` lines — the GitHub login once signed in, else the name.
+    /// The sync engine's tiebreak identity — the GitHub login once signed in, else a fixed name.
+    /// Not what goes on a page: see `pageDevice`.
     public static var device: String {
         defaults.string(forKey: "github_login") ?? "iphone"
     }
+
+    /// The `device:` line on every page this phone writes: the hardware model, lowercased, as
+    /// Android writes `Build.MODEL.lowercase()` (`sm-s921b`). It names the machine, not the person —
+    /// a login here made two of one person's devices indistinguishable in the file and put an
+    /// account name where Android puts a model. See `DeviceModel`.
+    public static var pageDevice: String { DeviceModel.pageStamp }
 
     /// Where the list of linked workspaces lives, beside their directories.
     public static var registry: WorkspaceRegistry {
@@ -35,12 +42,13 @@ public enum AppGroup {
         connectIfAsked()
         calendarsIfAsked()
         let store = WorkspaceStore(root: workspaceRoot, id: "")
-        if !store.exists {
-            store.scaffold(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000))
+        // `Workspaces.open`: scaffold a new directory (and seed it, because this device just made
+        // it), or catch an existing one up — built-in properties, format version, `.gitignore`.
+        if store.open(name: "Personal", now: Int64(Date().timeIntervalSince1970 * 1000)) {
             if CommandLine.arguments.contains("-uitest") { UITestFixture.seed(store) }
             else { WorkspaceSeeder.seed(store) }
         }
-        return (store, WorkspaceWriter(store: store, device: device))
+        return (store, WorkspaceWriter(store: store, device: pageDevice))
     }
 
     /// Every workspace this device has, local first — `Workspaces.open` on Android.
@@ -54,7 +62,8 @@ public enum AppGroup {
         for entry in registry.entries() where !entry.id.isEmpty {
             let store = WorkspaceStore(root: registry.dir(for: entry.id), id: entry.id)
             guard store.exists else { continue }
-            out.append((store, WorkspaceWriter(store: store, device: device)))
+            store.upkeep()
+            out.append((store, WorkspaceWriter(store: store, device: pageDevice)))
         }
         return out
     }

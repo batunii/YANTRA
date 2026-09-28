@@ -22,26 +22,38 @@ public struct FocusSession: Identifiable, Equatable, Sendable {
     public var plannedSecs: Int
     public var actualSecs: Int?
     public var outcome: String
+    /// Fields past the eighth, verbatim — a newer Android build writes a ninth (who timed the
+    /// session). This build gives them no meaning, but a line it writes *about* such a session
+    /// (settling one another device started, say) carries them on rather than truncating them, and
+    /// iOS never rewrites a line it did not write: the log is only ever appended to.
+    public var extraFields: [String]
 
-    public init(id: String, nodeId: String, startedAt: Int64, endedAt: Int64? = nil, plannedSecs: Int, actualSecs: Int? = nil, outcome: String = FocusOutcome.ranOut) {
-        self.id = id; self.nodeId = nodeId; self.startedAt = startedAt; self.endedAt = endedAt; self.plannedSecs = plannedSecs; self.actualSecs = actualSecs; self.outcome = outcome
+    public init(id: String, nodeId: String, startedAt: Int64, endedAt: Int64? = nil, plannedSecs: Int, actualSecs: Int? = nil,
+                outcome: String = FocusOutcome.ranOut, extraFields: [String] = []) {
+        self.id = id; self.nodeId = nodeId; self.startedAt = startedAt; self.endedAt = endedAt; self.plannedSecs = plannedSecs
+        self.actualSecs = actualSecs; self.outcome = outcome; self.extraFields = extraFields
     }
 
     public var counts: Bool { actualSecs != nil && FocusOutcome.countsAsTime(outcome) }
     public var isOpen: Bool { plannedSecs <= 0 }
 
-    /// The TSV line: id, node, started, ended|"", planned, actual|"", ran_out flag, outcome.
+    /// The TSV line: id, node, started, ended|"", planned, actual|"", ran_out flag, outcome — then
+    /// whatever else the line it came from carried.
     public var line: String {
-        [id, nodeId, String(startedAt), endedAt.map(String.init) ?? "", String(plannedSecs), actualSecs.map(String.init) ?? "",
-         outcome == FocusOutcome.ranOut ? "1" : "0", outcome].joined(separator: "\t")
+        ([id, nodeId, String(startedAt), endedAt.map(String.init) ?? "", String(plannedSecs), actualSecs.map(String.init) ?? "",
+          outcome == FocusOutcome.ranOut ? "1" : "0", outcome] + extraFields).joined(separator: "\t")
     }
 
-    /// Reads a line; needs at least seven fields, the eighth is optional.
+    /// Reads a line as `WorkspaceReconciler.readSessions` does: at least seven fields, the start
+    /// must be a number, a planned length that is not one reads as 0, and a missing or empty eighth
+    /// field is derived from the old boolean in the seventh.
     public static func parse(_ line: String) -> FocusSession? {
-        let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-        guard f.count >= 7, let started = Int64(f[2]), let planned = Int(f[4]) else { return nil }
+        let f = KText.split(line, "\t")
+        guard f.count >= 7, let started = KText.toLong(f[2]) else { return nil }
         let outcome = f.count >= 8 && !f[7].isEmpty ? f[7] : (f[6] == "1" ? FocusOutcome.ranOut : FocusOutcome.stopped)
-        return FocusSession(id: f[0], nodeId: f[1], startedAt: started, endedAt: Int64(f[3]), plannedSecs: planned, actualSecs: Int(f[5]), outcome: outcome)
+        return FocusSession(id: f[0], nodeId: f[1], startedAt: started, endedAt: KText.toLong(f[3]),
+                            plannedSecs: KText.toInt(f[4]) ?? 0, actualSecs: KText.toInt(f[5]), outcome: outcome,
+                            extraFields: f.count > 8 ? Array(f[8...]) : [])
     }
 
     /// `yyyy-MM` of the start, in the system zone — the log file the line goes to.
@@ -54,6 +66,9 @@ public struct FocusSession: Identifiable, Equatable, Sendable {
 /// The ledger over a store: last line per id wins.
 public struct FocusLedger {
     public static func read(_ store: WorkspaceStore) -> [FocusSession] {
+        // Here rather than only on append, as Android does, so a device that reads a workspace
+        // without ever focusing in it still moves the old directory to its current name.
+        store.migrateLegacyFocusDir()
         var byId: [String: FocusSession] = [:]
         var order: [String] = []
         for line in store.readFocusLines() {
