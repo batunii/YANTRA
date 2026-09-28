@@ -39,7 +39,14 @@ struct ListView: View {
         // here deliberately: the calendar puts a new event and every meeting you open on the Inbox.
         // Filtering them out made the page lie — an Inbox holding two meetings read "Empty", and the
         // only way back to one was the day it happened to fall on.
-        return model.index.children(of: n.id).filter { $0.type == NodeType.task || $0.type == NodeType.event }
+        //
+        // **A sitting is the exception to that exception** (17d0beb). It is written here too, right
+        // under its task, but it is that task seen as an hour, and the task's own row is already on
+        // the page saying so — drawn, it read as the same item twice. The file still holds it, and
+        // the calendar still shows it.
+        return model.index.children(of: n.id).filter {
+            $0.type == NodeType.task || ($0.type == NodeType.event && $0.event?.forTaskId == nil)
+        }
     }
     private var openRows: [Node] {
         allRows.filter { !$0.done || standing.contains($0.id) }
