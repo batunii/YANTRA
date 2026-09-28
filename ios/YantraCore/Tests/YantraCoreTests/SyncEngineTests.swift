@@ -100,21 +100,23 @@ final class SyncEngineTests: XCTestCase {
         }
     }
 
-    func testAMigrationAndAnUnrelatedManifestEditBothSurvive() async throws {
+    /// §12, as Android does it at 17d0beb: a manifest both devices changed keeps the side of the
+    /// device that resolves it — its own — and the other device then takes that answer like any pull.
+    /// There is no field-by-field merge; one only this app ran would answer differently on each side.
+    func testAConflictedManifestKeepsTheResolvingDevicesSide() async throws {
         let a = Device("a", remote: remote, root: root), b = Device("b", remote: remote, root: root)
         seed(a); a.store.writeManifest(a.store.readManifest()!.copyWith(formatVersion: 1))
         await ok(a); await ok(b)
         a.store.writeManifest(a.store.readManifest()!.copyWith(formatVersion: 2)); await ok(a)
         b.store.writeManifest(b.store.readManifest()!.copyWith(archiveAfterDays: 30))
+        let mine = b.store.readManifest()!.compact()
         let res = await b.engine.sync()
         XCTAssertTrue(res.ok, res.error ?? "")
-        XCTAssertTrue(res.conflicts.contains { $0.path == WorkspaceStore.manifestPath && $0.reason.contains("field by field") })
+        XCTAssertTrue(res.conflicts.contains { $0.path == WorkspaceStore.manifestPath && $0.reason == "kept the local side of an unmergeable file" },
+                      "\(res.conflicts.map(\.reason))")
         await ok(a)
-        for d in [a, b] {
-            XCTAssertEqual(d.store.readManifest()?.formatVersion, 2, d.name)
-            XCTAssertEqual(d.store.readManifest()?.archiveAfterDays, 30, d.name)
-        }
-        XCTAssertEqual(remote.text(WorkspaceStore.manifestPath), a.store.readManifest()!.compact())
+        XCTAssertEqual(remote.text(WorkspaceStore.manifestPath), mine)
+        for d in [a, b] { XCTAssertEqual(d.store.readManifest()?.compact(), mine, d.name) }
     }
 
     func testADeleteNeverBeatsAnEdit() async throws {

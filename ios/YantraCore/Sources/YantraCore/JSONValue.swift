@@ -1,8 +1,12 @@
 import Foundation
 
-/// A JSON value that keeps its key order and its number literals, so a merged manifest comes out
-/// byte-identical to the Kotlin side (kotlinx.serialization writes objects compactly, in insertion
-/// order, and re-emits a number exactly as it was read).
+/// A JSON value that keeps its key order and its number literals, so a file re-written from it comes
+/// out byte-identical to the Kotlin side (kotlinx.serialization writes objects compactly, in
+/// insertion order, and re-emits a number exactly as it was read).
+///
+/// This used to back a field-by-field manifest merge. Android at 17d0beb has none — a conflicted
+/// manifest keeps the local side like every other non-page file — so that merge is gone and only the
+/// value type stays.
 public indirect enum JSONValue: Equatable, Sendable {
     case object([(String, JSONValue)])
     case array([JSONValue])
@@ -52,45 +56,6 @@ public indirect enum JSONValue: Equatable, Sendable {
         p.skipWS()
         guard p.atEnd else { throw JSONParser.Failure.trailing }
         return v
-    }
-}
-
-/// `.yantra/manifest.json` merged one field at a time — the port of `ConflictResolver.mergeManifest`.
-///
-/// - a field only one side touched takes that side (including a removal);
-/// - `formatVersion` and `epoch` are monotonic: both raised means the higher one;
-/// - anything else both changed goes to the device whose name sorts higher, so both machines land
-///   on identical bytes without talking.
-///
-/// Needs the base; without a common ancestor "changed" cannot be told from "kept", and the caller
-/// falls back to keeping its local side, as the Kotlin engine does.
-public enum ManifestMerge {
-    public static let path = ".yantra/manifest.json"
-    static let monotonic: Set<String> = ["formatVersion", "epoch"]
-
-    public static func merge(base: String?, local: String, remote: String, device: String, otherDevice: String) -> String? {
-        guard let baseText = base,
-              case let .object(b)? = try? JSONValue.parse(baseText),
-              case let .object(l)? = try? JSONValue.parse(local),
-              case let .object(r)? = try? JSONValue.parse(remote) else { return nil }
-        var keys: [String] = []
-        for (k, _) in l + r + b where !keys.contains(k) { keys.append(k) }
-        let bm = Dictionary(b, uniquingKeysWith: { _, last in last })
-        let lm = Dictionary(l, uniquingKeysWith: { _, last in last })
-        let rm = Dictionary(r, uniquingKeysWith: { _, last in last })
-        var out: [(String, JSONValue)] = []
-        for k in keys {
-            let bv = bm[k], lv = lm[k], rv = rm[k]
-            let v: JSONValue?
-            if lv == rv { v = lv }
-            else if lv == bv { v = rv }
-            else if rv == bv { v = lv }
-            else if monotonic.contains(k), let li = lv?.intValue, let ri = rv?.intValue { v = li >= ri ? lv : rv }
-            else if device > otherDevice { v = lv ?? rv }
-            else { v = rv ?? lv }
-            if let v { out.append((k, v)) }
-        }
-        return JSONValue.object(out).compact()
     }
 }
 
