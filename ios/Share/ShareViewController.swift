@@ -40,7 +40,7 @@ struct ShareSheet: View {
                     Text("MOVE TO").font(SharedFace.mono(10.5, bold: true)).kerning(1.4).foregroundStyle(p.dim)
                     ForEach(lists, id: \.0) { id, name in
                         Button { move(to: id, name: name) } label: {
-                            HStack { Text(name.isEmpty ? "Untitled list" : name).font(SharedFace.text(15, bold: true)).foregroundStyle(p.ink); Spacer(); if name == listName { Image(systemName: "checkmark").foregroundStyle(p.accent) } }
+                            HStack { Text(name.isEmpty ? "Untitled list" : name).font(SharedFace.text(15, bold: true)).foregroundStyle(p.ink); Spacer(); if name == listName { MarkIcon(mark: .check, size: YantraIcons.medium, color: p.accent) } }
                                 .padding(.vertical, 8)
                         }.buttonStyle(.plain)
                     }

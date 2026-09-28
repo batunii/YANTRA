@@ -58,8 +58,8 @@ struct FocusPanel: View {
                     if spent {
                         Button(intent: FocusIntent(.stop)) { Text("Dismiss").font(SharedFace.text(13, bold: true)) }.tint(p.accent).buttonStyle(.borderedProminent)
                     } else {
-                        Key(icon: s.isPaused ? "play.fill" : "pause.fill", primary: s.isPaused, intent: FocusIntent(s.isPaused ? .resume : .pause))
-                        Key(icon: "stop.fill", primary: false, intent: FocusIntent(.stop))
+                        Key(icon: s.isPaused ? .play : .pause, primary: s.isPaused, intent: FocusIntent(s.isPaused ? .resume : .pause))
+                        Key(icon: .stop, primary: false, intent: FocusIntent(.stop))
                     }
                 }
                 if !s.isOpen, !s.isPaused, !spent, let end = s.endDate() {
@@ -81,7 +81,7 @@ struct FocusPanel: View {
 
 /// A transport key: the solid bhupura tinted accent (or accent at 16%) with a glyph inside.
 struct Key: View {
-    let icon: String
+    let icon: YantraMark
     let primary: Bool
     let intent: FocusIntent
     var body: some View {
@@ -89,7 +89,7 @@ struct Key: View {
         Button(intent: intent) {
             ZStack {
                 bhupuraPath(42).fill(primary ? p.accent : p.accent.opacity(0.16))
-                Image(systemName: icon).font(.system(size: 15, weight: .bold)).foregroundStyle(primary ? p.onAccent : p.accent)
+                MarkIcon(mark: icon, size: YantraIcons.medium, color: primary ? p.onAccent : p.accent)
             }.frame(width: 42, height: 42)
         }.buttonStyle(.plain)
     }
@@ -133,7 +133,7 @@ struct BhupuraTile: View {
                     Button(intent: FocusIntent(cmd)) {
                         ZStack {
                             bhupuraPath(key).fill(p.accent)
-                            Image(systemName: live == nil ? "play.fill" : live!.isPaused ? "play.fill" : "pause.fill").font(.system(size: key * 0.36, weight: .bold)).foregroundStyle(p.onAccent)
+                            MarkIcon(mark: live == nil || live!.isPaused ? .play : .pause, size: key * 0.44, color: p.onAccent)
                         }.frame(width: key, height: key)
                     }.buttonStyle(.plain)
                     if side > 120 {

@@ -178,7 +178,7 @@ struct ListPanel: View {
                 Spacer()
                 if let t = entry.snap.targetId {
                     Link(destination: URL(string: "yantra://quickadd/\(t)")!) {
-                        ZStack { bhupuraPath(26).fill(p.accent.opacity(0.16)); Image(systemName: "plus").font(.system(size: 13, weight: .bold)).foregroundStyle(p.accent) }.frame(width: 26, height: 26)
+                        ZStack { bhupuraPath(26).fill(p.accent.opacity(0.16)); MarkIcon(mark: .add, size: YantraIcons.small, color: p.accent) }.frame(width: 26, height: 26)
                     }
                 }
             }
@@ -186,7 +186,7 @@ struct ListPanel: View {
             if allRows.flatMap(\.rows).isEmpty {
                 Spacer()
                 VStack(spacing: 6) {
-                    Image(systemName: "star").foregroundStyle(p.accent)
+                    AppMark(size: 24, color: p.accent)
                     Text(entry.snap.targetId == nil ? "Tap and hold to set up" : "All clear").font(SharedFace.text(12)).foregroundStyle(p.dim)
                 }.frame(maxWidth: .infinity)
                 Spacer()
@@ -231,7 +231,7 @@ struct RowView: View {
                         let parts = [row.due].compactMap { $0 } + row.labels.prefix(2).map { "#\($0)" } + [row.origin].compactMap { $0 }
                         if !parts.isEmpty {
                             HStack(spacing: 4) {
-                                if row.reminder { Image(systemName: "bell").font(.system(size: metaSize - 1)).foregroundStyle(p.dim) }
+                                if row.reminder { MarkIcon(mark: .alarm, size: metaSize, color: p.dim) }
                                 Text(parts.joined(separator: " · ")).font(SharedFace.mono(metaSize)).foregroundStyle(row.overdue ? p.overdue : p.dim).lineLimit(1)
                             }
                         }
@@ -268,11 +268,11 @@ struct QuickAddTile: View {
         let p = SharedPalette()
         Group {
             if family == .accessoryCircular {
-                ZStack { AccessoryWidgetBackground(); Image(systemName: "plus").font(.system(size: 22, weight: .bold)) }
+                ZStack { AccessoryWidgetBackground(); MarkIcon(mark: .add, size: YantraIcons.large, color: .primary) }
                     .containerBackground(for: .widget) { Color.clear }
             } else {
                 VStack(spacing: 10) {
-                    Image(systemName: "plus").font(.system(size: 26, weight: .bold)).foregroundStyle(p.onAccent)
+                    MarkIcon(mark: .add, size: YantraIcons.large, color: p.onAccent)
                     Text("New task").font(SharedFace.text(15, bold: true)).foregroundStyle(p.onAccent)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity).containerBackground(p.accent, for: .widget)
             }

@@ -79,9 +79,9 @@ struct CompactClock: View {
     var body: some View {
         Group {
             if state.finished {
-                Image(systemName: "checkmark").font(.system(size: 12, weight: .bold))
+                MarkIcon(mark: .check, size: YantraIcons.small, color: SharedPalette().accent)
             } else if state.paused {
-                Image(systemName: "pause.fill").font(.system(size: 11, weight: .bold))
+                MarkIcon(mark: .pause, size: YantraIcons.small, color: SharedPalette().secondary)
             } else if state.isOpen {
                 Text(state.startedAt, style: .timer)
             } else if let end = state.endAt {
@@ -126,12 +126,12 @@ struct Transport: View {
         let p = SharedPalette()
         HStack(spacing: 10) {
             if state.paused {
-                Button(intent: FocusIntent(.resume)) { Label("Resume", systemImage: "play.fill") }.tint(p.accent)
+                Button(intent: FocusIntent(.resume)) { Label { Text("Resume") } icon: { MarkIcon(mark: .play, size: YantraIcons.small, color: p.accent) } }.tint(p.accent)
             } else {
-                Button(intent: FocusIntent(.pause)) { Label("Pause", systemImage: "pause.fill") }.tint(p.secondary)
+                Button(intent: FocusIntent(.pause)) { Label { Text("Pause") } icon: { MarkIcon(mark: .pause, size: YantraIcons.small, color: p.secondary) } }.tint(p.secondary)
             }
-            Button(intent: FocusIntent(.stop)) { Label("Stop", systemImage: "stop.fill") }.tint(p.secondary)
-            Button(intent: FocusIntent(.done)) { Label("Done", systemImage: "checkmark") }.tint(p.accent)
+            Button(intent: FocusIntent(.stop)) { Label { Text("Stop") } icon: { MarkIcon(mark: .stop, size: YantraIcons.small, color: p.secondary) } }.tint(p.secondary)
+            Button(intent: FocusIntent(.done)) { Label { Text("Done") } icon: { MarkIcon(mark: .check, size: YantraIcons.small, color: p.accent) } }.tint(p.accent)
         }
         .font(SharedFace.text(13, bold: true))
         .buttonStyle(.bordered).controlSize(.small)
