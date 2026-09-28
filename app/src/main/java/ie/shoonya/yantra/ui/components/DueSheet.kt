@@ -27,7 +27,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +55,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import ie.shoonya.yantra.data.format.DueSpec
 import ie.shoonya.yantra.reminders.ReminderReach
 import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.theme.YantraDisplay
+import androidx.compose.ui.text.font.FontWeight
 import ie.shoonya.yantra.ui.theme.Yantra
 import java.time.Instant
 import java.time.LocalDate
@@ -166,7 +167,16 @@ fun DueSheet(
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Due", style = MaterialTheme.typography.titleLarge, color = y.textPrimary, modifier = pad)
+            // The sheet's size, not the screen's: a half-height surface titled like a page shouts, and
+            // every other sheet already says so with sheetTitle.
+            Text(
+                "Due",
+                fontFamily = YantraDisplay,
+                fontSize = YantraType.sheetTitle,
+                fontWeight = FontWeight.W700,
+                color = y.textPrimary,
+                modifier = pad,
+            )
 
             Row(pad, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
@@ -174,10 +184,10 @@ fun DueSheet(
                     "Tomorrow" to LocalDate.now().plusDays(1),
                     "Next week" to LocalDate.now().plusWeeks(1),
                 ).forEach { (label, target) ->
-                    FilterChip(
+                    SelectChip(
+                        label = label,
                         selected = dateState.selectedDateMillis == utcMidnight(target),
                         onClick = { dateState.selectedDateMillis = utcMidnight(target) },
-                        label = { Text(label) },
                     )
                 }
             }

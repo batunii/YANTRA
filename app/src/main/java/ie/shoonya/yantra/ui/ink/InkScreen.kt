@@ -116,6 +116,14 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextStyle
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.theme.YantraDisplay
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -323,18 +331,35 @@ class InkViewModel(
      */
     fun moveStrokes(ids: Collection<String>, dx: Float, dy: Float) {
         if (ids.isEmpty() || (dx == 0f && dy == 0f)) return
+        rewrite(ids) { StrokeCodec.translate(it, dx, dy) }
+    }
+
+    /**
+     * Resizes a lasso'd group by [k] about ([ax], [ay]), in document units, brush widths included.
+     * Rewritten like a move — the points are the stroke — and off the main thread for the same reason.
+     */
+    fun scaleStrokes(ids: Collection<String>, k: Float, ax: Float, ay: Float) {
+        if (ids.isEmpty() || k == 1f) return
+        rewrite(ids) { StrokeCodec.transform(it, k, ax, ay) }
+    }
+
+    private fun rewrite(ids: Collection<String>, change: (ByteArray) -> ByteArray) {
         val moving = ids.toSet()
-        held.update { list ->
-            list.map { h ->
-                if (h.item.id !in moving) h
-                else {
-                    val data = StrokeCodec.translate(h.data, dx, dy)
-                    Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
+        val snapshot = held.value.filter { it.item.id in moving }
+        // Re-encoding and decoding a big catch is real work — seventy strokes of handwriting is a
+        // visible hitch on the frame the finger lifts — so it happens off the main thread and lands
+        // by id, onto whatever the page holds by then.
+        viewModelScope.launch {
+            val moved = withContext(Dispatchers.Default) {
+                snapshot.associate { h ->
+                    val data = change(h.data)
+                    h.item.id to Held(StrokeItem(h.item.id, StrokeCodec.decode(data)), data)
                 }
             }
+            held.update { list -> list.map { moved[it.item.id] ?: it } }
+            redoable.value = emptyList()
+            touch()
         }
-        redoable.value = emptyList()
-        touch()
     }
 
     fun clear() {
@@ -422,8 +447,24 @@ private val DrawingColors = listOf(
  * original palette deliberately carried side by side. A wrong heuristic that silently removes a
  * colour someone wanted is worse than two swatches that happen to be neighbours.
  */
-internal fun inkPresets(accent: Color): List<Long> =
-    listOf(accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+internal fun inkPresets(accent: Color, dark: Boolean): List<Long> =
+    // The paper's own ink first — white on dark paper, graphite on light, and swapping with the
+    // theme because it is stored as that pair. It is what every pen starts with, and it was not on
+    // offer: pick any other colour and there was no way back to it.
+    listOf(InkTheme.defaultPen(dark), accent.toArgb().toLong() and 0xFFFFFFFFL) + DrawingColors
+
+/** The same ink as far as a swatch is concerned: equal, or the two halves of the paper's own ink. */
+internal fun sameInk(a: Long, b: Long): Boolean =
+    a == b || (isPaperInk(a) && isPaperInk(b))
+
+private fun isPaperInk(c: Long) = c == InkTheme.BLACK_INK || c == InkTheme.WHITE_INK
+
+/**
+ * The ring that marks the swatch in use. The accent, except on the accent's own swatch, where an
+ * accent ring on an accent disc is no ring at all and the selection simply vanished.
+ */
+internal fun ringFor(swatch: Long, accent: Color, other: Color): Color =
+    if (Color(swatch.toInt()).toArgb() == accent.toArgb()) other else accent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -557,12 +598,27 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 value = title,
                 onValueChange = { title = it; vm.rename(it) },
                 singleLine = true,
-                textStyle = TextStyle(fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textPrimary),
+                textStyle = TextStyle(
+                    fontFamily = YantraDisplay,
+                    fontSize = YantraType.sheetTitle,
+                    fontWeight = FontWeight.W700,
+                    letterSpacing = (-0.3).sp,
+                    color = y.textPrimary,
+                ),
                 cursorBrush = SolidColor(y.accent),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box {
-                        if (title.isEmpty()) Text(placeholder, fontSize = YantraType.sheetTitle, fontWeight = FontWeight.W700, color = y.textMuted.copy(alpha = 0.6f))
+                        if (title.isEmpty()) Text(
+                            placeholder,
+                            fontFamily = YantraDisplay,
+                            fontSize = YantraType.sheetTitle,
+                            fontWeight = FontWeight.W700,
+                            letterSpacing = (-0.3).sp,
+                            color = y.textDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         inner()
                     }
                 },
@@ -634,6 +690,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                             selectionAt = Offset(cx, bottom)
                         }
                         onMoveSelection = { ids, dx, dy -> vm.moveStrokes(ids, dx, dy) }
+                        onScaleSelection = { ids, k, ax, ay -> vm.scaleStrokes(ids, k, ax, ay) }
                         canvasRef = this
                     }
                 },
@@ -741,7 +798,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 },
                 modifier = Modifier
                     .align(if (leftHanded) Alignment.BottomStart else Alignment.BottomEnd)
-                    .padding(22.dp),
+                    .padding(PAGE_MARGIN),
             )
             }
 
@@ -765,16 +822,20 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 )
             }
 
+            // Bottom-centre, the one stretch of the bottom edge the kit and the undo pair leave free:
+            // this is the way back from a pinch you did not mean, so it goes where the thumb is,
+            // not in the corner at the top that the hand has to leave the page to reach.
             if (zoomPercent != 100) {
                 Row(
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = PAGE_MARGIN)
+                        .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(YantraRadius.panel))
                         .background(y.cardBg)
                         .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
                         .clickable { canvasRef?.fitWidth() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -782,13 +843,13 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                         fontFamily = YantraMono,
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
-                        color = y.textDim,
+                        color = y.textMuted,
                     )
                     Text(
                         "fit",
                         fontSize = YantraType.caption,
                         fontWeight = FontWeight.W700,
-                        color = y.accent,
+                        color = y.accentText,
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
@@ -801,7 +862,7 @@ fun InkScreen(nav: NavHostController, nodeId: String) {
                 onRedo = vm::redo,
                 modifier = Modifier
                     .align(if (leftHanded) Alignment.BottomEnd else Alignment.BottomStart)
-                    .padding(18.dp),
+                    .padding(PAGE_MARGIN),
             )
         } }
 
@@ -936,8 +997,8 @@ private fun KitControls(
             // costs you the thing you opened it to fix.
             .padding(bottom = 78.dp)
             .width(232.dp)
-            .background(y.cardBg, RoundedCornerShape(YantraRadius.sheet))
-            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.sheet))
+            .background(y.cardBg, RoundedCornerShape(YantraRadius.panel))
+            .border(1.dp, y.tileBorder, RoundedCornerShape(YantraRadius.panel))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -970,7 +1031,7 @@ internal fun KitSettingRow(label: String, value: String, onClick: () -> Unit, mo
         modifier
             .clip(RoundedCornerShape(YantraRadius.control))
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, fontSize = YantraType.meta, color = y.textMuted, modifier = Modifier.weight(1f))
@@ -1029,7 +1090,7 @@ internal fun KitControlsBody(
                 if (slot == null) return@Column
                 SectionLabel(slot.label)
                 WidthRow(slot.width, 1f..24f) { onSlotChange(slot.copy(width = it)) }
-                Text("Ink", fontSize = YantraType.caption, color = y.textMuted, modifier = Modifier.padding(top = 6.dp))
+                SectionLabel("Ink", Modifier.padding(top = 6.dp))
                 InkSwatches(
                     current = slot.color,
                     recents = recents,
@@ -1058,8 +1119,8 @@ internal fun KitControlsBody(
                 Text(
                     if (drawingShapes) "Drag to place the shape."
                     else "Draw freehand; it settles into a shape when you lift.",
-                    fontSize = YantraType.caption,
-                    color = y.textDim,
+                    fontSize = YantraType.meta,
+                    color = y.textMuted,
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 if (drawingShapes) {
@@ -1118,14 +1179,18 @@ internal fun InkSwatches(
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        (inkPresets(y.accent) + recents).distinct().take(8).forEach { c ->
+        (inkPresets(y.accent, y.isDark) + recents).distinct().take(9).forEach { c ->
             Box(
                 Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color(c.toInt()))
-                    .then(if (c == current) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
-                    .clickable { onPick(c) },
+                    .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
+                    .then(if (sameInk(c, current)) Modifier.border(2.dp, ringFor(c, y.accent, y.textPrimary), CircleShape) else Modifier)
+                    .clickable { onPick(c) }
+                    .semantics {
+                        contentDescription = "Ink colour"
+                        selected = sameInk(c, current)
+                    },
             )
         }
         Box(
@@ -1135,7 +1200,7 @@ internal fun InkSwatches(
                 .border(1.dp, y.tileBorder, CircleShape)
                 .clickable(onClick = onCustom),
             contentAlignment = Alignment.Center,
-        ) { Text("+", fontSize = YantraType.body, color = y.textMuted) }
+        ) { YantraIcon(YantraMark.Add, size = YantraIcons.Small, tint = y.textMuted, contentDescription = "Custom colour") }
     }
 }
 
@@ -1153,12 +1218,20 @@ private fun ColorPickerSheet(initial: Long, onDismiss: () -> Unit, onPick: (Long
     var value by remember { mutableFloatStateOf(hsv[2]) }
     val current = Color.hsv(hue, sat, value)
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.railBg) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = y.cardBg) {
         Column(
-            Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 20.dp),
+            Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN, vertical = 20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Custom color", fontSize = YantraType.card, fontWeight = FontWeight.W800, color = y.textPrimary)
+            // A sheet title, as the due, assignee and property sheets set theirs.
+            Text(
+                "Custom colour",
+                fontFamily = YantraDisplay,
+                fontSize = YantraType.sheetTitle,
+                fontWeight = FontWeight.W700,
+                letterSpacing = (-0.3).sp,
+                color = y.textPrimary,
+            )
 
             // saturation / value square
             Box(
@@ -1259,10 +1332,9 @@ private fun BoxScope.SelectionBar(
     ) {
         Text(
             "$count",
-            fontFamily = YantraMono,
-            fontSize = YantraType.caption,
+            fontSize = YantraType.section,
             fontWeight = FontWeight.W700,
-            color = y.textDim,
+            color = y.textMuted,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         Text(
@@ -1279,27 +1351,23 @@ private fun BoxScope.SelectionBar(
 @Composable
 private fun BarAction(
     label: String,
-    accent: Boolean = false,
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val y = Yantra.colors
     Box(
         Modifier
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(YantraRadius.control))
-            .background(if (accent) y.accentFill else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 10.dp),
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontSize = YantraType.meta,
             fontWeight = FontWeight.W700,
-            color = when {
-                accent -> y.accentText
-                danger -> y.overdue
-                else -> y.textMuted
-            },
+            color = if (danger) y.overdue else y.textMuted,
         )
     }
 }

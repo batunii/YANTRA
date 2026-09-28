@@ -133,7 +133,17 @@ object StrokeCodec {
      * untouched. A stroke that has been moved is the same ink in a different place, and nothing
      * about how it was drawn should change because it was picked up.
      */
-    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray {
+    fun translate(data: ByteArray, dx: Float, dy: Float): ByteArray = transform(data, 1f, 0f, 0f, dx, dy)
+
+    /**
+     * Scales a stored stroke by [scale] about ([anchorX], [anchorY]) and then moves it by [dx], [dy],
+     * all in document units — resizing a lasso'd catch.
+     *
+     * The brush size scales with it. Handwriting made bigger should look like handwriting written
+     * bigger, not like the same thin line stretched over a larger shape — which is also what every
+     * app that resizes ink does.
+     */
+    fun transform(data: ByteArray, scale: Float, anchorX: Float, anchorY: Float, dx: Float = 0f, dy: Float = 0f): ByteArray {
         DataInputStream(ByteArrayInputStream(data)).use { dis ->
             val headerBytes = ByteArray(dis.readInt())
             dis.readFully(headerBytes)
@@ -150,12 +160,15 @@ object StrokeCodec {
             for (i in 0 until inputs.size) {
                 val p = inputs[i]
                 moved.add(
-                    p.toolType, p.x + dx, p.y + dy, p.elapsedTimeMillis,
+                    p.toolType,
+                    anchorX + (p.x - anchorX) * scale + dx,
+                    anchorY + (p.y - anchorY) * scale + dy,
+                    p.elapsedTimeMillis,
                     p.strokeUnitLengthCm, p.pressure, p.tiltRadians, p.orientationRadians,
                 )
             }
             val stroke = Stroke(
-                brush = brush(header.family, header.color, header.size, header.epsilon),
+                brush = brush(header.family, header.color, header.size * scale, header.epsilon),
                 inputs = moved.toImmutable(),
             )
             return encode(stroke, header.family)
@@ -347,13 +360,89 @@ object StrokeCodec {
      */
     fun containedFraction(path: StrokePath, px: FloatArray, py: FloatArray): Float {
         if (px.size < 3) return 0f
-        val pts = resample(path, RESAMPLE_DU)
+        return containedFraction(path, LoopIndex(px, py))
+    }
+
+    private fun containedFraction(path: StrokePath, loop: LoopIndex): Float {
+        val pts = samplesOf(path)
         if (pts.isEmpty()) return 0f
         var inside = 0
         for (i in pts.indices step 2) {
-            if (pointInPolygon(pts[i], pts[i + 1], px, py)) inside++
+            if (loop.contains(pts[i], pts[i + 1])) inside++
         }
         return inside.toFloat() / (pts.size / 2).toFloat()
+    }
+
+    /**
+     * A stroke's points spaced [RESAMPLE_DU] apart along its length, worked out once per stroke.
+     *
+     * The lasso scores its catch on every few pixels of finger movement, and it used to resample
+     * every candidate stroke from scratch each time — into a list of boxed floats — so drawing a
+     * loop around a paragraph of handwriting re-did the same arithmetic hundreds of times a second.
+     * A path's points never change, so its samples are kept against the path's own arrays.
+     */
+    private fun samplesOf(path: StrokePath): FloatArray {
+        synchronized(samples) { samples[path.xs]?.let { return it } }
+        return resample(path, RESAMPLE_DU).also { synchronized(samples) { samples[path.xs] = it } }
+    }
+
+    // Identity-keyed through the array: a FloatArray does not override equals.
+    private val samples = java.util.WeakHashMap<FloatArray, FloatArray>()
+
+    /**
+     * A lasso loop, ready to answer "is this point inside" quickly.
+     *
+     * The even-odd test counts the loop edges a horizontal ray from the point crosses, and only an
+     * edge that spans the point's height can be crossed. Filing every edge under the horizontal
+     * bands it spans means a point only has to look at the handful of edges in its own band instead
+     * of every edge of the loop — the answer is exactly the same, and a loop of a few hundred
+     * vertices stops multiplying the cost of every sample of every stroke inside it.
+     */
+    internal class LoopIndex(private val px: FloatArray, private val py: FloatArray) {
+        private val minX: Float
+        private val maxX: Float
+        private val minY: Float
+        private val maxY: Float
+        private val rows: Int
+        private val rowHeight: Float
+        private val edges: Array<IntArray>
+
+        init {
+            var l = Float.MAX_VALUE; var r = -Float.MAX_VALUE
+            var t = Float.MAX_VALUE; var b = -Float.MAX_VALUE
+            for (i in px.indices) {
+                if (px[i] < l) l = px[i]; if (px[i] > r) r = px[i]
+                if (py[i] < t) t = py[i]; if (py[i] > b) b = py[i]
+            }
+            minX = l; maxX = r; minY = t; maxY = b
+            rows = (px.size / 4).coerceIn(1, 256)
+            rowHeight = ((b - t) / rows).coerceAtLeast(1e-3f)
+            val lists = Array(rows) { ArrayList<Int>() }
+            var j = px.size - 1
+            for (i in px.indices) {
+                val lo = rowOf(minOf(py[i], py[j]))
+                val hi = rowOf(maxOf(py[i], py[j]))
+                for (row in lo..hi) lists[row] += i
+                j = i
+            }
+            edges = Array(rows) { lists[it].toIntArray() }
+        }
+
+        private fun rowOf(y: Float): Int = ((y - minY) / rowHeight).toInt().coerceIn(0, rows - 1)
+
+        fun contains(x: Float, y: Float): Boolean {
+            if (x < minX || x > maxX || y < minY || y > maxY) return false
+            var hit = false
+            val n = px.size
+            for (i in edges[rowOf(y)]) {
+                val j = if (i == 0) n - 1 else i - 1
+                val yi = py[i]; val yj = py[j]
+                if ((yi > y) != (yj > y)) {
+                    if ((x - px[i]) < (px[j] - px[i]) * (y - yi) / (yj - yi)) hit = !hit
+                }
+            }
+            return hit
+        }
     }
 
     /**
@@ -404,13 +493,14 @@ object StrokeCodec {
             if (py[i] > lassoB) lassoB = py[i]
         }
 
+        val loop = LoopIndex(px, py)
         val scored = ArrayList<Pair<Int, Float>>()
         for ((index, path) in candidates.withIndex()) {
             // Bounding-box cull before any arc-length work: this runs on every few pixels of finger
             // movement now that the catch is previewed live.
             val b = path.bbox() ?: continue
             if (b[0] > lassoR || b[0] + b[2] < lassoL || b[1] > lassoB || b[1] + b[3] < lassoT) continue
-            val f = containedFraction(path, px, py)
+            val f = containedFraction(path, loop)
             if (f > 0f) scored += index to f
         }
         if (scored.isEmpty()) return emptyList()
@@ -520,8 +610,8 @@ object StrokeCodec {
     /** Below this, the loop caught nothing worth calling a catch — an empty loop on blank paper. */
     private const val ABSOLUTE_FLOOR = 0.02f
 
-    /** Envelope of the raw input points — good enough for future canvas culling / hit-tests. */
-    private fun pointInPolygon(x: Float, y: Float, px: FloatArray, py: FloatArray): Boolean {
+    /** The plain even-odd test, edge by edge — the reference [LoopIndex] must agree with. */
+    internal fun pointInPolygon(x: Float, y: Float, px: FloatArray, py: FloatArray): Boolean {
         var hit = false
         var j = px.size - 1
         for (i in px.indices) {

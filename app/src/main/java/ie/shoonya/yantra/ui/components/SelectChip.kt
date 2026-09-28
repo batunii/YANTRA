@@ -5,8 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,8 +17,9 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraRadius
+import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.components.YantraIcon
 
 /**
@@ -56,7 +55,7 @@ fun SelectChip(
 ) {
     val y = Yantra.colors
     val small = size == ChipSize.Small
-    val shape = RoundedCornerShape(if (small) 8.dp else 10.dp)
+    val shape = RoundedCornerShape(if (small) YantraRadius.block else YantraRadius.control)
     Row(
         modifier
             // A chip is a switch, not a stop on the way through a form: taking focus here would
@@ -77,11 +76,10 @@ fun SelectChip(
         // it to 12dp for a small chip is how nine sizes came about in the first place.
         if (mark != null) {
             YantraIcon(mark, size = YantraIcons.Small, tint = chipInk)
-            Spacer(Modifier.width(5.dp))
         }
         Text(
             label,
-            fontSize = if (small) 11.sp else 13.sp,
+            fontSize = if (small) YantraType.caption else YantraType.section,
             fontWeight = FontWeight.W600,
             color = if (selected) y.accentText else y.textSecondary,
             maxLines = 1,

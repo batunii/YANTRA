@@ -3,6 +3,7 @@ package ie.shoonya.yantra.ui.ink
 import androidx.compose.foundation.background
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.data.ink.ShapeKind
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.theme.Yantra
 import ie.shoonya.yantra.ui.theme.YantraMono
@@ -186,20 +188,24 @@ fun DockControls(
                 }
             }
             DockDivider(vertical = !vertical)
-            (inkPresets(y.accent) + recents).distinct().take(8).forEach { c ->
+            (inkPresets(y.accent, y.isDark) + recents).distinct().take(9).forEach { c ->
                 Box(
                     Modifier
                         .size(26.dp)
                         .clip(CircleShape)
-                        .background(Color(c.toInt()))
-                        .then(if (c == slot.color) Modifier.border(2.dp, y.accent, CircleShape) else Modifier)
-                        .clickable { onSlotChange(slot.copy(color = c)) },
+                        .background(Color(InkTheme.displayColor(c.toInt(), y.isDark)))
+                        .then(if (sameInk(c, slot.color)) Modifier.border(2.dp, ringFor(c, y.accent, y.textPrimary), CircleShape) else Modifier)
+                        .clickable { onSlotChange(slot.copy(color = c)) }
+                        .semantics {
+                            contentDescription = "Ink colour"
+                            selected = sameInk(c, slot.color)
+                        },
                 )
             }
             Box(
                 Modifier.size(26.dp).clip(CircleShape).border(1.dp, y.tileBorder, CircleShape).clickable(onClick = onCustomColor),
                 contentAlignment = Alignment.Center,
-            ) { Text("+", fontSize = YantraType.body, color = y.textMuted) }
+            ) { YantraIcon(YantraMark.Add, size = YantraIcons.Small, tint = y.textMuted, contentDescription = "Custom colour") }
         }
         KitPanel.Eraser -> line {
             ERASER_WIDTHS.forEach { w ->
@@ -265,7 +271,7 @@ private fun DockKey(mark: YantraMark, label: String, enabled: Boolean, onClick: 
     val y = Yantra.colors
     Box(
         Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(RoundedCornerShape(YantraRadius.card))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -274,7 +280,7 @@ private fun DockKey(mark: YantraMark, label: String, enabled: Boolean, onClick: 
             mark,
             contentDescription = label,
             tint = if (enabled) y.textSecondary else y.textDim.copy(alpha = 0.4f),
-            modifier = Modifier.size(22.dp),
+            size = YantraIcons.Large,
         )
     }
 }
@@ -297,7 +303,7 @@ private fun DockSlot(slot: PenSlot, on: Boolean, onClick: () -> Unit) {
         Text(
             slot.label,
             fontFamily = YantraMono,
-            fontSize = YantraType.dense,
+            fontSize = YantraType.section,
             letterSpacing = 0.8.sp,
             fontWeight = FontWeight.W700,
             color = if (on) y.accentText else y.textMuted,
@@ -328,7 +334,7 @@ private fun DockMenu(
     Box {
         Box(
             Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .clip(RoundedCornerShape(YantraRadius.card))
                 .clickable { open = true },
             contentAlignment = Alignment.Center,

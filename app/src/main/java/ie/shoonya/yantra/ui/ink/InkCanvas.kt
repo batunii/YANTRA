@@ -47,6 +47,14 @@ private const val PAGE_LABEL_INSET_PX = 40f
 /** The halo around a caught stroke, in document units — it belongs to the ink, so it scales with it. */
 private const val SELECTION_PAD_DU = 10f
 
+/** How close a touch must land to the resize handle, and how big the handle is drawn, in view px. */
+private const val HANDLE_HIT_PX = 44f
+private const val HANDLE_RADIUS_PX = 14f
+
+/** How far a catch can be shrunk or grown in one drag. */
+private const val MIN_SCALE = 0.2f
+private const val MAX_SCALE = 5f
+
 /**
  * Samsung-Notes-style paginated drawing surface: one continuous document scrolled
  * vertically, rendered as a stack of A4-proportioned pages. One finger (or stylus) draws;
@@ -119,6 +127,12 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
      * carrying; it should be the one to say.
      */
     var onMoveSelection: (List<String>, Float, Float) -> Unit = { _, _, _ -> }
+
+    /**
+     * The catch was resized: its ids, the factor, and the corner it was scaled about, in document
+     * units. The screen rewrites the strokes; the canvas only previews.
+     */
+    var onScaleSelection: (List<String>, Float, Float, Float) -> Unit = { _, _, _, _ -> }
 
     /**
      * What a one-finger gesture does, and the moment a selection stops being the subject.
@@ -365,9 +379,15 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                         updateShapePreview(event.x, event.y)
                     }
                     EditorTool.LASSO -> {
-                        // Touching what is already caught picks it up; touching anywhere else
-                        // starts a new loop, because you are pointing at something else now.
-                        if (insideSelection(viewport.toDocX(event.x), viewport.toDocY(event.y))) {
+                        // The corner handle resizes; touching what is already caught picks it up;
+                        // touching anywhere else starts a new loop, because you are pointing at
+                        // something else now.
+                        if (onScaleHandle(event.x, event.y)) {
+                            scaling = true
+                            scaleFrom = hypot(event.x - viewport.toViewX(selL), event.y - viewport.toViewY(selT))
+                                .coerceAtLeast(1f)
+                            dryLayer.setScale(1f, selL, selT)
+                        } else if (insideSelection(viewport.toDocX(event.x), viewport.toDocY(event.y))) {
                             movingSelection = true
                             moveFromX = event.x; moveFromY = event.y
                             dryLayer.setMove(0f, 0f)
@@ -395,6 +415,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                 // second finger: this gesture becomes a pan and pinch, so cancel any active op
                 activeStrokeId?.let { wetLayer.cancelStroke(it, event) }
                 abandonLasso()
+                if (scaling) { scaling = false; dryLayer.setScale(1f, selL, selT) }
                 activePointerId = null
                 activeStrokeId = null
                 shapeActive = false
@@ -421,7 +442,10 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                     EditorTool.SHAPE -> if (shapeActive) updateShapePreview(event.x, event.y)
                     EditorTool.ERASE -> if (erasing) eraseAt(event.x, event.y)
                     EditorTool.LASSO ->
-                        if (movingSelection) {
+                        if (scaling) {
+                            val d = hypot(event.x - viewport.toViewX(selL), event.y - viewport.toViewY(selT))
+                            dryLayer.setScale((d / scaleFrom).coerceIn(MIN_SCALE, MAX_SCALE), selL, selT)
+                        } else if (movingSelection) {
                             dryLayer.setMove(event.x - moveFromX, event.y - moveFromY)
                         } else {
                             lassoPoint(event.x, event.y)
@@ -457,7 +481,20 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                         EditorTool.SHAPE -> if (shapeActive) commitShape(event.x, event.y)
                         EditorTool.ERASE -> Unit
                         EditorTool.LASSO ->
-                            if (movingSelection) {
+                            if (scaling) {
+                                val k = dryLayer.scaleFactor
+                                scaling = false
+                                dryLayer.setScale(1f, selL, selT)
+                                if (k != 1f) {
+                                    val ax = selL; val ay = selT
+                                    // The bounds grow with the strokes, so the handle and the bar
+                                    // are already where the resized catch will land.
+                                    selR = ax + (selR - ax) * k
+                                    selB = ay + (selB - ay) * k
+                                    reportSelection(dryLayer.selected.toList())
+                                    onScaleSelection(dryLayer.selected.toList(), k, ax, ay)
+                                }
+                            } else if (movingSelection) {
                                 val dx = viewport.toDocSpan(event.x - moveFromX)
                                 val dy = viewport.toDocSpan(event.y - moveFromY)
                                 movingSelection = false
@@ -497,6 +534,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
                 // already been abandoned — and persisted it.
                 movingSelection = false
                 dryLayer.setMove(0f, 0f)
+                if (scaling) { scaling = false; dryLayer.setScale(1f, selL, selT) }
                 erasing = false
                 panning = false
                 held = null
@@ -577,6 +615,18 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
     /** How far into the selection's own space a touch may land and still count as grabbing it. */
     private val grabSlopPx = 24f
 
+    /** True while the corner handle is being dragged, resizing the catch. */
+    private var scaling = false
+
+    /** How far the handle started from the anchor corner, in view pixels. */
+    private var scaleFrom = 1f
+
+    /** Whether a touch lands on the resize handle at the catch's bottom-right corner. */
+    private fun onScaleHandle(x: Float, y: Float): Boolean {
+        if (dryLayer.selected.isEmpty()) return false
+        return hypot(x - viewport.toViewX(selR), y - viewport.toViewY(selB)) <= HANDLE_HIT_PX
+    }
+
     private fun insideSelection(docX: Float, docY: Float): Boolean {
         if (dryLayer.selected.isEmpty()) return false
         val slop = viewport.toDocSpan(grabSlopPx)
@@ -610,7 +660,49 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
             dryLayer.selected = heldSelection
             return
         }
-        dryLayer.selected = toggled(scoreLasso())
+        requestPreview()
+    }
+
+    /**
+     * Scores the growing loop **off the main thread**, newest loop wins.
+     *
+     * The preview runs on every few pixels of finger movement, and scoring a loop around a lot of
+     * handwriting took the main thread most of a frame on its own — the loop stuttered behind the
+     * finger. Now the frame only draws: the catch is worked out on a worker, one at a time, and a
+     * result for a loop that has since grown or been abandoned is thrown away. The catch you *lift*
+     * on is still scored on the spot ([commitLasso]), so what ends up selected is always exactly the
+     * loop you finished.
+     */
+    private fun requestPreview() {
+        if (previewInFlight) {
+            previewWanted = true
+            return
+        }
+        previewInFlight = true
+        previewWanted = false
+        val generation = lassoGeneration
+        val px = lassoX.toFloatArray()
+        val py = lassoY.toFloatArray()
+        val near = candidatesFor(px, py)
+        lassoWorker.execute {
+            val caught = if (near.isEmpty()) emptyList() else StrokeCodec.lassoCatchPaths(near, px, py)
+            post {
+                previewInFlight = false
+                if (generation != lassoGeneration) return@post
+                dryLayer.selected = toggled(caught)
+                if (previewWanted) requestPreview()
+            }
+        }
+    }
+
+    private var previewInFlight = false
+    private var previewWanted = false
+
+    /** Bumped whenever the loop is finished or dropped, so a late preview cannot land on the next one. */
+    private var lassoGeneration = 0
+
+    private val lassoWorker = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "lasso-preview").apply { isDaemon = true }
     }
 
     /** The loop's catch, symmetric-differenced against what was already held. */
@@ -639,6 +731,13 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
         if (lassoX.size < 3) return emptyList()
         val px = lassoX.toFloatArray()
         val py = lassoY.toFloatArray()
+        val near = candidatesFor(px, py)
+        if (near.isEmpty()) return emptyList()
+        return StrokeCodec.lassoCatchPaths(near, px, py)
+    }
+
+    /** The committed strokes whose boxes touch the loop's box, as cached paths — cheap, main thread. */
+    private fun candidatesFor(px: FloatArray, py: FloatArray): List<StrokePath> {
         var l = Float.MAX_VALUE; var t = Float.MAX_VALUE
         var r = -Float.MAX_VALUE; var b = -Float.MAX_VALUE
         for (i in px.indices) {
@@ -653,8 +752,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
             if (box[0] > r || box[0] + box[2] < l || box[1] > b || box[1] + box[3] < t) continue
             near += dryLayer.pathAt(i) ?: continue
         }
-        if (near.isEmpty()) return emptyList()
-        return StrokeCodec.lassoCatchPaths(near, px, py)
+        return near
     }
 
     private fun commitLasso() {
@@ -663,6 +761,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
         heldSelection = emptySet()
         dryLayer.selected = chosen
         if (chosen.isEmpty()) {
+            dryLayer.handleAt = null
             onLassoSelection(emptyList(), 0f, 0f)
             return
         }
@@ -690,6 +789,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
 
     /** The bar goes under the catch, so the canvas converts document bounds into view space. */
     private fun reportSelection(ids: List<String>) {
+        dryLayer.handleAt = if (ids.isEmpty()) null else floatArrayOf(selR, selB)
         onLassoSelection(
             ids,
             viewport.toViewX((selL + selR) / 2f),
@@ -698,6 +798,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
     }
 
     private fun clearLasso() {
+        lassoGeneration++
         lassoX.clear(); lassoY.clear()
         dryLayer.setLasso(lassoX, lassoY)
     }
@@ -719,6 +820,7 @@ class InkCanvas(context: Context) : FrameLayout(context), InProgressStrokesFinis
 
     /** Drops the highlight — the caller does this when the selection has been acted on or dismissed. */
     fun clearSelection() {
+        dryLayer.handleAt = null
         dryLayer.selected = emptySet()
         heldSelection = emptySet()
     }
@@ -866,6 +968,11 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
     }
 
     /** The halo around what was caught. Same ink as the loop, no dashes — this one is settled. */
+    private val handleFill = Paint().apply { style = Paint.Style.FILL; isAntiAlias = true; color = Color.WHITE }
+    private val handleRing = Paint().apply {
+        style = Paint.Style.STROKE; isAntiAlias = true; strokeWidth = 3f; color = Color.rgb(0xE8, 0x7A, 0x5D)
+    }
+
     private val selectionPaint = Paint().apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
@@ -964,6 +1071,22 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
         invalidate()
     }
 
+    /** How much the carried catch is being resized, and the document-space corner it grows from. */
+    var scaleFactor = 1f
+        private set
+    private var scaleAnchorX = 0f
+    private var scaleAnchorY = 0f
+
+    fun setScale(k: Float, anchorX: Float, anchorY: Float) {
+        if (scaleFactor == k && scaleAnchorX == anchorX && scaleAnchorY == anchorY) return
+        scaleFactor = k; scaleAnchorX = anchorX; scaleAnchorY = anchorY
+        invalidate()
+    }
+
+    /** Where the catch's bottom-right corner is, in document units, for the handle. */
+    var handleAt: FloatArray? = null
+        set(value) { field = value; invalidate() }
+
     /**
      * The loop, **closed**.
      *
@@ -991,6 +1114,7 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
             field = value
             lassoPaint.color = value
             selectionPaint.color = value
+            handleRing.color = value
             invalidate()
         }
 
@@ -1007,6 +1131,80 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
     }
 
     /** Anything whose box is off screen is not drawn. Cheap, and it is what makes zooming out sane. */
+    /**
+     * The strokes, drawn from recordings made once rather than stroke by stroke on every frame.
+     *
+     * Drawing a lasso or dragging a catch redraws the view on every frame, and that used to mean
+     * every stroke on the page, every frame — on a 253-stroke page, most frames of a lasso ran over
+     * budget on that alone, for ink that had not changed. The strokes are recorded into a
+     * [RenderNode] once and the frame replays the recording; it is recorded again only when the
+     * strokes, the selection being carried, the camera or the size change.
+     *
+     * While a catch is being carried the page is two recordings — what stays, and what moves — and
+     * the moving one is replayed at the finger's offset, drawn last so it passes over what it is
+     * dragged across. At rest the page is one recording in draw order.
+     */
+    private fun drawInk(canvas: Canvas, transform: Matrix, scale: Float) {
+        val carrying = selected.isNotEmpty() && (moveDx != 0f || moveDy != 0f || scaleFactor != 1f)
+        if (!canvas.isHardwareAccelerated) {
+            canvas.save()
+            canvas.concat(transform)
+            for ((i, item) in items.withIndex()) {
+                if (carrying && item.id in selected) continue
+                if (!visible(itemBoxes.getOrNull(i))) continue
+                renderer.draw(canvas, item.stroke, transform)
+            }
+            for ((i, extra) in extraStrokes.withIndex()) {
+                if (visible(extraBoxes.getOrNull(i))) renderer.draw(canvas, extra, transform)
+            }
+            if (carrying) {
+                canvas.translate(moveDx / scale, moveDy / scale)
+                canvas.scale(scaleFactor, scaleFactor, scaleAnchorX, scaleAnchorY)
+                for (item in items) if (item.id in selected) renderer.draw(canvas, item.stroke, transform)
+            }
+            canvas.restore()
+            return
+        }
+        transform.getValues(matrixScratch)
+        val camera = matrixScratch.contentHashCode() * 31 + width * 7 + height
+        val stays = if (carrying) selected else emptySet()
+        if (stillNode.stale(items, extraStrokes, stays, camera)) {
+            stillNode.record(width, height) { rc ->
+                rc.concat(transform)
+                for ((i, item) in items.withIndex()) {
+                    if (item.id in stays) continue
+                    if (!visible(itemBoxes.getOrNull(i))) continue
+                    renderer.draw(rc, item.stroke, transform)
+                }
+                for ((i, extra) in extraStrokes.withIndex()) {
+                    if (visible(extraBoxes.getOrNull(i))) renderer.draw(rc, extra, transform)
+                }
+            }
+        }
+        canvas.drawRenderNode(stillNode.node)
+        if (!carrying) return
+        // Not culled: a stroke carried in from off screen has to arrive drawn.
+        if (movingNode.stale(items, emptyList(), selected, camera)) {
+            movingNode.record(width, height) { rc ->
+                rc.concat(transform)
+                for (item in items) if (item.id in selected) renderer.draw(rc, item.stroke, transform)
+            }
+        }
+        canvas.save()
+        canvas.translate(moveDx, moveDy)
+        // Resizing grows the recording about its anchor corner, in view space, exactly as the
+        // rewritten strokes will land — brush width included.
+        if (scaleFactor != 1f) {
+            canvas.scale(scaleFactor, scaleFactor, viewport.toViewX(scaleAnchorX), viewport.toViewY(scaleAnchorY))
+        }
+        canvas.drawRenderNode(movingNode.node)
+        canvas.restore()
+    }
+
+    private val matrixScratch = FloatArray(9)
+    private val stillNode = InkRecording("ink-still")
+    private val movingNode = InkRecording("ink-moving")
+
     private fun visible(b: FloatArray?): Boolean {
         if (b == null) return false
         return b[0] <= viewport.visibleRight() && b[0] + b[2] >= viewport.visibleLeft() &&
@@ -1057,25 +1255,9 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
 
         // ---- the ink, in document units ----
         val transform = viewport.docToView
+        drawInk(canvas, transform, scale)
         canvas.save()
         canvas.concat(transform)
-        // Everything that is staying put.
-        for ((i, item) in items.withIndex()) {
-            if (item.id in selected) continue
-            if (!visible(itemBoxes.getOrNull(i))) continue
-            renderer.draw(canvas, item.stroke, transform)
-        }
-        for ((i, extra) in extraStrokes.withIndex()) {
-            if (visible(extraBoxes.getOrNull(i))) renderer.draw(canvas, extra, transform)
-        }
-        // Then the carried ones, shifted by however far the finger has taken them so far. Drawn
-        // last so a group being moved passes over what it is being moved across.
-        if (selected.isNotEmpty()) {
-            canvas.save()
-            canvas.translate(moveDx / scale, moveDy / scale)
-            for (item in items) if (item.id in selected) renderer.draw(canvas, item.stroke, transform)
-            canvas.restore()
-        }
         // The catch, ringed, and the loop being drawn. Both in document space inside the same
         // transform as the strokes, so they scroll with the ink rather than beside it — but with
         // their stroke widths divided by the scale, because a 2px outline should stay 2px whatever
@@ -1087,6 +1269,7 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
         if (selected.isNotEmpty()) {
             canvas.save()
             canvas.translate(moveDx / scale, moveDy / scale)
+            canvas.scale(scaleFactor, scaleFactor, scaleAnchorX, scaleAnchorY)
             for ((i, item) in items.withIndex()) {
                 if (item.id !in selected) continue
                 itemBoxes.getOrNull(i)?.let { b ->
@@ -1101,6 +1284,17 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
         }
         lassoPath?.let { canvas.drawPath(it, lassoPaint) }
         canvas.restore()
+
+        // The resize handle, at the catch's bottom-right corner, in view pixels so it stays a
+        // thumb-sized target at any zoom. It follows the corner while the catch is being resized.
+        val corner = handleAt
+        if (selected.isNotEmpty() && corner != null && moveDx == 0f && moveDy == 0f) {
+            val ax = viewport.toViewX(scaleAnchorX); val ay = viewport.toViewY(scaleAnchorY)
+            val hx = ax + (viewport.toViewX(corner[0]) - ax) * scaleFactor
+            val hy = ay + (viewport.toViewY(corner[1]) - ay) * scaleFactor
+            canvas.drawCircle(hx, hy, HANDLE_RADIUS_PX, handleFill)
+            canvas.drawCircle(hx, hy, HANDLE_RADIUS_PX, handleRing)
+        }
 
         // preview shape (view space, no document transform — follows the finger)
         previewKind?.let { kind ->
@@ -1127,5 +1321,28 @@ private class DocumentStrokesView(context: Context, private val viewport: Viewpo
                 }
             }
         }
+    }
+}
+
+
+/** One recorded pass of strokes, and what it was recorded from, so it is only redone when that changes. */
+private class InkRecording(name: String) {
+    val node = android.graphics.RenderNode(name)
+    private var items: List<StrokeItem>? = null
+    private var extras: List<Stroke>? = null
+    private var set: Set<String>? = null
+    private var camera = 0
+
+    /** By identity for the lists — the view replaces them whole — and by value for the set. */
+    fun stale(items: List<StrokeItem>, extras: List<Stroke>, set: Set<String>, camera: Int): Boolean {
+        if (this.items === items && this.extras === extras && this.set == set && this.camera == camera) return false
+        this.items = items; this.extras = extras; this.set = set; this.camera = camera
+        return true
+    }
+
+    inline fun record(width: Int, height: Int, draw: (android.graphics.RecordingCanvas) -> Unit) {
+        node.setPosition(0, 0, width, height)
+        val rc = node.beginRecording(width, height)
+        try { draw(rc) } finally { node.endRecording() }
     }
 }

@@ -33,12 +33,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.App
@@ -194,52 +196,70 @@ class QuickAddActivity : ComponentActivity() {
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            CaptureChip(
-                                mark = YantraMark.Calendar,
-                                label = "Today",
-                                on = dueToday,
-                                onClick = { dueToday = !dueToday },
-                            )
-                            if (priorityOptions.isNotEmpty()) {
+                            // The chips share what the send key leaves them, rather than being
+                            // measured first: a long list name used to wrap its chip onto two lines
+                            // and squeeze the send key to nothing.
+                            Row(
+                                Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 CaptureChip(
-                                    mark = YantraMark.Priority,
-                                    label = priority ?: "Priority",
-                                    on = priority != null,
-                                    onColor = pickedColor,
-                                    // Cycles the options and back off — a menu for three values
-                                    // costs more taps than it saves at capture speed.
-                                    onClick = {
-                                        val i = priorityOptions.indexOfFirst { it.name == priority }
-                                        priority = priorityOptions.getOrNull(i + 1)?.name
-                                    },
+                                    mark = YantraMark.Calendar,
+                                    label = "Today",
+                                    on = dueToday,
+                                    onClick = { dueToday = !dueToday },
+                                )
+                                if (priorityOptions.isNotEmpty()) {
+                                    CaptureChip(
+                                        mark = YantraMark.Priority,
+                                        label = priority ?: "Priority",
+                                        on = priority != null,
+                                        onColor = pickedColor,
+                                        // Cycles the options and back off — a menu for three values
+                                        // costs more taps than it saves at capture speed.
+                                        onClick = {
+                                            val i = priorityOptions.indexOfFirst { it.name == priority }
+                                            priority = priorityOptions.getOrNull(i + 1)?.name
+                                        },
+                                    )
+                                }
+                                // The destination, stated rather than titled. Not a picker — the
+                                // widget you tapped already chose the list — so it is styled as
+                                // information, not as a control that happens to be disabled.
+                                CaptureChip(
+                                    mark = YantraMark.List,
+                                    label = destination,
+                                    on = false,
+                                    readOnly = true,
+                                    // The one chip whose label is the user's, so the one that gives.
+                                    modifier = Modifier.weight(1f, fill = false),
                                 )
                             }
-                            // The destination, stated rather than titled. Not a picker — the
-                            // widget you tapped already chose the list — so it is styled as
-                            // information, not as a control that happens to be disabled.
-                            CaptureChip(
-                                mark = YantraMark.List,
-                                label = destination,
-                                on = false,
-                                readOnly = true,
-                            )
-                            Spacer(Modifier.weight(1f))
+                            // Drawn at 38dp, pressed at 48: the sheet's one control should not be
+                            // the smallest thing on it to hit.
                             Box(
                                 Modifier
-                                    .size(38.dp)
-                                    .background(
-                                        if (text.isBlank()) y.neutralChipBg else y.accentFill,
-                                        RoundedCornerShape(YantraRadius.panel),
-                                    )
+                                    .size(48.dp)
                                     .clickable(onClick = send),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                YantraIcon(
-                                    YantraMark.Send,
-                                    contentDescription = "Add task",
-                                    tint = if (text.isBlank()) y.textDim else y.accent,
-                                    modifier = Modifier.size(17.dp),
-                                )
+                                Box(
+                                    Modifier
+                                        .size(38.dp)
+                                        .background(
+                                            if (text.isBlank()) y.neutralChipBg else y.accentFill,
+                                            RoundedCornerShape(YantraRadius.panel),
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    YantraIcon(
+                                        YantraMark.Send,
+                                        contentDescription = "Add task",
+                                        tint = if (text.isBlank()) y.textDim else y.accent,
+                                        modifier = Modifier.size(17.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -258,6 +278,7 @@ private fun CaptureChip(
     onClick: (() -> Unit)? = null,
     onColor: Color? = null,
     readOnly: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val y = Yantra.colors
     // A read-only chip is a statement, so it reads at the same strength as an untoggled control
@@ -265,11 +286,15 @@ private fun CaptureChip(
     // nothing. Only its icon steps back, to mark it as not-a-button.
     val tint = if (on) onColor ?: y.accent else y.textSecondary
     Row(
-        Modifier
+        modifier
+            // The medium chip's corner, as SelectChip draws it, rather than a capsule of its own.
             .background(
                 if (on) (onColor ?: y.accent).copy(alpha = 0.14f) else y.neutralChipBg,
-                RoundedCornerShape(YantraRadius.pill),
+                RoundedCornerShape(YantraRadius.control),
             )
+            // A chip is a switch, not a stop on the way through the form: taking focus would pull
+            // the caret out of the field it sits under.
+            .focusProperties { canFocus = false }
             .let { if (onClick != null && !readOnly) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 11.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -280,6 +305,13 @@ private fun CaptureChip(
             tint = if (readOnly) y.textDim else tint,
         )
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = YantraType.section, fontWeight = FontWeight.W600, color = tint)
+        Text(
+            label,
+            fontSize = YantraType.section,
+            fontWeight = FontWeight.W600,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

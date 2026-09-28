@@ -4,11 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,11 +124,11 @@ fun DoneSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         SectionLabel("DONE · $count")
-        Icon(
-            if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-            contentDescription = if (expanded) "Hide finished tasks" else "Show finished tasks",
+        YantraIcon(
+            if (expanded) YantraMark.Up else YantraMark.Down,
+            size = YantraIcons.Small,
             tint = Yantra.colors.textMuted,
-            modifier = Modifier.size(16.dp),
+            contentDescription = if (expanded) "Hide finished tasks" else "Show finished tasks",
         )
     }
 }

@@ -5,6 +5,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import ie.shoonya.yantra.ui.components.ButtonTone
+import ie.shoonya.yantra.ui.components.YantraButton
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
+import ie.shoonya.yantra.ui.components.YantraMark
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -92,13 +99,11 @@ fun DeviceCalendarSetting() {
                 color = y.textMuted, fontSize = YantraType.caption, lineHeight = 16.sp,
             )
             Spacer(Modifier.height(10.dp))
-            Text(
+            // The card's one action, so it is the one button rather than accent text dressed as one.
+            YantraButton(
                 "Allow reading",
-                color = y.accent, fontSize = YantraType.meta, fontWeight = FontWeight.W700,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(YantraRadius.control))
-                    .clickable { ask.launch(Manifest.permission.READ_CALENDAR) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                tone = ButtonTone.Soft,
+                onClick = { ask.launch(Manifest.permission.READ_CALENDAR) },
             )
         }
         return
@@ -117,23 +122,20 @@ fun DeviceCalendarSetting() {
                 color = y.textMuted, fontSize = YantraType.caption, lineHeight = 16.sp,
             )
             Spacer(Modifier.height(10.dp))
-            Text(
+            YantraButton(
                 "Connect again",
-                color = y.accent, fontSize = YantraType.meta, fontWeight = FontWeight.W700,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(YantraRadius.control))
-                    .clickable {
-                        // Back to the owning app's own visibility rather than to whatever was
-                        // ticked before: reconnecting should mean "my calendar", freshly asked.
-                        choice.clear()
-                        reload()
-                    }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                tone = ButtonTone.Soft,
+                onClick = {
+                    // Back to the owning app's own visibility rather than to whatever was
+                    // ticked before: reconnecting should mean "my calendar", freshly asked.
+                    choice.clear()
+                    reload()
+                },
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 "Take back the permission in Android settings  \u203a",
-                color = y.textDim, fontSize = YantraType.caption,
+                color = y.textMuted, fontSize = YantraType.caption,
                 modifier = Modifier
                     .clip(RoundedCornerShape(YantraRadius.block))
                     .clickable { openAppSettings(context) }
@@ -169,7 +171,8 @@ fun DeviceCalendarSetting() {
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(YantraRadius.control))
-                    .clickable {
+                    // toggleable rather than clickable, so TalkBack hears a checkbox and its state.
+                    .toggleable(value = on, role = Role.Checkbox) {
                         chosen = if (on) chosen - cal.id else chosen + cal.id
                         choice.set(chosen)
                     }
@@ -196,7 +199,7 @@ fun DeviceCalendarSetting() {
                     if (cal.account.isNotBlank() && cal.account != cal.name) {
                         Text(
                             cal.account,
-                            color = y.textDim, fontSize = YantraType.dense,
+                            color = y.textMuted, fontSize = YantraType.caption,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -209,7 +212,7 @@ fun DeviceCalendarSetting() {
                         .background(if (on) y.accent else Color.Transparent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (on) Text("✓", color = y.onAccent, fontSize = YantraType.caption, fontWeight = FontWeight.W700)
+                    if (on) YantraIcon(YantraMark.Check, size = YantraIcons.Small, tint = y.onAccent, contentDescription = null)
                     else Box(Modifier.size(16.dp).clip(CircleShape).background(y.tileBorder))
                 }
             }
@@ -218,7 +221,9 @@ fun DeviceCalendarSetting() {
         Spacer(Modifier.height(6.dp))
         Text(
             "Disconnect calendars",
-            color = y.warning, fontSize = YantraType.meta, fontWeight = FontWeight.W600,
+            // Neutral, not amber: amber is medium priority on a task row, and disconnecting is
+            // reversible — "Connect again" is one tap away.
+            color = y.textSecondary, fontSize = YantraType.meta, fontWeight = FontWeight.W600,
             modifier = Modifier
                 .clip(RoundedCornerShape(YantraRadius.control))
                 .clickable {

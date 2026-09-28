@@ -10,9 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +34,8 @@ import java.time.format.DateTimeFormatter
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 import ie.shoonya.yantra.ui.components.spine
+import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraMark
 import ie.shoonya.yantra.ui.components.SPINE_WIDTH
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
@@ -116,7 +116,7 @@ internal fun EventBlockRow(
                 Text(
                     clockWords(start, end, e.allDay),
                     fontFamily = YantraMono,
-                    fontSize = YantraType.dense,
+                    fontSize = YantraType.caption,
                     color = y.textMuted,
                     maxLines = 1,
                 )
@@ -152,18 +152,14 @@ internal fun EventBlockRow(
                     }
                 },
                 fontFamily = YantraMono,
-                fontSize = YantraType.dense,
+                fontSize = YantraType.caption,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier.size(22.dp).clip(CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("›", fontSize = YantraType.row, color = y.textDim)
-        }
+        // The same mark a task row ends on, so one list carries one chevron.
+        YantraIcon(YantraMark.Forward, tint = y.textDim, contentDescription = null)
     }
 }
 

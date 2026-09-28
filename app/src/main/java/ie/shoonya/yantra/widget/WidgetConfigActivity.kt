@@ -10,20 +10,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,7 +35,8 @@ import ie.shoonya.yantra.ui.theme.SuperTasksTheme
 import ie.shoonya.yantra.ui.theme.Yantra
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
-import ie.shoonya.yantra.ui.theme.YantraType
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
+import ie.shoonya.yantra.ui.components.PageHeader
 
 class WidgetConfigActivity : ComponentActivity() {
 
@@ -112,15 +113,24 @@ private fun ConfigScreen(
             .fillMaxSize()
             .background(y.page)
             .statusBarsPadding()
-            .padding(horizontal = 20.dp),
+            // The search field is here to be typed into, so the keyboard must not sit on its results.
+            .imePadding(),
     ) {
-        Column(Modifier.padding(top = 16.dp, bottom = 8.dp)) {
-            Text("YANTRA", fontSize = YantraType.dense, fontWeight = FontWeight.W700, color = y.accentEyebrow)
-            // Not "Choose a list" any more, because it no longer has to be one.
-            Text("What should it show?", fontSize = YantraType.screen, fontWeight = FontWeight.W800, color = y.textPrimary)
-        }
-        WidgetSearchField(query, { query = it }, Modifier.fillMaxWidth().padding(bottom = 4.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // The header every screen opens with. No back circle: the system gesture backs out, and
+        // backing out is also how a placement is cancelled.
+        // Not "Choose a list" any more, because it no longer has to be one.
+        PageHeader(title = "What should it show?")
+        WidgetSearchField(
+            query,
+            { query = it },
+            Modifier.fillMaxWidth().padding(start = PAGE_MARGIN, end = PAGE_MARGIN, bottom = 4.dp),
+        )
+        LazyColumn(
+            // Edge-to-edge is on, so the last rows need to clear the gesture bar.
+            modifier = Modifier.navigationBarsPadding(),
+            contentPadding = PaddingValues(start = PAGE_MARGIN, end = PAGE_MARGIN, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             widgetTargetItems(
                 results = results,
                 smartLists = smart,

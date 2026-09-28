@@ -14,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -22,6 +21,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ie.shoonya.yantra.ui.theme.Yantra
+import ie.shoonya.yantra.ui.theme.YantraMono
+import ie.shoonya.yantra.ui.theme.YantraText
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -53,7 +54,7 @@ fun YantraField(
     val style = TextStyle(
         fontSize = YantraType.row,
         color = if (enabled) y.textPrimary else y.textMuted,
-        fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
+        fontFamily = if (mono) YantraMono else YantraText,
     )
     Box(
         modifier

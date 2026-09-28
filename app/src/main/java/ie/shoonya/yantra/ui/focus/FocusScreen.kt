@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +51,7 @@ import ie.shoonya.yantra.AppContainer
 import ie.shoonya.yantra.data.db.NodeEntity
 import ie.shoonya.yantra.data.db.FocusSessionEntity
 import ie.shoonya.yantra.ui.components.rememberNotificationPermissionRequest
+import ie.shoonya.yantra.ui.components.PAGE_MARGIN
 import ie.shoonya.yantra.ui.components.SectionLabel
 import ie.shoonya.yantra.ui.components.SwitchHereDialog
 import ie.shoonya.yantra.ui.components.durationLabel
@@ -82,6 +84,7 @@ import ie.shoonya.yantra.domain.FocusTimer
 import androidx.compose.ui.graphics.vector.ImageVector
 import ie.shoonya.yantra.data.format.Links
 import ie.shoonya.yantra.ui.components.YantraIcon
+import ie.shoonya.yantra.ui.components.YantraIcons
 import ie.shoonya.yantra.ui.theme.YantraType
 import ie.shoonya.yantra.ui.theme.YantraRadius
 
@@ -172,13 +175,19 @@ fun FocusScreen(nav: NavHostController, nodeIdArg: String?) {
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                // Edge-to-edge means the window no longer shrinks for the keyboard, and the custom
+                // minutes field sits low in the setup scroll. The nav inset is consumed first, so
+                // this adds only the keyboard's extra height.
+                .imePadding(),
         ) {
             NavCircle(
                 mark = YantraMark.Back,
                 contentDescription = "Back",
                 onClick = { nav.popBackStack() },
-                iconSize = 22.dp,
+                // Where PageHeader puts it, so the back key does not step sideways on the way
+                // here from Focus stats.
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             )
 
             when {
@@ -255,8 +264,8 @@ private fun IdleScroll(sessions: List<FocusSessionEntity>, top: @Composable () -
     ) {
         top()
         if (sessions.isNotEmpty()) {
-            SectionLabel("History", modifier = Modifier.padding(start = 30.dp, top = 28.dp, bottom = 6.dp))
-            Column(Modifier.padding(horizontal = 26.dp)) {
+            SectionLabel("History", modifier = Modifier.padding(start = PAGE_MARGIN, top = 28.dp, bottom = 6.dp))
+            Column(Modifier.padding(horizontal = PAGE_MARGIN)) {
                 sessions.forEach { s -> SessionRow(s) }
             }
             Spacer(Modifier.height(24.dp))
@@ -304,7 +313,7 @@ private fun TimerSetup(
     var minutes by remember { mutableIntStateOf(25) }
     var picking by remember { mutableStateOf(false) }
     var custom by remember { mutableStateOf("") }
-    Column(Modifier.padding(horizontal = 30.dp)) {
+    Column(Modifier.padding(horizontal = PAGE_MARGIN)) {
         Spacer(Modifier.height(16.dp))
         SectionLabel("Focus on")
         // The headline is the task, so it is also the way to it — the same door the running
@@ -334,8 +343,9 @@ private fun TimerSetup(
             YantraIcon(YantraMark.Forward,
                 contentDescription = "Open as page",
                 tint = y.textMuted,
-                // Scaled to the headline it sits beside, not to the 18dp the body rows use.
-                modifier = Modifier.padding(start = 6.dp).size(26.dp),
+                // Scaled to the headline it sits beside: the largest of the three sizes.
+                size = YantraIcons.Large,
+                modifier = Modifier.padding(start = 6.dp),
             )
         }
         // What this task has already had, before you decide what to give it next.
@@ -416,8 +426,8 @@ private fun TimerSetup(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Anything up to a few hours. 90 for a long stretch, 5 for a nudge.",
-                color = y.textDim,
-                fontSize = YantraType.caption,
+                style = MaterialTheme.typography.bodySmall,
+                color = y.textMuted,
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -440,8 +450,8 @@ private fun TimerSetup(
         Text(
             "A set length is a promise to yourself; the clock just records what you gave. Both go " +
                 "into the same history.",
-            color = y.textDim,
-            fontSize = YantraType.caption,
+            style = MaterialTheme.typography.bodySmall,
+            color = y.textMuted,
         )
     }
 }
@@ -494,7 +504,8 @@ private fun ActiveTimer(
             YantraIcon(YantraMark.Forward,
                 contentDescription = "Open as page",
                 tint = y.textMuted,
-                modifier = Modifier.padding(start = 2.dp).size(18.dp),
+                size = YantraIcons.Medium,
+                modifier = Modifier.padding(start = 2.dp),
             )
         }
         // The focus glyph. Everything it draws is a pure function of the session log: a trikona
@@ -557,6 +568,9 @@ private fun ActiveTimer(
         Box(
             Modifier
                 .size(76.dp)
+                // Clipped first, so the press answers in the key's own round shape rather than
+                // flashing a square behind it.
+                .clip(CircleShape)
                 .background(y.accentFill, CircleShape)
                 .border(1.dp, y.accentBorder, CircleShape)
                 .clickable { if (state.isRunning) onPause() else onResume() },
@@ -565,7 +579,7 @@ private fun ActiveTimer(
             YantraIcon(if (state.isRunning) YantraMark.Pause else YantraMark.Play,
                 contentDescription = if (state.isRunning) "Pause" else "Resume",
                 tint = y.accent,
-                modifier = Modifier.size(30.dp),
+                size = YantraIcons.Large,
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -593,6 +607,9 @@ private fun ActiveTimer(
                 // Not "Cancel": backing out here continues the session rather than cancelling it,
                 // and the wrong word on the safe option is how people press the wrong one.
                 dismissLabel = "Keep going",
+                // Ending your own session destroys nothing, and priority's crimson never enters
+                // the focus view (DESIGN.md §2.1).
+                destructive = false,
                 onDismiss = { confirming = null },
                 onConfirm = {
                     confirming = null
@@ -614,7 +631,7 @@ private fun DoneContent(
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 30.dp),
+            .padding(horizontal = PAGE_MARGIN),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.weight(1f))
@@ -655,14 +672,12 @@ private fun DoneContent(
         )
         Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .background(y.secondaryButton, RoundedCornerShape(YantraRadius.panel))
-                    .clickable(onClick = onStartAnother)
-                    .padding(vertical = 13.dp),
-                contentAlignment = Alignment.Center,
-            ) { Text("Start another", fontSize = YantraType.body, fontWeight = FontWeight.W600, color = y.textSecondary) }
+            YantraButton(
+                label = "Start another",
+                modifier = Modifier.weight(1f),
+                tone = ButtonTone.Quiet,
+                onClick = onStartAnother,
+            )
             YantraButton(
                 label = "Done",
                 modifier = Modifier.weight(1f),
@@ -687,15 +702,16 @@ private fun SessionRow(s: FocusSessionEntity) {
     ) {
         // A filled mark for a promise kept; an open one for time given without one. Both are time.
         if (ie.shoonya.yantra.data.db.FocusOutcome.keptItsPromise(s.outcome, s.plannedSecs)) {
-            YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = "Ran its course")
+            // No description: the sub-line already says "Ran its course", and TalkBack read it twice.
+            YantraIcon(YantraMark.Focus, tint = y.accent, contentDescription = null)
         } else {
-            Text("◌", fontSize = YantraType.card, color = y.textDim)
+            YantraIcon(YantraMark.Ring, tint = y.textDim, contentDescription = null)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 Instant.ofEpochMilli(s.startedAt).atZone(ZoneId.systemDefault()).format(sessionTimeFmt),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = y.textPrimary,
             )
             Text(

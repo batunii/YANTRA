@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -124,7 +125,7 @@ fun ArchiveScreen(nav: NavHostController) {
                 }
                 item(key = "s-${group.pageId}") { Spacer(Modifier.height(20.dp)) }
             }
-            item(key = "bottom") { Spacer(Modifier.height(32.dp)) }
+            item(key = "bottom") { Spacer(Modifier.navigationBarsPadding().height(32.dp)) }
         }
     }
 }
@@ -152,7 +153,7 @@ private fun ArchivedRow(task: ArchivedTask, onRestore: () -> Unit) {
             )
             task.doneAt?.let {
                 Spacer(Modifier.height(2.dp))
-                Text("Finished ${finishedLabel(it)}", color = y.textDim, fontSize = YantraType.caption)
+                Text("Finished ${finishedLabel(it)}", color = y.textMuted, fontSize = YantraType.meta)
             }
         }
         Spacer(Modifier.width(12.dp))

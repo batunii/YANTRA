@@ -172,10 +172,12 @@ private fun Landed(
     Column(
         Modifier
             .fillMaxWidth()
+            // Outside the band, not inside it: this is a floating card, so it should stand 12dp
+            // clear of the system bar rather than reach under it with an empty strip of its own.
+            .navigationBarsPadding()
             .padding(12.dp)
             .background(y.band, RoundedCornerShape(YantraRadius.sheet))
-            .padding(16.dp)
-            .navigationBarsPadding(),
+            .padding(16.dp),
     ) {
         if (choosing) {
             SectionLabel("Move to")
