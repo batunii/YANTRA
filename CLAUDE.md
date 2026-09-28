@@ -231,30 +231,37 @@ the order: format → sync → Home/lists/pages → focus → calendar → ink �
   atomic base snapshot, one pass per workspace (`SyncGate`), one token renewal (`TokenKeeper`),
   "keep both" adds a linked workspace, `CommitScheduler` on Android's timings. The REST transport
   stays — the audit found nothing appendix 03 needs that it cannot do.
-- Sittings are not list rows. Colour tokens match `yantraColors`. The network pill is still.
-  No SF Symbols in any target (marks live in `Shared/YantraMarks.swift`).
+- **Format** (branch `ios/format-parity-agentA`, merged): pages, events (`by:` written, not
+  read), `pinned`, tolerated `by:`/`on:`/unknown tokens, java.time parsing, kotlinx-exact JSON
+  (`KotlinJSON`), manifest defaults, upkeep on open. **17d0beb's own Kotlin writes the page and
+  meta fixtures** — `conformance/tools/oracle.sh`, no SDK needed — and
+  `conformance/tools/roundtrip.sh <clone>` diffs Swift against Kotlin on a real workspace.
+- **Home** is 17d0beb's: views (Inbox, Today, smart lists) → Next (Clock mark) → Pinned →
+  one section per repository, lists and groups in one rank order. `HomeDay` holds booked/next.
+- Sittings are not list rows, and a sitting saves from the event sheet. Pinch zoom no longer
+  compounds. The list widget's "+" files into its own list. Colour tokens match `yantraColors`.
+  The network pill is still. No SF Symbols in any target (marks live in `Shared/YantraMarks.swift`).
 
 ### Outstanding, in the brief's order
 
-1. **Format** — (in flight on `ios/format-parity-agentA` at the time of writing) event `by:`,
-   frontmatter `pinned`, task `by:`/`on:`/unknown tokens preserved, priority colour 0xFFFF4A1F,
-   manifest defaults omitted and missing = 2, a kotlinx-exact JSON writer, `.gitignore`/upkeep on
-   open, the differential round-trip runner over a real clone.
+1. **Format, left** — due times inside task lines only to the millisecond; the editor half of
+   `LinksTest` (`collapse`) is unported. `saieeshward/yantra-tasks` itself still holds an old
+   iOS-written `properties.json` (High = 4294986271, invalid); upkeep only fills what is missing,
+   so nothing repairs it.
 2. **Sync, still** — the writer's other writes don't take the lock yet; the app syncs on "opened"
    (Android doesn't); reminders are task-only (no event/sitting reminders, no re-plan after sync).
-3. **Home** — no views block (Inbox, Today, smart lists, open-count badge), no **Next** under them
-   with the Clock mark, no Pinned (needs `pinned`), no workspace sections, lists and groups not in
-   one rank order, no rename/delete/move/colour on rows.
+3. **Home, left** — Rename, Move to group… and Delete (Android's three delete bodies) on rows and
+   views; group banner long-press; the create sheet's live highlighting and `~`/`@`/`[[` chips.
 4. **Lists and pages** — row geometry (card radius 14, glyph 26, gap 6, sub-line order), the
    settled "Done · N" section, drag reorder, document mode (markdown shortcuts, Enter splits,
    Backspace joins, `[[` suggestions in blocks), property pills (Deadline, Priority dropdown, Alarm
    mark not 🔔), capture live highlighting, `[[Name]]` resolved on capture.
 5. **Focus** — Stats week/all-time and cuts; Live Activity shows a bar, not the arc.
-6. **Calendar** — pinch compounds (`DayTimeline.swift:101`), a sitting cannot be saved from the
-   event sheet (needs a title), block move/resize, the "What is this time for?" sheet.
+6. **Calendar** — zoom about the focal point, block move/resize, the "What is this time for?"
+   sheet, Length chips in the event sheet, "Open the task" from a sitting.
 7. **Ink UI** — lasso bar and scale handle, pen kit slider/recents, shape modes, dock.
-8. **Widgets** — the list widget's "+" drops its target list (`YantraApp.swift:113`), widgets
-   ignore the theme, calendar widget rows/ticks. App Groups need a paid account — see memory.
+8. **Widgets** — widgets ignore the theme (always dark), calendar widget rows/ticks, the Live
+   Activity's bar should be the arc. App Groups need a paid account — see memory.
 9. **Glyph choreography** (`Bhupura.swift`): the frame un-draw / ring / bindu-THUD sequence.
 10. Brief §6 open questions for the owner: Low priority's blue frame, chip radius 4 vs 5, sheet
     radius 28 vs 18. Matching the code (the brief's default) until told otherwise.
