@@ -73,6 +73,8 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.reindex() }
                 scheduler.record(change)
             }
+            // Tasks made in a shared workspace say who made them; Personal's never do.
+            if !store.id.isEmpty { writer.author = { SyncSettings.login } }
             stores[store.id] = store
             writers[store.id] = writer
             schedulers[store.id] = scheduler

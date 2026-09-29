@@ -162,52 +162,120 @@ struct SwipeToProgress: ViewModifier {
     func body(content: Content) -> some View {
         content
             .offset(x: dx)
-            // Simultaneous, not exclusive: the row's own button must still take a tap, and a
-            // `.gesture` attached over one competes with it for every touch that turns out not to
-            // be a drag.
-            .simultaneousGesture(enabled ? gesture : nil)
+            .modifier(RowSwipeAttachment(enabled: enabled, changed: changed, ended: ended, fallback: gesture))
             .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: dx)
     }
 
+    /// The finger has moved `w` to the right of where it started, on a drag this row owns.
+    private func changed(_ w: CGFloat) {
+        let next = min(max(w, 0), ceiling)
+        if !armed, next >= commitAt {
+            armed = true
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
+        } else if armed, next < commitAt {
+            armed = false
+        }
+        // The row trails the finger rather than matching it, so the gesture reads as pulling
+        // against something instead of sliding the row off the screen.
+        dx = next * 0.5
+        progress = next / commitAt
+    }
+
+    private func ended() {
+        let commit = armed
+        armed = false
+        claim = .undecided
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) { dx = 0 }
+        guard commit else {
+            // Nothing was claimed, so the mark is taken back.
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { progress = 0 }
+            return
+        }
+        onCommit()
+        // The written state draws the ring from here; dropping the traced one in the same
+        // breath keeps it whole rather than blinking.
+        progress = 0
+    }
+
+    /// Before iOS 18, the SwiftUI drag — with the claim decided once, so a mostly-vertical drag is
+    /// handed to the list for the rest of its life rather than contested.
     private var gesture: some Gesture {
-        // Small enough to feel immediate, large enough that a tap with a shaky thumb is still a tap.
         DragGesture(minimumDistance: 8)
             .onChanged { g in
                 if claim == .undecided {
-                    // The first movement worth reading decides it. A mostly-vertical one belongs to
-                    // the list, and is handed over for the rest of this drag rather than contested.
                     let w = g.translation.width, h = g.translation.height
                     guard max(abs(w), abs(h)) > 6 else { return }
                     claim = abs(w) > abs(h) * 1.2 && w > 0 ? .mine : .theirs
                 }
                 guard claim == .mine else { return }
-                let next = min(max(g.translation.width, 0), ceiling)
-                if !armed, next >= commitAt {
-                    armed = true
-                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
-                } else if armed, next < commitAt {
-                    armed = false
-                }
-                // The row trails the finger rather than matching it, so the gesture reads as pulling
-                // against something instead of sliding the row off the screen.
-                dx = next * 0.5
-                progress = next / commitAt
+                changed(g.translation.width)
             }
-            .onEnded { _ in
-                let commit = armed && claim == .mine
-                armed = false
-                claim = .undecided
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) { dx = 0 }
-                guard commit else {
-                    // Nothing was claimed, so the mark is taken back.
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { progress = 0 }
-                    return
-                }
-                onCommit()
-                // The written state draws the ring from here; dropping the traced one in the same
-                // breath keeps it whole rather than blinking.
-                progress = 0
-            }
+            .onEnded { _ in if claim == .mine { ended() } else { claim = .undecided } }
+    }
+}
+
+/// Where the row's swipe hangs.
+///
+/// **A SwiftUI drag on a row made a long list hard to scroll.** Attached to every row inside a
+/// ScrollView — even as a simultaneous gesture, even one that hands a vertical drag back — it took
+/// part in every touch, and on current iOS a drag gesture on scrolling content takes the finger from
+/// the scroll view often enough that a list you flick sometimes does not move. The swipe has to not
+/// begin at all unless the finger is plainly going right, which is a question only a UIKit
+/// recogniser can answer before the scroll view has to decide.
+private struct RowSwipeAttachment<G: Gesture>: ViewModifier {
+    let enabled: Bool
+    let changed: (CGFloat) -> Void
+    let ended: () -> Void
+    let fallback: G
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.gesture(RowSwipeRecognizer(enabled: enabled, changed: changed, ended: ended))
+        } else {
+            content.simultaneousGesture(enabled ? fallback : nil)
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct RowSwipeRecognizer: UIGestureRecognizerRepresentable {
+    let enabled: Bool
+    let changed: (CGFloat) -> Void
+    let ended: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let g = UIPanGestureRecognizer()
+        g.delegate = context.coordinator
+        g.maximumNumberOfTouches = 1
+        // A tap on the row still reaches the row: this only ever takes a drag it began.
+        g.cancelsTouchesInView = false
+        return g
+    }
+
+    func updateUIGestureRecognizer(_ g: UIPanGestureRecognizer, context: Context) {
+        g.isEnabled = enabled
+    }
+
+    func handleUIGestureRecognizerAction(_ g: UIPanGestureRecognizer, context: Context) {
+        switch g.state {
+        case .changed: changed(g.translation(in: g.view).x)
+        case .ended, .cancelled, .failed: ended()
+        default: break
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// Begins only for a drag that is plainly rightward — more across than down, by the same
+        /// 1.2 the SwiftUI claim used — and never from the left edge, which is the back gesture.
+        /// Anything else fails at once and belongs to the list from its first point.
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let pan = g as? UIPanGestureRecognizer, let view = pan.view else { return false }
+            if let window = view.window, pan.location(in: window).x < 24 { return false }
+            let v = pan.velocity(in: view)
+            return v.x > 0 && abs(v.x) > abs(v.y) * 1.2
+        }
     }
 }
 

@@ -9,6 +9,11 @@ public final class WorkspaceWriter {
     public let store: WorkspaceStore
     public let device: String?
     public var onChange: (Change) -> Void = { _ in }
+    /// Who a new task is by, in a shared workspace — `by:<login>`, as newer Android builds stamp it
+    /// (`feature/in-progress-is-yours`). Written once, when the line is made, and kept through
+    /// every edit after that by the codec's raw-line and `extras` handling. Nil for Personal, where
+    /// it could only ever say you, and before sign-in, when there is nobody to name.
+    public var author: () -> String? = { nil }
     /// Cross-process, and the one sync takes before swapping a file in: see `WorkspaceLock`.
     private let lock: WorkspaceLock
 
@@ -75,7 +80,10 @@ public final class WorkspaceWriter {
         var id = ""
         let block: Block
         switch type {
-        case NodeType.task: id = newId(); block = .task(TaskRef(id: id, title: text, indent: indent, due: due, priority: priority, labels: labels))
+        case NodeType.task:
+            id = newId()
+            let by = author().flatMap { $0.isEmpty ? nil : ["by:\($0)"] } ?? []
+            block = .task(TaskRef(id: id, title: text, indent: indent, due: due, priority: priority, labels: labels, extras: by))
         case NodeType.ink: id = newId(); block = .ink(id: id, indent: indent)
         // The text carries the file name, which is what the line points at: the bytes are written
         // beside the page, and the block only names them.
