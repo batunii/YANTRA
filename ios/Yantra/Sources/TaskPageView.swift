@@ -321,10 +321,9 @@ struct BlockRow: View {
             case .prose:
                 field(placeholder: "Write something…", font: Face.text(14.5), color: y.ink, padding: 9)
             case let .ink(id, _, _):
-                Button { onOpen(id) } label: {
-                    InkBlockPreview(inkId: id).frame(maxWidth: .infinity).frame(minHeight: 64)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(y.surface)).overlay(RoundedRectangle(cornerRadius: 14).stroke(y.tileBorder, lineWidth: 1))
-                }.buttonStyle(.plain).padding(.vertical, 6)
+                // On the page itself, no card: a sketch is one of the ways a page is written, not
+                // an attachment behind a thumbnail.
+                InkBlockPreview(inkId: id) { onOpen(id) }.padding(.vertical, 4)
             case let .image(uri, _, _):
                 ImageBlock(uri: uri).padding(.vertical, 6)
             case let .event(e):
@@ -484,48 +483,141 @@ struct PropertyPills: View {
     }
 }
 
-/// Read-only preview of an ink block's strokes, drawn from the sidecar.
+/// An ink block on its page, **at true scale and in full** — `InkBands` at 17d0beb.
+///
+/// The page's width is the drawing's 1000 du, so writing on the page is the size it was written,
+/// and ten pages of notes read as ten pages. It used to be squeezed to fit a 180 pt box, which made
+/// a four-page sketch a smudge nobody could read, and gave no way in closer.
+///
+/// Drawn in page-slices of 480 du, each holding only the strokes that pass through it, so what a
+/// frame costs depends on what is on screen and not on how long the sketch is. A sketch taller than
+/// the fold can be folded to its top 180 pt; that is a thing about this phone, kept on it.
 struct InkBlockPreview: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.y) private var y
     let inkId: String
+    let onOpen: () -> Void
+    @State private var folded = false
+
+    static let pad: Float = 24, band: Float = 480, reach: Float = 40
+    static let foldHeight: CGFloat = 180
+
     var body: some View {
         let strokes = model.storeFor(inkId).readInk(inkId).compactMap(InkBlob.decodeOrNull).filter { $0.inputs.count > 0 }
         if strokes.isEmpty {
-            HStack(spacing: 8) { YantraIcon(mark: .ink, size: YantraIcons.medium, tint: y.dim); Text("Tap to sketch").font(Face.text(13)) }.foregroundStyle(y.dim).padding(20)
+            Button(action: onOpen) {
+                HStack(spacing: 8) {
+                    YantraIcon(mark: .ink, size: YantraIcons.medium, tint: y.dim)
+                    Text("Tap to sketch").font(Face.text(14))
+                }
+                .foregroundStyle(y.dim).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(.plain)
         } else {
-            StrokeCanvas(strokes: strokes, dark: y.dark).frame(height: 180).padding(8)
+            let boxes = strokes.map { s in (s.inputs.y.min() ?? 0, s.inputs.y.max() ?? 0) }
+            let top = max(0, (boxes.map(\.0).min() ?? 0) - Self.pad)
+            let bottom = (boxes.map(\.1).max() ?? 0) + Self.pad
+            // The page's column is the drawing's width; the height follows from it.
+            let w = width > 0 ? width : 1
+            let scale = w / CGFloat(DocumentUnits.pageWidth)
+            let full = max(CGFloat(bottom - top) * scale, 64)
+            let shown = folded ? min(full, Self.foldHeight) : full
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    ForEach(Array(stride(from: top, to: bottom, by: Self.band)), id: \.self) { lo in
+                        let hi = min(lo + Self.band, bottom)
+                        // Folded, the slices below the fold are not built at all.
+                        if CGFloat(lo - top) * scale < shown {
+                            let inside = strokes.indices.filter { boxes[$0].0 - Self.reach < hi && boxes[$0].1 + Self.reach > lo }
+                            InkBand(strokes: inside.map { strokes[$0] }, top: lo, scale: scale, dark: y.dark)
+                                .frame(height: CGFloat(hi - lo) * scale).clipped()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: shown, maxHeight: shown, alignment: .top).clipped()
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onOpen)
+
+                Text((model.index.nodes[inkId]?.title.flatMap { $0.isEmpty ? nil : $0 } ?? "Ink").uppercased())
+                    .font(Face.mono(10, bold: true)).foregroundStyle(y.dim).padding(4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .allowsHitTesting(false)
+
+                if full > Self.foldHeight {
+                    Button {
+                        folded.toggle()
+                        InkFolds.set(inkId, folded)
+                    } label: {
+                        YantraIcon(mark: folded ? .expand : .collapse, size: YantraIcons.medium, tint: y.muted)
+                            .padding(6)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(y.cardBg.opacity(0.85)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(folded ? "Show the whole sketch" : "Fold the sketch")
+                    .padding(4)
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
+                }
+            }
+            .frame(height: shown)
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { width = g.size.width }
+                    .onChange(of: g.size.width) { _, v in width = v }
+            })
+            .onAppear { folded = InkFolds.isFolded(inkId) }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("ink.block.\(inkId)")
         }
     }
+
+    @State private var width: CGFloat = 0
 }
 
-struct StrokeCanvas: View {
+/// One page-slice of a sketch: the strokes that pass through it, drawn in document units scaled to
+/// the page, clipped to the slice so nothing is drawn twice.
+private struct InkBand: View {
     let strokes: [InkBlob.Stroke]
+    let top: Float
+    let scale: CGFloat
     let dark: Bool
+
     var body: some View {
-        Canvas { ctx, size in
-            let xs = strokes.flatMap(\.inputs.x), ys = strokes.flatMap(\.inputs.y)
-            guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return }
-            let w = max(maxX - minX, 1), h = max(maxY - minY, 1)
-            let scale = min((size.width - 16) / CGFloat(w), (size.height - 16) / CGFloat(h), 1.5)
-            let ox = (size.width - CGFloat(w) * scale) / 2, oy = (size.height - CGFloat(h) * scale) / 2
+        Canvas { ctx, _ in
             // Highlighters first, so they sit under the pens — as Android draws them.
             let ordered = strokes.filter { $0.header.family == StrokeCodec.familyHighlighter }
                 + strokes.filter { $0.header.family != StrokeCodec.familyHighlighter }
             for s in ordered {
                 var path = Path()
                 for k in 0..<s.inputs.count {
-                    let pt = CGPoint(x: ox + CGFloat(s.inputs.x[k] - minX) * scale, y: oy + CGFloat(s.inputs.y[k] - minY) * scale)
+                    let pt = CGPoint(x: CGFloat(s.inputs.x[k]) * scale, y: CGFloat(s.inputs.y[k] - top) * scale)
                     if k == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                }
+                if s.inputs.count == 1, let p = path.currentPoint {
+                    path.addLine(to: CGPoint(x: p.x + 0.01, y: p.y))
                 }
                 var argb = s.header.color
                 // The two theme-native inks swap with the theme, as on Android.
                 if argb == StrokeCodec.graphite, dark { argb = StrokeCodec.chalk }
                 if argb == StrokeCodec.chalk, !dark { argb = StrokeCodec.graphite }
+                if s.header.family == StrokeCodec.familyHighlighter {
+                    argb = (argb & 0x00FF_FFFF) | (UInt32(StrokeCodec.highlighterAlpha) << 24)
+                }
                 ctx.stroke(path, with: .color(Color(argb: argb)),
-                           style: StrokeStyle(lineWidth: max(CGFloat(s.header.size) * scale, 0.5), lineCap: .round, lineJoin: .round))
+                           style: StrokeStyle(lineWidth: max(CGFloat(s.header.size) * scale, 0.75), lineCap: .round, lineJoin: .round))
             }
         }
+    }
+}
+
+/// Which sketches are folded on this phone — `InkPrefs.isInkCollapsed`. Device-local, like a
+/// folded group: how much of a drawing to show is about this screen, not about the file.
+enum InkFolds {
+    private static let key = "ink_collapsed"
+    static func isFolded(_ id: String) -> Bool { (AppGroup.defaults.stringArray(forKey: key) ?? []).contains(id) }
+    static func set(_ id: String, _ folded: Bool) {
+        var ids = Set(AppGroup.defaults.stringArray(forKey: key) ?? [])
+        if folded { ids.insert(id) } else { ids.remove(id) }
+        AppGroup.defaults.set(Array(ids), forKey: key)
     }
 }
 
