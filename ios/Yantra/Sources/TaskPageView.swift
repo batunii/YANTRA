@@ -662,20 +662,24 @@ private struct InkBand: View {
     }
 }
 
-/// Decoded sketches, by file and its modification date, so opening a page twice or coming back
-/// from the drawing screen does not inflate the same bytes again.
+/// Decoded sketches, by file, so opening a page twice or coming back from the drawing screen does
+/// not inflate the same bytes again.
+///
+/// Keyed on the file's **bytes**, not its modification date: reading a file is cheap next to
+/// decoding it, and a file timestamp is one of Apple's required-reason APIs, which would need its
+/// own declaration in every privacy manifest for a cache that does not need it.
 enum InkDecodeCache {
-    private static var cache: [URL: (Date, [InkBlob.Stroke])] = [:]
+    private static var cache: [URL: (Data, [InkBlob.Stroke])] = [:]
     private static let lock = NSLock()
 
     static func strokes(at file: URL) -> [InkBlob.Stroke] {
-        let stamp = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+        let bytes = (try? Data(contentsOf: file)) ?? Data()
         lock.lock()
-        if let hit = cache[file], hit.0 == stamp { lock.unlock(); return hit.1 }
+        if let hit = cache[file], hit.0 == bytes { lock.unlock(); return hit.1 }
         lock.unlock()
-        let blobs = (try? Data(contentsOf: file)).flatMap { try? InkSidecar.decode($0) } ?? []
+        let blobs = (try? InkSidecar.decode(bytes)) ?? []
         let strokes = blobs.compactMap(InkBlob.decodeOrNull).filter { $0.inputs.count > 0 }
-        lock.lock(); cache[file] = (stamp, strokes); lock.unlock()
+        lock.lock(); cache[file] = (bytes, strokes); lock.unlock()
         return strokes
     }
 }

@@ -1,7 +1,39 @@
 # App Store submission — compliance state
 
-Audit run 21 September 2026 against the App Store Review Guidelines, using the
-`app-store-compliance` scanner plus the checks it cannot see.
+## Re-audit, 29 September 2026
+
+**Scanner: `critical=0 high=4 medium=3`. Verdict: blocked on one item, which cannot be fixed from
+the repository alone.**
+
+| # | Finding | Severity | State |
+| --- | --- | --- | --- |
+| 1 | **Privacy policy URL returns 404** (5.1.1). `AppLinks.privacyPolicy` points at `batunii/YANTRA/blob/main/docs/PRIVACY.md`, and `docs/PRIVACY.md` exists only on this unmerged branch. The scanner cannot see this; `curl` can. | **Release blocker** | Open — the policy has to be published somewhere that stays up, and the URL changed in `SettingsView.swift` and in App Store Connect together. |
+| 2 | Undeclared required-reason API: a file timestamp (`contentModificationDate`) added for the ink cache on 29 Sep. Not flagged by the scanner. | High | **Fixed** — the cache is keyed on the file's bytes; no timestamp API remains, so the manifests' single `UserDefaults / CA92.1` declaration is still the whole truth. |
+| 3 | Privacy policy described the app as of 21 Sep. Since then: task authorship (`by:<login>`) in shared workspaces, the diagnostics log, collaborator invites, images copied into the workspace. | High | **Fixed** — `docs/PRIVACY.md` updated (29 Sep). |
+| 4 | `BOTH-PLACEHOLDER` | — | False positive: `example.com` appears only in a unit test's sample link (`PageCodecPortTests.swift`) and build output. Nothing ships. |
+| 5 | `APPLE-ODR-DEPRECATED-27` | — | False positive, as on 21 Sep: 242 matches, all in SDK module caches under `YantraCore/.build`. |
+| 6 | `APPLE-ACCOUNT-DELETION-WEAK` | — | False positive: "delete account" is `deleteAccountCredential()` (Sign out) and "mailto:" is calendar attendee parsing. No account is created, so 5.1.1(v) does not apply — see the section at the end. |
+| 7 | `BOTH-UNSAFE-DEEPLINK` | High | Accepted risk, unchanged — below. Universal Links need a domain. |
+| 8 | Dynamic Type, colour contrast, 2026 age rating | Medium | As on 21 Sep; the age rating is answered in App Store Connect. |
+
+Checked by hand and right: permission strings match the APIs used (calendar read-only; the photo
+picker and notifications need none); `UIBackgroundModes: fetch` matches the `BGAppRefreshTask` sync;
+`ITSAppUsesNonExemptEncryption: false`; no third-party SDKs; no tracking.
+
+**For the age rating and Guideline 1.2:** shared workspaces mean the people you invite to *your own
+private repository* see what you write there. That is collaboration between invited people, not
+public user-generated content — no feed, no discovery, no messaging strangers. Answer the
+questionnaire's user-generated-content question with that in mind.
+
+**Submission itself** needs a paid Apple Developer account (the App Groups the widgets and share
+extension use are already in place for one). It is not something this repository can do.
+
+---
+
+## Audit of 21 September 2026
+
+Run against the App Store Review Guidelines, using the `app-store-compliance` scanner plus the
+checks it cannot see.
 
 **Scanner verdict: `critical=0 high=1 medium=2`.** The critical blocker is fixed. What remains is
 one accepted risk and two tasks that can only be done in App Store Connect.

@@ -1,6 +1,6 @@
 # Yantra — Privacy Policy
 
-_Last updated: 21 September 2026_
+_Last updated: 29 September 2026_
 
 ## The short version
 
@@ -19,6 +19,28 @@ traffic goes from your device to GitHub without passing through us.
 | Your GitHub access token | The system Keychain | Only to GitHub, to authenticate your own sync |
 | Theme, accent, chosen calendars, zoom | App-group preferences | No |
 | Focus sessions | A log file in your workspace | Only to your own repository, if you turn on sync |
+| Images you add to a page | Copied into your workspace beside the page | Only to your own repository, if you turn on sync |
+| A diagnostics log | A file in the app's own storage | Only if you choose to share it, from **Settings › Diagnostics** |
+
+## Shared workspaces
+
+A workspace can be a repository you share with other people on GitHub. What you write there is seen
+by the people who have access to that repository — that is what sharing it means — and by nobody
+else. Yantra does not publish anything, and there is no public feed.
+
+- **Who added a task.** A task you add in a shared workspace records your GitHub username on its
+  line (`by:yourname`), so the people you share with can see who wrote it — as the Android app does.
+  Your personal workspace never records it.
+- **Inviting a collaborator.** If you invite someone to a workspace, Yantra asks GitHub to invite
+  their username to that repository. The invitation, and everything after it, is between you, them
+  and GitHub.
+
+## The diagnostics log
+
+To help fix problems, Yantra keeps a short log on your device of what the app did: which screens
+were opened, when syncs ran and whether they worked, and counts of changes. It holds **no task
+content** — no titles, notes or drawings — only identifiers, counts, outcomes and GitHub's own error
+messages. It never leaves the device unless you share it yourself from **Settings › Diagnostics**.
 
 ## Your calendars
 
@@ -62,8 +84,9 @@ server, and no notification content leaves your phone.
 
 ## Children
 
-Yantra is a task app with no social features, no user-to-user content, no advertising and no data
-collection. It is not directed at children, and it collects no personal information from anyone.
+Yantra is a task app with no public social features, no advertising and no data collection. What
+you write is shared only with the people you give access to your own repository. It is not directed
+at children, and it collects no personal information from anyone.
 
 ## Changes
 
