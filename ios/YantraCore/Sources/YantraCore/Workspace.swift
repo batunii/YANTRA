@@ -541,6 +541,12 @@ public struct Node: Identifiable, Equatable, Sendable {
     /// Whether the list sits at the top of Home — `PageMapper`: the page's own `pinned:` when it
     /// says, and otherwise the rule the section used to be, an ungrouped smart list.
     public var pinned: Bool = false
+    /// Who added the task, when a newer Android build stamped the line with `by:<login>`. Read and
+    /// shown, never written: this build does not stamp tasks (the brief's §1.1), it only stops
+    /// hiding what the people it shares a repository with have already recorded.
+    public var addedBy: String?
+    /// Who is on an in-progress task, once per person, when newer Android wrote `on:<login>`.
+    public var onIt: [String] = []
     /// The whole event line, for an event node.
     ///
     /// Kept intact rather than spread across the fields above: an event's span, zone, rule and
@@ -602,6 +608,8 @@ public struct WorkspaceIndex: Sendable {
                     n.done = t.status == .done; n.inProgress = t.status == .inProgress
                     n.due = t.due; n.deadline = t.deadline; n.priority = t.priority; n.labels = t.labels; n.assignee = t.assignee; n.doneAt = t.doneAt
                     n.external = t.external
+                    n.addedBy = t.extras.first { $0.hasPrefix("by:") }.map { String($0.dropFirst(3)) }
+                    n.onIt = t.extras.filter { $0.hasPrefix("on:") }.map { String($0.dropFirst(3)) }
                 case let .event(e):
                     // Positional only when the line carries no id, exactly as a task line is: an
                     // event written by hand has no `^id` until something edits it.

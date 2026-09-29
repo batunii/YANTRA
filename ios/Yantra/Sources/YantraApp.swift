@@ -60,6 +60,11 @@ struct RootView: View {
                     case let .node(id):
                         if model.index.nodes[id]?.type == NodeType.list || model.index.nodes[id]?.type == NodeType.group {
                             ListView(path: $path, nodeId: id, isSmart: false)
+                        } else if model.index.nodes[id]?.type == NodeType.ink {
+                            // An ink block opened as a node is its drawing. It used to open as a
+                            // task page with nothing on it — which is where tapping a sketch on
+                            // its page went, so a drawing on screen would not open.
+                            InkView(path: $path, inkId: id)
                         } else {
                             TaskPageView(path: $path, nodeId: id)
                         }

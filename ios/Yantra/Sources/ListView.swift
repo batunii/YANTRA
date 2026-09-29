@@ -259,6 +259,10 @@ struct TaskRow: View {
         return says.pinned.contains(field)
     }
 
+    private func isMe(_ login: String) -> Bool {
+        login.caseInsensitiveCompare(SyncSettings.login ?? "\u{0}") == .orderedSame
+    }
+
     private var meta: some View {
         // Tags lead the line — `DESIGN.md` §6 took the assignee out of the title to give them the
         // room, and the line ellipsises from the tail, so the tags cannot be what pays. The matched
@@ -268,10 +272,10 @@ struct TaskRow: View {
             return ba != bb ? ba : a < b
         }
         let tags = branchedFirst.filter { !silent(.label($0)) }.prefix(3)
-        // The assignee is yours to skip: on your own tasks the name is the one thing you already
-        // know. `Expected` shipped with this single field on Android, for the same reason.
-        let mine = node.assignee.map { $0.caseInsensitiveCompare(SyncSettings.login ?? "\u{0}") == .orderedSame } ?? false
-        let showWho = !silent(.prop(BuiltIns.assignee)) && node.assignee != nil && !mine
+        // Who it is for, whenever it is for anybody — you included. It was skipped on your own
+        // tasks, on the reasoning that you know your own name; asked for back, because on a
+        // shared list "this one is mine" is exactly what a glance down the page is for.
+        let showWho = !silent(.prop(BuiltIns.assignee)) && node.assignee != nil
         let showDeadline = !silent(.prop(BuiltIns.deadline))
         let showOriginNow = !silent(.originList)
 
@@ -279,6 +283,12 @@ struct TaskRow: View {
             + tags.map { ("#\($0)", labelColor($0)) }
             + ((showDeadline ? node.deadline : nil).map { [(deadlineLabel($0), $0 < .today() ? y.overdue : y.secondary)] } ?? [])
             + ((showOriginNow ? originName : nil).map { [($0, y.muted)] } ?? [])
+            // Who added it and who is on it, when the line says so (newer Android writes `by:` and
+            // `on:`). Only about **somebody else**, as Android's rows are: your own name beside
+            // your own work is the one thing a glance does not need.
+            + (node.addedBy.flatMap { isMe($0) ? nil : [("by @\($0)", y.dim)] } ?? [])
+            + { let others = node.onIt.filter { !isMe($0) }
+                return others.isEmpty ? [] : [("on " + others.map { "@\($0)" }.joined(separator: ", "), y.dim)] }()
         return HStack(spacing: 6) {
             if parts.isEmpty { Text("\u{2009}").font(Face.mono(10.5)) }
             ForEach(Array(parts.enumerated()), id: \.offset) { i, p in

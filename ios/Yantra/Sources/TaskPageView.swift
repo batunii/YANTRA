@@ -111,6 +111,19 @@ struct TaskPageView: View {
                     .onChange(of: titleDraft) { _, v in if v.contains("\n") { titleDraft = v.replacingOccurrences(of: "\n", with: ""); commitTitle() } }
             }
             if let n = node, n.type == NodeType.task { PropertyPills(node: n) }
+            // Who added it and who is on it, when a newer Android build recorded that on the line —
+            // in its words: "Added by @sai" or "Added by you", and "On it: @sai".
+            if let n = node, n.addedBy != nil || !n.onIt.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let who = n.addedBy {
+                        Text("Added by \(name(who))").accessibilityIdentifier("task.addedBy")
+                    }
+                    if !n.onIt.isEmpty {
+                        Text("On it: " + n.onIt.map(name).joined(separator: ", ")).accessibilityIdentifier("task.onIt")
+                    }
+                }
+                .font(Face.text(12)).foregroundStyle(y.muted)
+            }
             // An event is a node like any other, and what makes it an event — when it is, where it
             // is, whose calendar it came from — belongs at the top of its page rather than in a card
             // you have to dismiss before you can write anything under it.
@@ -121,6 +134,11 @@ struct TaskPageView: View {
         .padding(.horizontal, Layout.pageMargin).padding(.top, 8).padding(.bottom, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(y.band.clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18)).ignoresSafeArea(edges: .top))
+    }
+
+    /// "you" for the signed-in login, "@name" for anybody else — the task page's people words.
+    private func name(_ login: String) -> String {
+        login.caseInsensitiveCompare(SyncSettings.login ?? "\u{0}") == .orderedSame ? "you" : "@\(login)"
     }
 
     /// The photo being picked, if the Image key was tapped.
@@ -498,12 +516,30 @@ struct InkBlockPreview: View {
     let inkId: String
     let onOpen: () -> Void
     @State private var folded = false
+    /// The strokes, decoded once and off the main thread. Decoding in `body` read and inflated the
+    /// whole sidecar — 450 KB for a long Android sketch — every time the page redrew, several
+    /// times while it animated in, which is what made a page with a drawing slow to open.
+    @State private var strokes: [InkBlob.Stroke]?
 
     static let pad: Float = 24, band: Float = 480, reach: Float = 40
     static let foldHeight: CGFloat = 180
 
     var body: some View {
-        let strokes = model.storeFor(inkId).readInk(inkId).compactMap(InkBlob.decodeOrNull).filter { $0.inputs.count > 0 }
+        Group {
+            if let strokes { drawn(strokes) } else { Color.clear.frame(height: 64) }
+        }
+        .task(id: inkId) { await load() }
+        // Back from the drawing screen: the file may have changed under us.
+        .onAppear { Task { await load() } }
+    }
+
+    private func load() async {
+        let file = model.storeFor(inkId).inkFile(inkId)
+        let decoded = await Task.detached(priority: .userInitiated) { InkDecodeCache.strokes(at: file) }.value
+        if decoded != strokes { strokes = decoded }
+    }
+
+    @ViewBuilder private func drawn(_ strokes: [InkBlob.Stroke]) -> some View {
         if strokes.isEmpty {
             Button(action: onOpen) {
                 HStack(spacing: 8) {
@@ -535,8 +571,11 @@ struct InkBlockPreview: View {
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: shown, maxHeight: shown, alignment: .top).clipped()
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onOpen)
+                // A Button, not a tap gesture: this page carries a UIKit swipe, and a SwiftUI tap
+                // beside a representable is the one that loses (CLAUDE.md §3). The drawing was on
+                // screen and would not open.
+                .overlay(Button(action: onOpen) { Color.clear.contentShape(Rectangle()) }
+                    .buttonStyle(.plain).accessibilityIdentifier("ink.open.\(inkId)").accessibilityLabel("Open the sketch"))
 
                 Text((model.index.nodes[inkId]?.title.flatMap { $0.isEmpty ? nil : $0 } ?? "Ink").uppercased())
                     .font(Face.mono(10, bold: true)).foregroundStyle(y.dim).padding(4)
@@ -606,6 +645,24 @@ private struct InkBand: View {
                            style: StrokeStyle(lineWidth: max(CGFloat(s.header.size) * scale, 0.75), lineCap: .round, lineJoin: .round))
             }
         }
+    }
+}
+
+/// Decoded sketches, by file and its modification date, so opening a page twice or coming back
+/// from the drawing screen does not inflate the same bytes again.
+enum InkDecodeCache {
+    private static var cache: [URL: (Date, [InkBlob.Stroke])] = [:]
+    private static let lock = NSLock()
+
+    static func strokes(at file: URL) -> [InkBlob.Stroke] {
+        let stamp = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+        lock.lock()
+        if let hit = cache[file], hit.0 == stamp { lock.unlock(); return hit.1 }
+        lock.unlock()
+        let blobs = (try? Data(contentsOf: file)).flatMap { try? InkSidecar.decode($0) } ?? []
+        let strokes = blobs.compactMap(InkBlob.decodeOrNull).filter { $0.inputs.count > 0 }
+        lock.lock(); cache[file] = (stamp, strokes); lock.unlock()
+        return strokes
     }
 }
 

@@ -430,24 +430,36 @@ struct CalendarTaskRail: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(RailBucket.allCases, id: \.self) { b in
+                        let on = shelf == b
+                        let count = all[b]?.count ?? 0
                         Button { shelf = b } label: {
-                            Text(b.label).font(Face.text(11.5, shelf == b ? .bold : .regular))
-                                .lineLimit(1).fixedSize()
-                                .foregroundStyle(shelf == b ? y.accentText : y.muted)
-                                .padding(.horizontal, 7).padding(.vertical, 6)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(shelf == b ? y.accentFill : .clear))
+                            // A tab is a control, not a column of data, so it reads at chip size —
+                            // and says how much is on its shelf, as `TaskRail` does.
+                            HStack(spacing: 4) {
+                                Text(b.label).font(Face.text(12, on ? .bold : .medium))
+                                    .foregroundStyle(on ? y.accentText : y.muted)
+                                if count > 0 {
+                                    Text("\(count)").font(Face.mono(12))
+                                        .foregroundStyle(on ? y.accentText.opacity(0.7) : y.dim)
+                                }
+                            }
+                            .lineLimit(1).fixedSize()
+                            .padding(.horizontal, 8).padding(.vertical, 10)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(on ? y.accentFill : .clear))
                         }.buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 8).padding(.vertical, 8)
+                .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 6)
             }
             Divider().frame(height: 0.5).overlay(y.hairline)
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                // Each task its own card, a little apart — `TaskRail`'s rows. They were bare lines
+                // run edge to edge, which read as one block of text rather than things to pick up.
+                VStack(alignment: .leading, spacing: 4) {
                     let list = all[shelf] ?? []
                     if list.isEmpty {
                         Text(shelf == .undated ? "Everything has a date" : "Nothing here")
-                            .font(Face.text(12)).foregroundStyle(y.dim).padding(12)
+                            .font(Face.text(12)).foregroundStyle(y.dim).padding(.vertical, 8)
                     }
                     ForEach(list) { t in
                         // Tap to pick up, hold to carry. Two ways to the same place, because a
@@ -455,13 +467,15 @@ struct CalendarTaskRail: View {
                         // and because a hold-and-drag is hard work for anyone whose hands are not.
                         Button { pickUp(t) } label: {
                             HStack(spacing: 8) {
-                                Circle().stroke(y.dim, lineWidth: 1).frame(width: 9, height: 9)
-                                Text(inlinePlain(t.title ?? "") { model.index.title(of: $0) })
-                                    .font(Face.text(12.5)).foregroundStyle(y.ink).lineLimit(2)
+                                let words = inlinePlain(t.title ?? "") { model.index.title(of: $0) }
+                                Text(words.isEmpty ? "Untitled" : words)
+                                    .font(Face.text(12, .semibold)).foregroundStyle(y.ink).lineLimit(2)
                                     .multilineTextAlignment(.leading)
                                 Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .padding(.horizontal, 10).padding(.vertical, 9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(y.cardBg))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -477,9 +491,10 @@ struct CalendarTaskRail: View {
                     }
                     Spacer().frame(height: 60)
                 }
+                .padding(.horizontal, 12).padding(.top, 6)
             }
         }
-        .background(y.surface)
+        .background(y.rail)
     }
 
     /// Picks a task up so a tap on the day can put it down.

@@ -47,6 +47,9 @@ enum UITestFixture {
         static let focusedTask = "fixture-focused"
         static let archivedTask = "fixture-archived"
         static let ink = "fixture-ink"
+    /// A second ink block that has strokes in it, so opening a drawn sketch from its page is tested
+    /// as well as an empty one.
+    static let drawnInk = "fixture-ink-drawn"
         static let warnedTask = "fixture-warned"
         static let image = "fixture-image"
     static let group = "fixture-group"
@@ -125,8 +128,16 @@ enum UITestFixture {
             .prose("Follow \(Links.encode(label: Names.overdueTask, targetId: Ids.overdueTask)) first."),
             .task(TaskRef(id: id(), title: Names.subtask)),
             .ink(id: Ids.ink),
+            .ink(id: Ids.drawnInk),
             .image(uri: "\(Ids.image).jpg"),
         ]))
+        // A diagonal line, as Android's codec would store it.
+        if let stroke = try? InkBlob.encode(.init(
+            header: .init(family: StrokeCodec.familyPressurePen, color: StrokeCodec.graphite, size: 2.6),
+            inputs: .init(x: (0..<20).map { 100 + Float($0) * 30 }, y: (0..<20).map { 80 + Float($0) * 12 },
+                          t: (0..<20).map { Float($0) * 0.01 }, toolType: .touch, strokeUnitLengthCm: 0.02))) {
+            store.writeInk(Ids.drawnInk, [stroke])
+        }
         store.writeImage(Ids.image, sampleJPEG())
 
         store.writePage(PageDoc(id: Ids.secondList, type: NodeType.list, parent: nil, title: Names.secondList,

@@ -265,6 +265,7 @@ struct PencilCanvas: UIViewRepresentable {
         // No PKToolPicker. The kit is Yantra's, drawn over the canvas, so the system's tray would
         // be a second set of pens disagreeing with the first about what is in hand.
         context.coordinator.attachShapeGesture(to: v)
+        context.coordinator.attachPinch(to: v)
         context.coordinator.watchForAPencil(on: v)
         context.coordinator.host = host
         return host
@@ -314,10 +315,13 @@ struct PencilCanvas: UIViewRepresentable {
         /// The moment a pencil is used, the finger stops being the pen and goes back to scrolling.
         func watchForAPencil(on v: PKCanvasView) {
             let watch = StylusWatch(target: nil, action: nil)
-            watch.onPencil = { [weak v] in
+            watch.onPencil = { [weak self, weak v] in
                 guard let v, v.drawingPolicy != .pencilOnly else { return }
                 v.drawingPolicy = .pencilOnly
                 v.panGestureRecognizer.minimumNumberOfTouches = 1
+                // A finger no longer draws, so the scroll view's own pinch can have it.
+                self?.fingerPinch?.isEnabled = false
+                v.pinchGestureRecognizer?.isEnabled = true
             }
             v.addGestureRecognizer(watch)
         }
@@ -374,9 +378,76 @@ struct PencilCanvas: UIViewRepresentable {
             return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controls, creationDate: Date()))
         }
 
-        // The shape drag and the canvas must not both claim the touch.
+        // MARK: two fingers, while a finger draws
+        //
+        // `InkCanvas`'s rule: one finger draws, and **a second finger turns the gesture into a pan
+        // and pinch, cancelling the stroke the first had started**. The scroll view's own pinch
+        // cannot do this. A real hand never lands two fingers at once: the first arrives a few
+        // milliseconds early, PencilKit starts a stroke with it, and the pinch never gets the touch.
+        // The simulator's synthetic pinch puts both down together, which is why a UI test passed
+        // while nobody could zoom on a phone. So this pinch runs alongside the drawing, and when it
+        // begins it takes the gesture: the half-drawn stroke is cancelled and the zoom and the pan
+        // are driven from here, about the point between the fingers.
+
+        var fingerPinch: UIPinchGestureRecognizer?
+        private var pinchStartZoom: CGFloat = 1
+        private var pinchAnchor: CGPoint = .zero      // content point under the fingers, unscaled
+        private var drawingAtPinch: PKDrawing?
+
+        func attachPinch(to v: PKCanvasView) {
+            let g = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
+            g.delegate = self
+            v.addGestureRecognizer(g)
+            fingerPinch = g
+            // One pinch, not two fighting over the zoom. The system's comes back with a Pencil.
+            v.pinchGestureRecognizer?.isEnabled = false
+        }
+
+        @objc private func pinched(_ g: UIPinchGestureRecognizer) {
+            guard let v = canvas ?? (g.view as? PKCanvasView), let host = v.superview else { return }
+            switch g.state {
+            case .began:
+                // Cancel the stroke the first finger started: toggling a recogniser cancels it,
+                // and PencilKit drops a stroke whose gesture was cancelled. Whatever it committed
+                // anyway is put back below.
+                drawingAtPinch = parent.drawing
+                v.drawingGestureRecognizer.isEnabled = false
+                v.drawingGestureRecognizer.isEnabled = true
+                v.panGestureRecognizer.isEnabled = false
+                v.panGestureRecognizer.isEnabled = true
+                pinchStartZoom = v.zoomScale
+                let at = g.location(in: v)
+                pinchAnchor = CGPoint(x: at.x / v.zoomScale, y: at.y / v.zoomScale)
+            case .changed:
+                let zoom = min(max(pinchStartZoom * g.scale, v.minimumZoomScale), v.maximumZoomScale)
+                if v.zoomScale != zoom { v.setZoomScale(zoom, animated: false) }
+                syncContent()
+                // Keep the page point that was under the fingers under them, wherever they go —
+                // which is the pan as well as the pinch.
+                let finger = g.location(in: host)
+                let origin = v.frame.origin
+                var offset = CGPoint(x: pinchAnchor.x * zoom - (finger.x - origin.x),
+                                     y: pinchAnchor.y * zoom - (finger.y - origin.y))
+                let inset = v.adjustedContentInset
+                offset.x = min(max(offset.x, -inset.left), max(-inset.left, v.contentSize.width - v.bounds.width + inset.right))
+                offset.y = min(max(offset.y, -inset.top), max(-inset.top, v.contentSize.height - v.bounds.height + inset.bottom))
+                v.contentOffset = offset
+            case .ended, .cancelled, .failed:
+                if let before = drawingAtPinch, v.drawing.strokes.count > before.strokes.count {
+                    v.drawing = before
+                    parent.drawing = before
+                }
+                drawingAtPinch = nil
+                syncContent()
+            default:
+                break
+            }
+        }
+
+        // The pinch runs alongside the drawing — that is the whole point of it. The shape drag and
+        // the canvas must not both claim the touch.
         func gestureRecognizer(_ g: UIGestureRecognizer,
-                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { g === fingerPinch }
 
         func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
             isEditing = true
