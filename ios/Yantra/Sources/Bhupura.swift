@@ -48,7 +48,12 @@ struct YantraCheckbox: View {
         }
         .frame(width: size, height: size)
         .scaleEffect(pressed ? 0.88 : 1)
-        .contentShape(Rectangle().inset(by: -8))
+        // Generous above, below and toward the card's edge — never toward the words. An even 8 on
+        // every side reached into the gap before a row's title, so a tap meant to open a task
+        // ticked it instead, and a row seemed to open only from its name or its right-hand end.
+        .padding(.leading, 10).padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .padding(.leading, -10).padding(.vertical, -8)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6), value: state)
         .onTapGesture {
             pressed = true

@@ -385,6 +385,7 @@ struct BottomBar<Capture: View>: View {
     @ViewBuilder var capture: Capture
 
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var timer: FocusTimer
     /// The keyboard's own report, because a bar has to stand down for the line being typed.
     @State private var keyboard = false
     /// The task that already has the clock, while the person decides. Its presence is the dialog.
@@ -408,7 +409,7 @@ struct BottomBar<Capture: View>: View {
         NowDock {
             if !shown.isEmpty {
                 NowPlayer(stack: shown,
-                          elapsed: model.timer.state.flatMap { $0.isFinished ? nil : $0.elapsedSecs },
+                          elapsed: timer.state.flatMap { $0.isFinished ? nil : $0.elapsedSecs },
                           onOpen: onOpenNow, onToggleClock: toggleClock)
                 NowDockSeam()
             }

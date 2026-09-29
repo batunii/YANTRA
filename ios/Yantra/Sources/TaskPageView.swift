@@ -81,11 +81,9 @@ struct TaskPageView: View {
                 Spacer()
                 if let n = node, n.type == NodeType.task {
                     if let s = model.timer.state, s.nodeId == n.id, !s.isFinished {
-                        Button { path.append(Route.focus(nil)) } label: {
-                            HStack(spacing: 6) { YantraIcon(mark: .focus, size: YantraIcons.small, tint: y.accent); Text(sessionClock(s.isOpen ? s.elapsedSecs : s.remainingSecs)).font(Face.mono(13, bold: true)) }
-                                .foregroundStyle(y.accentText).padding(.horizontal, 12).padding(.vertical, 8)
-                                .background(RoundedRectangle(cornerRadius: 14).fill(y.accentFill)).overlay(RoundedRectangle(cornerRadius: 14).stroke(y.accentBorder, lineWidth: 1))
-                        }.buttonStyle(.plain)
+                        // Its own view, watching the clock itself, so only the pill redraws each
+                        // second rather than the whole page.
+                        SessionPill { path.append(Route.focus(nil)) }
                     } else {
                         NavCircle(mark: .focus, accent: true) { path.append(Route.focus(n.id)) }
                             .accessibilityIdentifier("page.focus")
@@ -498,6 +496,22 @@ struct PropertyPills: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id ?? "")
+    }
+}
+
+/// The running clock on a task's page, as a key back to the focus screen.
+struct SessionPill: View {
+    @EnvironmentObject private var timer: FocusTimer
+    @Environment(\.y) private var y
+    let action: () -> Void
+    var body: some View {
+        if let s = timer.state, !s.isFinished {
+            Button(action: action) {
+                HStack(spacing: 6) { YantraIcon(mark: .focus, size: YantraIcons.small, tint: y.accent); Text(sessionClock(s.isOpen ? s.elapsedSecs : s.remainingSecs)).font(Face.mono(13, bold: true)) }
+                    .foregroundStyle(y.accentText).padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(y.accentFill)).overlay(RoundedRectangle(cornerRadius: 14).stroke(y.accentBorder, lineWidth: 1))
+            }.buttonStyle(.plain)
+        }
     }
 }
 

@@ -36,7 +36,17 @@ final class AppModel: ObservableObject {
         // the player bar sat on the number they were built with and only caught up when some other
         // write happened to refresh the model. Forwarding its changes is what makes a running clock
         // look like one.
-        timer.objectWillChange
+        //
+        // **But not every second.** Forwarding every tick redrew every screen once a second for
+        // as long as the app was open — with a session or without one, because the ticker
+        // re-assigned its state each second even when nothing was running. Lists, pages and Home
+        // rebuilt continuously underneath whatever you were doing, which is what made a tap on a
+        // task feel slow. Now only what the rest of the app cares about travels: a session
+        // starting, pausing, resuming or ending. The views that show the running clock — the focus
+        // screen, the player, the page's clock pill — watch `timer` themselves.
+        timer.$state
+            .map { s in s.map { "\($0.sessionId)|\($0.nodeId)|\($0.isRunning)|\($0.isFinished)" } }
+            .removeDuplicates()
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &bag)
         Notifications.shared.install()
@@ -804,11 +814,14 @@ final class FocusTimer: ObservableObject {
     }
 
     private func refresh() {
+        // Assigned only when it differs: a @Published assignment is a change whether or not the
+        // value moved, and this runs every second.
         if let s = LiveSession.load() {
             if s.isSpent { wake(); return }
-            state = State(sessionId: s.sessionId, nodeId: s.nodeId, nodeTitle: s.title, plannedSecs: s.plannedSecs,
-                          remainingSecs: s.remaining(), elapsedSecs: s.elapsed(), isRunning: !s.isPaused)
-        } else {
+            let next = State(sessionId: s.sessionId, nodeId: s.nodeId, nodeTitle: s.title, plannedSecs: s.plannedSecs,
+                             remainingSecs: s.remaining(), elapsedSecs: s.elapsed(), isRunning: !s.isPaused)
+            if next != state { state = next }
+        } else if state != finished {
             state = finished
         }
     }

@@ -19,6 +19,7 @@ struct YantraApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(model)
+                .environmentObject(model.timer)
                 .environmentObject(theme)
         }
     }

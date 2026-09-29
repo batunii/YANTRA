@@ -13,7 +13,9 @@ struct FocusView: View {
     @State private var askShort: (() -> Void)? = nil
     @State private var switchTo: Int? = nil
 
-    private var live: FocusTimer.State? { model.timer.state }
+    /// Watched directly: the app model no longer forwards the clock's every second.
+    @EnvironmentObject private var timer: FocusTimer
+    private var live: FocusTimer.State? { timer.state }
     private var requested: Node? { requestedNodeId.flatMap { model.index.nodes[$0] } }
 
     var body: some View {
