@@ -153,6 +153,30 @@ what it was written to mean. Anchor on real geometry — `PlaceOnCalendarUITests
 asks the timeline where it is and finds a gap between the blocks — and assert you are still on the
 screen you think you are on.
 
+### Found on a real phone, invisible on the simulator (2026-09-29)
+
+Each passed its UI tests before it was fixed. **The simulator's synthetic gestures are not a
+hand**, so gesture work is confirmed on the device.
+
+- **A pinch never reached PencilKit's scroll view.** A real hand lands one finger a few ms before
+  the other; with finger drawing on, PencilKit starts a stroke with the first and the pinch never
+  gets the touch. The canvas has its own pinch, run alongside the drawing, which cancels the stroke
+  and drives the zoom (`InkCanvas`'s rule). The simulator puts both fingers down at once.
+- **A SwiftUI drag on list rows made the list hard to scroll**, even as `simultaneousGesture`. Row
+  swipes are a UIKit pan (`UIGestureRecognizerRepresentable`) that refuses to *begin* unless the
+  finger is plainly going right. Refusing to begin is the part that matters.
+- **The whole app redrew every second.** `FocusTimer` re-assigned `@Published state` each tick even
+  with no session, and `AppModel` forwarded every change. Only real changes publish now, and only
+  start/pause/finish reach `AppModel`; clocks watch the timer via the environment. Measure with an
+  `os.Logger` mark in `init` and `log show` on the simulator — a page rebuilt once a second is
+  obvious in ten seconds of log.
+- **A drawn sketch pushed `Route.node(inkId)`** — an empty task page. `Route.node` of an ink node now
+  opens the drawing. **An 8 pt inset on the tick glyph reached the gap before the title**, so taps
+  meant to open a task ticked it (the hit area now grows outward, never toward the words).
+- To reproduce with **real data**: `devicectl device copy from … --source "Library/Application
+  Support/workspaces"` (free signing has no App Group, so the phone keeps workspaces in the app
+  container), then copy into the simulator's App Group `workspaces/` and launch without `-uitest`.
+
 ---
 
 ## 4. Sync: read this before touching it
@@ -238,6 +262,10 @@ the order: format → sync → Home/lists/pages → focus → calendar → ink �
   `conformance/tools/roundtrip.sh <clone>` diffs Swift against Kotlin on a real workspace.
 - **Home** is 17d0beb's: views (Inbox, Today, smart lists) → Next (Clock mark) → Pinned →
   one section per repository, lists and groups in one rank order. `HomeDay` holds booked/next.
+- **Authorship, read and written** — the user asked for it (overriding the brief's §1.1): rows say
+  "by @x" / "on @x" about other people, the page "Added by @x/you" and "On it: @x" (newer
+  Android's words), and a task made in a **shared** workspace is stamped `by:<login>` straight
+  after its title. Personal never is. `on:` is read, not yet written; no ninth focus-log field.
 - Sittings are not list rows, and a sitting saves from the event sheet. Pinch zoom no longer
   compounds. The list widget's "+" files into its own list. Colour tokens match `yantraColors`.
   The network pill is still. No SF Symbols in any target (marks live in `Shared/YantraMarks.swift`).
