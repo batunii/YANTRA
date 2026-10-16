@@ -45,12 +45,20 @@ struct InkView: View {
     /// What the file held when it was read, and which stroke on the canvas each blob became.
     @State private var ledger = InkLedger()
 
+    /// "<parent title> · ink", or "Sketch" when the sketch has no titled parent. A plain function
+    /// rather than an inline chain of `flatMap`/`map`, which the type checker found slow.
+    private var sketchTitle: String {
+        guard let node = model.index.nodes[inkId], let parentId = node.parentId,
+              let parentTitle = model.index.nodes[parentId]?.title else { return "Sketch" }
+        return inlinePlain(parentTitle) + " · ink"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 NavCircle(mark: .back) { save(); path.removeLast() }.accessibilityIdentifier("nav.back")
                 Spacer()
-                Text(model.index.nodes[inkId].flatMap { n in n.parentId.flatMap { model.index.nodes[$0]?.title } }.map { inlinePlain($0) + " · ink" } ?? "Sketch")
+                Text(sketchTitle)
                     .font(Face.text(17, .bold)).foregroundStyle(y.ink).lineLimit(1)
                 Spacer()
                 Color.clear.frame(width: 38, height: 38)

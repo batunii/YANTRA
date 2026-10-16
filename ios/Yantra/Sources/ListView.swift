@@ -279,16 +279,25 @@ struct TaskRow: View {
         let showDeadline = !silent(.prop(BuiltIns.deadline))
         let showOriginNow = !silent(.originList)
 
-        let parts: [(String, Color)] = (showWho ? [("@\(node.assignee!)", y.secondary)] : [])
-            + tags.map { ("#\($0)", labelColor($0)) }
-            + ((showDeadline ? node.deadline : nil).map { [(deadlineLabel($0), $0 < .today() ? y.overdue : y.secondary)] } ?? [])
-            + ((showOriginNow ? originName : nil).map { [($0, y.muted)] } ?? [])
-            // Who added it and who is on it, when the line says so (newer Android writes `by:` and
-            // `on:`). Only about **somebody else**, as Android's rows are: your own name beside
-            // your own work is the one thing a glance does not need.
-            + (node.addedBy.flatMap { isMe($0) ? nil : [("by @\($0)", y.dim)] } ?? [])
-            + { let others = node.onIt.filter { !isMe($0) }
-                return others.isEmpty ? [] : [("on " + others.map { "@\($0)" }.joined(separator: ", "), y.dim)] }()
+        // Built with plain appends, in this order. One long `+` chain of differently-shaped arrays
+        // is more than older compilers (Xcode 16.x on CI) can type-check in reasonable time.
+        var parts: [(String, Color)] = []
+        if showWho, let who = node.assignee { parts.append(("@\(who)", y.secondary)) }
+        for tag in tags { parts.append(("#\(tag)", labelColor(tag))) }
+        if showDeadline, let deadline = node.deadline {
+            let late: Bool = deadline < .today()
+            parts.append((deadlineLabel(deadline), late ? y.overdue : y.secondary))
+        }
+        if showOriginNow, let origin = originName { parts.append((origin, y.muted)) }
+        // Who added it and who is on it, when the line says so (newer Android writes `by:` and
+        // `on:`). Only about **somebody else**, as Android's rows are: your own name beside
+        // your own work is the one thing a glance does not need.
+        if let by = node.addedBy, !isMe(by) { parts.append(("by @\(by)", y.dim)) }
+        let others: [String] = node.onIt.filter { !isMe($0) }
+        if !others.isEmpty {
+            let names: String = others.map { "@\($0)" }.joined(separator: ", ")
+            parts.append(("on " + names, y.dim))
+        }
         return HStack(spacing: 6) {
             if parts.isEmpty { Text("\u{2009}").font(Face.mono(10.5)) }
             ForEach(Array(parts.enumerated()), id: \.offset) { i, p in
@@ -390,9 +399,9 @@ struct QuickAddBar: View {
                          palette: .init(ink: UIColor(y.ink), dim: UIColor(y.dim), date: UIColor(y.due),
                                         priority: UIColor(y.crimson), list: UIColor(y.accentText),
                                         link: UIColor(y.accentText), assignee: UIColor(y.secondary)))
-                // The height of one line, growing only as far as a few — the bar was a slab before
+                // The height of one line, growing a good way before it scrolls — the bar was a slab before
                 // this, because a non-scrolling text view takes whatever it is offered.
-                .frame(height: max(22, min(captureHeight, 88)))
+                .frame(height: max(22, min(captureHeight, CaptureField.Coordinator.maxHeight)))
             Button(action: submit) {
                 YantraIcon(mark: .send, size: YantraIcons.medium, tint: y.onAccent)
                     .foregroundStyle(text.isEmpty ? y.dim : y.accent).frame(width: 40, height: 40)
