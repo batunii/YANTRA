@@ -399,9 +399,9 @@ struct QuickAddBar: View {
                          palette: .init(ink: UIColor(y.ink), dim: UIColor(y.dim), date: UIColor(y.due),
                                         priority: UIColor(y.crimson), list: UIColor(y.accentText),
                                         link: UIColor(y.accentText), assignee: UIColor(y.secondary)))
-                // The height of one line, growing a good way before it scrolls — the bar was a slab before
+                // The height of one line, growing only as far as a few — the bar was a slab before
                 // this, because a non-scrolling text view takes whatever it is offered.
-                .frame(height: max(22, min(captureHeight, CaptureField.Coordinator.maxHeight)))
+                .frame(height: max(22, min(captureHeight, 88)))
             Button(action: submit) {
                 YantraIcon(mark: .send, size: YantraIcons.medium, tint: y.onAccent)
                     .foregroundStyle(text.isEmpty ? y.dim : y.accent).frame(width: 40, height: 40)
