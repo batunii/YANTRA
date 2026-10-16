@@ -210,12 +210,19 @@ struct FocusGlyph: View {
             for (d, n) in dayCounts.enumerated() { marks.append((true, d % 2 == 1)); for _ in 0..<n { marks.append((false, false)) } }
             let total = marks.count
             for (i, m) in marks.enumerated() {
-                let r = total <= 1 ? 2.8 * u : (2.8 + (7.2 - 2.8) * Double(i) / Double(total - 1)) * u
+                // Split into typed steps: one long Double/CGFloat expression made the type checker give up.
+                let along: Double = total <= 1 ? 0 : Double(i) / Double(total - 1)
+                let band: Double = 2.8 + 4.4 * along
+                let r: CGFloat = CGFloat(band) * u
                 if m.tri {
                     var p = Path()
                     for k in 0..<3 {
-                        let a = (Double(k) * 120 + (m.up ? -90 : 90)) * .pi / 180
-                        let pt = CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
+                        let turn: Double = m.up ? -90 : 90
+                        let degrees: Double = Double(k) * 120 + turn
+                        let a: Double = degrees * Double.pi / 180
+                        let dx: CGFloat = r * CGFloat(cos(a))
+                        let dy: CGFloat = r * CGFloat(sin(a))
+                        let pt = CGPoint(x: c.x + dx, y: c.y + dy)
                         if k == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
                     }
                     p.closeSubpath()
